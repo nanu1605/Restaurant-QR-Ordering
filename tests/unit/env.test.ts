@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+
+import { parsePublicEnv } from '@/lib/env';
+import { parseServerEnv } from '@/lib/env.server';
+
+const validPublic = {
+  NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+  NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+};
+
+describe('parsePublicEnv', () => {
+  it('accepts the required variables and treats empty optionals as unset', () => {
+    const env = parsePublicEnv({ ...validPublic, NEXT_PUBLIC_POSTHOG_HOST: '' });
+    expect(env.NEXT_PUBLIC_APP_URL).toBe('http://localhost:3000');
+    expect(env.NEXT_PUBLIC_POSTHOG_HOST).toBeUndefined();
+  });
+
+  it('names every missing or invalid variable', () => {
+    expect(() =>
+      parsePublicEnv({ NEXT_PUBLIC_APP_URL: 'not a url', NEXT_PUBLIC_SUPABASE_URL: undefined }),
+    ).toThrow(
+      /NEXT_PUBLIC_APP_URL[\s\S]*NEXT_PUBLIC_SUPABASE_URL[\s\S]*NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY/,
+    );
+  });
+});
+
+describe('parseServerEnv', () => {
+  it('applies defaults for optional settings', () => {
+    const env = parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', PLATFORM_TRIAL_DAYS: '' });
+    expect(env.PLATFORM_TRIAL_DAYS).toBe(14);
+    expect(env.PLATFORM_GRACE_DAYS).toBe(7);
+    expect(env.MENU_IMPORT_MODEL).toBe('claude-sonnet-5');
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('coerces numeric settings and rejects a short cookie secret', () => {
+    expect(
+      parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', PLATFORM_GRACE_DAYS: '10' })
+        .PLATFORM_GRACE_DAYS,
+    ).toBe(10);
+    expect(() =>
+      parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', CUSTOMER_COOKIE_SECRET: 'short' }),
+    ).toThrow(/CUSTOMER_COOKIE_SECRET/);
+  });
+
+  it('requires the secret key', () => {
+    expect(() => parseServerEnv({})).toThrow(/SUPABASE_SECRET_KEY/);
+  });
+});
