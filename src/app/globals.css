@@ -1,26 +1,195 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
+/* No dark theme in the spec: keep shadcn's `dark:` classes inert unless a
+   `.dark` ancestor is added deliberately. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens (spec §16.2). Brand tokens are the source of truth; the
+ * shadcn semantic variables below are mapped onto them so ui/ components
+ * pick up the same palette.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand palette */
+  --ink: #243040;
+  --ink-muted: #556070; /* 5.9:1 on paper — secondary text */
+  --paper: #f6f7f9;
+  --surface: #ffffff;
+  --line: #d9dee5;
+  --brand: #3b4ba8;
+  --brand-foreground: #ffffff;
+
+  /* Status colours: edges, icons, dots. Never the only signal. */
+  --status-placed: #64748b;
+  --status-preparing: #d98e04;
+  --status-ready: #0e8a8a;
+  --status-served: #2e7d4f;
+  --status-void: #b42318;
+  --attention: #c2185b;
+
+  /* Chip fills and the text colour that meets 4.5:1 on each.
+     Ready's fill is a shade darker than the token because white on #0E8A8A
+     is only 4.2:1 (see docs/DECISIONS.md). */
+  --status-placed-fill: var(--status-placed);
+  --status-placed-foreground: #ffffff;
+  --status-preparing-fill: var(--status-preparing);
+  --status-preparing-foreground: var(--ink);
+  --status-ready-fill: #0c7c7c;
+  --status-ready-foreground: #ffffff;
+  --status-served-fill: var(--status-served);
+  --status-served-foreground: #ffffff;
+  --attention-foreground: #ffffff;
+
+  /* Indian food-type marks (FSSAI green veg / brown non-veg; egg has no
+     official mark, amber is the common convention). All ≥ 3:1 on white. */
+  --food-veg: #1b8a3a;
+  --food-non-veg: #8b4513;
+  --food-egg: #b07800;
+
+  /* shadcn semantic mapping */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: #eceff3;
+  --secondary-foreground: var(--ink);
+  --muted: #eceff3;
+  --muted-foreground: var(--ink-muted);
+  --accent: #e8ebf6;
+  --accent-foreground: var(--ink);
+  --destructive: var(--status-void);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: var(--status-ready);
+  --chart-3: var(--status-preparing);
+  --chart-4: var(--status-served);
+  --chart-5: var(--attention);
+  --radius: 0.5rem;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
 }
 
 @theme inline {
+  /* Brand + status utilities: bg-paper, text-ink, border-line, bg-status-ready … */
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-status-placed: var(--status-placed);
+  --color-status-preparing: var(--status-preparing);
+  --color-status-ready: var(--status-ready);
+  --color-status-served: var(--status-served);
+  --color-status-void: var(--status-void);
+  --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
+  --color-status-placed-fill: var(--status-placed-fill);
+  --color-status-placed-foreground: var(--status-placed-foreground);
+  --color-status-preparing-fill: var(--status-preparing-fill);
+  --color-status-preparing-foreground: var(--status-preparing-foreground);
+  --color-status-ready-fill: var(--status-ready-fill);
+  --color-status-ready-foreground: var(--status-ready-foreground);
+  --color-status-served-fill: var(--status-served-fill);
+  --color-status-served-foreground: var(--status-served-foreground);
+  --color-food-veg: var(--food-veg);
+  --color-food-non-veg: var(--food-non-veg);
+  --color-food-egg: var(--food-egg);
+
+  /* shadcn semantic utilities */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Noto Sans for Latin + Devanagari coverage and clear numerals */
+  --font-sans: var(--font-noto-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+
+  /* Type scale 12 / 14 / 16 / 20 / 24 / 32 px */
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Motion only in response to actions; honour the OS setting (spec §16.2). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
