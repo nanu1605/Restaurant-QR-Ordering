@@ -1,0 +1,2 @@
+-- Local demo data (spec §8.12). Populated in Phase 1 once the schema exists.
+-- Never run against staging or production.

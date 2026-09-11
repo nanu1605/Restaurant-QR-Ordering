@@ -23,16 +23,16 @@ pnpm dev
 
 ## Scripts
 
-| Script              | What it does                                  |
-| ------------------- | --------------------------------------------- |
-| `pnpm dev`          | Next.js dev server on http://localhost:3000   |
-| `pnpm build`        | Production build                              |
-| `pnpm lint`         | ESLint                                        |
-| `pnpm typecheck`    | Route type generation + `tsc --noEmit`        |
-| `pnpm format`       | Prettier (write)                              |
-| `pnpm test`         | Unit tests (Vitest)                           |
-| `pnpm e2e`          | End-to-end tests (Playwright)                 |
-| `pnpm db:start`     | Start local Supabase                          |
-| `pnpm db:stop`      | Stop local Supabase                           |
-| `pnpm db:reset`     | Recreate local DB from migrations + seed      |
-| `pnpm db:test`      | Database tests (pgTAP via `supabase test db`) |
+| Script           | What it does                                  |
+| ---------------- | --------------------------------------------- |
+| `pnpm dev`       | Next.js dev server on http://localhost:3000   |
+| `pnpm build`     | Production build                              |
+| `pnpm lint`      | ESLint                                        |
+| `pnpm typecheck` | Route type generation + `tsc --noEmit`        |
+| `pnpm format`    | Prettier (write)                              |
+| `pnpm test`      | Unit tests (Vitest)                           |
+| `pnpm e2e`       | End-to-end tests (Playwright)                 |
+| `pnpm db:start`  | Start local Supabase                          |
+| `pnpm db:stop`   | Stop local Supabase                           |
+| `pnpm db:reset`  | Recreate local DB from migrations + seed      |
+| `pnpm db:test`   | Database tests (pgTAP via `supabase test db`) |
