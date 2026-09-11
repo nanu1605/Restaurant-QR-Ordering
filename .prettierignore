@@ -7,3 +7,5 @@ playwright-report
 blob-report
 supabase/.temp
 src/types/database.ts
+# Source-of-truth spec, kept exactly as supplied
+docs/SPEC.md
