@@ -1413,6 +1413,29 @@ export type Database = {
         Args: { p_slug: string; p_username: string }
         Returns: string
       }
+      customer_cancel_item: {
+        Args: {
+          p_device_id: string
+          p_order_item_id: string
+          p_qr_token: string
+        }
+        Returns: Json
+      }
+      customer_get_session: {
+        Args: { p_device_id?: string; p_qr_token: string }
+        Returns: Json
+      }
+      customer_get_table: { Args: { p_qr_token: string }; Returns: Json }
+      customer_place_order: {
+        Args: {
+          p_device_id: string
+          p_idempotency_key: string
+          p_items: Json
+          p_note?: string
+          p_qr_token: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           p_restaurant_id: string
