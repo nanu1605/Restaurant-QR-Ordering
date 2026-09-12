@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { getPublicEnv } from '@/lib/env';
 import { getServerEnv } from '@/lib/env.server';
+import type { Database } from '@/types/database';
 
 /**
  * Privileged Supabase client using the secret (service role) key. Bypasses RLS.
@@ -13,11 +14,15 @@ import { getServerEnv } from '@/lib/env.server';
  * from client code — `server-only` makes that a build error.
  */
 export function createAdminClient() {
-  return createClient(getPublicEnv().NEXT_PUBLIC_SUPABASE_URL, getServerEnv().SUPABASE_SECRET_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+  return createClient<Database>(
+    getPublicEnv().NEXT_PUBLIC_SUPABASE_URL,
+    getServerEnv().SUPABASE_SECRET_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
     },
-  });
+  );
 }

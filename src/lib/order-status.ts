@@ -1,17 +1,9 @@
-/**
- * Order item statuses (spec §8.5, §10.3). Phase 1 migrations create the
- * matching Postgres enum; keep the two in sync.
- */
-export const ORDER_ITEM_STATUSES = [
-  'placed',
-  'preparing',
-  'ready',
-  'served',
-  'cancelled',
-  'removed',
-] as const;
+import { Constants, type Enums } from '@/types/database';
 
-export type OrderItemStatus = (typeof ORDER_ITEM_STATUSES)[number];
+/** Order item statuses (spec §8.5, §10.3), straight from the Postgres enum. */
+export const ORDER_ITEM_STATUSES = Constants.public.Enums.order_item_status;
+
+export type OrderItemStatus = Enums<'order_item_status'>;
 
 /** Forward progression used by the kitchen and board (skips allowed). */
 export const ACTIVE_ITEM_STATUSES = ['placed', 'preparing', 'ready', 'served'] as const;
