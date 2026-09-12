@@ -14,6 +14,17 @@ const positiveInt = (fallback: number) =>
 
 const serverSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
+  // Domain part of synthetic staff logins: <username>@<slug>.staff.<domain> (spec §9.5).
+  STAFF_EMAIL_DOMAIN: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .regex(
+        /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/,
+        'must be a domain',
+      )
+      .default('tableorder.test'),
+  ),
   CUSTOMER_COOKIE_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   RAZORPAY_KEY_ID: optionalString,
   RAZORPAY_KEY_SECRET: optionalString,
