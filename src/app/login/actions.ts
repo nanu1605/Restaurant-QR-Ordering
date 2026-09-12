@@ -92,6 +92,13 @@ async function completeSignIn(
 
   if (error || !data.user) {
     if (error?.status === 429) return { error: RATE_LIMITED, values };
+    if (error && error.code !== 'invalid_credentials') {
+      // Auth service down, bad API key, etc. Not the user's fault, so don't
+      // disguise it as a wrong password.
+      throw new Error(
+        `Sign-in failed: ${error.status} ${error.code ?? 'no_code'}: ${error.message}`,
+      );
+    }
     return { error: wrongCredentials, values };
   }
 
