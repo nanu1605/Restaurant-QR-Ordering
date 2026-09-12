@@ -175,6 +175,13 @@ bottom of each section.
 - **P1-17 · Supabase auth config**: public signup off, minimum password length 8,
   `site_url = http://localhost:3000`. The local `sign_in_sign_ups` rate limit is raised to 1000
   per 5 minutes because server-side sign-in makes every login share one IP (see Phase 10 risk).
+  Signups are blocked only by `[auth] enable_signup = false`; `[auth.email] enable_signup` must
+  stay `true` because the CLI maps it to the whole email provider (turning it off disables
+  password sign-in too — first caught by CI). Auth config changes only apply after
+  `pnpm db:stop && pnpm db:start`; `db reset` keeps the running auth container.
+- **Unexpected sign-in errors are not "wrong password".** Only `invalid_credentials` shows the
+  generic message and 429 shows the rate-limit message; anything else (auth down, bad key,
+  provider disabled) throws so it's logged instead of hidden.
 
 ### Tooling
 
@@ -188,6 +195,10 @@ bottom of each section.
   needs `allowImportingTsExtensions` (safe with `noEmit`). Node's typeless-package warning is
   silenced in the script command.
 - **E2E locators** use roles scoped to the header banner or the form, because Next.js' route
-  announcer is also `role="alert"` and Base UI labels tab panels with the tab's name.
+  announcer is also `role="alert"` and Base UI labels tab panels with the tab's name. Login
+  helpers scope to the active tab panel: the old panel stays mounted briefly while switching.
+- **CI diagnostics**: on failure CI prints the page snapshots of the first failed E2E tests and
+  the last auth-service log lines, so most failures can be read from the log without
+  downloading the report.
 - **Seed**: variant items keep the Half price in `price_paise` as a fallback; tables use fixed
   QR tokens `DEMO0000TABLE001…006` for later E2E tests.
