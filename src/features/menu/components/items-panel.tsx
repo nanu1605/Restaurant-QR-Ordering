@@ -267,14 +267,17 @@ function ItemRow({
         </div>
 
         {item.isActive && (
-          <label className="flex shrink-0 items-center gap-2 text-xs text-ink-muted">
+          <div className="flex shrink-0 items-center gap-2 text-xs text-ink-muted">
             <Switch
               checked={available}
               onCheckedChange={toggleAvailable}
               aria-label={`${item.name} in stock`}
             />
-            <span className="hidden w-16 sm:inline">{available ? 'In stock' : 'Sold out'}</span>
-          </label>
+            {/* The switch state already tells screen readers; this is for sighted users. */}
+            <span aria-hidden className="hidden w-16 sm:inline">
+              {available ? 'In stock' : 'Sold out'}
+            </span>
+          </div>
         )}
 
         <div className="flex shrink-0 items-center">
