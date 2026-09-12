@@ -86,6 +86,52 @@ select is(
   1::bigint,
   'onboarding is audit logged'
 );
+select is(
+  (select count(*) from public.menu_categories where restaurant_id = :'new_rest'),
+  0::bigint,
+  'no categories unless a set is given (the "blank" set)'
+);
+
+-- Default categories (spec §8.4): given in order, tidied, repeats and blanks skipped.
+select tests.create_user('cafeowner@example.test') as cafe_owner \gset
+select tests.as_service_role();
+select public.platform_create_restaurant(
+  jsonb_build_object(
+    'name', 'Bean There',
+    'slug', 'bean-there',
+    'owner', jsonb_build_object('user_id', :'cafe_owner', 'display_name', 'Meera', 'username', 'meera'),
+    'categories', jsonb_build_array('All Day Breakfast', '  Hot   Coffee ', '', 'hot coffee', 'Tea & Others')
+  )
+) ->> 'restaurant_id' as cafe_rest \gset
+select tests.clear_auth();
+
+select results_eq(
+  format(
+    $f$
+      select name, sort_order, source::text from public.menu_categories
+      where restaurant_id = %L order by sort_order
+    $f$,
+    :'cafe_rest'
+  ),
+  $$ values ('All Day Breakfast', 1, 'default'), ('Hot Coffee', 2, 'default'), ('Tea & Others', 3, 'default') $$,
+  'the chosen default set is created in order, tidied, without repeats'
+);
+
+select tests.create_user('odd@example.test') as odd_owner \gset
+select tests.as_service_role();
+select throws_ok(
+  format(
+    $f$select public.platform_create_restaurant(%L)$f$,
+    jsonb_build_object(
+      'name', 'Odd', 'slug', 'odd-place', 'categories', 'Starters',
+      'owner', jsonb_build_object('user_id', :'odd_owner', 'display_name', 'X', 'username', 'xyz')
+    )
+  ),
+  'P0001',
+  'INVALID_CATEGORIES',
+  'categories must be an array'
+);
+select tests.clear_auth();
 
 select tests.as_service_role();
 

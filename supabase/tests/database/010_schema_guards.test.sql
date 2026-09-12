@@ -36,8 +36,8 @@ select is_empty(
   'authenticated never gets TRUNCATE, REFERENCES or TRIGGER'
 );
 
--- Only the menu (plain CRUD, spec §9.1) and plans (platform admins, via RLS)
--- accept direct writes; everything else changes through business functions.
+-- Only plans (platform admins, via RLS) accept direct writes; everything else,
+-- menu and tables included, changes through business functions (P2-3).
 select is_empty(
   $$
     select table_name || ':' || privilege_type
@@ -45,22 +45,21 @@ select is_empty(
     where grantee = 'authenticated'
       and table_schema = 'public'
       and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
-      and table_name not in ('menu_categories', 'menu_items', 'menu_item_variants', 'plans')
+      and table_name <> 'plans'
   $$,
-  'state tables accept no direct writes from authenticated users'
+  'only plans accept direct writes from authenticated users'
 );
 
-select set_eq(
+select is_empty(
   $$
-    select column_name::text
+    select table_name || '.' || column_name
     from information_schema.column_privileges
     where grantee = 'authenticated'
       and table_schema = 'public'
-      and table_name = 'dining_tables'
-      and privilege_type = 'UPDATE'
+      and privilege_type in ('INSERT', 'UPDATE')
+      and table_name <> 'plans'
   $$,
-  $$ values ('label'), ('sort_order'), ('is_active') $$,
-  'dining_tables: only label, sort_order and is_active are directly updatable'
+  'no column-level write grants remain'
 );
 
 select is_empty(
@@ -89,8 +88,32 @@ select set_eq(
       ('public.member_role'),
       ('public.has_role'),
       ('public.restaurant_access'),
+      ('public.restaurant_plan'),
       ('private.my_restaurant_ids'),
-      ('private.is_valid_timezone')
+      ('private.is_valid_timezone'),
+      -- Phase 2: menu and tables
+      ('public.admin_create_category'),
+      ('public.admin_update_category'),
+      ('public.admin_delete_category'),
+      ('public.admin_add_categories'),
+      ('public.admin_reorder'),
+      ('public.admin_save_menu_item'),
+      ('public.admin_update_menu_item'),
+      ('public.staff_set_item_availability'),
+      ('public.admin_create_tables'),
+      ('public.admin_update_table'),
+      ('public.admin_regenerate_qr'),
+      -- Phase 2: staff, waiters, settings (admin_create_staff is service_role only)
+      ('public.admin_list_staff'),
+      ('public.admin_update_staff'),
+      ('public.admin_deactivate_staff'),
+      ('public.admin_reactivate_staff'),
+      ('public.admin_reset_staff_password'),
+      ('public.admin_upsert_waiter'),
+      ('public.admin_set_waiter_on_duty'),
+      ('public.admin_delete_waiter'),
+      ('public.admin_waiters_overview'),
+      ('public.admin_update_settings')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -100,7 +123,7 @@ select set_eq(
     select n.nspname || '.' || p.proname
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.prosecdef
+    where n.nspname in ('public', 'private') and p.prosecdef
       and not exists (
         select 1 from unnest(p.proconfig) as c where c like 'search_path=%'
       )

@@ -68,25 +68,21 @@ select is(
 select is((select count(*) from public.plans), 3::bigint, 'signed-in users read plans');
 select is((select count(*) from public.webhook_events), 0::bigint, 'manager cannot read webhook events');
 
-select lives_ok(
+-- Menu and tables change only through admin_* functions (docs/DECISIONS.md P2-3).
+select throws_ok(
   format(
     $f$insert into public.menu_categories (restaurant_id, name) values (%L, 'Jain Special')$f$,
     :'rest_a'
   ),
-  'manager adds a category to their menu'
-);
-select lives_ok(
-  format($f$update public.menu_categories set name = 'Chaat' where id = %L$f$, :'a_category'),
-  'manager renames their category (updated_at trigger runs as authenticated)'
-);
-select throws_ok(
-  format(
-    $f$insert into public.menu_categories (restaurant_id, name) values (%L, 'Hack')$f$,
-    :'rest_b'
-  ),
   '42501',
   null,
-  'manager cannot add a category to another restaurant'
+  'manager cannot insert categories directly'
+);
+select throws_ok(
+  format($f$update public.menu_categories set name = 'Chaat' where id = %L$f$, :'a_category'),
+  '42501',
+  null,
+  'manager cannot update categories directly'
 );
 select throws_ok(
   format(
@@ -100,10 +96,30 @@ select throws_ok(
   null,
   'manager cannot add an item to another restaurant'
 );
-
 select lives_ok(
+  $$ select public.admin_create_category('Jain Special') $$,
+  'manager adds a category through the function'
+);
+select lives_ok(
+  format($f$select public.admin_update_category(%L, '{"name": "Chaat"}')$f$, :'a_category'),
+  'manager renames their category through the function'
+);
+select throws_ok(
+  format($f$select public.admin_update_category(%L, '{"name": "Hack"}')$f$, :'b_category'),
+  'P0001',
+  'NOT_FOUND',
+  'another restaurant''s category is not found'
+);
+
+select throws_ok(
   format($f$update public.dining_tables set label = 'Terrace 1' where id = %L$f$, :'a_table'),
-  'manager renames their table'
+  '42501',
+  null,
+  'tables cannot be renamed directly'
+);
+select lives_ok(
+  format($f$select public.admin_update_table(%L, '{"label": "Terrace 1"}')$f$, :'a_table'),
+  'manager renames their table through the function'
 );
 select throws_ok(
   format($f$update public.dining_tables set qr_token = 'AAAAAAAAAAAAAAAA' where id = %L$f$, :'a_table'),
@@ -177,8 +193,10 @@ select is(
   (select count(*) from public.menu_items where is_available), 1::bigint,
   'kitchen reads the menu'
 );
-select is(
-  tests.row_count($$ update public.menu_items set is_available = false $$), 0::bigint,
+select throws_ok(
+  $$ update public.menu_items set is_available = false $$,
+  '42501',
+  null,
   'kitchen cannot write menu items directly (availability goes through a function)'
 );
 

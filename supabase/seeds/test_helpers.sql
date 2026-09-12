@@ -97,6 +97,26 @@ begin
 end;
 $$;
 
+-- Switches the restaurant's (trial) subscription to another plan.
+create or replace function tests.set_plan(p_restaurant_id uuid, p_plan_code text)
+returns void
+language sql
+as $$
+  update public.restaurant_subscriptions
+    set plan_id = (select id from public.plans where code = p_plan_code)
+    where restaurant_id = p_restaurant_id;
+$$;
+
+-- Makes the restaurant read-only (spec §10.6) by suspending it.
+create or replace function tests.suspend(p_restaurant_id uuid)
+returns void
+language sql
+as $$
+  update public.restaurants
+    set status = 'suspended', suspended_reason = 'Test suspension'
+    where id = p_restaurant_id;
+$$;
+
 -- Creates a login (<username>@<slug>.test) and an active membership. Returns the user id.
 create or replace function tests.add_member(
   p_restaurant_id uuid,
@@ -196,6 +216,15 @@ begin
   insert into public.subscription_payments (restaurant_id, source, amount_paise, manual_mode)
   values (p_restaurant_id, 'manual', 89900, 'upi');
 end;
+$$;
+
+-- Member id (restaurant_members.id) for a user.
+create or replace function tests.member_id(p_user_id uuid)
+returns uuid
+language sql
+stable
+as $$
+  select id from public.restaurant_members where user_id = p_user_id limit 1;
 $$;
 
 -- ─── Assertions ─────────────────────────────────────────────────────────────
