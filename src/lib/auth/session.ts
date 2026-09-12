@@ -23,6 +23,7 @@ export type CurrentMembership = {
     name: string;
     slug: string;
     status: Enums<'restaurant_status'>;
+    timezone: string;
   };
 };
 
@@ -50,7 +51,7 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
   const { data, error } = await supabase
     .from('restaurant_members')
     .select(
-      'id, role, display_name, username, restaurant:restaurants!inner (id, name, slug, status)',
+      'id, role, display_name, username, restaurant:restaurants!inner (id, name, slug, status, timezone)',
     )
     .eq('user_id', user.id)
     .eq('is_active', true)

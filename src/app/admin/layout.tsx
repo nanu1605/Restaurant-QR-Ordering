@@ -1,9 +1,20 @@
 import { PanelHeader } from '@/components/shared/panel-header';
+import { accessBanner } from '@/features/subscriptions/access-banner';
+import { getRestaurantAccess } from '@/lib/auth/access';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES, ROLE_LABELS } from '@/lib/auth/roles';
 
+import { AccessBanner } from './_components/access-banner';
+import { AdminMobileNav, AdminNav } from './_components/admin-nav';
+
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
+  const access = await getRestaurantAccess(membership.restaurant.id);
+  const banner = accessBanner({
+    access,
+    role: membership.role,
+    timezone: membership.restaurant.timezone,
+  });
 
   return (
     <div className="flex flex-1 flex-col">
@@ -13,8 +24,21 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
         userName={membership.displayName}
         roleLabel={ROLE_LABELS[membership.role]}
         switchTo={{ href: '/staff', label: 'Worker panel' }}
+        leading={<AdminMobileNav role={membership.role} />}
       />
-      <main className="flex flex-1 flex-col p-4 md:p-6">{children}</main>
+      <div className="flex flex-1">
+        <aside className="hidden w-56 shrink-0 border-r border-line bg-surface p-3 md:block print:hidden">
+          <AdminNav role={membership.role} />
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6 print:p-0">
+          {banner && (
+            <div className="print:hidden">
+              <AccessBanner banner={banner} />
+            </div>
+          )}
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
