@@ -118,6 +118,22 @@ select set_eq(
   'authenticated can execute only the allowlisted functions'
 );
 
+-- Customers never call the database themselves: the server does, as service_role.
+select set_eq(
+  $$
+    select p.proname::text
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'customer\_%'
+      and has_function_privilege('service_role', p.oid, 'execute')
+  $$,
+  $$
+    values ('customer_get_table'), ('customer_place_order'), ('customer_get_session'),
+           ('customer_cancel_item')
+  $$,
+  'the customer functions are executable by the server (service role)'
+);
+
 select set_eq(
   $$
     select n.nspname || '.' || p.proname

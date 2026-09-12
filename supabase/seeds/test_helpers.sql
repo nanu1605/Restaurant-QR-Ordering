@@ -218,6 +218,101 @@ begin
 end;
 $$;
 
+-- A table with the given QR token and a small menu for customer ordering tests.
+-- Returns the ids: table, simple (Paneer Tikka ₹280), variant_item (Butter
+-- Chicken: half ₹280, full ₹480, an inactive family option), unavailable
+-- (Malai Kofta, out of stock), hidden_item, in_hidden_category, and the
+-- category ids (starters, hidden_category, empty_category).
+create or replace function tests.create_ordering_fixture(p_restaurant_id uuid, p_qr_token text)
+returns jsonb
+language plpgsql
+as $$
+declare
+  v_table uuid;
+  v_starters uuid;
+  v_hidden_category uuid;
+  v_empty_category uuid;
+  v_simple uuid;
+  v_variant_item uuid;
+  v_half uuid;
+  v_full uuid;
+  v_family uuid;
+  v_unavailable uuid;
+  v_hidden_item uuid;
+  v_in_hidden_category uuid;
+begin
+  insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
+  values (p_restaurant_id, '5', p_qr_token, 1)
+  returning id into v_table;
+
+  insert into public.menu_categories (restaurant_id, name, sort_order)
+  values (p_restaurant_id, 'Starters', 1) returning id into v_starters;
+  insert into public.menu_categories (restaurant_id, name, sort_order, is_active)
+  values (p_restaurant_id, 'Soups', 2, false) returning id into v_hidden_category;
+  insert into public.menu_categories (restaurant_id, name, sort_order)
+  values (p_restaurant_id, 'Accompaniments', 3) returning id into v_empty_category;
+
+  insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise, sort_order)
+  values (p_restaurant_id, v_starters, 'Paneer Tikka', 'veg', 28000, 1)
+  returning id into v_simple;
+  insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise, sort_order)
+  values (p_restaurant_id, v_starters, 'Butter Chicken', 'non_veg', 28000, 2)
+  returning id into v_variant_item;
+  insert into public.menu_item_variants (restaurant_id, menu_item_id, name, price_paise, sort_order)
+  values (p_restaurant_id, v_variant_item, 'Half', 28000, 1) returning id into v_half;
+  insert into public.menu_item_variants (restaurant_id, menu_item_id, name, price_paise, sort_order)
+  values (p_restaurant_id, v_variant_item, 'Full', 48000, 2) returning id into v_full;
+  insert into public.menu_item_variants
+    (restaurant_id, menu_item_id, name, price_paise, sort_order, is_active)
+  values (p_restaurant_id, v_variant_item, 'Family', 90000, 3, false) returning id into v_family;
+  insert into public.menu_items
+    (restaurant_id, category_id, name, food_type, price_paise, sort_order, is_available)
+  values (p_restaurant_id, v_starters, 'Malai Kofta', 'veg', 29000, 3, false)
+  returning id into v_unavailable;
+  insert into public.menu_items
+    (restaurant_id, category_id, name, food_type, price_paise, sort_order, is_active)
+  values (p_restaurant_id, v_starters, 'Old Dish', 'veg', 10000, 4, false)
+  returning id into v_hidden_item;
+  insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise)
+  values (p_restaurant_id, v_hidden_category, 'Tomato Soup', 'veg', 12000)
+  returning id into v_in_hidden_category;
+
+  return jsonb_build_object(
+    'table', v_table,
+    'starters', v_starters,
+    'hidden_category', v_hidden_category,
+    'empty_category', v_empty_category,
+    'simple', v_simple,
+    'variant_item', v_variant_item,
+    'half', v_half,
+    'full', v_full,
+    'family', v_family,
+    'unavailable', v_unavailable,
+    'hidden_item', v_hidden_item,
+    'in_hidden_category', v_in_hidden_category
+  );
+end;
+$$;
+
+-- One order line as customer_place_order expects it.
+create or replace function tests.line(
+  p_menu_item_id uuid,
+  p_quantity int default 1,
+  p_variant_id uuid default null,
+  p_note text default null
+)
+returns jsonb
+language sql
+immutable
+as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'menu_item_id', p_menu_item_id,
+    'variant_id', p_variant_id,
+    'quantity', p_quantity,
+    'note', p_note
+  ));
+$$;
+
 -- Member id (restaurant_members.id) for a user.
 create or replace function tests.member_id(p_user_id uuid)
 returns uuid
