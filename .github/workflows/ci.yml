@@ -87,6 +87,10 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Show auth service logs
+        if: failure()
+        run: docker logs supabase_auth_tableorder 2>&1 | tail -n 60
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
