@@ -9,6 +9,11 @@ const validPublic = {
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
 };
 
+const validServer = {
+  SUPABASE_SECRET_KEY: 'sb_secret_test',
+  CUSTOMER_COOKIE_SECRET: 'x'.repeat(32),
+};
+
 describe('parsePublicEnv', () => {
   it('accepts the required variables and treats empty optionals as unset', () => {
     const env = parsePublicEnv({ ...validPublic, NEXT_PUBLIC_POSTHOG_HOST: '' });
@@ -27,7 +32,7 @@ describe('parsePublicEnv', () => {
 
 describe('parseServerEnv', () => {
   it('applies defaults for optional settings', () => {
-    const env = parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', PLATFORM_TRIAL_DAYS: '' });
+    const env = parseServerEnv({ ...validServer, PLATFORM_TRIAL_DAYS: '' });
     expect(env.PLATFORM_TRIAL_DAYS).toBe(14);
     expect(env.PLATFORM_GRACE_DAYS).toBe(7);
     expect(env.MENU_IMPORT_MODEL).toBe('claude-sonnet-5');
@@ -35,16 +40,15 @@ describe('parseServerEnv', () => {
   });
 
   it('coerces numeric settings and rejects a short cookie secret', () => {
-    expect(
-      parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', PLATFORM_GRACE_DAYS: '10' })
-        .PLATFORM_GRACE_DAYS,
-    ).toBe(10);
-    expect(() =>
-      parseServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test', CUSTOMER_COOKIE_SECRET: 'short' }),
-    ).toThrow(/CUSTOMER_COOKIE_SECRET/);
+    expect(parseServerEnv({ ...validServer, PLATFORM_GRACE_DAYS: '10' }).PLATFORM_GRACE_DAYS).toBe(
+      10,
+    );
+    expect(() => parseServerEnv({ ...validServer, CUSTOMER_COOKIE_SECRET: 'short' })).toThrow(
+      /CUSTOMER_COOKIE_SECRET/,
+    );
   });
 
-  it('requires the secret key', () => {
-    expect(() => parseServerEnv({})).toThrow(/SUPABASE_SECRET_KEY/);
+  it('requires the secret key and the cookie secret', () => {
+    expect(() => parseServerEnv({})).toThrow(/SUPABASE_SECRET_KEY[\s\S]*CUSTOMER_COOKIE_SECRET/);
   });
 });

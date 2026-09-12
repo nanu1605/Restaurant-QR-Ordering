@@ -21,6 +21,9 @@ cp .env.example .env.local   # then fill in values printed by `pnpm supabase sta
 pnpm dev
 ```
 
+`.env.local` also needs `CUSTOMER_COOKIE_SECRET` (signs the customer device cookie): any random
+value of 32+ characters, e.g. from `openssl rand -base64 48`.
+
 ### Demo logins (local only)
 
 Open http://localhost:3000/login. Every password is `Password123!`.

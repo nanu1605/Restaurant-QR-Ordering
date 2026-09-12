@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { emptyToUndefined, formatIssues, optionalString } from './env';
 
 /**
- * Server-only environment variables. Only what Phase 0 needs is required;
- * the rest become required in the phase that uses them (see .env.example).
+ * Server-only environment variables. Only what the built phases need is
+ * required; the rest become required in the phase that uses them (see .env.example).
  */
 
 const positiveInt = (fallback: number) =>
@@ -25,7 +25,8 @@ const serverSchema = z.object({
       )
       .default('tableorder.test'),
   ),
-  CUSTOMER_COOKIE_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  // Signs the customer device cookie `cid` (spec §9.2).
+  CUSTOMER_COOKIE_SECRET: z.preprocess(emptyToUndefined, z.string().min(32)),
   RAZORPAY_KEY_ID: optionalString,
   RAZORPAY_KEY_SECRET: optionalString,
   RAZORPAY_WEBHOOK_SECRET: optionalString,

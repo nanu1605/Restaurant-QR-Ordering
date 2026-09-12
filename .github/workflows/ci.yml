@@ -58,6 +58,8 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}"
             echo "SUPABASE_SECRET_KEY=${SECRET_KEY}"
+            # Throwaway per run: only signs cookies for this CI app instance.
+            echo "CUSTOMER_COOKIE_SECRET=$(openssl rand -base64 48)"
           } > .env.local
 
       - name: Check generated DB types are current
