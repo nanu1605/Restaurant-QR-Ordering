@@ -7,5 +7,7 @@ playwright-report
 blob-report
 supabase/.temp
 src/types/database.ts
+# Local code-graph output (not committed)
+graphify-out
 # Source-of-truth spec, kept exactly as supplied
 docs/SPEC.md
