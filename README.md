@@ -33,11 +33,25 @@ Open http://localhost:3000/login. Every password is `Password123!`.
 | Waiter (Ravi)  | `demo` / `waiter1`                            | `/staff` |
 | Kitchen        | `demo` / `kitchen1`                           | `/staff` |
 
-Add another restaurant:
+Add another restaurant (it starts with the default menu categories for its cuisine: `north_indian`
+by default, or `south_indian`, `cafe`, `fast_food`, `bakery`, `multi_cuisine`, `blank`):
 
 ```bash
-pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba --owner-name "Vikram Sharma" --owner-username vikram --owner-password "choose-a-password"
+pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba --owner-name "Vikram Sharma" --owner-username vikram --owner-password "choose-a-password" --cuisine north_indian
 ```
+
+### Admin panel
+
+Owners and managers set the restaurant up at `/admin`:
+
+- **Menu**: categories and dishes (drag to reorder), Half/Full style options, photos, in-stock
+  switch, suggested category sets.
+- **Tables & QR**: add tables one at a time or as a range (`1-20`), download a table's QR code,
+  print A4 sheets of QR cards. QR codes open `NEXT_PUBLIC_APP_URL`, so set it to the real domain
+  before printing cards for customers.
+- **Waiters**: waiter profiles (no login needed), on/off duty, optional linked login.
+- **Staff logins**: logins for managers, waiters and kitchen staff; password resets.
+- **Settings**: restaurant details and logo, tax and charges, bill options, ordering rules.
 
 ## Scripts
 

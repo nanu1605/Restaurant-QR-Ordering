@@ -202,3 +202,107 @@ bottom of each section.
   downloading the report.
 - **Seed**: variant items keep the Half price in `price_paise` as a fallback; tables use fixed
   QR tokens `DEMO0000TABLE001…006` for later E2E tests.
+
+## Phase 2 — admin setup (2026-09-12)
+
+### Rules and access
+
+- **P2-1 · Read-only restaurants can't change setup** (user's choice). Menu, tables, staff
+  logins (create, edit, reactivate), waiter profiles (create, edit, delete) and settings raise
+  `RESTAURANT_READ_ONLY` in the database, and the UI disables them under a banner. Still allowed,
+  so service can go on and accounts can be locked: the dish in-stock switch, waiter on/off duty,
+  deactivating a login and resetting a password.
+- **P2-2 · Staff limit leaves the owner out** (user's choice): `max_staff` counts active logins
+  with any role but owner; `max_tables` counts active tables. Reactivating a table or a login is
+  checked like creating one, so switching things off and on can't get round a limit. Both checks
+  lock the restaurant row, so parallel requests can't overshoot.
+- **P2-3 · Menu and tables are written only through `admin_*` functions.** The Phase 1 direct
+  write privileges and policies on `menu_*` and the column grant on `dining_tables` are revoked.
+  §9.1 allows direct CRUD but doesn't require it; one path keeps role, read-only, plan and format
+  checks together and makes multi-row changes (dish + options, reorder, delete-and-move) atomic.
+- **P2-4 · Functions work out the restaurant from the caller** (`private.current_member`), never
+  from a client-supplied id. Ids that belong to another restaurant are reported as `NOT_FOUND`.
+- **Error convention extended:** `DETAIL` carries context for the message (the clashing label,
+  the plan limit, the open tables). `src/lib/db-errors.ts` turns codes into sentences; unknown
+  errors are logged on the server and shown as "Something went wrong".
+
+### Staff logins and waiters
+
+- **P2-5 · Staff logins:** the server action creates the auth user through the Admin API
+  (synthetic email, confirmed), then `admin_create_staff(p_actor_user_id, …)` — service role only,
+  with the actor taken from the verified session — adds the membership. If the database refuses,
+  the auth user is deleted. Password resets are authorised and logged by
+  `admin_reset_staff_password(member_id)` as the signed-in manager, then set with the Admin API.
+  Everyone can reset their own password there; the owner is never managed by others.
+- **P2-6 · Reactivate** is the inverse of Deactivate (not named in the spec). Usernames are unique
+  per restaurant, so without it a deactivated username could never be used again.
+- **Deactivated logins get the generic "wrong code, username or password" message** at the code +
+  username login (the lookup only returns active members, Phase 1). The "account is inactive"
+  message stays for email logins.
+- **Existing sessions:** deactivation takes effect on the next request (RLS and the guards only
+  see active memberships). A password reset doesn't end sessions already signed in; the Admin API
+  has no "sign out this user" call without their token.
+- **P2-12 · Deleting a waiter profile** is a soft delete that also unlinks its login, so the login
+  can be linked again; `employee_code` is unique among active waiters only. The login itself stays
+  under Staff logins. A login moved off the waiter role is unlinked from its profile.
+- **"Create a login for this waiter"** creates the login first and removes it again if the profile
+  can't be saved.
+- **Waiter status** follows `max_tables_per_waiter`: Busy once a waiter has that many open
+  tables, otherwise Available (with the tables listed). "Tables today" counts sessions assigned
+  during the current business day.
+
+### Menu, tables and settings
+
+- **P2-7 · Default category sets live only in `src/features/menu/default-categories.ts`.**
+  `platform_create_restaurant` takes the names (`categories`) and marks them `source = default`;
+  `admin_add_categories` adds the missing ones for "Add suggested categories", matching case- and
+  spacing-insensitively. `pnpm create-restaurant --cuisine <set>` picks the set (default
+  `north_indian`).
+- **P2-8 · Hide = soft delete for dishes** (`is_active = false`); hidden dishes and categories are
+  listed under "Hidden (n)" to show them again. Removed options become inactive rather than being
+  deleted, because order history points at them. With options, `price_paise` holds the cheapest
+  option ("from ₹X").
+- **P2-9 · Deleting a category** with dishes (hidden ones too) moves them to a chosen category
+  first; the dialog also offers "Hide instead".
+- **P2-10 · Dish photos** are resized in the browser (`browser-image-compression`, 800 px, WebP)
+  and uploaded by the same server action that saves the dish, under the signed-in user's session
+  so Storage RLS applies: `menu-images/<restaurant_id>/<item_id>.webp`. New dishes get their id in
+  the browser for this. The URL carries `?v=<updated_at>` so a replaced photo isn't served from
+  cache. The compression library runs on the main thread because its worker loads a script from
+  a CDN. Logos work the same way (`logos/<restaurant_id>/logo.webp`, 512 px).
+- **Admin images use `next/image` with `unoptimized`.** Next.js 16 refuses to optimise images from
+  local IPs (the local Supabase URL), and thumbnails don't need it; the customer menu (Phase 3)
+  will configure optimisation for the hosted Storage URL.
+- **P2-11 · QR codes:** PNG download from `GET /admin/tables/[tableId]/qr` (owner/manager, RLS
+  scoped); the print sheet renders SVG codes on the server, 6 cards per A4 page. It warns when
+  `NEXT_PUBLIC_APP_URL` points at a local address, since those codes won't work on customers'
+  phones. Table ranges accept `1–20`, `T1–T5`, `Terrace 1–4`, up to 100 at a time.
+- **P2-13 · Plan features for the UI** come from `restaurant_plan()` (security definer; managers
+  can't read subscriptions through RLS). The database checks the same features and limits.
+- **P2-14 · Settings** go through one whitelisted `admin_update_settings`; every change is
+  audited with before/after values of the keys that changed (a superset of the spec's tax/bill
+  requirement). The UPI QR switch needs the `upi_qr_on_bill` feature to turn on (never to turn
+  off) and a UPI ID. GST rate is a choice of the standard slabs. **"Test print" moves to Phase 5**
+  with the bill print page.
+- **`upi_vpa` check fixed:** the Phase 1 regex used `{2,256}`, above Postgres' repetition limit of
+  255, so every VPA failed at runtime; now `{2,255}`.
+
+### UI and tooling
+
+- **P2-15 · Forms:** react-hook-form with zod schemas shared by the dialog and the server action;
+  actions return `{ ok, data } | { ok: false, error, fieldErrors }`. Watching values uses
+  `useWatch` (the React Compiler lint rule rejects `watch()`). Toasts use sonner without
+  `next-themes` (one light theme).
+- **Drag and drop uses `@dnd-kit/core` + `sortable` 6.x/10.x**, the stable line; the new
+  `@dnd-kit/react` is still pre-1.0. Screen readers hear dish, category and table names instead of
+  ids, and the keyboard works (Space, arrows, Space). Order changes show at once
+  (`useOptimistic`) and roll back with a message if the save fails.
+- **Switch track colour** for "off" is `ink-muted` at 70 % instead of the light border colour, which
+  was under the 3:1 contrast needed for controls.
+- **P2-16** Staff "last login" comes from `admin_list_staff()` (reads `auth.users`).
+- **P2-17 · E2E tests create their own restaurants** through the shared onboarding module
+  (`src/features/platform/onboard.ts`, also used by the script) with unique codes, and never
+  change the demo seed. Admin feature specs run on the desktop project; the admin navigation also
+  runs on the phone viewport.
+- **P2-18** Later admin sections (Dashboard, Live orders, Billing, Total orders, Reports,
+  Subscription) show an empty state until their phase.
