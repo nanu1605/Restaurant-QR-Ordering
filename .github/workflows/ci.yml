@@ -77,6 +77,16 @@ jobs:
       - name: End-to-end tests
         run: pnpm e2e
 
+      # Page snapshots of the first few failures, readable straight from the log.
+      - name: Show end-to-end failure snapshots
+        if: failure()
+        run: |
+          for f in $(find test-results -name error-context.md -not -path '*retry*' 2>/dev/null | head -n 3); do
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
