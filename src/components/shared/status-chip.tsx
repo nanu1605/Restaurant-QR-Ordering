@@ -41,11 +41,13 @@ const STATUS_STYLES: Record<OrderItemStatus, { icon: LucideIcon; className: stri
 
 type StatusChipProps = {
   status: OrderItemStatus;
+  /** Overrides the staff wording, e.g. "Placed" instead of "New" for customers. */
+  label?: string;
   className?: string;
 };
 
 /** Item status as colour fill + icon + label — colour is never the only signal. */
-export function StatusChip({ status, className }: StatusChipProps) {
+export function StatusChip({ status, label, className }: StatusChipProps) {
   const { icon: Icon, className: statusClassName } = STATUS_STYLES[status];
 
   return (
@@ -58,7 +60,7 @@ export function StatusChip({ status, className }: StatusChipProps) {
       )}
     >
       <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2.5} />
-      {ORDER_ITEM_STATUS_LABELS[status]}
+      {label ?? ORDER_ITEM_STATUS_LABELS[status]}
     </span>
   );
 }
