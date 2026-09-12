@@ -21,8 +21,13 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    // Customers use phones; Pixel keeps the run on Chromium only.
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    // Customers use phones; Pixel keeps the run on Chromium only. The admin
+    // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      testIgnore: /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
+    },
   ],
   webServer: {
     command: isCI ? `pnpm start --port ${PORT}` : `pnpm build && pnpm start --port ${PORT}`,
