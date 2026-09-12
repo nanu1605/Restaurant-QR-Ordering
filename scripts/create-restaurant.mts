@@ -5,7 +5,7 @@
  *
  *   pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba \
  *     --owner-name "Vikram Sharma" --owner-username vikram --owner-password "..." \
- *     [--owner-email vikram@example.com] [--plan growth] [--city Jaipur]
+ *     [--owner-email vikram@example.com] [--plan growth] [--cuisine north_indian] [--city Jaipur]
  *
  * Without --owner-email the owner gets a synthetic login email and signs in
  * with restaurant code + username.
@@ -14,11 +14,14 @@ import { parseArgs } from 'node:util';
 
 import { createClient } from '@supabase/supabase-js';
 
-import { normalizeLoginName, staffEmail } from '../src/lib/auth/staff-email.ts';
+import { CUISINE_SETS, isCuisineSet } from '../src/features/menu/default-categories.ts';
+import { onboardRestaurant } from '../src/features/platform/onboard.ts';
+import type { Database } from '../src/types/database.ts';
 
 const USAGE = `Usage: pnpm create-restaurant --name <name> --slug <code> --owner-name <name>
        --owner-username <username> --owner-password <password>
-       [--owner-email <email>] [--plan starter|growth|pro] [--city <city>]`;
+       [--owner-email <email>] [--plan starter|growth|pro] [--city <city>]
+       [--cuisine ${CUISINE_SETS.join('|')}]`;
 
 function fail(message: string): never {
   console.error(`\n✖ ${message}\n`);
@@ -34,6 +37,7 @@ const { values: args } = parseArgs({
     'owner-password': { type: 'string' },
     'owner-email': { type: 'string' },
     plan: { type: 'string', default: 'growth' },
+    cuisine: { type: 'string', default: 'north_indian' },
     city: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   },
@@ -48,13 +52,7 @@ if (args.help) {
 const required = ['name', 'slug', 'owner-name', 'owner-username', 'owner-password'] as const;
 const missing = required.filter((key) => !args[key]);
 if (missing.length > 0) fail(`Missing ${missing.map((key) => `--${key}`).join(', ')}\n\n${USAGE}`);
-
-const name = args.name!.trim();
-const slug = normalizeLoginName(args.slug!);
-const ownerName = args['owner-name']!.trim();
-const ownerUsername = normalizeLoginName(args['owner-username']!);
-const ownerPassword = args['owner-password']!;
-if (ownerPassword.length < 8) fail('The owner password must be at least 8 characters.');
+if (!isCuisineSet(args.cuisine)) fail(`Unknown --cuisine "${args.cuisine}".\n\n${USAGE}`);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -62,53 +60,36 @@ if (!supabaseUrl || !secretKey) {
   fail('NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY must be set in .env.local.');
 }
 
-let ownerEmail: string;
-try {
-  ownerEmail =
-    args['owner-email']?.trim().toLowerCase() ||
-    staffEmail(ownerUsername, slug, process.env.STAFF_EMAIL_DOMAIN || 'tableorder.test');
-} catch (error) {
-  fail((error as Error).message);
-}
-
-const admin = createClient(supabaseUrl, secretKey, {
+const admin = createClient<Database>(supabaseUrl, secretKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-console.log(`Creating "${name}" (${slug}) on ${supabaseUrl} …`);
+console.log(`Creating "${args.name}" on ${supabaseUrl} …`);
 
-const { data: created, error: createUserError } = await admin.auth.admin.createUser({
-  email: ownerEmail,
-  password: ownerPassword,
-  email_confirm: true,
-  user_metadata: { display_name: ownerName },
-});
-if (createUserError || !created.user) {
-  fail(`Could not create the owner login: ${createUserError?.message ?? 'unknown error'}`);
-}
-
-const { data: result, error: rpcError } = await admin.rpc('platform_create_restaurant', {
-  p_payload: {
-    name,
-    slug,
+try {
+  const result = await onboardRestaurant(admin, {
+    name: args.name!,
+    slug: args.slug!,
+    ownerName: args['owner-name']!,
+    ownerUsername: args['owner-username']!,
+    ownerPassword: args['owner-password']!,
+    ownerEmail: args['owner-email'],
+    plan: args.plan,
     city: args.city,
-    plan_code: args.plan,
-    owner: { user_id: created.user.id, display_name: ownerName, username: ownerUsername },
-  },
-});
+    cuisine: args.cuisine,
+    staffEmailDomain: process.env.STAFF_EMAIL_DOMAIN || 'tableorder.test',
+  });
 
-if (rpcError) {
-  // Don't leave an orphaned login behind.
-  await admin.auth.admin.deleteUser(created.user.id);
-  fail(`Could not create the restaurant: ${rpcError.message}`);
-}
-
-const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-console.log(`
-✔ Restaurant created (id ${(result as { restaurant_id: string }).restaurant_id})
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  console.log(`
+✔ Restaurant created (id ${result.restaurantId})
 
   Log in at        ${appUrl}/login
-  Restaurant code  ${slug}
-  Username         ${ownerUsername}${args['owner-email'] ? `\n  Email            ${ownerEmail}` : ''}
+  Restaurant code  ${result.slug}
+  Username         ${result.ownerUsername}${args['owner-email'] ? `\n  Email            ${result.ownerEmail}` : ''}
   Plan             ${args.plan} (trial)
+  Menu categories  ${args.cuisine}
 `);
+} catch (error) {
+  fail((error as Error).message);
+}
