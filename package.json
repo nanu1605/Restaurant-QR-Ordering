@@ -21,7 +21,7 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local --schema public > src/types/database.ts",
-    "create-restaurant": "node --env-file=.env.local scripts/create-restaurant.mts"
+    "create-restaurant": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/create-restaurant.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
