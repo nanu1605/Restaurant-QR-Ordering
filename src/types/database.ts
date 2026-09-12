@@ -1326,6 +1326,89 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_add_categories: { Args: { p_names: string[] }; Returns: number }
+      admin_create_category: { Args: { p_name: string }; Returns: string }
+      admin_create_staff: {
+        Args: { p_actor_user_id: string; p_payload: Json }
+        Returns: string
+      }
+      admin_create_tables: { Args: { p_labels: string[] }; Returns: Json }
+      admin_deactivate_staff: {
+        Args: { p_member_id: string }
+        Returns: undefined
+      }
+      admin_delete_category: {
+        Args: { p_category_id: string; p_move_to?: string }
+        Returns: number
+      }
+      admin_delete_waiter: { Args: { p_waiter_id: string }; Returns: undefined }
+      admin_list_staff: {
+        Args: never
+        Returns: {
+          created_at: string
+          display_name: string
+          is_active: boolean
+          last_sign_in_at: string
+          member_id: string
+          role: Database["public"]["Enums"]["member_role"]
+          username: string
+          waiter_id: string
+          waiter_name: string
+        }[]
+      }
+      admin_reactivate_staff: {
+        Args: { p_member_id: string }
+        Returns: undefined
+      }
+      admin_regenerate_qr: { Args: { p_table_id: string }; Returns: string }
+      admin_reorder: {
+        Args: { p_category_id?: string; p_ids: string[]; p_kind: string }
+        Returns: undefined
+      }
+      admin_reset_staff_password: {
+        Args: { p_member_id: string }
+        Returns: string
+      }
+      admin_save_menu_item: { Args: { p_item: Json }; Returns: string }
+      admin_set_waiter_on_duty: {
+        Args: { p_on_duty: boolean; p_waiter_id: string }
+        Returns: undefined
+      }
+      admin_update_category: {
+        Args: { p_category_id: string; p_patch: Json }
+        Returns: undefined
+      }
+      admin_update_menu_item: {
+        Args: { p_item_id: string; p_patch: Json }
+        Returns: undefined
+      }
+      admin_update_settings: { Args: { p_patch: Json }; Returns: undefined }
+      admin_update_staff: {
+        Args: { p_member_id: string; p_patch: Json }
+        Returns: undefined
+      }
+      admin_update_table: {
+        Args: { p_patch: Json; p_table_id: string }
+        Returns: undefined
+      }
+      admin_upsert_waiter: { Args: { p_waiter: Json }; Returns: string }
+      admin_waiters_overview: {
+        Args: never
+        Returns: {
+          employee_code: string
+          full_name: string
+          joined_on: string
+          member_active: boolean
+          member_id: string
+          member_username: string
+          notes: string
+          on_duty: boolean
+          open_tables: string[]
+          phone: string
+          tables_today: number
+          waiter_id: string
+        }[]
+      }
       auth_staff_login_email: {
         Args: { p_slug: string; p_username: string }
         Returns: string
@@ -1352,6 +1435,20 @@ export type Database = {
           state: string
           warning: string
         }[]
+      }
+      restaurant_plan: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          features: Json
+          max_staff: number
+          max_tables: number
+          plan_code: string
+          plan_name: string
+        }[]
+      }
+      staff_set_item_availability: {
+        Args: { p_available: boolean; p_item_id: string }
+        Returns: undefined
       }
     }
     Enums: {
