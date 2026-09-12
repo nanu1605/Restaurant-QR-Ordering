@@ -5,6 +5,10 @@ const PASSWORD = 'Password123!';
 
 // Tab panels are labelled by their tab, so target the inputs by role.
 const field = (page: Page, name: string) => page.getByRole('textbox', { name, exact: true });
+// While switching tabs the old panel stays mounted briefly, so scope form
+// controls to the panel being used.
+const panel = (page: Page, tab: 'Restaurant code' | 'Email') =>
+  page.getByRole('tabpanel', { name: tab });
 // Next.js' route announcer is also role="alert" and repeats the page title,
 // so scope text checks to the panel header or the form error.
 const header = (page: Page) => page.getByRole('banner');
@@ -12,17 +16,19 @@ const loginError = (page: Page) =>
   page.getByRole('alert').filter({ hasText: /Wrong restaurant code, username or password/ });
 
 async function logInWithCode(page: Page, code: string, username: string, password = PASSWORD) {
-  await field(page, 'Restaurant code').fill(code);
-  await field(page, 'Username').fill(username);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  const form = panel(page, 'Restaurant code');
+  await form.getByRole('textbox', { name: 'Restaurant code', exact: true }).fill(code);
+  await form.getByRole('textbox', { name: 'Username', exact: true }).fill(username);
+  await form.getByLabel('Password', { exact: true }).fill(password);
+  await form.getByRole('button', { name: 'Log in' }).click();
 }
 
 async function logInWithEmail(page: Page, email: string, password = PASSWORD) {
   await page.getByRole('tab', { name: 'Email' }).click();
-  await field(page, 'Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  const form = panel(page, 'Email');
+  await form.getByRole('textbox', { name: 'Email', exact: true }).fill(email);
+  await form.getByLabel('Password', { exact: true }).fill(password);
+  await form.getByRole('button', { name: 'Log in' }).click();
 }
 
 test('waiter logs in with restaurant code and cannot open the admin panel', async ({ page }) => {
