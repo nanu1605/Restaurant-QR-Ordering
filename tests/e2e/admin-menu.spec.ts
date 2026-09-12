@@ -112,9 +112,13 @@ test('owner builds a menu from the default categories', async ({ page }) => {
   await priceInput.press('Enter');
   await expect(pavBhajiPrice).toHaveText('₹160');
 
-  // Out of stock.
+  // Out of stock (the switch updates at once; wait for the save too).
+  const stockSaved = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/admin/menu'),
+  );
   await pavBhaji.getByRole('switch', { name: 'Jain Pav Bhaji in stock' }).click();
   await expect(pavBhaji.getByText('Sold out')).toBeVisible();
+  await stockSaved;
 
   // Reorder with the keyboard: Paneer Butter Masala moves above Jain Pav Bhaji.
   // Wait for each step like a person would: pick up, see it move, then drop.

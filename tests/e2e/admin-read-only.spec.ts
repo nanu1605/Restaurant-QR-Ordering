@@ -40,8 +40,12 @@ test('a lapsed trial pauses setup changes but not service actions', async ({ pag
   await page.goto('/admin/menu');
   await expect(page.getByRole('textbox', { name: 'New category name' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Add dish' }).first()).toBeDisabled();
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/admin/menu'),
+  );
   await page.getByRole('switch', { name: 'Paneer Tikka in stock' }).click();
   await expect(page.getByText('Sold out')).toBeVisible();
+  await saved;
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Paneer Tikka in stock' })).not.toBeChecked();
 
