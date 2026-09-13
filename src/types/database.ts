@@ -1327,6 +1327,10 @@ export type Database = {
     }
     Functions: {
       admin_add_categories: { Args: { p_names: string[] }; Returns: number }
+      admin_assign_waiter: {
+        Args: { p_force?: boolean; p_session_id: string; p_waiter_id: string }
+        Returns: Json
+      }
       admin_create_category: { Args: { p_name: string }; Returns: string }
       admin_create_staff: {
         Args: { p_actor_user_id: string; p_payload: Json }
@@ -1361,6 +1365,10 @@ export type Database = {
         Returns: undefined
       }
       admin_regenerate_qr: { Args: { p_table_id: string }; Returns: string }
+      admin_remove_order: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: Json
+      }
       admin_reorder: {
         Args: { p_category_id?: string; p_ids: string[]; p_kind: string }
         Returns: undefined
@@ -1374,6 +1382,7 @@ export type Database = {
         Args: { p_on_duty: boolean; p_waiter_id: string }
         Returns: undefined
       }
+      admin_unassign_waiter: { Args: { p_session_id: string }; Returns: Json }
       admin_update_category: {
         Args: { p_category_id: string; p_patch: Json }
         Returns: undefined
@@ -1469,9 +1478,44 @@ export type Database = {
           plan_name: string
         }[]
       }
+      staff_approve_order: { Args: { p_order_id: string }; Returns: Json }
+      staff_close_session_unbilled: {
+        Args: { p_reason: string; p_session_id: string }
+        Returns: Json
+      }
+      staff_get_board: { Args: never; Returns: Json }
+      staff_mark_order_served: { Args: { p_order_id: string }; Returns: Json }
+      staff_place_order: {
+        Args: {
+          p_dining_table_id: string
+          p_idempotency_key: string
+          p_items: Json
+          p_note?: string
+        }
+        Returns: Json
+      }
+      staff_reject_order: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: Json
+      }
+      staff_remove_item: {
+        Args: { p_order_item_id: string; p_quantity: number; p_reason: string }
+        Returns: Json
+      }
+      staff_revert_item_status: {
+        Args: { p_order_item_id: string }
+        Returns: Json
+      }
       staff_set_item_availability: {
         Args: { p_available: boolean; p_item_id: string }
         Returns: undefined
+      }
+      staff_update_item_status: {
+        Args: {
+          p_order_item_id: string
+          p_status: Database["public"]["Enums"]["order_item_status"]
+        }
+        Returns: Json
       }
     }
     Enums: {

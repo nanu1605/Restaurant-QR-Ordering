@@ -124,7 +124,9 @@ select set_eq(
       ('public.staff_place_order'),
       ('public.staff_remove_item'),
       ('public.admin_remove_order'),
-      ('public.staff_close_session_unbilled')
+      ('public.staff_close_session_unbilled'),
+      ('public.admin_assign_waiter'),
+      ('public.admin_unassign_waiter')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
