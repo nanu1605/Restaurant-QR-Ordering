@@ -394,6 +394,9 @@ bottom of each section.
   radio group, about 40 KB gzipped) loads after the page with `next/dynamic`.
 - **Measurement:** `PERF=1 pnpm e2e customer-perf --project=mobile` measures menu LCP on a production
   build with Lighthouse's mobile throttling (150 ms RTT, 1.6 Mbps, 4× CPU) and fails above 2.5 s.
+  Measured 2026-09-13 on the demo table (3 runs): LCP 960–988 ms; 213 KiB of compressed
+  JavaScript downloaded in total (about 128 KiB of it framework). The options sheet still
+  downloads on every menu visit, but after hydration, so it is off the path to first paint.
 
 ### Tests
 
