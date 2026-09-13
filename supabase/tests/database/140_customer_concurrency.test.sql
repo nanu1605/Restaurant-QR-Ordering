@@ -21,8 +21,9 @@ select format(
 ) as conn \gset
 select 'race-' || substr(md5(random()::text), 1, 10) as slug \gset
 select 'RACE' || upper(substr(md5(random()::text), 1, 12)) as token \gset
-\set d1 '11111111-1111-4111-8111-111111111111'
-\set d2 '22222222-2222-4222-8222-222222222222'
+-- Random phones: leftovers from a failed run can't count against other files'
+-- fixed device ids (the per-device rate limit is global).
+select gen_random_uuid() as d1, gen_random_uuid() as d2 \gset
 
 select extensions.dblink_connect('setup', :'conn');
 select extensions.dblink_connect('race_a', :'conn');
@@ -64,6 +65,8 @@ language plpgsql
 as $$
 begin
   for i in 1..50 loop
+    -- pg_stat_activity is captured once per transaction; take a fresh look.
+    perform pg_stat_clear_snapshot();
     if exists (
       select 1 from pg_stat_activity
       where wait_event_type = 'Lock' and query like '%' || p_marker || '%'
