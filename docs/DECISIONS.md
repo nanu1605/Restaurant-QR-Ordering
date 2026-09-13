@@ -306,3 +306,96 @@ bottom of each section.
   runs on the phone viewport.
 - **P2-18** Later admin sections (Dashboard, Live orders, Billing, Total orders, Reports,
   Subscription) show an empty state until their phase.
+
+## Phase 3 — customer ordering (2026-09-13)
+
+### Device cookie and access
+
+- **P3-1 · `cid` device cookie:** an HS256 JWT signed with `jose` (`{ sub: <uuid> }`, algorithm
+  pinned on verify), `httpOnly`, `SameSite=Lax`, `path=/t`, one year, `Secure` only when
+  `NEXT_PUBLIC_APP_URL` is https (so localhost and LAN testing work). The proxy now matches `/t/*`
+  in its own branch, without any Supabase work: a phone without a valid cookie gets one, set on
+  the response and on the forwarded request so the same render sees it. Server actions post to
+  the page's path, so they pass through the same branch; an action that still finds no cookie
+  issues one. `CUSTOMER_COOKIE_SECRET` is now required (CI generates one per run).
+- **P3-2 · `customer_get_session(p_qr_token, p_device_id)`** takes the device id (the spec lists
+  only the token): it marks this phone's rounds, offers cancellation and reports
+  `last_session_billed`.
+- **Customer functions are service-role only** and take no restaurant id: the QR token is the
+  credential, and the device id always comes from the cookie, never from the client.
+- **P3-15 · A QR code that doesn't work** (unknown, switched off, regenerated) gets a 404 with a
+  friendly page (`src/app/t/not-found.tsx`, which catches `notFound()` from the table layout).
+
+### Ordering rules
+
+- **P3-3 · `ITEM_UNAVAILABLE`** covers unknown, hidden, out-of-stock and other restaurants' dishes,
+  dishes in hidden categories and option mismatches (the dish gained or lost options, or the option
+  was removed). DETAIL lists the dish ids; the cart removes and names them. Nothing reveals whether
+  another restaurant's id exists.
+- **P3-4 · Idempotency:** the table row is locked first, then the key is looked up. The same key
+  from the same phone at the same table returns the original order (`replayed: true`), even if the
+  menu has changed since; reused anywhere else it is `INVALID_INPUT`. The unique constraint is
+  the backstop.
+- **P3-5 · Rate limits (§9.4)** count customer orders only; the per-phone limits follow the
+  device cookie across restaurants. "3 waiting for approval" applies only when the new order
+  would wait too (approval on and the session not yet approved), and a waiting order whose dishes
+  the customer cancelled no longer counts. **Phases 4 and 5 must use the same rule** for "Needs
+  approval" and billing, or a fully cancelled waiting order could block a table.
+- **Approval switched off mid-session:** later orders are accepted and the session counts as
+  approved; rounds already waiting stay with staff to decide.
+- **P3-6 · Read-only:** ordering raises `ORDERING_UNAVAILABLE` and the menu is view-only;
+  cancelling one's own dish stays allowed (it only takes work away).
+- **P3-7 · Audit:** customer cancellations only (`order_item.cancelled`, actor
+  `Customer (device …abcd)`); the order row itself records placement.
+- **P3-8 · Customer menu:** active categories with at least one active dish; active dishes (out of
+  stock ones listed as "Not available"); active options. Dish order within a round is by name.
+- **P3-11 · Billed state:** `last_session_billed` is true when this phone's latest session at the
+  table was billed within the hour; the orders page shows the thank-you message until the phone
+  orders again, which starts a fresh session.
+
+### Customer panel
+
+- **P3-9 · Polling:** `GET /t/<token>/session` (no-store) every 10 s while the page is visible, when
+  it becomes visible and after a cancel, with plain `fetch`. Countdowns use the offset between the
+  server's clock and the phone's.
+- **P3-10 · Cart:** `localStorage["tableorder:cart:<token>"]` (versioned), one line per dish or dish
+  + option, a note per line, 1–20 each, at most 30 lines; checked against the menu on every page
+  load. The idempotency key is made when the cart page loads with `crypto.getRandomValues`
+  (`randomUUID` needs a secure context, and LAN testing is plain http), kept across retries and
+  renewed after a successful order.
+- **P3-12 · Accent colour:** the layout writes the accent variables to `:root` (so portalled sheets
+  and dialogs get them) with a foreground of white or ink, whichever reaches 4.5:1, falling back to
+  the default brand colour. The accent is never used as text on white; focus is a 2 px outline in a
+  ring colour that reaches 3:1 on white, and the current category tab also gets that ring.
+- **P3-13 · Customer status label** for `placed` is "Placed" (staff keep "New"). Cancelled and
+  removed dishes are struck through with the reason.
+- **Category tabs scroll without a URL fragment:** a native `#fragment` jump adds a history entry
+  that the Next.js router ignores, which broke the phone's Back button. The scroll-spy picks the
+  last heading that has reached the sticky bar (or the last category at the page end) and keeps a
+  tapped tab selected until the customer scrolls.
+- **Screen readers:** adding or removing a dish and search results are announced; focus moves to the
+  control that replaces the one just used; the cart and orders pages have their own titles, so page
+  changes are announced; the Cancel button reads out the time left.
+- **Customer text uses typographic apostrophes (’)** throughout.
+
+### Performance
+
+- **P3-14 · Images:** `next/image` optimises Storage images through `images.remotePatterns` built
+  from `NEXT_PUBLIC_SUPABASE_URL` (public buckets only); `dangerouslyAllowLocalIP` is on only when
+  that URL is local (dev and CI). Thumbnails are 112 px with matching `sizes`, lazy-loaded.
+- **Menu JavaScript:** no Supabase client, zod, dnd-kit, react-hook-form, qrcode or jose reach the
+  customer bundle (checked in the build's client manifests). The options sheet (Base UI dialog and
+  radio group, about 40 KB gzipped) loads after the page with `next/dynamic`.
+- **Measurement:** `PERF=1 pnpm e2e customer-perf --project=mobile` measures menu LCP on a production
+  build with Lighthouse's mobile throttling (150 ms RTT, 1.6 Mbps, 4× CPU) and fails above 2.5 s.
+
+### Tests
+
+- **P3-16 · Concurrent first orders** are tested in pgTAP with `dblink`: two real connections race
+  for one free table on a committed fixture that the file removes again. The local stack trusts
+  127.0.0.1, where `dblink` refuses non-superusers, so the test connects through the server's own
+  network address, which asks for a password. The lock wait is detected by polling
+  `pg_stat_activity` with a fresh snapshot each time.
+- **P3-17 · Customer E2E** runs on the phone project only, on restaurants it creates; the demo
+  table is only viewed. Test fixtures insert rows with the service role (bulk inserts send every
+  key, so each row sets `is_available`).

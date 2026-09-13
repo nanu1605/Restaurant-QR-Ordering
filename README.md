@@ -43,6 +43,16 @@ by default, or `south_indian`, `cafe`, `fast_food`, `bakery`, `multi_cuisine`, `
 pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba --owner-name "Vikram Sharma" --owner-username vikram --owner-password "choose-a-password" --cuisine north_indian
 ```
 
+### Customer ordering
+
+Each table's QR code opens `/t/<qr token>`. The demo tables use fixed tokens, so
+http://localhost:3000/t/DEMO0000TABLE001 is table 1 (…002 to …006 for tables 2–6). Customers
+browse the menu, add dishes (with options and notes), place the order and follow it on "Your
+table's orders", where they can cancel their own dishes for a short time. The demo restaurant asks
+staff to confirm a table's first order, so new orders show as waiting until Phase 4's staff
+screens (or Studio) approve them. Each phone gets a signed device cookie, which is why
+`CUSTOMER_COOKIE_SECRET` is required.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:
