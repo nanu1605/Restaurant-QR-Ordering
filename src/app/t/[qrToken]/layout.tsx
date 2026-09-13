@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import type { CSSProperties } from 'react';
 
-import { accentColors } from '@/features/ordering/accent';
+import { accentColors, customerThemeCss } from '@/features/ordering/accent';
 import { tableHeading } from '@/features/ordering/format';
 import { getCustomerTable } from '@/features/ordering/queries';
 
@@ -35,17 +34,9 @@ export default async function CustomerLayout({ children, params }: LayoutProps<'
   const table = await getCustomerTable((await params).qrToken);
   if (!table) notFound();
 
-  const colors = accentColors(table.restaurant.accentColor);
-  const theme = {
-    '--brand': colors.accent,
-    '--brand-foreground': colors.foreground,
-    '--primary': colors.accent,
-    '--primary-foreground': colors.foreground,
-    '--ring': colors.ring,
-  } as CSSProperties;
-
   return (
-    <div style={theme} className="flex flex-1 flex-col bg-paper">
+    <div className="flex flex-1 flex-col bg-paper">
+      <style>{customerThemeCss(accentColors(table.restaurant.accentColor))}</style>
       <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col bg-surface min-[561px]:border-x min-[561px]:border-line">
         <header className="flex items-center gap-3 border-b border-line px-4 py-3">
           {table.restaurant.logoUrl ? (

@@ -114,7 +114,10 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
       <h1 className="text-xl font-semibold text-ink">Your table’s orders</h1>
 
       {session.lastSessionBilled && !orderedHere ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-status-served/40 bg-status-served/5 p-4">
+        <div
+          role="status"
+          className="flex flex-col items-start gap-3 rounded-lg border border-status-served/40 bg-status-served/5 p-4"
+        >
           <p className="flex items-start gap-2 text-base text-ink">
             <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-status-served" />
             Your bill has been generated. Please pay at the counter or to your server. Thank you!
@@ -172,11 +175,10 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
         </>
       )}
 
-      {stale && (
-        <p className="text-center text-sm text-ink-muted">
-          Couldn’t refresh the orders. Trying again…
-        </p>
-      )}
+      {/* Always present, so a failed refresh is announced when it happens. */}
+      <p role="status" className="text-center text-sm text-ink-muted empty:hidden">
+        {stale ? 'Couldn’t refresh the orders. Trying again…' : ''}
+      </p>
 
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
@@ -187,8 +189,8 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCancel} disabled={cancelling}>
+            <AlertDialogCancel size="touch">Keep it</AlertDialogCancel>
+            <AlertDialogAction size="touch" onClick={confirmCancel} disabled={cancelling}>
               Cancel dish
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -209,13 +211,7 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
   const headingId = `round-${round.id}`;
   return (
     <li>
-      <section
-        aria-labelledby={headingId}
-        className={cn(
-          'rounded-lg border border-line bg-surface',
-          round.status === 'rejected' || round.status === 'removed' ? 'opacity-90' : null,
-        )}
-      >
+      <section aria-labelledby={headingId} className="rounded-lg border border-line bg-surface">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
           <h2 id={headingId} className="text-base font-semibold text-ink tabular-nums">
             Round {round.roundNumber} · {formatClockTime(round.placedAt, timezone)}
@@ -267,14 +263,14 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
                     </p>
                   )}
                   {left !== null && (
+                    // The dish name is spoken, and so is the time left (visible as "· 1:42").
                     <Button
                       variant="outline"
                       size="touch"
                       className="mt-1 self-start"
                       onClick={() => onCancel(item)}
-                      aria-label={`Cancel ${label}`}
                     >
-                      Cancel
+                      Cancel<span className="sr-only"> {label}</span>
                       {Number.isFinite(left) && (
                         <span className="text-ink-muted tabular-nums">
                           · {formatCountdown(left)}

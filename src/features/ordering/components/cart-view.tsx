@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Plus, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Plus, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, useTransition } from 'react';
@@ -30,8 +30,10 @@ import {
 import { cancelNotice, NETWORK_ERROR, unavailableMessage } from '../format';
 import { MAX_LINE_NOTE, MAX_ORDER_NOTE } from '../limits';
 import type { CustomerTable } from '../types';
+import { CustomerSkeleton } from './customer-skeleton';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
+import { useHydrated } from './use-hydrated';
 import { useReconciledCart } from './use-reconciled-cart';
 
 type CartViewProps = { qrToken: string; table: CustomerTable };
@@ -40,11 +42,15 @@ type CartViewProps = { qrToken: string; table: CustomerTable };
 export function CartView({ qrToken, table }: CartViewProps) {
   const router = useRouter();
   const ids = useId();
+  // The cart lives in localStorage: until the browser has read it, show a
+  // placeholder rather than claiming the cart is empty.
+  const hydrated = useHydrated();
   const [cart, update] = useReconciledCart(qrToken, table.menu);
   // Made when the page loads and kept across retries, so a resend after a
   // network error can never create a second order (spec §9.3).
   const [idempotencyKey, setIdempotencyKey] = useState(randomUuid);
   const [error, setError] = useState<string | null>(null);
+  const [placed, setPlaced] = useState(false);
   const [pending, startTransition] = useTransition();
   const submitting = useRef(false);
 
@@ -63,6 +69,8 @@ export function CartView({ qrToken, table }: CartViewProps) {
           note: cart.note,
         });
         if (result.ok) {
+          // Show "Order placed" (not an empty cart) while the orders page loads.
+          setPlaced(true);
           update(() => EMPTY_CART);
           setIdempotencyKey(randomUuid());
           toast.success(
@@ -98,6 +106,12 @@ export function CartView({ qrToken, table }: CartViewProps) {
     });
   }
 
+  const errorAlert = error && (
+    <p role="alert" className="text-sm font-medium text-status-void">
+      {error}
+    </p>
+  );
+
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 pt-3 pb-10">
       <div className="flex items-center gap-1">
@@ -113,17 +127,28 @@ export function CartView({ qrToken, table }: CartViewProps) {
 
       {!table.canOrder && <OrderingUnavailable />}
 
-      {cart.lines.length === 0 ? (
-        <EmptyState
-          icon={ShoppingBag}
-          title="Your cart is empty"
-          description="Add dishes from the menu to place an order."
-          action={
-            <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
-              Browse the menu
-            </Link>
-          }
-        />
+      {placed ? (
+        <p role="status" className="flex items-center gap-2 py-6 text-base text-ink">
+          <CircleCheck aria-hidden className="size-5 text-status-served" />
+          Order placed. Opening your table’s orders…
+        </p>
+      ) : !hydrated ? (
+        <CustomerSkeleton rows={2} />
+      ) : cart.lines.length === 0 ? (
+        <>
+          {/* e.g. every dish ran out just as the order was placed */}
+          {errorAlert}
+          <EmptyState
+            icon={ShoppingBag}
+            title="Your cart is empty"
+            description="Add dishes from the menu to place an order."
+            action={
+              <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
+                Browse the menu
+              </Link>
+            }
+          />
+        </>
       ) : (
         <>
           <ul className="divide-y divide-line border-y border-line">
@@ -180,11 +205,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
           {table.canOrder && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-ink">{cancelNotice(table.cancelWindowSeconds)}</p>
-              {error && (
-                <p role="alert" className="text-sm font-medium text-status-void">
-                  {error}
-                </p>
-              )}
+              {errorAlert}
               <Button size="touch" className="w-full" onClick={submit} disabled={pending}>
                 {pending ? 'Placing order…' : 'Place order'}
               </Button>
@@ -203,8 +224,9 @@ type CartLineRowProps = {
 };
 
 function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
-  const noteId = useId();
-  const [editingNote, setEditingNote] = useState(false);
+  // Once shown (or when the dish already has a note), the note field stays put,
+  // even when it is cleared to type a new one.
+  const [editingNote, setEditingNote] = useState(line.note !== '');
   const label = line.variantName ? `${line.name} (${line.variantName})` : line.name;
 
   return (
@@ -227,21 +249,21 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
         />
       </div>
       <div className="flex items-center justify-between gap-3 pl-6">
-        {editingNote || line.note ? (
+        {editingNote ? (
           <Input
-            id={noteId}
             value={line.note}
             onChange={(event) => onNote(event.target.value)}
             maxLength={MAX_LINE_NOTE}
             placeholder="e.g. less spicy"
             aria-label={`Note for ${label}`}
             className="h-11 flex-1 text-base"
-            autoFocus={editingNote && !line.note}
+            autoFocus={line.note === ''}
           />
         ) : (
+          // Ink, not the accent colour: accents can be too light for text on white.
           <Button
-            variant="link"
-            className="h-11 px-0 text-sm"
+            variant="ghost"
+            className="h-11 px-2 text-sm text-ink underline underline-offset-4"
             onClick={() => setEditingNote(true)}
             aria-label={`Add a note for ${label}`}
           >

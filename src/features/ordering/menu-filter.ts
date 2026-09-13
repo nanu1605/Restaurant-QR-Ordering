@@ -32,3 +32,7 @@ export function filterMenu(
 }
 
 export const categorySectionId = (categoryId: string) => `category-${categoryId}`;
+
+export function countItems(menu: CustomerCategory[]): number {
+  return menu.reduce((sum, category) => sum + category.items.length, 0);
+}

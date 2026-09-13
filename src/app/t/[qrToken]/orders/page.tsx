@@ -3,9 +3,23 @@ import { notFound } from 'next/navigation';
 
 import { OrdersView } from '@/features/ordering/components/orders-view';
 import { readDeviceId } from '@/features/ordering/device';
-import { getCustomerSession } from '@/features/ordering/queries';
+import { tableHeading } from '@/features/ordering/format';
+import { getCustomerSession, getCustomerTable } from '@/features/ordering/queries';
 
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+export async function generateMetadata({
+  params,
+}: Pick<PageProps<'/t/[qrToken]/orders'>, 'params'>): Promise<Metadata> {
+  const table = await getCustomerTable((await params).qrToken);
+  return {
+    // Its own title, so screen readers announce the move from the menu.
+    title: {
+      absolute: table
+        ? `Your table’s orders · ${table.restaurant.name} · ${tableHeading(table.tableLabel)}`
+        : 'QR code not working',
+    },
+    robots: { index: false, follow: false },
+  };
+}
 
 /** The table's orders and their statuses (spec §13.1 Orders page). */
 export default async function OrdersPage({ params }: PageProps<'/t/[qrToken]/orders'>) {

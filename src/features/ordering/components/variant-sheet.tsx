@@ -1,5 +1,6 @@
 'use client';
 
+import { XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
@@ -8,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -32,9 +34,16 @@ export function VariantSheet({ item, onClose, onAdd }: VariantSheetProps) {
     <Sheet open={item !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="bottom"
+        showCloseButton={false}
         className="mx-auto max-h-[90dvh] max-w-[560px] gap-0 overflow-y-auto rounded-t-2xl"
       >
         {item && <VariantForm key={item.id} item={item} onAdd={onAdd} />}
+        <SheetClose
+          render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
+        >
+          <XIcon aria-hidden />
+          <span className="sr-only">Close</span>
+        </SheetClose>
       </SheetContent>
     </Sheet>
   );
@@ -55,7 +64,7 @@ function VariantForm({
 
   return (
     <>
-      <SheetHeader className="pr-12">
+      <SheetHeader className="pr-14">
         <SheetTitle className="flex items-center gap-2 text-lg font-semibold text-ink">
           <FoodTypeMark type={item.foodType} size="sm" />
           {item.name}
@@ -77,10 +86,11 @@ function VariantForm({
             {item.variants.map((option) => (
               <label
                 key={option.id}
-                className="flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-lg border border-line px-3 text-base text-ink has-data-checked:border-primary has-data-checked:bg-primary/5"
+                // The ring colour (3:1 on white) marks the chosen option on any accent.
+                className="flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-lg border border-line px-3 text-base text-ink has-data-checked:border-2 has-data-checked:border-ring"
               >
                 <span className="flex items-center gap-3">
-                  <RadioGroupItem value={option.id} />
+                  <RadioGroupItem value={option.id} className="data-checked:border-ring" />
                   {option.name}
                 </span>
                 <span className="tabular-nums">
@@ -119,7 +129,9 @@ function VariantForm({
           onClick={() => variant && onAdd(item, variant, quantity, note)}
         >
           Add to cart ·{' '}
-          {variant ? formatINR(variant.pricePaise * quantity, { fraction: 'auto' }) : ''}
+          <span className="tabular-nums">
+            {variant ? formatINR(variant.pricePaise * quantity, { fraction: 'auto' }) : ''}
+          </span>
         </Button>
       </SheetFooter>
     </>

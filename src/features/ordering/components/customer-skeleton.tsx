@@ -3,7 +3,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 /** Loading placeholder for the customer pages (spec §16.3). */
 export function CustomerSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex flex-col gap-4 px-4 py-4">
+    <div role="status" aria-busy="true" className="flex flex-col gap-4 px-4 py-4">
+      <span className="sr-only">Loading…</span>
       <Skeleton className="h-11 w-full" />
       <div className="flex gap-2">
         <Skeleton className="h-9 w-24 rounded-full" />

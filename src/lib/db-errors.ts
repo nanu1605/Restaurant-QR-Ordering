@@ -96,7 +96,7 @@ export function dbErrorMessage(error: DbErrorLike): string | null {
 
 // Customer panel (spec §13.1): plain words, no staff jargon, what to do next.
 const CUSTOMER_MESSAGES: Record<string, Message> = {
-  TABLE_NOT_FOUND: "This QR code isn't working any more. Please ask the staff for help.",
+  TABLE_NOT_FOUND: 'This QR code isn’t working any more. Please ask the staff for help.',
   ORDERING_UNAVAILABLE: 'Online ordering is unavailable right now. Please order with our staff.',
   ITEM_UNAVAILABLE: 'Some dishes are no longer available. We took them out of your cart.',
   RATE_LIMITED: 'Please wait a moment before ordering again.',

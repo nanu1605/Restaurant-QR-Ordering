@@ -1,6 +1,7 @@
 'use client';
 
 import { Minus, Plus } from 'lucide-react';
+import type { Ref } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -13,10 +14,18 @@ type QuantityStepperProps = {
   itemName: string;
   /** 0 lets the minus button remove the dish. */
   min?: number;
+  /** The "One more" button, so focus can move there when the stepper appears. */
+  incrementRef?: Ref<HTMLButtonElement>;
 };
 
 /** – 1 + with 44 px targets; the count is announced when it changes. */
-export function QuantityStepper({ value, onChange, itemName, min = 0 }: QuantityStepperProps) {
+export function QuantityStepper({
+  value,
+  onChange,
+  itemName,
+  min = 0,
+  incrementRef,
+}: QuantityStepperProps) {
   const removes = min === 0 && value === 1;
   return (
     <div
@@ -38,6 +47,7 @@ export function QuantityStepper({ value, onChange, itemName, min = 0 }: Quantity
         {value}
       </span>
       <Button
+        ref={incrementRef}
         type="button"
         variant="ghost"
         size="icon-touch"

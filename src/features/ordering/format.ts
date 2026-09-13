@@ -15,7 +15,7 @@ export function cancelWindowText(seconds: number): string | null {
     const minutes = seconds / 60;
     return minutes === 1 ? '1 minute' : `${minutes} minutes`;
   }
-  return `${seconds} seconds`;
+  return seconds === 1 ? '1 second' : `${seconds} seconds`;
 }
 
 /** The notice above "Place order" (spec §13.1 Cart page). */
@@ -23,7 +23,7 @@ export function cancelNotice(cancelWindowSeconds: number): string {
   const period = cancelWindowText(cancelWindowSeconds);
   const base = 'After you place the order, only staff can remove items.';
   return period
-    ? `${base} You can cancel an item within ${period} if the kitchen hasn't started it.`
+    ? `${base} You can cancel an item within ${period} if the kitchen hasn’t started it.`
     : base;
 }
 
@@ -58,7 +58,7 @@ export function unavailableMessage(names: string[]): string {
 }
 
 export const NETWORK_ERROR =
-  "We couldn't reach the restaurant. Check your connection and try again.";
+  'We couldn’t reach the restaurant. Check your connection and try again.';
 
 /** Customers read "Placed" where staff read "New" (spec §13 same action, same name). */
 export const CUSTOMER_STATUS_LABELS: Partial<Record<OrderItemStatus, string>> = {

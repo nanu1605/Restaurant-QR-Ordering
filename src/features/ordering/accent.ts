@@ -35,6 +35,20 @@ export type AccentColors = {
   ring: string;
 };
 
+/**
+ * CSS for the customer pages. The accent variables go on :root so sheets and
+ * dialogs, which render in portals outside the page wrapper, inherit them too;
+ * focus shows as a full-strength outline in the ring colour (3:1 on white).
+ * Only ever built from accentColors() output, so it contains nothing but hex values.
+ */
+export function customerThemeCss({ accent, foreground, ring }: AccentColors): string {
+  return (
+    `:root{--brand:${accent};--brand-foreground:${foreground};` +
+    `--primary:${accent};--primary-foreground:${foreground};--ring:${ring}}` +
+    ':focus-visible{outline:2px solid var(--ring);outline-offset:2px}'
+  );
+}
+
 export function accentColors(hex: string): AccentColors {
   const accent = HEX.test(hex) ? hex.toUpperCase() : DEFAULT_ACCENT;
   const ring = contrastRatio(accent, WHITE) >= 3 ? accent : INK;

@@ -14,7 +14,7 @@ export function CartBar({ href, count, totalPaise }: CartBarProps) {
       <div className="pointer-events-auto mx-auto max-w-[560px] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Link
           href={href}
-          className="flex h-14 items-center justify-between gap-3 rounded-xl bg-primary px-4 text-primary-foreground shadow-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="flex h-14 items-center justify-between gap-3 rounded-xl bg-primary px-4 text-primary-foreground shadow-lg"
         >
           <span className="flex items-center gap-2 text-base font-semibold tabular-nums">
             <ShoppingBag aria-hidden className="size-5" />
