@@ -51,6 +51,12 @@ bottom of each section.
   are named after the product.
 - **Vitest config is `vitest.config.mts`** so Vite loads it as ESM without adding `"type": "module"`
   to `package.json`.
+- **Product name: DineFlow** (user, 2026-09-13; may still change; domain still open). `APP_NAME` is
+  `DineFlow`, the package is `dineflow`. Identifiers nobody outside development sees keep
+  `tableorder`: Supabase `project_id` (renaming recreates the containers and volumes), the local
+  `STAFF_EMAIL_DOMAIN` default `tableorder.test` (staging/production set the real domain) and the
+  cart's storage key `tableorder:cart:<token>`. A later rename stays one constant plus the package
+  name.
 
 ## Libraries and APIs
 
@@ -358,9 +364,9 @@ bottom of each section.
 - **P3-9 · Polling:** `GET /t/<token>/session` (no-store) every 10 s while the page is visible, when
   it becomes visible and after a cancel, with plain `fetch`. Countdowns use the offset between the
   server's clock and the phone's.
-- **P3-10 · Cart:** `localStorage["tableorder:cart:<token>"]` (versioned), one line per dish or dish
-  + option, a note per line, 1–20 each, at most 30 lines; checked against the menu on every page
-  load. The idempotency key is made when the cart page loads with `crypto.getRandomValues`
+- **P3-10 · Cart:** `localStorage["tableorder:cart:<token>"]` (versioned), one line per dish or per
+  dish and option, a note per line, 1–20 each, at most 30 lines; checked against the menu on every
+  page load. The idempotency key is made when the cart page loads with `crypto.getRandomValues`
   (`randomUUID` needs a secure context, and LAN testing is plain http), kept across retries and
   renewed after a successful order.
 - **P3-12 · Accent colour:** the layout writes the accent variables to `:root` (so portalled sheets
