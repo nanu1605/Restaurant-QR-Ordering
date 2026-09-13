@@ -121,7 +121,10 @@ select set_eq(
       ('public.staff_update_item_status'),
       ('public.staff_mark_order_served'),
       ('public.staff_revert_item_status'),
-      ('public.staff_place_order')
+      ('public.staff_place_order'),
+      ('public.staff_remove_item'),
+      ('public.admin_remove_order'),
+      ('public.staff_close_session_unbilled')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
