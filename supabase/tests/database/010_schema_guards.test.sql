@@ -115,7 +115,13 @@ select set_eq(
       ('public.admin_waiters_overview'),
       ('public.admin_update_settings'),
       -- Phase 4: live board, orders, removals, assignment
-      ('public.staff_get_board')
+      ('public.staff_get_board'),
+      ('public.staff_approve_order'),
+      ('public.staff_reject_order'),
+      ('public.staff_update_item_status'),
+      ('public.staff_mark_order_served'),
+      ('public.staff_revert_item_status'),
+      ('public.staff_place_order')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
