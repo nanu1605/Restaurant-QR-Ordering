@@ -113,7 +113,9 @@ select set_eq(
       ('public.admin_set_waiter_on_duty'),
       ('public.admin_delete_waiter'),
       ('public.admin_waiters_overview'),
-      ('public.admin_update_settings')
+      ('public.admin_update_settings'),
+      -- Phase 4: live board, orders, removals, assignment
+      ('public.staff_get_board')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

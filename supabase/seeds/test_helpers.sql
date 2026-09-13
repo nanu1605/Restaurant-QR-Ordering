@@ -322,6 +322,36 @@ as $$
   select id from public.restaurant_members where user_id = p_user_id limit 1;
 $$;
 
+-- A waiter profile, on duty unless p_on_duty is false, optionally linked to the
+-- login of p_user_id. Returns the waiter id.
+create or replace function tests.add_waiter(
+  p_restaurant_id uuid,
+  p_name text,
+  p_user_id uuid default null,
+  p_on_duty boolean default true
+)
+returns uuid
+language sql
+as $$
+  insert into public.waiters (restaurant_id, full_name, member_id, on_duty)
+  values (
+    p_restaurant_id,
+    p_name,
+    case when p_user_id is null then null else tests.member_id(p_user_id) end,
+    p_on_duty
+  )
+  returning id;
+$$;
+
+-- Marks a session billed (status and billed_at only) until Phase 5 has
+-- admin_generate_bill.
+create or replace function tests.bill_session(p_session_id uuid)
+returns void
+language sql
+as $$
+  update public.table_sessions set status = 'billed', billed_at = now() where id = p_session_id;
+$$;
+
 -- ─── Assertions ─────────────────────────────────────────────────────────────
 -- Rows affected by a statement, for checks where RLS filters silently instead
 -- of raising (e.g. an UPDATE the policy does not match).
