@@ -31,6 +31,9 @@ select
 insert into public.dining_tables (restaurant_id, label, qr_token)
 values (:'rest_a', '6', 'ALPHA0000TABLE06'), (:'rest_a', '7', 'ALPHA0000TABLE07'),
        (:'rest_o', '6', 'OPENX0000TABLE06');
+-- Table 8 is switched off; table 9's QR code has been regenerated (old token …09).
+insert into public.dining_tables (restaurant_id, label, qr_token, is_active)
+values (:'rest_a', '8', 'ALPHA0000TABLE08', false), (:'rest_a', '9', 'ALPHA0000TABLE19', true);
 
 \set d1 '11111111-1111-4111-8111-111111111111'
 \set d2 '22222222-2222-4222-8222-222222222222'
@@ -272,6 +275,20 @@ select is(
   pg_temp.order_error('ZZZZZ0000TABLE05', :'d1', 'bad-input-11', jsonb_build_array(tests.line(:'simple'))),
   'TABLE_NOT_FOUND', 'an unknown table token is rejected'
 );
+select is(
+  pg_temp.order_error('ALPHA0000TABLE08', :'d1', 'table-off-1', jsonb_build_array(tests.line(:'simple'))),
+  'TABLE_NOT_FOUND', 'a switched-off table takes no orders'
+);
+select is(
+  pg_temp.order_error('ALPHA0000TABLE09', :'d1', 'table-old-qr', jsonb_build_array(tests.line(:'simple'))),
+  'TABLE_NOT_FOUND', 'the old QR token of a regenerated table takes no orders'
+);
+select is(
+  (select count(*) from public.table_sessions s join public.dining_tables t on t.id = s.dining_table_id
+    where t.qr_token in ('ALPHA0000TABLE08', 'ALPHA0000TABLE19')),
+  0::bigint,
+  'and neither opens a session'
+);
 
 -- ─── Dishes that can't be ordered ───────────────────────────────────────────
 select is(
@@ -355,6 +372,10 @@ select is(
   pg_temp.order_error('OPENX0000TABLE05', :'d1', 'minute-d1-2', jsonb_build_array(tests.line(:'o_simple'))),
   'no error', 'the 5th order from another phone is still fine'
 );
+select is(
+  pg_temp.order_error('ALPHA0000TABLE05', :'d1', 'minute-d1-3', jsonb_build_array(tests.line(:'simple'))),
+  'RATE_LIMITED', 'the limit follows the phone across restaurants (2 orders here, 3 there)'
+);
 
 -- Per device: 30 an hour.
 select tests.clear_auth();
@@ -405,16 +426,38 @@ select is(
 );
 
 -- ─── Approval switched off mid-session ──────────────────────────────────────
+-- Table 7's session is still unapproved and holds 3 waiting orders.
+select is(
+  pg_temp.order_error('ALPHA0000TABLE07', :'d2', 'before-switch', jsonb_build_array(tests.line(:'simple'))),
+  'RATE_LIMITED', 'with approval on, the table is full of waiting orders'
+);
 select tests.clear_auth();
 update public.restaurants set require_first_order_approval = false where id = :'rest_a';
 select tests.as_service_role();
 select is(
   public.customer_place_order(
-    'ALPHA0000TABLE06', :'d2', 'after-switch-1', jsonb_build_array(tests.line(:'simple'))
+    'ALPHA0000TABLE07', :'d2', 'after-switch-1', jsonb_build_array(tests.line(:'simple'))
   ) ->> 'status',
   'accepted',
-  'orders are accepted once approval is switched off'
+  'once approval is switched off, the next order is accepted despite the waiting ones'
 );
+select tests.clear_auth();
+select results_eq(
+  $$ select s.is_approved, s.approved_at is not null
+     from public.table_sessions s join public.dining_tables t on t.id = s.dining_table_id
+     where t.qr_token = 'ALPHA0000TABLE07' and s.status = 'open' $$,
+  $$ values (true, true) $$,
+  'and the waiting session counts as approved from then on'
+);
+select is(
+  (select count(*) from public.orders o
+     join public.table_sessions s on s.id = o.session_id
+     join public.dining_tables t on t.id = s.dining_table_id
+   where t.qr_token = 'ALPHA0000TABLE07' and o.status = 'pending_approval'),
+  4::bigint,
+  'rounds already waiting stay with staff to decide'
+);
+select tests.as_service_role();
 
 -- ─── Read-only restaurants ──────────────────────────────────────────────────
 select tests.clear_auth();

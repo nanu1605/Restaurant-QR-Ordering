@@ -263,7 +263,9 @@ begin
     );
   end loop;
 
-  -- Rate limits (spec §9.4). Only customer orders count; a pending order whose
+  -- Rate limits (spec §9.4). Only customer orders count. The "3 waiting for
+  -- approval" cap applies only when this order would wait too (approval on and
+  -- the table's open session not yet approved), and a pending order whose
   -- dishes were all cancelled no longer counts as waiting.
   if (select count(*) from public.orders o
       where o.client_device_id = v_device and o.created_at > now() - interval '1 minute') >= 5
@@ -276,11 +278,12 @@ begin
            and o.placed_via = 'customer'
            and o.created_at > now() - interval '10 minutes'
            and s.dining_table_id = v_table.id) >= 10
-     or (select count(*)
+     or v_restaurant.require_first_order_approval and (select count(*)
          from public.orders o
          join public.table_sessions s on s.restaurant_id = o.restaurant_id and s.id = o.session_id
          where s.dining_table_id = v_table.id
            and s.status = 'open'
+           and not s.is_approved
            and o.status = 'pending_approval'
            and exists (
              select 1 from public.order_items oi
@@ -335,7 +338,8 @@ begin
     )
     returning * into v_session;
   elsif not v_restaurant.require_first_order_approval and not v_session.is_approved then
-    -- Approval was switched off while this session waited: nothing to confirm now.
+    -- Approval was switched off while this session waited: new orders are
+    -- accepted from now on (rounds already waiting stay with staff to decide).
     update public.table_sessions set is_approved = true, approved_at = now()
     where id = v_session.id
     returning * into v_session;
