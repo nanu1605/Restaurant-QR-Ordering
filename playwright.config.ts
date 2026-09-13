@@ -20,7 +20,12 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'desktop',
+      use: { ...devices['Desktop Chrome'] },
+      // The customer panel is mobile-first (spec §13.1): it runs on the phone only.
+      testIgnore: /customer-.*\.spec\.ts/,
+    },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
     {
