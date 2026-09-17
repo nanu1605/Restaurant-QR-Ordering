@@ -1412,6 +1412,7 @@ export type Database = {
         Args: { p_on_duty: boolean; p_waiter_id: string }
         Returns: undefined
       }
+      admin_total_orders: { Args: { p_filters: Json }; Returns: Json }
       admin_unassign_waiter: { Args: { p_session_id: string }; Returns: Json }
       admin_update_category: {
         Args: { p_category_id: string; p_patch: Json }

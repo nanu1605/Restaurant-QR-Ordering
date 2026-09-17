@@ -135,7 +135,8 @@ select set_eq(
       ('public.admin_get_bill'),
       ('public.admin_record_payment'),
       ('public.admin_void_bill'),
-      ('public.admin_increment_print_count')
+      ('public.admin_increment_print_count'),
+      ('public.admin_total_orders')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
