@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ImagePlus, Trash2 } from 'lucide-react';
+import { ImagePlus, Printer, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import QRCode from 'qrcode';
 import { useEffect, useId, useState, useTransition, type ReactNode } from 'react';
@@ -15,7 +15,7 @@ import {
 } from 'react-hook-form';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -640,6 +640,23 @@ export function BillForm({
             <UpiPreview vpa={vpa ?? ''} payeeName={payeeName ?? ''} />
           </div>
         </fieldset>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line p-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-ink">Test print</p>
+            <p className="text-sm text-ink-muted">
+              Print a sample bill with the saved settings to check the printer and paper width.
+            </p>
+          </div>
+          <a
+            href="/admin/settings/test-print"
+            target="_blank"
+            rel="noopener"
+            className={buttonVariants({ variant: 'outline', size: 'lg' })}
+          >
+            <Printer aria-hidden /> Test print
+          </a>
+        </div>
       </FieldGroup>
       <SaveBar pending={isSubmitting} readOnly={readOnly} error={errors.root?.message} />
     </form>
