@@ -1357,6 +1357,11 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_get_bill: { Args: { p_bill_id: string }; Returns: Json }
+      admin_increment_print_count: {
+        Args: { p_bill_id: string }
+        Returns: Json
+      }
       admin_list_staff: {
         Args: never
         Returns: {
@@ -1383,6 +1388,10 @@ export type Database = {
       admin_reactivate_staff: {
         Args: { p_member_id: string }
         Returns: undefined
+      }
+      admin_record_payment: {
+        Args: { p_bill_id: string; p_payments: Json }
+        Returns: Json
       }
       admin_regenerate_qr: { Args: { p_table_id: string }; Returns: string }
       admin_remove_order: {
@@ -1422,6 +1431,10 @@ export type Database = {
         Returns: undefined
       }
       admin_upsert_waiter: { Args: { p_waiter: Json }; Returns: string }
+      admin_void_bill: {
+        Args: { p_bill_id: string; p_reason: string; p_reopen: boolean }
+        Returns: Json
+      }
       admin_waiters_overview: {
         Args: never
         Returns: {

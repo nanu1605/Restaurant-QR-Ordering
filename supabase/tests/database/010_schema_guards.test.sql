@@ -131,7 +131,11 @@ select set_eq(
       ('public.admin_billing_sessions'),
       ('public.admin_preview_bill'),
       ('public.admin_generate_bill'),
-      ('public.admin_sample_bill')
+      ('public.admin_sample_bill'),
+      ('public.admin_get_bill'),
+      ('public.admin_record_payment'),
+      ('public.admin_void_bill'),
+      ('public.admin_increment_print_count')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
