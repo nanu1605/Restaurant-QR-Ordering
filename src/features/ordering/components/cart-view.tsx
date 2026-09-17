@@ -33,7 +33,7 @@ import type { CustomerTable } from '../types';
 import { CustomerSkeleton } from './customer-skeleton';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
-import { useHydrated } from './use-hydrated';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { useReconciledCart } from './use-reconciled-cart';
 
 type CartViewProps = { qrToken: string; table: CustomerTable };

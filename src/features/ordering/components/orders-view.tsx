@@ -26,7 +26,7 @@ import { cancelOrderItem } from '../actions';
 import { CUSTOMER_STATUS_LABELS, formatClockTime, formatCountdown, NETWORK_ERROR } from '../format';
 import { SESSION_POLL_MS } from '../limits';
 import type { CustomerOrderItem, CustomerRound, CustomerSessionView } from '../types';
-import { useNow } from './use-now';
+import { useNow } from '@/hooks/use-now';
 
 type OrdersViewProps = { qrToken: string; initial: CustomerSessionView };
 
