@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { Search, XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -61,8 +62,14 @@ type AddDishesSheetProps = {
 export function AddDishesSheet({ board, table, onClose }: AddDishesSheetProps) {
   return (
     <Sheet open={table !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+      <SheetContent side="right" showCloseButton={false} className="w-full gap-0 sm:max-w-xl">
         {table && <Picker key={table.id} board={board} table={table} onDone={onClose} />}
+        <SheetClose
+          render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
+        >
+          <XIcon aria-hidden />
+          <span className="sr-only">Close</span>
+        </SheetClose>
       </SheetContent>
     </Sheet>
   );
@@ -90,6 +97,9 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
   const place = useMutation({
     mutationKey: BOARD_MUTATION_KEY,
     mutationFn: (input: StaffOrderInput): Promise<StaffOrderResult> => placeStaffOrder(input),
+    // A refetch already on its way could bring the new round back before this
+    // device knows it placed it, and chime for its own order.
+    onMutate: () => queryClient.cancelQueries({ queryKey: ['board'] }),
     onSuccess: (result) => {
       // Before the board refetches, so this device doesn't chime for its own order.
       if (result.ok) rememberOwnOrder(result.data.orderId);
@@ -353,9 +363,10 @@ function MenuRow({ item, cart, onAdd, onSetCart }: MenuRowProps) {
               variant="outline"
               size="touch"
               onClick={() => onAdd(item, variant)}
-              aria-label={`Add ${item.name} (${variant.name})`}
             >
+              {/* The name starts with the visible text (WCAG 2.5.3). */}
               {variant.name} · <span className="tabular-nums">{price(variant.pricePaise)}</span>
+              <span className="sr-only"> · add {item.name}</span>
             </Button>
           ))}
         </span>

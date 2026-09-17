@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { Plus, Trash2, Undo2 } from 'lucide-react';
+import { Plus, Trash2, Undo2, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -10,6 +10,7 @@ import { StatusChip } from '@/components/shared/status-chip';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -80,7 +81,11 @@ export function TableDrawer({ board, mode, tableId, nowMs, onClose }: TableDrawe
 
   return (
     <Sheet open={table !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="w-full gap-0 overflow-y-auto sm:max-w-lg"
+      >
         {table && (
           <DrawerBody
             key={table.id}
@@ -91,6 +96,12 @@ export function TableDrawer({ board, mode, tableId, nowMs, onClose }: TableDrawe
             onClose={onClose}
           />
         )}
+        <SheetClose
+          render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
+        >
+          <XIcon aria-hidden />
+          <span className="sr-only">Close</span>
+        </SheetClose>
       </SheetContent>
     </Sheet>
   );
@@ -200,6 +211,17 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
                 <Button size="touch" variant="outline" onClick={() => setRejecting(round)}>
                   Reject<span className="sr-only"> round {round.roundNumber}</span>
                 </Button>
+                {mode === 'admin' && isManager && (
+                  <Button
+                    size="touch"
+                    variant="ghost"
+                    className="text-status-void"
+                    onClick={() => setDeleting(round)}
+                  >
+                    <Trash2 aria-hidden />
+                    Delete order<span className="sr-only"> round {round.roundNumber}</span>
+                  </Button>
+                )}
               </div>
             )}
           </section>
@@ -365,8 +387,9 @@ function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSecti
   const onTheWay = activeItems(round).filter((item) => item.status !== 'served');
   const label = roundLabel(round);
   const canServeAll = accepted && onTheWay.length > 1;
-  const canDelete =
-    mode === 'admin' && isManager && (accepted || round.status === 'pending_approval');
+  // Waiting rounds are deleted from the waiting section above; a pending round
+  // shown here was cancelled by the customer and has nothing left to delete.
+  const canDelete = mode === 'admin' && isManager && accepted;
 
   return (
     <section
@@ -462,7 +485,10 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
     optimistic: (current, vars) => withItemStatus(current, vars.ids, vars.status),
   });
   const revert = useBoardAction({
-    action: (itemId: string) => revertItemStatus(itemId),
+    action: ({ from }: { from: ForwardStatus; to: ActiveStatus }) =>
+      revertItemStatus(item.id, from),
+    // Moves at once, so a second tap reverts from the new status, not twice.
+    optimistic: (current, { to }) => withItemStatus(current, [item.id], to),
     successMessage: () => `${item.name} moved back`,
   });
 
@@ -499,8 +525,12 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
               Mark served<span className="sr-only"> {name}</span>
             </Button>
           )}
-          {mode === 'admin' && isManager && previous && (
-            <Button size="touch" variant="ghost" onClick={() => revert.mutate(item.id)}>
+          {mode === 'admin' && isManager && status && status !== 'placed' && previous && (
+            <Button
+              size="touch"
+              variant="ghost"
+              onClick={() => revert.mutate({ from: status, to: previous })}
+            >
               <Undo2 aria-hidden />
               Revert
               <span className="sr-only">

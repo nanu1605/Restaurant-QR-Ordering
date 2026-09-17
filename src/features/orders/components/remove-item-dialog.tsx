@@ -34,7 +34,11 @@ function ReasonDialogForItem({ item, onClose }: RemoveItemDialogProps) {
       open={item !== null}
       onOpenChange={(open) => !open && onClose()}
       title={`Remove ${name}`}
-      description="The dish stays on the order, struck through with your reason."
+      description={
+        item && quantity < item.quantity
+          ? `The order keeps ${item.quantity - quantity} × ${name}. Your reason is recorded.`
+          : 'The dish stays on the order, struck through with your reason.'
+      }
       presets={REMOVE_REASONS}
       confirmLabel={item && quantity < item.quantity ? `Remove ${quantity}` : 'Remove dish'}
       destructive

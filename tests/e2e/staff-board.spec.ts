@@ -30,7 +30,7 @@ test('a waiter opens a free table with an order and becomes its waiter', async (
     .getByRole('list', { name: 'This round' })
     .getByRole('button', { name: 'One more Paneer Tikka' })
     .click();
-  await picker.getByRole('button', { name: 'Add Butter Chicken (Half)' }).click();
+  await picker.getByRole('button', { name: 'Half · ₹280 · add Butter Chicken' }).click();
   await expect(picker.getByText('3 items · ₹840')).toBeVisible();
   await picker.getByRole('button', { name: 'Place order' }).click();
   await expect(picker).toBeHidden();

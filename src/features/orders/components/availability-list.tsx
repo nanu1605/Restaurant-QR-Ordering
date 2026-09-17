@@ -12,12 +12,12 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useLive } from '@/features/live/live-provider';
-import { menuKey } from '@/features/live/query-client';
-import { setItemAvailability } from '@/features/menu/actions';
+import { MENU_MUTATION_KEY, menuKey } from '@/features/live/query-client';
 import { filterMenu } from '@/features/ordering/menu-filter';
 import type { CustomerCategory, CustomerMenuItem } from '@/features/ordering/types';
 import { createClient } from '@/lib/supabase/browser';
 
+import { setDishAvailability } from '../actions';
 import { fetchStaffMenu } from '../staff-menu';
 
 function withAvailability(menu: CustomerCategory[], id: string, available: boolean) {
@@ -43,27 +43,34 @@ export function AvailabilityList() {
     staleTime: 60_000,
   });
 
+  // Switches flipped in quick succession each show at once; the menu refetches
+  // after the last one finishes, so none flips back in between.
+  const lastChange = () => queryClient.isMutating({ mutationKey: MENU_MUTATION_KEY }) === 1;
   const toggle = useMutation({
+    mutationKey: MENU_MUTATION_KEY,
     mutationFn: async ({ item, available }: { item: CustomerMenuItem; available: boolean }) => {
-      const result = await setItemAvailability(item.id, available);
+      const result = await setDishAvailability(item.id, available);
       if (!result.ok) throw new Error(result.error);
     },
     onMutate: async ({ item, available }) => {
       await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<CustomerCategory[]>(key);
       queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
         current ? withAvailability(current, item.id, available) : current,
       );
-      return { previous };
     },
     onSuccess: (_result, { item, available }) => {
       toast.success(available ? `${item.name} is back in stock` : `${item.name} is out of stock`);
     },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    onError: (error, { item, available }) => {
+      // Put this dish back; other switches keep their own pending changes.
+      queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
+        current ? withAvailability(current, item.id, !available) : current,
+      );
       toast.error(error instanceof Error ? error.message : 'Something went wrong. Try again.');
     },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      if (lastChange()) void queryClient.invalidateQueries({ queryKey: key });
+    },
   });
 
   if (menu.isPending) {
@@ -156,8 +163,9 @@ export function AvailabilityList() {
                       </span>
                     )}
                   </span>
-                  <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-ink">
-                    <span className={item.isAvailable ? 'text-ink' : 'text-ink-muted'}>
+                  {/* Not a <label>: it would rename the switch after its status text. */}
+                  <div className="flex min-h-11 items-center gap-3 text-sm font-medium">
+                    <span aria-hidden className={item.isAvailable ? 'text-ink' : 'text-ink-muted'}>
                       {item.isAvailable ? 'In stock' : 'Out of stock'}
                     </span>
                     <Switch
@@ -165,7 +173,7 @@ export function AvailabilityList() {
                       onCheckedChange={(available) => toggle.mutate({ item, available })}
                       aria-label={`${item.name} in stock`}
                     />
-                  </label>
+                  </div>
                 </li>
               ))}
             </ul>

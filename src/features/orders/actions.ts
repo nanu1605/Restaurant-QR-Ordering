@@ -101,12 +101,39 @@ export async function markOrderServed(orderId: string): Promise<ActionResult> {
 }
 
 /** One step back; managers and owners only (spec §10.3). */
-export async function revertItemStatus(itemId: string): Promise<ActionResult> {
+export async function revertItemStatus(
+  itemId: string,
+  fromStatus: ForwardStatus,
+): Promise<ActionResult> {
   await requireMember(ADMIN_PANEL_ROLES);
-  if (!idSchema.safeParse(itemId).success) return invalid();
+  if (!idSchema.safeParse(itemId).success || !forwardStatusSchema.safeParse(fromStatus).success) {
+    return invalid();
+  }
   const supabase = await createClient();
-  const { error } = await supabase.rpc('staff_revert_item_status', { p_order_item_id: itemId });
+  // The status the manager saw: if it has moved since, nothing changes.
+  const { error } = await supabase.rpc('staff_revert_item_status', {
+    p_order_item_id: itemId,
+    p_from_status: fromStatus,
+  });
   if (error) return fromDbError(error, 'staff_revert_item_status');
+  return actionOk();
+}
+
+/**
+ * The in-stock switch on the worker panel's Availability page. Same database
+ * function as the admin menu's switch, but without refresh(): the page's menu
+ * query updates itself, and a refresh would re-render the whole live layout.
+ */
+export async function setDishAvailability(id: string, available: boolean): Promise<ActionResult> {
+  await requireMember(STAFF_PANEL_ROLES);
+  const parsed = z.object({ id: idSchema, available: z.boolean() }).safeParse({ id, available });
+  if (!parsed.success) return invalid();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('staff_set_item_availability', {
+    p_item_id: parsed.data.id,
+    p_available: parsed.data.available,
+  });
+  if (error) return fromDbError(error, 'staff_set_item_availability');
   return actionOk();
 }
 
