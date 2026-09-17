@@ -14,6 +14,7 @@ type QuantityStepperProps = {
   itemName: string;
   /** 0 lets the minus button remove the dish. */
   min?: number;
+  max?: number;
   /** The "One more" button, so focus can move there when the stepper appears. */
   incrementRef?: Ref<HTMLButtonElement>;
 };
@@ -24,6 +25,7 @@ export function QuantityStepper({
   onChange,
   itemName,
   min = 0,
+  max = MAX_LINE_QUANTITY,
   incrementRef,
 }: QuantityStepperProps) {
   const removes = min === 0 && value === 1;
@@ -52,7 +54,7 @@ export function QuantityStepper({
         variant="ghost"
         size="icon-touch"
         onClick={() => onChange(value + 1)}
-        disabled={value >= MAX_LINE_QUANTITY}
+        disabled={value >= max}
         aria-label={`One more ${itemName}`}
       >
         <Plus aria-hidden />

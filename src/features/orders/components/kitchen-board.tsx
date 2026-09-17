@@ -1,0 +1,188 @@
+'use client';
+
+import { cn } from 'cn';
+import { AlarmClock } from 'lucide-react';
+
+import { FoodTypeMark } from '@/components/shared/food-type-mark';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { tableHeading } from '@/features/ordering/format';
+
+import { setItemsStatus } from '../actions';
+import { formatElapsed, minutesSince, nextStatus } from '../board-view';
+import {
+  isLate,
+  KITCHEN_COLUMNS,
+  type KitchenColumn,
+  type KitchenTicket,
+  kitchenTickets,
+} from '../kitchen';
+import { withItemStatus } from '../optimistic';
+import type { ForwardStatus } from '../schemas';
+import { useBoard, useBoardAction } from '../use-board';
+import { useServerNow } from '../use-server-now';
+
+const COLUMN_EMPTY: Record<KitchenColumn, string> = {
+  placed: 'No new orders',
+  preparing: 'Nothing being prepared',
+  ready: 'Nothing waiting to be served',
+};
+
+const EDGE: Record<KitchenColumn, string> = {
+  placed: 'border-l-status-placed',
+  preparing: 'border-l-status-preparing',
+  ready: 'border-l-status-ready',
+};
+
+const TICKET_ACTION: Record<KitchenColumn, string> = {
+  placed: 'Start all',
+  preparing: 'Mark all ready',
+  ready: 'Mark all served',
+};
+
+/**
+ * Kitchen view (spec §13.2): New, Preparing and Ready columns of tickets, one
+ * round for one table, oldest first. Tap a dish or the ticket button to move
+ * it on; served dishes leave the view.
+ */
+export function KitchenBoard() {
+  const { data: board, dataUpdatedAt } = useBoard();
+  const nowMs = useServerNow(board?.now, dataUpdatedAt);
+  const advance = useBoardAction({
+    action: ({ ids, status }: { ids: string[]; status: ForwardStatus }) =>
+      setItemsStatus(ids, status),
+    optimistic: (current, vars) => withItemStatus(current, vars.ids, vars.status),
+  });
+
+  if (!board) {
+    return (
+      <div role="status" className="grid gap-4 md:grid-cols-3">
+        <span className="sr-only">Loading orders…</span>
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-64 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  const columns = kitchenTickets(board);
+  const move = (ids: string[], status: ForwardStatus) => advance.mutate({ ids, status });
+
+  return (
+    <div className="grid items-start gap-4 md:grid-cols-3">
+      {KITCHEN_COLUMNS.map(({ status, label }) => (
+        <section key={status} aria-labelledby={`kitchen-${status}`} className="flex flex-col gap-3">
+          <h2
+            id={`kitchen-${status}`}
+            className="flex items-center gap-2 text-lg font-semibold text-ink"
+          >
+            {label}
+            <span className="rounded-full bg-surface px-2 text-base text-ink-muted tabular-nums">
+              {columns[status].length}
+            </span>
+          </h2>
+          {columns[status].length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
+              {COLUMN_EMPTY[status]}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {columns[status].map((ticket) => (
+                <li key={ticket.key}>
+                  <Ticket ticket={ticket} nowMs={nowMs} onMove={move} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function Ticket({
+  ticket,
+  nowMs,
+  onMove,
+}: {
+  ticket: KitchenTicket;
+  nowMs: number;
+  onMove: (ids: string[], status: ForwardStatus) => void;
+}) {
+  const late = isLate(ticket.acceptedAt, nowMs);
+  const next = nextStatus(ticket.status)!;
+  const heading = tableHeading(ticket.tableLabel);
+  const context = `${heading}, round ${ticket.roundNumber}`;
+
+  return (
+    <article
+      aria-label={context}
+      className={cn(
+        'flex flex-col gap-2 rounded-lg border border-l-8 border-line bg-surface p-3',
+        late ? 'border-l-attention' : EDGE[ticket.status],
+      )}
+    >
+      <header className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xl font-bold text-ink">
+          {heading}{' '}
+          <span className="text-base font-medium text-ink-muted">· Round {ticket.roundNumber}</span>
+        </h3>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 text-sm tabular-nums',
+            late ? 'font-semibold text-attention' : 'text-ink-muted',
+          )}
+        >
+          {late && <AlarmClock aria-hidden className="size-4" />}
+          {late && 'Late · '}
+          {formatElapsed(minutesSince(ticket.acceptedAt, nowMs))}
+        </span>
+      </header>
+      {ticket.note && <p className="text-sm text-ink">Note: {ticket.note}</p>}
+      <ul className="flex flex-col gap-1.5">
+        {ticket.items.map((item) => {
+          const name = item.variant ? `${item.name} (${item.variant})` : item.name;
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => onMove([item.id], next)}
+                className="flex min-h-11 w-full items-start gap-2 rounded-md border border-line px-2 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-base font-medium text-ink">
+                    <span className="tabular-nums">{item.quantity} ×</span> {name}
+                  </span>
+                  {item.note && <span className="text-sm text-ink-muted">Note: {item.note}</span>}
+                </span>
+                <span className="sr-only">
+                  {' '}
+                  —{' '}
+                  {next === 'preparing'
+                    ? 'start preparing'
+                    : next === 'ready'
+                      ? 'mark ready'
+                      : 'mark served'}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <Button
+        size="touch"
+        variant={ticket.status === 'ready' ? 'default' : 'outline'}
+        onClick={() =>
+          onMove(
+            ticket.items.map((item) => item.id),
+            next,
+          )
+        }
+      >
+        {TICKET_ACTION[ticket.status]}
+        <span className="sr-only"> for {context}</span>
+      </Button>
+    </article>
+  );
+}
