@@ -70,6 +70,24 @@ const MESSAGES: Record<string, Message> = {
 
   // Settings
   UPI_VPA_REQUIRED: 'Enter your UPI ID to show a UPI QR on bills.',
+
+  // Live orders (worker panel and admin Live orders)
+  SESSION_NOT_OPEN: 'This table was billed or closed in the meantime. The board is up to date now.',
+  ORDER_NOT_PENDING: 'Someone already approved or rejected this order.',
+  ORDER_NOT_ACCEPTED:
+    "This order can't be changed: it's waiting for approval, was rejected or was removed.",
+  ORDER_NOT_ACTIVE: 'This order was already rejected or removed.',
+  ITEM_NOT_ACTIVE: 'This dish was already cancelled or removed.',
+  INVALID_STATUS_CHANGE: 'This dish has already moved on. The board is up to date now.',
+  REQUIRES_MANAGER:
+    'Ask a manager: only managers can remove served dishes or close a table that has orders.',
+  REASON_REQUIRED: 'Choose or type a reason.',
+  WAITER_BUSY: (labels) =>
+    labels ? `This waiter is already handling ${tableList(labels)}.` : 'This waiter is busy.',
+  WAITER_NOT_AVAILABLE: (name) => `${name || 'This waiter'} isn't on duty. Choose someone else.`,
+  ORDERING_UNAVAILABLE:
+    'New orders are paused while the subscription is inactive. Open tables can still be served.',
+  ITEM_UNAVAILABLE: 'Some dishes are out of stock or no longer on the menu. We took them out.',
 };
 
 export const GENERIC_ERROR = 'Something went wrong. Try again.';

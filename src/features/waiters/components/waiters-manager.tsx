@@ -58,6 +58,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { deleteWaiter, saveWaiter, setWaiterOnDuty } from '../actions';
 import type { WaiterOverview } from '../queries';
 import { waiterFormSchema, type WaiterForm } from '../schemas';
+import { waiterStatus } from '../status';
 
 /** A waiter login that can be linked to a profile. */
 export type WaiterLogin = { memberId: string; displayName: string; username: string };
@@ -70,17 +71,6 @@ type WaitersManagerProps = {
   restaurantSlug: string;
   readOnly: boolean;
 };
-
-/** Available / Busy — Table 3 / Off duty (spec §13.3 Waiters, §8.2 max_tables_per_waiter). */
-function statusOf(waiter: WaiterOverview, maxTables: number) {
-  const tables = waiter.openTables.map((label) => `Table ${label}`).join(', ');
-  if (!waiter.onDuty) {
-    return { label: tables ? `Off duty · ${tables}` : 'Off duty', tone: 'off' as const };
-  }
-  if (waiter.openTables.length >= maxTables)
-    return { label: `Busy — ${tables}`, tone: 'busy' as const };
-  return { label: tables ? `Available · ${tables}` : 'Available', tone: 'free' as const };
-}
 
 export function WaitersManager({
   waiters,
@@ -192,7 +182,7 @@ function WaiterRow({
 }) {
   const [onDuty, setOnDuty] = useOptimistic(waiter.onDuty);
   const [, startTransition] = useTransition();
-  const status = statusOf({ ...waiter, onDuty }, maxTablesPerWaiter);
+  const status = waiterStatus({ ...waiter, onDuty }, maxTablesPerWaiter);
 
   function toggle(next: boolean) {
     startTransition(async () => {
