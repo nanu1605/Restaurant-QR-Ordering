@@ -702,6 +702,41 @@ select is(
   'the round approved by the assignment is logged as such'
 );
 
+-- ─── A pending round with nothing left to decide (table 13, P3-5) ───────────
+-- The customer cancelled every dish, so nothing is waiting: assigning a waiter
+-- must not approve that round, nor the session on its strength.
+select tests.clear_auth();
+insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
+  values (:'rest_a', '13', 'P4190A000TABLE13', 13) returning id as table13 \gset
+select tests.add_waiter(:'rest_a', 'Neha') as w_neha \gset
+select pg_temp.customer_order('P4190A000TABLE13', 'p4190-t13-round-1', tests.line(:'simple')) as t13_r1 \gset
+select session_id as s13 from public.orders where id = :'t13_r1' \gset
+update public.order_items set status = 'cancelled', cancelled_at = now() where order_id = :'t13_r1';
+
+select tests.authenticate_as(:'a_manager');
+select is(
+  public.admin_assign_waiter(:'s13', :'w_neha'),
+  jsonb_build_object('session_id', :'s13', 'waiter_id', :'w_neha', 'changed', true, 'approved_orders', 0),
+  'assigning a waiter to a table whose only round was fully cancelled approves nothing'
+);
+select tests.clear_auth();
+select results_eq(
+  format(
+    $f$ select (select status::text from public.orders where id = %L),
+               (select is_approved from public.table_sessions where id = %L),
+               (select count(*) from public.audit_logs where action = 'order.approved' and entity_id = %1$L) $f$,
+    :'t13_r1', :'s13'
+  ),
+  $$ values ('pending_approval', false, 0::bigint) $$,
+  'the round stays as it was and the session stays unapproved'
+);
+select pg_temp.customer_order('P4190A000TABLE13', 'p4190-t13-round-2', tests.line(:'simple')) as t13_r2 \gset
+select is(
+  (select status::text from public.orders where id = :'t13_r2'),
+  'pending_approval',
+  'so the table''s next order still waits for staff'
+);
+
 -- ─── Read-only restaurants keep service going (spec §10.6) ──────────────────
 select tests.suspend(:'rest_a');
 select is(

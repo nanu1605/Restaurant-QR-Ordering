@@ -1503,7 +1503,10 @@ export type Database = {
         Returns: Json
       }
       staff_revert_item_status: {
-        Args: { p_order_item_id: string }
+        Args: {
+          p_from_status: Database["public"]["Enums"]["order_item_status"]
+          p_order_item_id: string
+        }
         Returns: Json
       }
       staff_set_item_availability: {

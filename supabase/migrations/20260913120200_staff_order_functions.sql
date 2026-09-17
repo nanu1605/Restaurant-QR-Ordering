@@ -348,7 +348,12 @@ $$;
 
 -- One step back, managers and owners only (spec §10.3). Never from a
 -- cancelled or removed dish; leaving `served` clears who served it.
-create or replace function public.staff_revert_item_status(p_order_item_id uuid)
+-- p_from_status is the status the manager saw: if the dish has moved since
+-- (a double tap, another device), nothing changes, so one tap is one step.
+create or replace function public.staff_revert_item_status(
+  p_order_item_id uuid,
+  p_from_status public.order_item_status
+)
 returns jsonb
 language plpgsql
 volatile
@@ -362,6 +367,9 @@ declare
   v_session public.table_sessions;
   v_previous public.order_item_status;
 begin
+  if p_from_status is null then
+    perform private.fail('INVALID_INPUT', 'from_status');
+  end if;
   select * into v_item
   from public.order_items oi
   where oi.id = p_order_item_id and oi.restaurant_id = v_ctx.restaurant_id;
@@ -379,6 +387,10 @@ begin
   select * into v_item from public.order_items oi where oi.id = p_order_item_id for update;
   if v_item.status in ('cancelled', 'removed') then
     perform private.fail('ITEM_NOT_ACTIVE');
+  end if;
+  -- Someone already moved it (a double tap, or another manager): nothing to do.
+  if v_item.status <> p_from_status then
+    return jsonb_build_object('order_item_id', v_item.id, 'status', v_item.status, 'changed', false);
   end if;
   if v_item.status = 'placed' then
     perform private.fail('INVALID_STATUS_CHANGE', v_item.status::text);
@@ -402,7 +414,7 @@ begin
     jsonb_build_object('status', v_item.status),
     jsonb_build_object('status', v_previous)
   );
-  return jsonb_build_object('order_item_id', v_item.id, 'status', v_previous);
+  return jsonb_build_object('order_item_id', v_item.id, 'status', v_previous, 'changed', true);
 end;
 $$;
 
@@ -557,12 +569,14 @@ revoke execute on function public.staff_approve_order(uuid) from public, anon;
 revoke execute on function public.staff_reject_order(uuid, text) from public, anon;
 revoke execute on function public.staff_update_item_status(uuid, public.order_item_status) from public, anon;
 revoke execute on function public.staff_mark_order_served(uuid) from public, anon;
-revoke execute on function public.staff_revert_item_status(uuid) from public, anon;
+revoke execute on function public.staff_revert_item_status(uuid, public.order_item_status)
+  from public, anon;
 revoke execute on function public.staff_place_order(uuid, jsonb, text, text) from public, anon;
 
 grant execute on function public.staff_approve_order(uuid) to authenticated;
 grant execute on function public.staff_reject_order(uuid, text) to authenticated;
 grant execute on function public.staff_update_item_status(uuid, public.order_item_status) to authenticated;
 grant execute on function public.staff_mark_order_served(uuid) to authenticated;
-grant execute on function public.staff_revert_item_status(uuid) to authenticated;
+grant execute on function public.staff_revert_item_status(uuid, public.order_item_status)
+  to authenticated;
 grant execute on function public.staff_place_order(uuid, jsonb, text, text) to authenticated;

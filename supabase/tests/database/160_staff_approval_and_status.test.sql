@@ -226,7 +226,7 @@ select ok(
       'public.staff_reject_order(uuid, text)',
       'public.staff_update_item_status(uuid, public.order_item_status)',
       'public.staff_mark_order_served(uuid)',
-      'public.staff_revert_item_status(uuid)'
+      'public.staff_revert_item_status(uuid, public.order_item_status)'
     ]) as f
   ),
   'signed-in staff can call these functions, anonymous visitors cannot'
@@ -242,13 +242,13 @@ select throws_ok(
   'P0001', 'FORBIDDEN', 'the kitchen cannot reject orders'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_chain'),
+  format($f$ select public.staff_revert_item_status(%L, 'served') $f$, :'i_chain'),
   'P0001', 'FORBIDDEN', 'the kitchen cannot revert a dish'
 );
 
 select tests.authenticate_as(:'a_waiter');
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_chain'),
+  format($f$ select public.staff_revert_item_status(%L, 'served') $f$, :'i_chain'),
   'P0001', 'FORBIDDEN', 'a waiter cannot revert a dish'
 );
 
@@ -703,8 +703,8 @@ select is(
 -- ─── Revert a step (table 7) ────────────────────────────────────────────────
 select tests.authenticate_as(:'a_manager');
 select is(
-  public.staff_revert_item_status(:'i_chain'),
-  jsonb_build_object('order_item_id', :'i_chain', 'status', 'ready'),
+  public.staff_revert_item_status(:'i_chain', 'served'),
+  jsonb_build_object('order_item_id', :'i_chain', 'status', 'ready', 'changed', true),
   'a manager takes a served dish back to ready'
 );
 select tests.clear_auth();
@@ -720,33 +720,38 @@ select results_eq(
 
 select tests.authenticate_as(:'a_owner');
 select is(
-  public.staff_revert_item_status(:'i_chain') ->> 'status', 'preparing',
+  public.staff_revert_item_status(:'i_chain', 'ready') ->> 'status', 'preparing',
   'an owner takes it back from ready to preparing'
 );
 select tests.authenticate_as(:'a_manager');
 select is(
-  public.staff_revert_item_status(:'i_chain') ->> 'status', 'placed',
+  public.staff_revert_item_status(:'i_chain', 'preparing') ->> 'status', 'placed',
   'and from preparing to placed'
 );
 select is(
-  pg_temp.error_of(format($f$ select public.staff_revert_item_status(%L) $f$, :'i_chain')),
+  public.staff_revert_item_status(:'i_chain', 'preparing'),
+  jsonb_build_object('order_item_id', :'i_chain', 'status', 'placed', 'changed', false),
+  'a second tap on the same revert changes nothing (the dish already moved back)'
+);
+select is(
+  pg_temp.error_of(format($f$ select public.staff_revert_item_status(%L, 'placed') $f$, :'i_chain')),
   'INVALID_STATUS_CHANGE placed',
   'a placed dish cannot go further back (the detail is its status)'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_r_cancelled'),
+  format($f$ select public.staff_revert_item_status(%L, 'served') $f$, :'i_r_cancelled'),
   'P0001', 'ITEM_NOT_ACTIVE', 'a cancelled dish cannot be reverted'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_r_removed'),
+  format($f$ select public.staff_revert_item_status(%L, 'served') $f$, :'i_r_removed'),
   'P0001', 'ITEM_NOT_ACTIVE', 'a removed dish cannot be reverted'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_waiting'),
+  format($f$ select public.staff_revert_item_status(%L, 'placed') $f$, :'i_waiting'),
   'P0001', 'ORDER_NOT_ACCEPTED', 'a dish of an order waiting for approval cannot be reverted'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, gen_random_uuid()),
+  format($f$ select public.staff_revert_item_status(%L, 'served') $f$, gen_random_uuid()),
   'P0001', 'NOT_FOUND', 'an unknown dish is not found'
 );
 
@@ -798,7 +803,7 @@ select throws_ok(
   'P0001', 'SESSION_NOT_OPEN', 'a billed round cannot be marked served'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_b_preparing'),
+  format($f$ select public.staff_revert_item_status(%L, 'preparing') $f$, :'i_b_preparing'),
   'P0001', 'SESSION_NOT_OPEN', 'a billed dish cannot be reverted'
 );
 
@@ -836,7 +841,7 @@ select throws_ok(
   'P0001', 'NOT_FOUND', 'another restaurant''s round cannot be marked served'
 );
 select throws_ok(
-  format($f$ select public.staff_revert_item_status(%L) $f$, :'i_other'),
+  format($f$ select public.staff_revert_item_status(%L, 'preparing') $f$, :'i_other'),
   'P0001', 'NOT_FOUND', 'another restaurant''s dish cannot be reverted'
 );
 
@@ -878,7 +883,7 @@ select is(
 );
 select tests.authenticate_as(:'a_manager');
 select is(
-  public.staff_revert_item_status(:'i_ro_revert') ->> 'status', 'ready',
+  public.staff_revert_item_status(:'i_ro_revert', 'served') ->> 'status', 'ready',
   'managers can still revert a step'
 );
 

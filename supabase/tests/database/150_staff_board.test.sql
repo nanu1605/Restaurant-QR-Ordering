@@ -509,8 +509,8 @@ select results_eq(
 -- ─── Kitchen ────────────────────────────────────────────────────────────────
 select results_eq(
   $$ select * from pg_temp.rounds_of(pg_temp.board('kitchen')) $$,
-  $$ values ('A2', 1, 'accepted', false), ('A2', 2, 'accepted', false), ('A2', 3, 'removed', false) $$,
-  'the kitchen gets accepted and removed rounds only, never waiting or rejected ones'
+  $$ values ('A2', 1, 'accepted', false), ('A2', 2, 'accepted', false) $$,
+  'the kitchen gets accepted rounds only: never waiting, rejected or deleted ones (a round may be deleted while still waiting)'
 );
 select results_eq(
   $$ select t ->> 'label', t #> '{session,rounds}', (t #>> '{session,waiting_count}')::int

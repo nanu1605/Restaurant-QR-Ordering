@@ -4,9 +4,10 @@
 -- Realtime events only trigger a refetch of this; nothing is patched from event
 -- payloads (spec §12, docs/DECISIONS.md P4-3).
 --
--- Kitchen users never receive pending-approval or rejected rounds (spec §10.2),
--- only how many rounds are waiting (docs/DECISIONS.md P4-4). No prices: the
--- board is for service, billing comes later.
+-- Kitchen users only receive accepted rounds: never waiting or rejected ones
+-- (spec §10.2), nor deleted ones, which may have been deleted while still
+-- waiting. They do get how many rounds are waiting (docs/DECISIONS.md P4-4).
+-- No prices: the board is for service, billing comes later.
 create or replace function public.staff_get_board()
 returns jsonb
 language plpgsql
@@ -86,7 +87,7 @@ begin
                      on om.restaurant_id = o.restaurant_id and om.user_id = o.removed_by
                    where o.restaurant_id = s.restaurant_id
                      and o.session_id = s.id
-                     and (not v_kitchen or o.status in ('accepted', 'removed'))
+                     and (not v_kitchen or o.status = 'accepted')
                  ), '[]'::jsonb)
                )
                from public.table_sessions s

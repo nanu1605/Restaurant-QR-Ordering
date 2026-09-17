@@ -12,7 +12,9 @@
 
 -- Assign (or reassign) a waiter. If the session has orders waiting for
 -- approval, assigning approves them too, so approval and assignment take one
--- tap (spec §10.7, docs/DECISIONS.md P4-12). The waiter row is locked, so two
+-- tap (spec §10.7, docs/DECISIONS.md P4-12). A pending round whose dishes were
+-- all cancelled isn't waiting (P3-5): it approves nothing, so the table's next
+-- order still waits for staff. The waiter row is locked, so two
 -- managers can't both give a waiter their last free slot.
 create or replace function public.admin_assign_waiter(
   p_session_id uuid,
@@ -70,7 +72,7 @@ begin
   for v_order in
     select * from public.orders o
     where o.restaurant_id = v_session.restaurant_id and o.session_id = v_session.id
-      and o.status = 'pending_approval'
+      and private.is_waiting(o)
     order by o.round_number
     for update
   loop

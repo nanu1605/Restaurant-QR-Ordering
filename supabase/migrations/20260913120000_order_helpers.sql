@@ -248,10 +248,13 @@ begin
 
   perform private.assert_orderable(v_table.restaurant_id, v_lines);
 
-  -- Join the table's open session or open one (spec §10.1).
+  -- Join the table's open session or open one (spec §10.1). Locked (after the
+  -- table, docs/DECISIONS.md P4-10) so an approval or waiter assignment in
+  -- flight finishes first and the round sees whether the session is approved.
   select * into v_session
   from public.table_sessions s
-  where s.dining_table_id = v_table.id and s.status = 'open';
+  where s.dining_table_id = v_table.id and s.status = 'open'
+  for update;
   if not found then
     insert into public.table_sessions (
       restaurant_id, dining_table_id, table_label_snapshot, is_approved, approved_at
