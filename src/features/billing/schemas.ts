@@ -200,3 +200,26 @@ export function datePresets(today: string): DatePreset[] {
     { key: 'month', label: 'This month', from: `${today.slice(0, 8)}01`, to: today },
   ];
 }
+
+/** The URL for Total orders with these filters (page resets to 1). */
+export function totalOrdersHref(pathname: string, params: Record<string, string | undefined>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) search.set(key, value);
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+/** URL params for the current filters, to change one and keep the rest. */
+export function filterParams(filters: TotalOrdersFilters): Record<string, string | undefined> {
+  return {
+    from: filters.from,
+    to: filters.to,
+    table: filters.table_id,
+    waiter: filters.waiter_id,
+    payment: filters.payment_status,
+    mode: filters.payment_mode,
+    invoice: filters.invoice,
+    void: filters.show_void === false ? 'hide' : undefined,
+    view: filters.view === 'closed_unbilled' ? 'closed' : undefined,
+  };
+}
