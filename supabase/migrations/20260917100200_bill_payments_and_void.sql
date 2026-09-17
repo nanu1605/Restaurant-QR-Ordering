@@ -58,7 +58,8 @@ $$;
 
 -- Why a bill can't be voided with "Reopen table" right now, or null when it
 -- can: 'void' (already void), 'window' (no reopen window or it has passed),
--- 'table_busy' (new guests have opened the table).
+-- 'table_busy' (new guests have opened the table), 'table_inactive' (the
+-- table was switched off since, so nobody could order there).
 create or replace function private.reopen_blocker(
   p_bill public.bills,
   p_session public.table_sessions,
@@ -73,6 +74,12 @@ as $$
     when p_bill.status = 'void' or p_session.status <> 'billed' then 'void'
     when p_window_minutes = 0
       or now() > p_bill.generated_at + make_interval(mins => p_window_minutes) then 'window'
+    when not exists (
+      select 1 from public.dining_tables t
+      where t.restaurant_id = p_session.restaurant_id
+        and t.id = p_session.dining_table_id
+        and t.is_active
+    ) then 'table_inactive'
     when exists (
       select 1 from public.table_sessions s
       where s.restaurant_id = p_session.restaurant_id

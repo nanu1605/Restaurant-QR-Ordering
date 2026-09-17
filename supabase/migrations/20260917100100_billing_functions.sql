@@ -160,12 +160,16 @@ $$;
 -- the restaurant has waiter profiles; then numbers the invoice, stores the
 -- snapshots, marks the session billed (the table is free again) and ends the
 -- waiter's assignment. Works in read-only mode (spec §10.6).
+-- p_expected_grand_total_paise is the total the manager confirmed; if the bill
+-- now comes to something else (a dish removed, settings changed meanwhile),
+-- BILL_CHANGED with the new total, and nothing is saved.
 create or replace function public.admin_generate_bill(
   p_session_id uuid,
   p_discount_type public.discount_type,
   p_discount_value bigint,
   p_discount_reason text,
-  p_apply_service_charge boolean
+  p_apply_service_charge boolean,
+  p_expected_grand_total_paise bigint default null
 )
 returns jsonb
 language plpgsql
@@ -215,6 +219,11 @@ begin
     perform private.fail('WAITER_REQUIRED');
   end if;
   v_totals := v_draft -> 'totals';
+  if p_expected_grand_total_paise is not null
+    and (v_totals ->> 'grand_total_paise')::bigint <> p_expected_grand_total_paise
+  then
+    perform private.fail('BILL_CHANGED', v_totals ->> 'grand_total_paise');
+  end if;
   if (v_totals ->> 'discount_paise')::bigint > 0 then
     v_reason := private.reason(p_discount_reason);
   end if;
@@ -243,7 +252,10 @@ begin
     v_session.table_label_snapshot,
     (v_draft -> 'waiter' ->> 'id')::uuid, v_draft -> 'waiter' ->> 'name',
     v_draft -> 'lines', private.restaurant_bill_snapshot(v_restaurant),
-    v_restaurant.gst_mode, v_restaurant.gst_rate_bps, v_restaurant.prices_include_tax,
+    -- The tax settings the totals were worked out with (not a second read).
+    (v_draft -> 'settings' ->> 'gst_mode')::public.gst_mode,
+    (v_draft -> 'settings' ->> 'gst_rate_bps')::int,
+    (v_draft -> 'settings' ->> 'prices_include_tax')::boolean,
     (v_totals ->> 'subtotal_paise')::bigint,
     (v_draft ->> 'discount_type')::public.discount_type,
     (v_draft ->> 'discount_value')::bigint,
@@ -363,7 +375,7 @@ revoke execute on function public.admin_billing_sessions() from public, anon;
 revoke execute on function public.admin_preview_bill(uuid, public.discount_type, bigint, boolean)
   from public, anon;
 revoke execute on function public.admin_generate_bill(
-  uuid, public.discount_type, bigint, text, boolean
+  uuid, public.discount_type, bigint, text, boolean, bigint
 ) from public, anon;
 revoke execute on function public.admin_sample_bill() from public, anon;
 
@@ -371,6 +383,6 @@ grant execute on function public.admin_billing_sessions() to authenticated;
 grant execute on function public.admin_preview_bill(uuid, public.discount_type, bigint, boolean)
   to authenticated;
 grant execute on function public.admin_generate_bill(
-  uuid, public.discount_type, bigint, text, boolean
+  uuid, public.discount_type, bigint, text, boolean, bigint
 ) to authenticated;
 grant execute on function public.admin_sample_bill() to authenticated;

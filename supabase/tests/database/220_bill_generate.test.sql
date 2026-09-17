@@ -342,7 +342,16 @@ select is(
 select tests.clear_auth();
 update public.restaurants set service_charge_enabled = false where id = :'rest_a';
 select tests.authenticate_as(:'a_manager');
-select public.admin_generate_bill(:'s7', 'none', 0, null, true) as bill7 \gset
+select is(
+  pg_temp.error_of(format($f$ select public.admin_generate_bill(%L, 'none', 0, null, true, 30870) $f$, :'s7')),
+  'BILL_CHANGED 29400',
+  'a bill that no longer comes to the confirmed total is refused with the new total'
+);
+select is(
+  (select count(*) from public.bills where session_id = :'s7'), 0::bigint,
+  'nothing is saved when the total changed'
+);
+select public.admin_generate_bill(:'s7', 'none', 0, null, true, 29400) as bill7 \gset
 select is(
   jsonb_build_array(:'bill7'::jsonb -> 'invoice_number', :'bill7'::jsonb -> 'grand_total_paise'),
   jsonb_build_array('INV/' || :'fy' || '/00002', 29400),

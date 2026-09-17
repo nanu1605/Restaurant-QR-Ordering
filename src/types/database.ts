@@ -1353,6 +1353,7 @@ export type Database = {
           p_discount_reason: string
           p_discount_type: Database["public"]["Enums"]["discount_type"]
           p_discount_value: number
+          p_expected_grand_total_paise?: number
           p_session_id: string
         }
         Returns: Json

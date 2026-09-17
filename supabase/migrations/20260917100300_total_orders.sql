@@ -52,7 +52,9 @@ revoke execute on function private.json_date(jsonb, text) from public, anon, aut
 -- 366 days), table_id, waiter_id, payment_status, payment_mode, invoice (part
 -- of the number), show_void (default true), view ('bills' or
 -- 'closed_unbilled'), page (50 rows each). The summary covers the bills that
--- match the filters; void bills never count towards money or counts.
+-- match the filters; void bills never count towards money or counts. With a
+-- payment mode chosen, "collected" counts only payments in that mode, so a
+-- split bill's UPI part doesn't show up in the cash total.
 create or replace function public.admin_total_orders(p_filters jsonb)
 returns jsonb
 language plpgsql
@@ -175,6 +177,7 @@ begin
     'collected_paise', coalesce(sum((
       select coalesce(sum(p.amount_paise), 0) from public.bill_payments p
       where p.restaurant_id = b.restaurant_id and p.bill_id = b.id and not p.is_void
+        and (v_payment_mode is null or p.mode::text = v_payment_mode)
     )), 0),
     'unpaid_bills', count(*) filter (where b.payment_status = 'unpaid'),
     'void_bills', (

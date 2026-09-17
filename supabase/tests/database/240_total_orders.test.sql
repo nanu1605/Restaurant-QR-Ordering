@@ -248,6 +248,24 @@ select is(
   'the next business day starts at 4:00 am'
 );
 
+-- A split bill on the 12th: ₹100 cash + ₹200 UPI.
+select tests.clear_auth();
+select pg_temp.bill(:'table6', :'w_anita', '2026-09-12 13:00+05:30', 6, 30000, 0, 0, 1) as bill6 \gset
+update public.bills set payment_status = 'paid', paid_at = generated_at where id = :'bill6';
+insert into public.bill_payments (restaurant_id, bill_id, mode, amount_paise)
+values (:'rest_a', :'bill6', 'cash', 10000), (:'rest_a', :'bill6', 'upi', 20000);
+select tests.authenticate_as(:'a_manager');
+select is(
+  (select jsonb_build_array(o -> 'summary' -> 'bills', o -> 'summary' -> 'total_paise', o -> 'summary' -> 'collected_paise')
+   from pg_temp.orders('{"from": "2026-09-12", "payment_mode": "cash"}') as o),
+  '[1, 30000, 10000]'::jsonb,
+  'with a payment mode chosen, only payments in that mode count as collected'
+);
+select is(
+  pg_temp.orders('{"from": "2026-09-12"}') -> 'summary' -> 'collected_paise', '30000'::jsonb,
+  'without a mode, every payment counts'
+);
+
 -- ─── Closed without bill, paging ────────────────────────────────────────────
 select is(
   (select jsonb_build_array(o -> 'view', o -> 'total', o -> 'rows' -> 0 -> 'table_label', o -> 'rows' -> 0 -> 'waiter_name',

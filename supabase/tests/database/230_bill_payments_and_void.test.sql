@@ -329,6 +329,21 @@ select lives_ok(
   'outside the window a bill can still be voided without reopening'
 );
 
+-- Table 7 was switched off after billing.
+select tests.clear_auth();
+update public.dining_tables set is_active = false where id = pg_temp.table_id('7');
+select tests.authenticate_as(:'a_manager');
+select is(
+  public.admin_get_bill(:'bill7') -> 'reopen' -> 'blocker', '"table_inactive"'::jsonb,
+  'bill detail says the table is switched off'
+);
+select is(
+  pg_temp.error_of(format('select public.admin_void_bill(%L, %L, true)', :'bill7', 'Add a dish')),
+  'REOPEN_NOT_ALLOWED table_inactive', 'a switched-off table cannot be reopened'
+);
+select tests.clear_auth();
+update public.dining_tables set is_active = true where id = pg_temp.table_id('7');
+
 -- No reopen window at all.
 select tests.clear_auth();
 update public.restaurants set reopen_window_minutes = 0 where id = :'rest_a';
