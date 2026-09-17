@@ -536,3 +536,96 @@ bottom of each section.
 - **P4-22 · Live E2E** runs on the desktop project and opens its own phone context for the customer.
   Realtime checks start only once the header says "Live" and use 5 s timeouts, shorter than the
   30 s poll, so a broken channel fails the test.
+
+## Phase 5 — billing, printing, payments, Total orders (2026-09-17)
+
+### Bills
+
+- **P5-1 · One calculation:** `private.calc_bill_totals` (subtotal, discount, service charge and GST
+  settings in, totals out) is pure SQL with numeric maths and `round()`, half up on non-negative
+  values (checked on Postgres 17). `private.bill_pricing` prices lines with the saved settings and
+  `private.bill_draft` adds the blockers; preview, generation and the sample bill all use them, so
+  the screen and the stored bill can't disagree. The §11.1 cases are pgTAP tests.
+- **P5-2 · Bill lines merge** the same dish, option and unit price across rounds ("Butter Naan × 3"),
+  in the order first ordered. Dish notes aren't printed.
+- **P5-3 · Billable** means placed, preparing, ready or served dishes on accepted rounds. Only a
+  round that is really waiting (`private.is_waiting`, P3-5) blocks the bill (`ORDERS_WAITING`); a
+  waiting round the customer cancelled entirely neither blocks nor bills.
+- **P5-4 · Generation locks** the dining table, the session and the session's dishes, then the
+  invoice counter. A second generate on the same table gets `ALREADY_BILLED` with the bill id in
+  DETAIL, and the screen opens that bill. A customer cancel that waited for those dish locks used
+  to go through on a billed table (bill generation locks dishes without changing them, so Postgres
+  didn't re-check the join); `customer_cancel_item` now looks at the session again after locking
+  the dish. The `dblink` race test fails without that fix.
+- **P5-5 · Invoice numbers** come from `insert … on conflict do update set last_seq = last_seq + 1`
+  per restaurant and financial year (April–March in the restaurant's timezone). Numbers are padded
+  to five digits but a sixth isn't cut off (`lpad` truncates). A new prefix applies to new bills.
+- **P5-6 · What a bill freezes:** the restaurant's name, legal name, address, phone, GSTIN, FSSAI,
+  logo and footer, the waiter, the tax settings and the lines. How it prints is read at print time:
+  paper width, the "Served by" line, branding (`remove_branding`) and the UPI QR, which needs the
+  setting, the plan feature and a UPI ID, so a reprint pays today's UPI ID.
+- **P5-17 · Discounts:** percent up to 100% with two decimals (stored as basis points), flat in
+  rupees capped at the subtotal by the calculation, a reason of 1–200 characters when the discount
+  is above zero, and `FEATURE_NOT_IN_PLAN` without `discounts`. A service charge is added only when
+  it is switched on in settings and ticked on the bill; the bill labels it "Service charge
+  (optional)".
+
+### Payments, void and reopen
+
+- **P5-8 · Payments** are recorded once per bill: 1–10 rows that add up to the grand total
+  (`PAYMENT_MISMATCH`, DETAIL = the total), more than one row needs `split_payments`, amounts are
+  positive except that a ₹0 bill takes a single ₹0 row, references are at most 100 characters.
+  The cash change calculator is on screen only.
+- **P5-7 · Void** marks the bill void and its payments `is_void`; `payment_status` stays as history
+  and voiding twice changes nothing. **Reopen** is allowed only while `reopen_window_minutes > 0`,
+  within the window, and while the table has no new session; otherwise `REOPEN_NOT_ALLOWED`
+  (`window` / `table_busy`) and nothing is voided. The session opens again (billed time cleared)
+  and its waiter comes back if still active, on duty and under the table limit (waiter row locked),
+  else the table is Unassigned. A void without reopening leaves the session billed. Locks: table →
+  session → bill → waiter.
+- **P5-9 · Read-only restaurants** still bill, take payments, void, reopen and print (§10.6).
+- **P5-16 · A printed void bill** says VOID under the title; the sample bill says "TEST PRINT — NOT A
+  BILL".
+
+### Screens
+
+- **P5-10 · Print pages have no admin chrome:** the admin pages moved into the route group
+  `src/app/admin/(panel)` (URLs unchanged) and `src/app/admin/(print)` holds
+  `/admin/bills/[billId]/print` and `/admin/settings/test-print` behind the same login check,
+  without the live connection. The print page sets `@page { size: 80mm auto; margin: 0 }` (or
+  58 mm) with a 72 / 48 mm printable width, opens the print dialog once on load and counts the print
+  after `window.print()` returns. `?copy=office` adds the discount reason and who generated the
+  bill. Test print uses `admin_sample_bill()` (the §11.1 dishes with the saved settings) and counts
+  nothing.
+- **P5-11 · No A4 bill layout:** `paper_width` only has 58 mm and 80 mm (§15 lists A4 as optional).
+- **P5-12 · Total orders** is one function, `admin_total_orders(p_filters)`: business dates (the
+  range covers from the start hour of the first day to the start hour after the last, at most 366
+  days, default today's business day), table, waiter, payment status and mode, invoice number
+  (plain text match), void bills shown or hidden, the Closed without bill view, 50 rows a page.
+  Void bills never count in the summary; "Net collected" sums non-void payments; "Items" is billed
+  quantities. Business-day and financial-year logic lives in SQL only, so the §18 edge cases (3:59
+  am, 31 March 11:59 pm) are pgTAP tests rather than a `time.ts`; the filters live in the URL.
+- **P5-13 · Billing screens stay live:** open tables and the bill preview are TanStack queries under
+  `['billing', memberId, …]`, refreshed by the restaurant channel's events (and a 30 s poll); the bill
+  page and Total orders are server-rendered and refresh after their own actions.
+- **P5-14 · The bill builder** is a page per table (`/admin/billing/[sessionId]`). The preview
+  refetches 300 ms after the discount or service charge stops changing and keeps the previous
+  numbers meanwhile; Generate bill stays disabled until the preview matches the choice, so the
+  bill is the one on screen. Unserved dishes get the §10.5 confirmation ("2 items not marked served
+  — bill anyway?") with the list.
+- **P5-15 · Bill history** shows the audit entries of the bill and its table session, oldest first.
+- **New error codes:** `ORDERS_WAITING`, `NOTHING_TO_BILL`, `WAITER_REQUIRED`, `ALREADY_BILLED`,
+  `BILL_VOID`, `BILL_ALREADY_PAID`, `PAYMENT_MISMATCH`, `REOPEN_NOT_ALLOWED`.
+
+### Tests
+
+- **pgTAP 210–250:** the §11.1 cases and edges, financial year, lines and pricing; preview and
+  generation (roles, blockers, snapshots, numbering, prefix, a sixth digit, plan gating, read-only,
+  audit); payments, void, reopen and print counts; Total orders filters and business-day bounds;
+  `dblink` races (two generates, bill vs customer order both ways, cancel vs bill both ways, two
+  tables numbered at once, reopen vs customer order).
+- **E2E:** the live orders flow now ends with the §18 billing steps (delete a round, discount, print
+  page content, UPI payment, Total orders, Ravi available, a fresh customer session);
+  `billing.spec.ts` covers void and reopen, blockers, split payments and the change calculator,
+  Starter limits, read-only billing, Total orders filters and test print. Printing on a real 80 mm
+  printer stays a manual check.

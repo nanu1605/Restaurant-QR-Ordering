@@ -69,6 +69,18 @@ only play sound after a tap, so each device shows **Enable sound** once. To try 
 demo table on a phone-sized window and `/staff` as `demo` / `waiter1` side by side, then place an
 order.
 
+### Billing and Total orders
+
+Managers and owners bill tables at `/admin/billing`: open tables with their running totals, then a
+bill builder with the waiter, the dishes, a discount (Growth plan) and the optional service charge,
+previewed live. **Generate bill** numbers the invoice (`INV/2026-27/00001`, per financial year),
+frees the table and ends the waiter's assignment. The bill page prints (80 mm or 58 mm, set in
+Settings → Bill, which also has **Test print**), records payments (split payments on Growth, with a
+change calculator for cash) and voids a bill, optionally reopening the table within the reopen
+window. **Total orders** lists bills by business day with filters, a summary strip and the tables
+closed without a bill. Print on a real thermal printer by choosing it in the browser's print
+dialog, with the paper size set in the printer driver and headers and footers turned off.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:
