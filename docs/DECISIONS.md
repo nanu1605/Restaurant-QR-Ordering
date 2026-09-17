@@ -408,3 +408,131 @@ bottom of each section.
 - **P3-17 · Customer E2E** runs on the phone project only, on restaurants it creates; the demo
   table is only viewed. Test fixtures insert rows with the service role (bulk inserts send every
   key, so each row sets `is_available`).
+
+## Phase 4 — worker panel and live orders (2026-09-17)
+
+### Live data
+
+- **P4-1 · TanStack Query 5.102.8** for the live screens (spec §4): one browser `QueryClient`. Server
+  layouts and pages seed the first board with `setQueryData` + `dehydrate` / `HydrationBoundary`
+  rather than `initialData`, because several observers (alerts in the layout, the page) share one
+  query. The board is keyed by membership, so a shared tablet that switches login never shows the
+  previous user's board; the menu is keyed by restaurant.
+- **P4-2 · One Realtime channel per restaurant**, opened by `LiveProvider` in the `/staff` and
+  `/admin` layouts: Postgres Changes on the six published tables, filtered by `restaurant_id`,
+  joined after `await supabase.realtime.setAuth()` with `postgres_changes_options.wait: true`, so
+  "Live" means the database side is listening. Any event refetches the board 300 ms after the last
+  one (the menu too for `menu_items`); nothing is patched from payloads. Safety nets: 30 s
+  refetch, window focus, coming back online, and a refetch on every (re)subscription. A spike on
+  the local stack showed events ~110 ms after a commit, and that binding a table that isn't
+  published fails the channel **and silently stops events on every other channel of the same
+  socket** — so exactly one channel, published tables only.
+- **P4-3 · Board data from one read function, `staff_get_board()`** (security definer, scoped by
+  the caller's membership): every table, its open session's rounds and dishes, the waiters, the
+  settings the screens need and the server clock. One round trip, the role filter runs in the
+  database and pgTAP tests it. No prices.
+- **P4-4 · Kitchen logins never receive waiting or rejected rounds**, only how many rounds are
+  waiting at each table. This is a display rule: RLS lets every member read orders (§9.1). The
+  kitchen view shows accepted rounds for every role. Removed rounds aren’t sent to kitchen either:
+  its board carries accepted rounds only.
+- **P4-5 · One "waiting for approval" rule:** `private.is_waiting(order)` (pending with a dish still
+  `placed`, P3-5) drives the customer rate limit, the board and later billing.
+  `customer_place_order` was recreated on shared helpers (`parse_order_lines`, `assert_orderable`,
+  `insert_order_items`) with no behaviour change; `staff_place_order` uses the same ones.
+- **P4-16 · New-order alerts** compare each board refresh with the previous one instead of reacting
+  to `INSERT` events: a missed event still alerts on the next refetch, the kitchen hears about an
+  order when it is approved (when it becomes visible to it), the first load is silent and orders
+  placed on this device don't chime. Admin Live orders also announces newly seated tables. The
+  alerts component observes the cache without re-rendering, takes a cached board as its baseline
+  only when it is fresh (under 15 s and not invalidated), treats hydration as a new baseline rather
+  than news, and ignores refetch results while this device's own board changes are pending.
+- **P4-19 · Board changes are server actions without `refresh()`:** optimistic update, then one
+  board refetch once this device's last change has finished (`isMutating === 1`), so overlapping
+  taps don't flicker. Next 16 runs server actions one at a time per client; a kitchen ticket moves
+  all its dishes in one action. The 30 s poll, focus and reconnect refetches also wait while a change
+  is pending, the menu query has its own mutation key so a refetch can't undo an in-flight
+  availability switch, and the fetch time travels inside the board data so optimistic updates don't
+  shift the server clock offset. Availability on the worker panel uses its own action without
+  `refresh()`.
+- **Measured:** tap "Place order" on the phone → table shows on the waiter's and manager's boards
+  in 843–862 ms on the production build (E2E, local stack), inside the ~2 s target.
+
+### Rules
+
+- **P4-6 · A session with nothing active and nothing waiting** (after a reject, or when the
+  customer cancelled everything) shows "No active dishes" and stays open until staff close it or
+  add dishes (§10.2).
+- **P4-7 · Dishes only move forward;** skipping ahead is allowed. Asking for the status a dish
+  already has does nothing, so two devices tapping at once don't see errors; going backwards is
+  `INVALID_STATUS_CHANGE` (managers use Revert, one step). Revert takes the status the manager saw
+  (`p_from_status`); if the dish has moved since, it returns `changed: false` instead of stepping
+  back twice.
+- **P4-8 · A partial removal lowers the quantity in place** and is audited with before/after
+  quantities (§9.3); removing the whole quantity marks the dish `removed`, struck through with who
+  and why (§10.8: existing rounds are never edited, so no split lines).
+- **P4-9 · Read-only (§10.6):** only new orders stop (`ORDERING_UNAVAILABLE`, "Add dishes" disabled).
+  Approve, reject, status changes, removals, assignment and close without bill keep working.
+- **P4-10 · Lock order** everywhere: dining table → session → waiter → order → dishes. Functions
+  that end a session lock the table first, so a customer order (which holds the table lock) can't
+  land in a session that is closing. Phase 5 billing and void-reopen must follow the same order.
+  `customer_place_order` also locks the open session row. `admin_update_table` locks the restaurant
+  with `for no key update`, which doesn't block the `for key share` locks foreign keys take while
+  orders are inserted.
+- **P4-11 · Assignment keeps `table_sessions.assigned_*` and `session_waiter_assignments` in step**
+  through `start_assignment` / `end_assignment`. A closed or billed session keeps
+  `assigned_waiter_id` as history; availability counts open sessions only.
+- **P4-12 · Assigning a waiter approves every waiting order** of the session (§10.7 "one tap"),
+  audited as `order.approved` with `via: assignment`; waiting rounds exist only because approval was
+  on when they were placed.
+- **P4-13 · Auto-assign (§10.7)** only when the caller's own waiter profile is active, on duty and
+  under the limit and the table has no waiter; the waiter row is locked for the check, as it is
+  when a manager assigns (so two managers can't both give a waiter their last free table).
+- **P4-14 · Staff orders** store their note in `orders.customer_note` (the order's note), are always
+  accepted and approve the session. Placing orders and moving dishes forward aren't audited
+  (§8.8's list); approvals, rejections, removals, reverts, assignments and closes are.
+- **P4-15 · A staff order's idempotency key** replays only for the same staff member at the same
+  table; any other reuse is `INVALID_INPUT` (like P3-4).
+- **P4-20 · Reasons** are 1–200 characters. Reject offers "Prank / not seated", "Items unavailable",
+  "Duplicate" or Other…; Remove dish "Customer request", "Wrong item", "Out of stock", "Quality
+  complaint" or Other… (§13.2). Delete order and Close without bill take a typed reason.
+- **Close without bill (§9.3):** waiters close tables with no accepted dishes; anything else needs a
+  manager (`REQUIRES_MANAGER`). Dishes still on the way are cancelled, served ones stay.
+- **New error codes:** `SESSION_NOT_OPEN`, `ORDER_NOT_PENDING`, `ORDER_NOT_ACCEPTED`,
+  `ORDER_NOT_ACTIVE`, `ITEM_NOT_ACTIVE`, `INVALID_STATUS_CHANGE`, `REQUIRES_MANAGER`,
+  `REASON_REQUIRED`, `WAITER_BUSY` (DETAIL = the tables), `WAITER_NOT_AVAILABLE` (DETAIL = name).
+
+### Screens
+
+- **P4-17 · Kitchen tickets are one per round and status:** a round with dishes at different stages
+  shows in each column it has dishes in, so ready dishes never hide behind new ones. Tickets turn
+  to the attention colour with a "Late" label after 15 minutes. Tapping a dish moves it on; the
+  ticket button moves all its dishes.
+- **P4-18 · The `kds` plan feature is gated in the UI** (the Kitchen tab and page); no database
+  function is specific to the kitchen view.
+- **P4-21 · `dining_tables` isn't published to Realtime (§8.11):** new or renamed tables reach open
+  boards on the next 30 s refetch or window focus.
+- **Sound (§12):** "Enable sound" shows until the device chooses; then a small on/off toggle. The
+  choice is kept in `localStorage["tableorder:sound"]`; the chime is two notes synthesised with Web
+  Audio (no sound file), and audio is resumed by a tap after a reload.
+- **Drawer and pickers:** "Add dishes" is a menu picker on top of the table drawer; after placing,
+  the drawer stays open on the new round. Options are one button each ("Half · ₹280") so staff add
+  them in one tap. "Waiter:" with Assign / Reassign / Unassign appears in the drawer on Live orders.
+- **Worker panel navigation:** Board · Kitchen (with `kds`) · Availability. Linked waiter logins
+  start on "My tables"; kitchen logins don't get the "Needs approval" filter.
+- **Shared hooks moved to `src/hooks`** (`useNow` now shares one timer per interval; the board ticks
+  every 30 s). Table cards are at least 13rem wide (spec minimum 160 px) so state badges fit, and
+  labels on cards and badges are 16 px.
+- **Touch and keyboard:** close buttons, the sound toggle and header controls are 44 px. After a
+  kitchen move, focus goes to the next dish on the same ticket or the column heading, and a polite
+  status message says what moved. Delete order is offered on waiting rounds too. Sound resumes on
+  any later click, touch end or key press, not only the first.
+
+### Tests
+
+- **pgTAP 150–200** cover the board (including the kitchen filter and P3-5), approval and status,
+  staff orders with auto-assignment, removals and close without bill, assignment, and `dblink`
+  races: a staff order and a customer first order on one free table, and two managers assigning
+  the same waiter. Helpers `tests.add_waiter` and `tests.bill_session` (billing arrives in Phase 5).
+- **P4-22 · Live E2E** runs on the desktop project and opens its own phone context for the customer.
+  Realtime checks start only once the header says "Live" and use 5 s timeouts, shorter than the
+  30 s poll, so a broken channel fails the test.

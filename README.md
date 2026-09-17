@@ -49,9 +49,25 @@ Each table's QR code opens `/t/<qr token>`. The demo tables use fixed tokens, so
 http://localhost:3000/t/DEMO0000TABLE001 is table 1 (…002 to …006 for tables 2–6). Customers
 browse the menu, add dishes (with options and notes), place the order and follow it on "Your
 table's orders", where they can cancel their own dishes for a short time. The demo restaurant asks
-staff to confirm a table's first order, so new orders show as waiting until Phase 4's staff
-screens (or Studio) approve them. Each phone gets a signed device cookie, which is why
-`CUSTOMER_COOKIE_SECRET` is required.
+staff to confirm a table's first order, so new orders wait until a waiter approves them on the
+worker panel (or a manager assigns the table a waiter). Each phone gets a signed device cookie,
+which is why `CUSTOMER_COOKIE_SECRET` is required.
+
+### Worker panel and live orders
+
+Staff open `/staff` (waiters and kitchen land there; managers and owners can switch to it). The
+**Board** shows every table live: state, waiter, time seated and dishes by status. Tap a table to
+approve or reject a waiting order, move dishes on ("Start preparing", "Mark ready", "Mark served"),
+remove a dish with a reason, add dishes (or an order for a free table) and close a table without a
+bill. **Kitchen** (Growth plan) shows New / Preparing / Ready tickets; **Availability** switches
+dishes in and out of stock. Managers use **Live orders** in the admin panel for the same board plus
+the Unassigned tables queue, the waiter strip, assigning waiters, deleting orders and reverting a
+status.
+
+Updates arrive over Supabase Realtime (the header says Live, Reconnecting… or Offline). Browsers
+only play sound after a tap, so each device shows **Enable sound** once. To try it locally, open the
+demo table on a phone-sized window and `/staff` as `demo` / `waiter1` side by side, then place an
+order.
 
 ### Admin panel
 
