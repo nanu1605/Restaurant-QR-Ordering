@@ -126,7 +126,12 @@ select set_eq(
       ('public.admin_remove_order'),
       ('public.staff_close_session_unbilled'),
       ('public.admin_assign_waiter'),
-      ('public.admin_unassign_waiter')
+      ('public.admin_unassign_waiter'),
+      -- Phase 5: billing, payments, total orders
+      ('public.admin_billing_sessions'),
+      ('public.admin_preview_bill'),
+      ('public.admin_generate_bill'),
+      ('public.admin_sample_bill')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

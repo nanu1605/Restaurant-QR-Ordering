@@ -1331,6 +1331,7 @@ export type Database = {
         Args: { p_force?: boolean; p_session_id: string; p_waiter_id: string }
         Returns: Json
       }
+      admin_billing_sessions: { Args: never; Returns: Json }
       admin_create_category: { Args: { p_name: string }; Returns: string }
       admin_create_staff: {
         Args: { p_actor_user_id: string; p_payload: Json }
@@ -1346,6 +1347,16 @@ export type Database = {
         Returns: number
       }
       admin_delete_waiter: { Args: { p_waiter_id: string }; Returns: undefined }
+      admin_generate_bill: {
+        Args: {
+          p_apply_service_charge: boolean
+          p_discount_reason: string
+          p_discount_type: Database["public"]["Enums"]["discount_type"]
+          p_discount_value: number
+          p_session_id: string
+        }
+        Returns: Json
+      }
       admin_list_staff: {
         Args: never
         Returns: {
@@ -1359,6 +1370,15 @@ export type Database = {
           waiter_id: string
           waiter_name: string
         }[]
+      }
+      admin_preview_bill: {
+        Args: {
+          p_apply_service_charge: boolean
+          p_discount_type: Database["public"]["Enums"]["discount_type"]
+          p_discount_value: number
+          p_session_id: string
+        }
+        Returns: Json
       }
       admin_reactivate_staff: {
         Args: { p_member_id: string }
@@ -1377,6 +1397,7 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: string
       }
+      admin_sample_bill: { Args: never; Returns: Json }
       admin_save_menu_item: { Args: { p_item: Json }; Returns: string }
       admin_set_waiter_on_duty: {
         Args: { p_on_duty: boolean; p_waiter_id: string }
