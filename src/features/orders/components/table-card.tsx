@@ -65,7 +65,7 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
         highlighted && 'ring-4 ring-attention/40',
       )}
     >
-      <span className="flex items-start justify-between gap-2">
+      <span className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
         <span className="text-2xl leading-tight font-bold text-ink">
           <span className="sr-only">
             {tableHeading(table.label) === table.label ? '' : 'Table '}

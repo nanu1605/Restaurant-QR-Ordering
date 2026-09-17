@@ -30,7 +30,8 @@ function SoundToggle() {
     return (
       <Button variant="outline" size="lg" onClick={() => setSoundEnabled(true)}>
         <Volume2 aria-hidden />
-        Enable sound
+        {/* Icon only on phones, where the header is tight. */}
+        <span className="sr-only sm:not-sr-only">Enable sound</span>
       </Button>
     );
   }

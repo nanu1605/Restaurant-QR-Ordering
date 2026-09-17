@@ -66,7 +66,7 @@ export function LiveBoard({ mode }: { mode: BoardMode }) {
           description="Choose All to see every table."
         />
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-3">
           {tables.map((table) => (
             <li key={table.id}>
               <TableCard
@@ -100,7 +100,7 @@ function BoardSkeleton() {
           <Skeleton key={i} className="h-11 w-28 rounded-full" />
         ))}
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <Skeleton key={i} className="h-36 rounded-lg" />
         ))}
