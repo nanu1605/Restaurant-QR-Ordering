@@ -79,3 +79,70 @@ export function formatINR(paise: Paise, options: FormatINROptions = {}): string 
     decimal as Intl.StringNumericLiteral,
   );
 }
+
+const ONES = [
+  '',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function belowHundred(n: number): string {
+  if (n < 20) return ONES[n]!;
+  return [TENS[Math.trunc(n / 10)], ONES[n % 10]].filter(Boolean).join(' ');
+}
+
+function belowThousand(n: number): string {
+  const hundreds = Math.trunc(n / 100);
+  const rest = n % 100;
+  return [hundreds ? `${ONES[hundreds]} Hundred` : '', rest ? belowHundred(rest) : '']
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Indian numbering in words: 12345678 → "One Crore Twenty Three Lakh …". */
+function indianWords(n: number): string {
+  if (n === 0) return 'Zero';
+  const crore = Math.trunc(n / 10_000_000);
+  const lakh = Math.trunc((n % 10_000_000) / 100_000);
+  const thousand = Math.trunc((n % 100_000) / 1_000);
+  const rest = n % 1_000;
+  return [
+    crore ? `${indianWords(crore)} Crore` : '',
+    lakh ? `${belowHundred(lakh)} Lakh` : '',
+    thousand ? `${belowHundred(thousand)} Thousand` : '',
+    rest ? belowThousand(rest) : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * The amount printed in words on bills (spec §11.3), Indian numbering:
+ * 66200 → "Rupees Six Hundred Sixty Two Only".
+ */
+export function amountInWords(paise: Paise): string {
+  assertPaise(paise);
+  if (paise < 0) throw new TypeError(`amountInWords needs a non-negative amount, got ${paise}`);
+  const rupees = Math.trunc(paise / 100);
+  const fraction = paise % 100;
+  const paiseWords = fraction ? ` and ${belowHundred(fraction)} Paise` : '';
+  return `Rupees ${indianWords(rupees)}${paiseWords} Only`;
+}

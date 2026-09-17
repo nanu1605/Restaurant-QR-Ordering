@@ -1,3 +1,5 @@
+import { formatINR } from './money';
+
 /**
  * Maps error codes raised by database functions (spec §9.3: errcode P0001 with a
  * CODE message, context in DETAIL) to messages that say what happened and what
@@ -88,6 +90,22 @@ const MESSAGES: Record<string, Message> = {
   ORDERING_UNAVAILABLE:
     'New orders are paused while the subscription is inactive. Open tables can still be served.',
   ITEM_UNAVAILABLE: 'Some dishes are out of stock or no longer on the menu. We took them out.',
+
+  // Billing
+  ORDERS_WAITING: 'Approve or reject the waiting order first.',
+  NOTHING_TO_BILL: 'This table has nothing to bill. Close it without a bill instead.',
+  WAITER_REQUIRED: 'Assign a waiter before generating the bill.',
+  ALREADY_BILLED: 'This table was already billed.',
+  BILL_VOID: 'This bill was voided.',
+  BILL_ALREADY_PAID: 'A payment was already recorded for this bill.',
+  PAYMENT_MISMATCH: (total) =>
+    /^\d+$/.test(total)
+      ? `Payments must add up to ${formatINR(Number(total))}.`
+      : 'Payments must add up to the bill total.',
+  REOPEN_NOT_ALLOWED: (why) =>
+    why === 'table_busy'
+      ? "New guests have opened this table, so it can't be reopened. Void the bill without reopening."
+      : 'The time to reopen this table has passed. Void the bill without reopening.',
 };
 
 export const GENERIC_ERROR = 'Something went wrong. Try again.';
