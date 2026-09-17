@@ -162,7 +162,7 @@ export async function tableState(restaurantId: string) {
   const [{ data: sessions }, { data: orders }, { data: items }] = await Promise.all([
     db
       .from('table_sessions')
-      .select('id, status, is_approved')
+      .select('id, dining_table_id, status, is_approved')
       .eq('restaurant_id', restaurantId)
       .order('opened_at')
       .throwOnError(),

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { addDish, placeOrderFromMenu, tableState } from './customer-fixtures';
+import { adminClient } from './helpers';
 import {
   createLiveRestaurant,
   openCustomerPhone,
@@ -13,7 +14,11 @@ import {
 // screens open side by side: a new order reaches staff and admin screens live,
 // the kitchen never sees it while it waits, a busy waiter needs confirmation,
 // served shows everywhere, removals show their reason on staff and customer
-// screens, and only a manager removes a served dish.
+// screens, and only a manager removes a served dish. The §18 full flow then
+// ends with Phase 5: the manager deletes a round, bills the table with a
+// discount, prints the bill, records a UPI payment and finds it in Total
+// orders; Ravi is available again and the customer's next order starts a
+// fresh session.
 
 const LIVE = { timeout: 5_000 };
 
@@ -21,8 +26,21 @@ test('an order flows live between the customer, waiter, kitchen and manager', as
   browser,
   baseURL,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const r = await createLiveRestaurant();
+  // GST-registered with a UPI QR on bills, so the print shows taxes and the QR.
+  await adminClient()
+    .from('restaurants')
+    .update({
+      gst_mode: 'regular',
+      gst_rate_bps: 500,
+      prices_include_tax: false,
+      show_upi_qr_on_bill: true,
+      upi_vpa: 'spiceroute@okicici',
+      upi_payee_name: 'Spice Route',
+    })
+    .eq('id', r.restaurantId)
+    .throwOnError();
   const ravi = await openLiveScreen(browser, r, 'ravi', '/staff', baseURL!);
   const kitchen = await openLiveScreen(browser, r, 'kitchen', '/staff', baseURL!);
   const owner = await openLiveScreen(browser, r, 'owner', '/admin/live', baseURL!);
@@ -182,6 +200,136 @@ test('an order flows live between the customer, waiter, kitchen and manager', as
       .map((i) => i.item_name_snapshot)
       .sort(),
   ).toEqual(['Chicken 65', 'Paneer Tikka']);
+
+  // 6. Table 3 closes without a bill, so Ravi has no other table.
+  await owner.page.keyboard.press('Escape');
+  await tableCard(owner.page, '3').click();
+  const table3 = owner.page.getByRole('dialog', { name: /^Table 3/ });
+  await table3.getByRole('button', { name: 'Close without bill' }).click();
+  const close3 = owner.page.getByRole('dialog', { name: 'Close Table 3 without a bill' });
+  await close3.getByRole('textbox', { name: 'Reason' }).fill('Guests left');
+  await close3.getByRole('button', { name: 'Close table' }).click();
+  await expect(tableCard(owner.page, '3')).toHaveAttribute('data-state', 'free');
+  await owner.page.keyboard.press('Escape');
+
+  // 7. The manager deletes round 2.
+  await tableCard(owner.page, '5').click();
+  await ownerDrawer.getByRole('button', { name: 'Delete order round 2' }).click();
+  const deleteRound = owner.page.getByRole('dialog', { name: 'Delete round 2' });
+  await deleteRound.getByRole('textbox', { name: 'Reason' }).fill('Duplicate order');
+  await deleteRound.getByRole('button', { name: 'Delete order' }).click();
+  await expect(deleteRound).toBeHidden();
+  await owner.page.keyboard.press('Escape');
+
+  // 8. Billing: assign Ravi, 10% discount, generate. Chicken 65 ₹320 − ₹32 = ₹288,
+  // + 5% GST ₹14.40 = ₹302.40 → ₹302.
+  await owner.page.goto('/admin/billing');
+  await owner.page.getByRole('link', { name: 'Bill Table 5' }).click();
+  await owner.page.getByRole('button', { name: 'Assign waiter' }).click();
+  const assignForBill = owner.page.getByRole('dialog');
+  await assignForBill
+    .getByRole('region', { name: 'Available' })
+    .getByRole('button', { name: /Ravi Kumar/ })
+    .click();
+  await expect(assignForBill).toBeHidden();
+  await expect(owner.page.getByText('Waiter: Ravi Kumar')).toBeVisible(LIVE);
+  await owner.page.getByRole('radio', { name: 'Percent (%)' }).click();
+  await owner.page.getByRole('textbox', { name: 'Discount percentage' }).fill('10');
+  await owner.page.getByRole('textbox', { name: 'Reason for the discount' }).fill('Regular guest');
+  const billTotals = owner.page.getByRole('region', { name: 'Bill for Table 5' });
+  await expect(billTotals).toContainText('Discount-₹32.00');
+  await expect(billTotals).toContainText('Grand total₹302.00');
+  await owner.page.getByRole('button', { name: 'Generate bill' }).click();
+  const confirmBill = owner.page.getByRole('alertdialog');
+  await expect(confirmBill).toContainText('Generate the bill for Table 5?');
+  await confirmBill.getByRole('button', { name: 'Generate bill' }).click();
+  await expect(
+    owner.page.getByRole('heading', { name: /^Bill INV\/\d{4}-\d{2}\/00001$/ }),
+  ).toBeVisible();
+  const billUrl = owner.page.url();
+  await expect(tableCard(ravi.page, '5')).toHaveAttribute('data-state', 'free', LIVE);
+
+  // 9. The print page opens the print dialog once and shows the bill (spec §11.3, §15).
+  await owner.context.addInitScript(() => {
+    const counter = window as unknown as { __prints?: number };
+    window.print = () => {
+      counter.__prints = (counter.__prints ?? 0) + 1;
+    };
+  });
+  await owner.page.goto(`${billUrl}/print`);
+  const printed = owner.page.getByRole('article', { name: /^Tax Invoice INV\// });
+  await expect(printed).toContainText(/Invoice no\.INV\/\d{4}-\d{2}\/00001/);
+  await expect(printed).toContainText('Table5');
+  await expect(printed).toContainText('Served byRavi Kumar');
+  await expect(printed).toContainText('Chicken 65');
+  await expect(printed).toContainText('Discount-₹32.00');
+  await expect(printed).toContainText('CGST 2.5%₹7.20');
+  await expect(printed).toContainText('SGST 2.5%₹7.20');
+  await expect(printed).toContainText('Round off-₹0.40');
+  await expect(printed).toContainText('Grand total₹302.00');
+  await expect(printed).toContainText('Rupees Three Hundred Two Only');
+  await expect(printed).toContainText('Scan to pay ₹302 to Spice Route');
+  await expect(printed.locator('svg')).toHaveCount(1);
+  // The customer copy doesn't show the discount reason.
+  await expect(printed).not.toContainText('Regular guest');
+  await expect
+    .poll(() => owner.page.evaluate(() => (window as unknown as { __prints?: number }).__prints))
+    .toBe(1);
+  await expect
+    .poll(async () => {
+      const { data } = await adminClient()
+        .from('bills')
+        .select('print_count')
+        .eq('restaurant_id', r.restaurantId)
+        .single()
+        .throwOnError();
+      return data!.print_count;
+    })
+    .toBe(1);
+
+  // 10. A UPI payment settles it.
+  await owner.page.goto(billUrl);
+  await owner.page.getByRole('button', { name: 'Record payment' }).click();
+  const payment = owner.page.getByRole('dialog', { name: 'Record payment' });
+  await payment.getByRole('button', { name: 'UPI' }).click();
+  await expect(payment.getByRole('textbox', { name: 'Amount (₹)' })).toHaveValue('302.00');
+  await payment.getByRole('textbox', { name: 'Reference (optional)' }).fill('UTR 4455');
+  await payment.getByRole('button', { name: 'Record payment' }).click();
+  await expect(payment).toBeHidden();
+  await expect(owner.page.getByText('Paid', { exact: true })).toBeVisible();
+  await expect(owner.page.getByRole('region', { name: 'Payments' })).toContainText(
+    'UPI · UTR 4455',
+  );
+
+  // 11. Total orders lists the bill with its waiter and payment.
+  await owner.page.goto('/admin/total-orders');
+  const billRow = owner.page.getByRole('row', { name: /00001/ });
+  await expect(billRow).toContainText('Ravi Kumar');
+  await expect(billRow).toContainText('₹302.00');
+  await expect(billRow).toContainText('PaidUPI');
+  await expect(owner.page.getByLabel('Summary')).toContainText('Net collected₹302.00');
+
+  // 12. Ravi is available again.
+  await owner.page.goto('/admin/live');
+  const raviAgain = owner.page.locator('li[data-waiter="Ravi Kumar"]');
+  await expect(raviAgain).toHaveAttribute('data-status', 'free', LIVE);
+  await expect(raviAgain).toContainText('Available');
+
+  // 13. The customer sees the bill, and the next order starts a fresh session.
+  await phone.page.goto(`${r.tables['5']!.url}/orders`);
+  await expect(
+    phone.page.getByText('Your bill has been generated. Please pay at the counter'),
+  ).toBeVisible();
+  await phone.page.goto(r.tables['5']!.url);
+  await addDish(phone.page, 'Paneer Tikka');
+  await placeOrderFromMenu(phone.page);
+  state = await tableState(r.restaurantId);
+  const table5 = state.sessions.filter((s) => s.dining_table_id === r.tables['5']!.id);
+  expect(table5.map((s) => s.status)).toEqual(['billed', 'open']);
+  const fresh = table5.find((s) => s.status === 'open')!;
+  expect(state.orders.filter((o) => o.session_id === fresh.id)).toMatchObject([
+    { round_number: 1 },
+  ]);
 
   for (const screen of [ravi, kitchen, owner, phone]) await screen.context.close();
 });
