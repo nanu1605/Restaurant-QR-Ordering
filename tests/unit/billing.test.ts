@@ -17,6 +17,7 @@ import {
   datePresets,
   discountValue,
   generateBillSchema,
+  readTotalOrdersParams,
   totalOrdersFilters,
 } from '@/features/billing/schemas';
 import { dbErrorMessage } from '@/lib/db-errors';
@@ -75,6 +76,7 @@ describe('generateBillSchema', () => {
     discountValue: 1000,
     discountReason: 'Regular guest',
     applyServiceCharge: true,
+    expectedGrandTotalPaise: 66200,
   };
 
   it('accepts a discount with a reason', () => {
@@ -181,6 +183,25 @@ describe('total orders filters', () => {
     ).toEqual({});
     expect(totalOrdersFilters({ from: '2026-09-10', to: '2026-09-01' })).toEqual({
       from: '2026-09-10',
+    });
+  });
+
+  it('fixes impossible dates and ranges longer than a year, and says so', () => {
+    expect(readTotalOrdersParams({ from: '2026-02-30' })).toEqual({
+      filters: {},
+      notice: 'That date doesn’t exist, so today is shown.',
+    });
+    expect(readTotalOrdersParams({ from: '2025-04-01', to: '2026-09-17' })).toEqual({
+      filters: { from: '2025-04-01', to: '2026-04-02' },
+      notice: 'Total orders shows up to a year at a time, so the range was shortened.',
+    });
+    expect(readTotalOrdersParams({ from: '2025-09-17', to: '2026-09-18' }).notice).toBeNull();
+    expect(readTotalOrdersParams({ from: '2026-09-10', to: '2026-09-01' }).notice).toBe(
+      'The end date was before the start date, so one day is shown.',
+    );
+    expect(readTotalOrdersParams({ from: '2026-09-10', to: '2026-09-31' })).toEqual({
+      filters: { from: '2026-09-10' },
+      notice: 'That end date doesn’t exist, so one day is shown.',
     });
   });
 
@@ -471,6 +492,8 @@ describe('billing error messages', () => {
     expect(message('WAITER_REQUIRED')).toBe('Assign a waiter before generating the bill.');
     expect(message('PAYMENT_MISMATCH', '66200')).toBe('Payments must add up to ₹662.00.');
     expect(message('PAYMENT_MISMATCH', 'x')).toBe('Payments must add up to the bill total.');
+    expect(message('BILL_CHANGED', '66200')).toContain('Check the new total');
+    expect(message('REOPEN_NOT_ALLOWED', 'table_inactive')).toContain('switched off');
     expect(message('REOPEN_NOT_ALLOWED', 'table_busy')).toContain('New guests');
     expect(message('REOPEN_NOT_ALLOWED', 'window')).toContain('time to reopen');
   });

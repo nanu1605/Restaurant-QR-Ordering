@@ -127,9 +127,13 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
   const heading = tableHeading(draft.session.tableLabel);
   const amountInvalid = discountType !== 'none' && typedValue === null;
   const needsReason = discountType !== 'none' && (typedValue ?? 0) > 0 && !reason.trim();
-  const previewStale = choiceKey !== settledKey || draftQuery.isFetching;
+  // Stale only while the preview doesn't match the choice yet; background
+  // refetches keep the button usable (and focused).
+  const previewStale = choiceKey !== settledKey || draftQuery.isPlaceholderData;
   const blocked = draft.waitingCount > 0 || draft.lines.length === 0 || draft.waiterRequired;
   const canGenerate = !blocked && !amountInvalid && !needsReason && !previewStale && !generating;
+  // The total the confirmation shows; if the bill now differs, nothing is saved.
+  const shownTotal = draft.totals.grandTotalPaise;
 
   async function generate() {
     setGenerating(true);
@@ -141,6 +145,7 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
         discountValue: choice.value,
         discountReason: reason,
         applyServiceCharge: choice.applyServiceCharge,
+        expectedGrandTotalPaise: shownTotal,
       });
     } catch {
       setGenerating(false);
@@ -192,8 +197,8 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {draft.lines.map((line) => (
-                    <tr key={`${lineName(line)}-${line.unitPricePaise}`}>
+                  {draft.lines.map((line, index) => (
+                    <tr key={index}>
                       <td className="py-2 pr-2">
                         <span className="flex items-start gap-2">
                           <FoodTypeMark type={line.foodType} size="sm" className="mt-1" />
@@ -326,7 +331,11 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
             <AlertDialogCancel size="touch" disabled={generating}>
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction size="touch" onClick={() => void generate()} disabled={generating}>
+            <AlertDialogAction
+              size="touch"
+              onClick={() => void generate()}
+              disabled={generating || previewStale}
+            >
               {draft.unserved.length > 0 ? 'Bill anyway' : 'Generate bill'}
             </AlertDialogAction>
           </AlertDialogFooter>

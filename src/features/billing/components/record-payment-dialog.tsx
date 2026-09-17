@@ -31,6 +31,16 @@ import {
 
 const MODES: PaymentMode[] = ['cash', 'upi', 'card', 'other'];
 
+/**
+ * After a payment or a void the button that opened the dialog is gone, so
+ * keyboard focus goes to the bill's status line instead of the page start.
+ */
+export function focusBillStatus() {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => document.getElementById('bill-status')?.focus()),
+  );
+}
+
 type RecordPaymentDialogProps = {
   billId: string;
   invoiceNumber: string;
@@ -78,7 +88,8 @@ function PaymentForm({
   const remaining = grandTotalPaise - check.paidPaise;
   const cashRow = rows.length === 1 && rows[0]!.mode === 'cash' ? rows[0]! : null;
   const cashDue = cashRow ? rupeesInput(cashRow.amount) : null;
-  const change = cashDue === null ? null : cashChange(rupeesInput(received), cashDue);
+  const receivedPaise = rupeesInput(received);
+  const change = cashDue === null ? null : cashChange(receivedPaise, cashDue);
 
   function update(index: number, patch: Partial<PaymentFormRow>) {
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -122,6 +133,7 @@ function PaymentForm({
     }
     toast.success(`Payment recorded for ${invoiceNumber}`);
     onDone();
+    focusBillStatus();
   }
 
   return (
@@ -233,12 +245,16 @@ function PaymentForm({
             className="h-11 bg-surface text-base tabular-nums"
           />
           <p aria-live="polite" className="text-base text-ink">
-            {change === null ? (
-              'Enter the cash handed over to see the change.'
-            ) : (
+            {change !== null ? (
               <>
                 Change to return: <Money paise={change} className="text-lg font-bold" />
               </>
+            ) : receivedPaise !== null && cashDue !== null ? (
+              <>
+                Short by <Money paise={cashDue - receivedPaise} className="text-lg font-bold" />
+              </>
+            ) : (
+              'Enter the cash handed over to see the change.'
             )}
           </p>
         </div>

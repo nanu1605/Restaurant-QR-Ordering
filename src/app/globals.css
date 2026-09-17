@@ -182,12 +182,9 @@
   }
 }
 
-/* QR card sheets (spec §15): A4, one sheet of 6 cards per printed page. */
+/* QR card sheets (spec §15): one sheet of 6 cards per printed page. The A4
+   page size is set on the sheet's own page, so bills keep their paper size. */
 @media print {
-  @page {
-    size: A4;
-    margin: 10mm;
-  }
   body {
     background: #fff;
   }

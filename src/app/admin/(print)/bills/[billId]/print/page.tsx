@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 
 import { PrintableBillPage } from '@/features/billing/components/printable-bill';
 import { getBill } from '@/features/billing/queries';
+import { requireMember } from '@/lib/auth/guards';
+import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 
 export const metadata: Metadata = {
   title: 'Print bill',
@@ -15,6 +17,7 @@ export default async function PrintBillPage({
   params,
   searchParams,
 }: PageProps<'/admin/bills/[billId]/print'>) {
+  await requireMember(ADMIN_PANEL_ROLES);
   const { billId } = await params;
   if (!UUID.test(billId)) notFound();
   const detail = await getBill(billId);

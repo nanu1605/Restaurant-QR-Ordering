@@ -40,6 +40,8 @@ export const generateBillSchema = z
       .trim()
       .max(MAX_REASON, `Keep the reason under ${MAX_REASON} characters.`),
     applyServiceCharge: z.boolean(),
+    /** The grand total the manager confirmed (docs/DECISIONS.md P5-14). */
+    expectedGrandTotalPaise: z.number().int().min(0),
   })
   .refine((v) => v.discountType !== 'percent' || v.discountValue <= 10_000, {
     path: ['discountValue'],
@@ -154,16 +156,45 @@ function one(params: SearchParams, key: string): string | undefined {
   return text ? text : undefined;
 }
 
+/** The longest range Total orders shows at once (admin_total_orders checks it too). */
+export const MAX_RANGE_DAYS = 366;
+
+/** A real calendar date in 'YYYY-MM-DD' form (2026-02-30 isn't). */
+function isDate(text: string | undefined): text is string {
+  return !!text && DATE.test(text) && addDays(text, 0) === text;
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
 /**
- * Filters from the page URL for admin_total_orders. Anything malformed is
- * dropped rather than failing the page.
+ * Filters from the page URL for admin_total_orders, plus a note when the
+ * dates had to be changed. Anything malformed is dropped rather than failing
+ * the page; a range longer than a year is cut to a year.
  */
-export function totalOrdersFilters(params: SearchParams): TotalOrdersFilters {
+export function readTotalOrdersParams(params: SearchParams): {
+  filters: TotalOrdersFilters;
+  notice: string | null;
+} {
   const filters: TotalOrdersFilters = {};
+  let notice: string | null = null;
   const from = one(params, 'from');
   const to = one(params, 'to');
-  if (from && DATE.test(from)) filters.from = from;
-  if (to && DATE.test(to) && filters.from && to >= filters.from) filters.to = to;
+  if (isDate(from)) filters.from = from;
+  else if (from) notice = 'That date doesn’t exist, so today is shown.';
+  if (filters.from && isDate(to)) {
+    if (to < filters.from) {
+      notice = 'The end date was before the start date, so one day is shown.';
+    } else if (daysBetween(filters.from, to) > MAX_RANGE_DAYS) {
+      filters.to = addDays(filters.from, MAX_RANGE_DAYS);
+      notice = 'Total orders shows up to a year at a time, so the range was shortened.';
+    } else {
+      filters.to = to;
+    }
+  } else if (filters.from && to) {
+    notice = 'That end date doesn’t exist, so one day is shown.';
+  }
   const table = one(params, 'table');
   if (table && UUID.test(table)) filters.table_id = table;
   const waiter = one(params, 'waiter');
@@ -180,7 +211,11 @@ export function totalOrdersFilters(params: SearchParams): TotalOrdersFilters {
   if (one(params, 'view') === 'closed') filters.view = 'closed_unbilled';
   const page = Number(one(params, 'page'));
   if (Number.isInteger(page) && page > 1 && page <= 10_000) filters.page = page;
-  return filters;
+  return { filters, notice };
+}
+
+export function totalOrdersFilters(params: SearchParams): TotalOrdersFilters {
+  return readTotalOrdersParams(params).filters;
 }
 
 /** 'YYYY-MM-DD' plus whole days (calendar arithmetic, no timezones). */

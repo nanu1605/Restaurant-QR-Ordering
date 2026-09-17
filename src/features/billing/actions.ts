@@ -30,7 +30,8 @@ import {
  */
 
 export type GenerateBillResult =
-  { ok: true; data: { billId: string; alreadyBilled: boolean } } | { ok: false; error: string };
+  | { ok: true; data: { billId: string; alreadyBilled: boolean } }
+  | { ok: false; error: string; changed?: boolean };
 
 const generatedJson = z.object({ bill_id: z.uuid() });
 
@@ -42,8 +43,14 @@ export async function generateBill(input: GenerateBillInput): Promise<GenerateBi
   await requireMember(ADMIN_PANEL_ROLES);
   const parsed = generateBillSchema.safeParse(input);
   if (!parsed.success) return fromZodError(parsed.error);
-  const { sessionId, discountType, discountValue, discountReason, applyServiceCharge } =
-    parsed.data;
+  const {
+    sessionId,
+    discountType,
+    discountValue,
+    discountReason,
+    applyServiceCharge,
+    expectedGrandTotalPaise,
+  } = parsed.data;
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('admin_generate_bill', {
@@ -52,10 +59,14 @@ export async function generateBill(input: GenerateBillInput): Promise<GenerateBi
     p_discount_value: discountType === 'none' ? 0 : discountValue,
     p_discount_reason: discountReason,
     p_apply_service_charge: applyServiceCharge,
+    p_expected_grand_total_paise: expectedGrandTotalPaise,
   });
   if (error) {
     if (dbErrorCode(error) === 'ALREADY_BILLED' && error.details) {
       return actionOk({ billId: error.details, alreadyBilled: true });
+    }
+    if (dbErrorCode(error) === 'BILL_CHANGED') {
+      return { ok: false, error: dbErrorMessage(error)!, changed: true };
     }
     return fromDbError(error, 'admin_generate_bill');
   }
@@ -75,8 +86,9 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ActionRe
       reference: payment.reference || null,
     })),
   });
-  if (error) return fromDbError(error, 'admin_record_payment');
+  // Refused or not, show the bill as it is now (someone may have paid or voided it).
   refresh();
+  if (error) return fromDbError(error, 'admin_record_payment');
   return actionOk();
 }
 
@@ -90,8 +102,8 @@ export async function voidBill(input: VoidBillInput): Promise<ActionResult<{ reo
     p_reason: parsed.data.reason,
     p_reopen: parsed.data.reopen,
   });
-  if (error) return fromDbError(error, 'admin_void_bill');
   refresh();
+  if (error) return fromDbError(error, 'admin_void_bill');
   return actionOk({ reopened: z.object({ reopened: z.boolean() }).parse(data).reopened });
 }
 

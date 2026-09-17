@@ -368,7 +368,7 @@ export type AuditEntry = {
   createdAt: string;
 };
 
-export type ReopenBlocker = 'void' | 'window' | 'table_busy';
+export type ReopenBlocker = 'void' | 'window' | 'table_busy' | 'table_inactive';
 
 export type BillDetail = PrintableBill & {
   now: string;
@@ -412,7 +412,7 @@ const detailJson = z
     ),
     reopen: z.object({
       allowed: z.boolean(),
-      blocker: z.enum(['void', 'window', 'table_busy']).nullable(),
+      blocker: z.enum(['void', 'window', 'table_busy', 'table_inactive']).nullable(),
       until: z.string().nullable(),
     }),
     features: z.object({ split_payments: z.boolean() }),

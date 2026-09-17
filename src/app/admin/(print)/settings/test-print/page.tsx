@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 
 import { PrintableBillPage } from '@/features/billing/components/printable-bill';
 import { getSampleBill } from '@/features/billing/queries';
+import { requireMember } from '@/lib/auth/guards';
+import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 
 export const metadata: Metadata = {
   title: 'Test print',
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
 export default async function TestPrintPage({
   searchParams,
 }: PageProps<'/admin/settings/test-print'>) {
+  await requireMember(ADMIN_PANEL_ROLES);
   const sample = await getSampleBill();
   const { copy } = await searchParams;
 

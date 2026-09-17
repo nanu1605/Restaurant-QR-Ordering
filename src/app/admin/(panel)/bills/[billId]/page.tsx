@@ -85,7 +85,11 @@ export default async function BillDetailPage({ params }: PageProps<'/admin/bills
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3 text-base text-ink">
+      <div
+        id="bill-status"
+        tabIndex={-1}
+        className="flex flex-wrap items-center gap-3 rounded-md text-base text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
         <BillStatusBadge status={bill.status} paymentStatus={bill.paymentStatus} />
         {bill.status === 'void' && (
           <span>

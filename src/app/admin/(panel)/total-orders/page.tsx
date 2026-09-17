@@ -7,7 +7,7 @@ import {
   TotalOrdersSummary,
 } from '@/features/billing/components/total-orders-view';
 import { getTotalOrders } from '@/features/billing/queries';
-import { totalOrdersFilters } from '@/features/billing/schemas';
+import { readTotalOrdersParams } from '@/features/billing/schemas';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
  */
 export default async function TotalOrdersPage({ searchParams }: PageProps<'/admin/total-orders'>) {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
-  const filters = totalOrdersFilters(await searchParams);
+  const { filters, notice } = readTotalOrdersParams(await searchParams);
   const data = await getTotalOrders(filters);
 
   return (
@@ -31,6 +31,14 @@ export default async function TotalOrdersPage({ searchParams }: PageProps<'/admi
         description="Every billed table with its invoice, waiter and payment. Days start at the business day start hour."
       />
       <TotalOrdersFiltersForm data={data} filters={filters} />
+      {notice && (
+        <p
+          role="status"
+          className="rounded-lg border-2 border-attention bg-surface p-3 text-base text-ink"
+        >
+          {notice}
+        </p>
+      )}
       <TotalOrdersSummary data={data} />
       <TotalOrdersResults data={data} filters={filters} timezone={membership.restaurant.timezone} />
     </>

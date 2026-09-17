@@ -19,7 +19,9 @@ export function buildUpiUrl({
   amountPaise?: Paise;
   note?: string;
 }): string {
-  const params = [`pa=${encodeURIComponent(vpa.trim())}`];
+  // As in spec §11.3: the VPA as it is (its pattern allows only URL-safe
+  // characters and @); the payee name and note are encoded.
+  const params = [`pa=${vpa.trim()}`];
   if (payeeName?.trim()) params.push(`pn=${encodeURIComponent(payeeName.trim())}`);
   if (amountPaise !== undefined) params.push(`am=${paiseToDecimalString(amountPaise)}`);
   params.push('cu=INR');

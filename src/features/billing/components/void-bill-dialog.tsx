@@ -10,6 +10,7 @@ import { formatClockTime, tableHeading } from '@/features/ordering/format';
 import { ReasonDialog } from '@/features/orders/components/reason-dialog';
 
 import { voidBill } from '../actions';
+import { focusBillStatus } from './record-payment-dialog';
 import { VOID_REASONS } from '../schemas';
 
 type VoidBillDialogProps = {
@@ -74,6 +75,7 @@ export function VoidBillDialog({
             router.push('/admin/billing');
           } else {
             toast.success(`${invoiceNumber} voided`);
+            focusBillStatus();
           }
           return true;
         }}

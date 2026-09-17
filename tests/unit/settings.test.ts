@@ -118,11 +118,11 @@ describe('bill and ordering tabs', () => {
 describe('UPI links', () => {
   it('build a upi://pay link, with the amount when given', () => {
     expect(buildUpiUrl({ vpa: 'cafe@okicici', payeeName: 'Bean There' })).toBe(
-      'upi://pay?pa=cafe%40okicici&pn=Bean%20There&cu=INR',
+      'upi://pay?pa=cafe@okicici&pn=Bean%20There&cu=INR',
     );
     expect(
       buildUpiUrl({ vpa: 'cafe@okicici', amountPaise: 66250, note: 'INV/2026-27/00001' }),
-    ).toBe('upi://pay?pa=cafe%40okicici&am=662.50&cu=INR&tn=INV%2F2026-27%2F00001');
+    ).toBe('upi://pay?pa=cafe@okicici&am=662.50&cu=INR&tn=INV%2F2026-27%2F00001');
   });
 });
 

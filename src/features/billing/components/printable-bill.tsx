@@ -16,8 +16,10 @@ type PrintableBillPageProps = PrintableBill & {
 };
 
 /**
- * A bill laid out for a thermal printer (spec §15): the paper width from Bill
- * settings, no margins, 12 px system font, black only.
+ * A bill laid out for a thermal printer (spec §15): the printable width for
+ * the paper in Bill settings, no page margins, 12 px system font, black only.
+ * The page size itself comes from the printer driver: CSS `size: 80mm auto`
+ * isn't valid, and a fixed height would cut long bills into pages.
  */
 export async function PrintableBillPage({
   bill,
@@ -36,7 +38,7 @@ export async function PrintableBillPage({
   return (
     <>
       <style>{`
-        @page { size: ${print.paperWidth} auto; margin: 0; }
+        @page { margin: 0; }
         @media print {
           html, body { background: #fff !important; }
           .print-toolbar { display: none !important; }

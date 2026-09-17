@@ -46,6 +46,7 @@ export default async function PrintQrCardsPage({ searchParams }: PageProps<'/adm
 
   return (
     <div className="flex flex-col gap-4">
+      <style>{'@media print { @page { size: A4; margin: 10mm; } }'}</style>
       <div className="flex flex-col gap-3 print:hidden">
         <PageHeader
           title="Print QR cards"

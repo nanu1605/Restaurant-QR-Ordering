@@ -268,8 +268,19 @@ test('test print shows a sample bill on 58 mm paper', async ({ browser, baseURL 
   await expect(sample).toContainText('Paneer Tikka');
   await expect(sample).toContainText('Rupees Seven Hundred Only');
   await expect(sample).toContainText('Thank you, visit again');
-  expect(await page.locator('style').allTextContents()).toEqual(
-    expect.arrayContaining([expect.stringContaining('size: 58mm auto')]),
-  );
+  // 48 mm printable width for 58 mm paper; the page size is left to the printer
+  // driver, so no stylesheet (like the A4 QR sheet's) forces one.
+  const width = await sample.evaluate((element) => element.getBoundingClientRect().width);
+  expect(width).toBeCloseTo((48 * 96) / 25.4, 0);
+  const pageSizes = await page.evaluate(() => {
+    const sizes = (rules: CSSRuleList): string[] =>
+      Array.from(rules).flatMap((rule) => {
+        if (rule instanceof CSSPageRule) return [rule.style.getPropertyValue('size')];
+        if (rule instanceof CSSGroupingRule) return sizes(rule.cssRules);
+        return [];
+      });
+    return Array.from(document.styleSheets).flatMap((sheet) => sizes(sheet.cssRules));
+  });
+  expect(pageSizes.filter(Boolean)).toEqual([]);
   await context.close();
 });

@@ -96,6 +96,7 @@ const MESSAGES: Record<string, Message> = {
   NOTHING_TO_BILL: 'This table has nothing to bill. Close it without a bill instead.',
   WAITER_REQUIRED: 'Assign a waiter before generating the bill.',
   ALREADY_BILLED: 'This table was already billed.',
+  BILL_CHANGED: 'The bill changed while you were checking it. Check the new total and try again.',
   BILL_VOID: 'This bill was voided.',
   BILL_ALREADY_PAID: 'A payment was already recorded for this bill.',
   PAYMENT_MISMATCH: (total) =>
@@ -105,7 +106,9 @@ const MESSAGES: Record<string, Message> = {
   REOPEN_NOT_ALLOWED: (why) =>
     why === 'table_busy'
       ? "New guests have opened this table, so it can't be reopened. Void the bill without reopening."
-      : 'The time to reopen this table has passed. Void the bill without reopening.',
+      : why === 'table_inactive'
+        ? "This table is switched off, so it can't be reopened. Void the bill without reopening."
+        : 'The time to reopen this table has passed. Void the bill without reopening.',
 };
 
 export const GENERIC_ERROR = 'Something went wrong. Try again.';
