@@ -26,7 +26,8 @@ export function TableStateBadge({ state, className }: { state: TableState; class
     <span
       data-state={state}
       className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-sm font-semibold whitespace-nowrap',
+        // Staff board labels are at least 16 px (spec §16.2).
+        'inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-base font-semibold whitespace-nowrap',
         stateClassName,
         className,
       )}

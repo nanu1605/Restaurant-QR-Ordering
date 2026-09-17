@@ -2,11 +2,12 @@
 
 import { cn } from 'cn';
 import { AlarmClock } from 'lucide-react';
+import { useState } from 'react';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { tableHeading } from '@/features/ordering/format';
+import { listNames, tableHeading } from '@/features/ordering/format';
 
 import { setItemsStatus } from '../actions';
 import { formatElapsed, minutesSince, nextStatus } from '../board-view';
@@ -34,6 +35,11 @@ const EDGE: Record<KitchenColumn, string> = {
   ready: 'border-l-status-ready',
 };
 
+const MOVED_TO: Record<Exclude<ForwardStatus, 'served'>, string> = {
+  preparing: 'Preparing',
+  ready: 'Ready',
+};
+
 const TICKET_ACTION: Record<KitchenColumn, string> = {
   placed: 'Start all',
   preparing: 'Mark all ready',
@@ -48,6 +54,7 @@ const TICKET_ACTION: Record<KitchenColumn, string> = {
 export function KitchenBoard() {
   const { data: board } = useBoard();
   const nowMs = useServerNow(board);
+  const [announcement, setAnnouncement] = useState('');
   const advance = useBoardAction({
     action: ({ ids, status }: { ids: string[]; status: ForwardStatus }) =>
       setItemsStatus(ids, status),
@@ -66,15 +73,42 @@ export function KitchenBoard() {
   }
 
   const columns = kitchenTickets(board);
-  const move = (ids: string[], status: ForwardStatus) => advance.mutate({ ids, status });
+
+  /**
+   * Moves dishes on. The tapped control leaves the column, so focus goes to the
+   * next dish on the same ticket (or the column heading), and the move is
+   * announced.
+   */
+  const move = (request: TicketMove) => {
+    const ticket = request.control.closest('article');
+    const nextDish = ticket
+      ? Array.from(ticket.querySelectorAll<HTMLElement>('[data-item]')).find(
+          (button) => !request.ids.includes(button.dataset.item ?? ''),
+        )?.dataset.item
+      : undefined;
+    advance.mutate({ ids: request.ids, status: request.to });
+    setAnnouncement(
+      `${listNames(request.names)} ${request.to === 'served' ? 'served' : `moved to ${MOVED_TO[request.to]}`}`,
+    );
+    requestAnimationFrame(() => {
+      const target = nextDish
+        ? document.querySelector<HTMLElement>(`[data-item="${nextDish}"]`)
+        : document.getElementById(`kitchen-${request.from}`);
+      target?.focus();
+    });
+  };
 
   return (
     <div className="grid items-start gap-4 md:grid-cols-3">
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       {KITCHEN_COLUMNS.map(({ status, label }) => (
         <section key={status} aria-labelledby={`kitchen-${status}`} className="flex flex-col gap-3">
           <h2
             id={`kitchen-${status}`}
-            className="flex items-center gap-2 text-lg font-semibold text-ink"
+            tabIndex={-1}
+            className="flex items-center gap-2 text-lg font-semibold text-ink focus-visible:outline-none"
           >
             {label}
             <span className="rounded-full bg-surface px-2 text-base text-ink-muted tabular-nums">
@@ -100,6 +134,14 @@ export function KitchenBoard() {
   );
 }
 
+type TicketMove = {
+  ids: string[];
+  names: string[];
+  from: KitchenColumn;
+  to: ForwardStatus;
+  control: HTMLElement;
+};
+
 function Ticket({
   ticket,
   nowMs,
@@ -107,7 +149,7 @@ function Ticket({
 }: {
   ticket: KitchenTicket;
   nowMs: number;
-  onMove: (ids: string[], status: ForwardStatus) => void;
+  onMove: (move: TicketMove) => void;
 }) {
   const late = isLate(ticket.acceptedAt, nowMs);
   const next = nextStatus(ticket.status)!;
@@ -146,7 +188,16 @@ function Ticket({
             <li key={item.id}>
               <button
                 type="button"
-                onClick={() => onMove([item.id], next)}
+                data-item={item.id}
+                onClick={(event) =>
+                  onMove({
+                    ids: [item.id],
+                    names: [name],
+                    from: ticket.status,
+                    to: next,
+                    control: event.currentTarget,
+                  })
+                }
                 className="flex min-h-11 w-full items-start gap-2 rounded-md border border-line px-2 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
@@ -173,11 +224,16 @@ function Ticket({
       <Button
         size="touch"
         variant={ticket.status === 'ready' ? 'default' : 'outline'}
-        onClick={() =>
-          onMove(
-            ticket.items.map((item) => item.id),
-            next,
-          )
+        onClick={(event) =>
+          onMove({
+            ids: ticket.items.map((item) => item.id),
+            names: ticket.items.map((item) =>
+              item.variant ? `${item.name} (${item.variant})` : item.name,
+            ),
+            from: ticket.status,
+            to: next,
+            control: event.currentTarget,
+          })
         }
       >
         {TICKET_ACTION[ticket.status]}

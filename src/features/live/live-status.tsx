@@ -28,7 +28,7 @@ function SoundToggle() {
 
   if (setting === null) {
     return (
-      <Button variant="outline" size="lg" onClick={() => setSoundEnabled(true)}>
+      <Button variant="outline" size="touch" onClick={() => setSoundEnabled(true)}>
         <Volume2 aria-hidden />
         {/* Icon only on phones, where the header is tight. */}
         <span className="sr-only sm:not-sr-only">Enable sound</span>
@@ -39,7 +39,7 @@ function SoundToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon-lg"
+      size="icon-touch"
       onClick={() => setSoundEnabled(!on)}
       aria-pressed={on}
       aria-label="New order sound"

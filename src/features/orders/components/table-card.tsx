@@ -77,7 +77,7 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
 
       {session && (
         <>
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base">
             {waiter ? (
               <span className="font-medium text-ink">{waiter}</span>
             ) : (
@@ -86,12 +86,12 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-ink-muted tabular-nums">
-              <Clock3 aria-hidden className="size-3.5" />
+              <Clock3 aria-hidden className="size-4" />
               <span className="sr-only">Seated for</span>
               {formatElapsed(minutesSince(session.openedAt, nowMs))}
             </span>
           </span>
-          <span className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink">
+          <span className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-base text-ink">
             {(['placed', 'preparing', 'ready', 'served'] as const)
               .filter((status) => counts[status] > 0)
               .map((status) => (

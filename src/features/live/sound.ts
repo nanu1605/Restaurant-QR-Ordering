@@ -57,13 +57,19 @@ export function setSoundEnabled(enabled: boolean) {
   for (const listener of listeners) listener();
 }
 
-// After a reload the audio context starts suspended; the first tap anywhere wakes it.
+// After a reload (or when a tablet locks) the audio context is suspended. Any
+// later tap or key press wakes it: browsers only allow that from events that
+// count as a user gesture (click, touchend, keydown — not a touch pointerdown),
+// and the listeners stay, so a failed or later suspension is retried.
 if (typeof window !== 'undefined') {
   const wake = () => {
-    if (readEnabled()) void audioContext()?.resume();
+    if (!readEnabled()) return;
+    const ctx = audioContext();
+    if (ctx && ctx.state !== 'running') void ctx.resume();
   };
-  window.addEventListener('pointerdown', wake, { once: true, capture: true });
-  window.addEventListener('keydown', wake, { once: true, capture: true });
+  for (const type of ['click', 'touchend', 'keydown'] as const) {
+    window.addEventListener(type, wake, { capture: true, passive: true });
+  }
 }
 
 /** Two short rising notes. Silent unless sound is on and audio is unlocked. */

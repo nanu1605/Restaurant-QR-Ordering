@@ -9,7 +9,7 @@ export default function StaffLoading() {
           <Skeleton key={i} className="h-11 w-28 rounded-full" />
         ))}
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <Skeleton key={i} className="h-36 rounded-lg" />
         ))}
