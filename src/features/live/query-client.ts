@@ -33,6 +33,8 @@ export const menuKey = (restaurantId: string) => ['menu', restaurantId] as const
 
 /** Every change to the board runs under this key (see useBoardAction). */
 export const BOARD_MUTATION_KEY = ['board-change'] as const;
+/** In-stock switches on the Availability page. */
+export const MENU_MUTATION_KEY = ['menu-change'] as const;
 
 /** Safety net behind Realtime (spec §12). */
 export const BOARD_REFETCH_MS = 30_000;

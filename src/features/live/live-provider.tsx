@@ -15,7 +15,7 @@ import type { ConnectionState } from '@/components/shared/connection-indicator';
 import { createClient } from '@/lib/supabase/browser';
 
 import { type ChannelStatus, connectionState, EVENT_DEBOUNCE_MS, LIVE_TABLES } from './connection';
-import { BOARD_MUTATION_KEY, getQueryClient } from './query-client';
+import { BOARD_MUTATION_KEY, getQueryClient, MENU_MUTATION_KEY } from './query-client';
 
 type LiveContextValue = {
   restaurantId: string;
@@ -68,12 +68,14 @@ function RealtimeChannelBridge({ restaurantId, memberId, children }: LiveProvide
     let menuChanged = false;
 
     const refetch = () => {
-      // While this device is changing the board, its last change refetches.
+      // While this device is changing the board or the menu, its last change refetches.
       if (queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) === 0) {
         void queryClient.invalidateQueries({ queryKey: ['board'] });
       }
-      if (menuChanged) void queryClient.invalidateQueries({ queryKey: ['menu'] });
-      menuChanged = false;
+      if (menuChanged && queryClient.isMutating({ mutationKey: MENU_MUTATION_KEY }) === 0) {
+        void queryClient.invalidateQueries({ queryKey: ['menu'] });
+        menuChanged = false;
+      }
     };
 
     const onEvent = (table: string) => {

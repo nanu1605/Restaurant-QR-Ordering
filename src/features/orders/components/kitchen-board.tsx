@@ -46,8 +46,8 @@ const TICKET_ACTION: Record<KitchenColumn, string> = {
  * it on; served dishes leave the view.
  */
 export function KitchenBoard() {
-  const { data: board, dataUpdatedAt } = useBoard();
-  const nowMs = useServerNow(board?.now, dataUpdatedAt);
+  const { data: board } = useBoard();
+  const nowMs = useServerNow(board);
   const advance = useBoardAction({
     action: ({ ids, status }: { ids: string[]; status: ForwardStatus }) =>
       setItemsStatus(ids, status),

@@ -9,13 +9,25 @@ import { createClient } from '@/lib/supabase/browser';
 
 import { type Board, fetchBoard } from './board';
 
-/** The live board, hydrated from the server and kept fresh by Realtime (spec §12). */
-export function useBoard() {
+/**
+ * The live board, hydrated from the server and kept fresh by Realtime (spec
+ * §12). Pass `watchOnly` for a component that only needs the query kept alive
+ * and polling (it won't re-render on changes).
+ */
+export function useBoard({ watchOnly = false }: { watchOnly?: boolean } = {}) {
   const { memberId } = useLive();
+  const queryClient = useQueryClient();
+  // While this device is changing the board, its last change refetches (see
+  // useBoardAction); an automatic refetch in between would undo the optimistic
+  // update on screen.
+  const idle = () => queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) === 0;
   return useQuery({
     queryKey: boardKey(memberId),
     queryFn: () => fetchBoard(createClient()),
-    refetchInterval: BOARD_REFETCH_MS,
+    refetchInterval: () => (idle() ? BOARD_REFETCH_MS : false),
+    refetchOnWindowFocus: () => idle(),
+    refetchOnReconnect: () => idle(),
+    notifyOnChangeProps: watchOnly ? [] : undefined,
   });
 }
 

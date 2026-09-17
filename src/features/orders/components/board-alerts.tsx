@@ -5,13 +5,17 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { useLive } from '@/features/live/live-provider';
-import { boardKey } from '@/features/live/query-client';
+import { BOARD_MUTATION_KEY, boardKey } from '@/features/live/query-client';
 import { playChime } from '@/features/live/sound';
 import { tableHeading } from '@/features/ordering/format';
 
 import type { Board } from '../board';
 import { type BoardSnapshot, diffBoard, snapshotOf } from '../alerts';
 import { highlightTables, ownOrderIds } from '../alert-store';
+import { useBoard } from '../use-board';
+
+/** Cached board data older than this is not trusted as the baseline. */
+const FRESH_MS = 15_000;
 
 type BoardAlertsProps = {
   /** Admin screens also chime when a table is newly seated (spec §13.3 Unassigned queue). */
@@ -19,24 +23,42 @@ type BoardAlertsProps = {
 };
 
 /**
- * Toast, highlight and chime for new orders (spec §12). Watches the board
- * query's refreshes and compares each with the last one (docs/DECISIONS.md
- * P4-16); the first load stays quiet.
+ * Toast, highlight and chime for new orders (spec §12). Keeps the board query
+ * alive on every page it is mounted on, and compares each board refresh with
+ * the last one (docs/DECISIONS.md P4-16). The first load stays quiet, and so
+ * does a board the cache kept while this screen was away: orders that came in
+ * meanwhile were someone else's to hear.
  */
 export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
   const queryClient = useQueryClient();
   const { memberId } = useLive();
+  // Pages without a board of their own (Availability) still refetch it.
+  useBoard({ watchOnly: true });
 
   useEffect(() => {
     const key = boardKey(memberId);
-    const current = queryClient.getQueryData<Board>(key);
-    let previous: BoardSnapshot | null = current ? snapshotOf(current) : null;
+    const hash = hashKey(key);
+    const state = queryClient.getQueryState<Board>(key);
+    const fresh =
+      state?.data !== undefined &&
+      !state.isInvalidated &&
+      Date.now() - state.dataUpdatedAt < FRESH_MS;
+    let previous: BoardSnapshot | null = fresh && state.data ? snapshotOf(state.data) : null;
 
     return queryClient.getQueryCache().subscribe((event) => {
-      if (event.type !== 'updated' || event.action.type !== 'success') return;
-      if (event.query.queryHash !== hashKey(key)) return;
+      if (event.type !== 'updated' || event.query.queryHash !== hash) return;
       const board = event.query.state.data as Board | undefined;
       if (!board) return;
+
+      // Newer server data hydrated on navigation: the new baseline, no alerts.
+      if (event.action.type === 'setState') {
+        previous = snapshotOf(board);
+        return;
+      }
+      if (event.action.type !== 'success') return;
+      // Optimistic updates while this device changes the board: compare again
+      // once its last change has refetched.
+      if (queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) > 0) return;
 
       const alerts = diffBoard(previous, board, ownOrderIds());
       previous = snapshotOf(board);

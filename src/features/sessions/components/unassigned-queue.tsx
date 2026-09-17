@@ -14,8 +14,8 @@ import { AssignWaiterDialog } from './assign-waiter-dialog';
 
 /** Unassigned tables, oldest first, pinned above the live board (spec §10.7, §13.3). */
 export function UnassignedQueue() {
-  const { data: board, dataUpdatedAt } = useBoard();
-  const nowMs = useServerNow(board?.now, dataUpdatedAt);
+  const { data: board } = useBoard();
+  const nowMs = useServerNow(board);
   const [target, setTarget] = useState<BoardTable | null>(null);
 
   if (!board) return null;

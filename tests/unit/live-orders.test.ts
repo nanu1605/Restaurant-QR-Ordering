@@ -95,6 +95,7 @@ function table(
 function board(overrides: Partial<Board> = {}): Board {
   return {
     now: '2026-09-13T12:30:00.000Z',
+    fetchedAt: Date.parse('2026-09-13T12:30:00.000Z'),
     timezone: 'Asia/Kolkata',
     role: 'waiter',
     myWaiterId: null,

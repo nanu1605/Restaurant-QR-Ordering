@@ -27,8 +27,8 @@ export type BoardMode = 'staff' | 'admin';
  * manager's actions (assign waiters, delete orders, revert statuses).
  */
 export function LiveBoard({ mode }: { mode: BoardMode }) {
-  const { data: board, dataUpdatedAt } = useBoard();
-  const nowMs = useServerNow(board?.now, dataUpdatedAt);
+  const { data: board } = useBoard();
+  const nowMs = useServerNow(board);
   const [chosenFilter, setChosenFilter] = useState<BoardFilter | null>(null);
   const [openTableId, setOpenTableId] = useState<string | null>(null);
 

@@ -66,6 +66,8 @@ export type BoardWaiter = { id: string; name: string; onDuty: boolean };
 export type Board = {
   /** Server clock, so elapsed times don't depend on the device's clock. */
   now: string;
+  /** This device's clock when it fetched the board: with `now`, the clock offset. */
+  fetchedAt: number;
   timezone: string;
   role: MemberRole;
   /** The caller's own waiter profile, for "My tables". */
@@ -139,10 +141,11 @@ const boardJson = z.object({
   waiters: z.array(z.object({ id: z.string(), name: z.string(), on_duty: z.boolean() })),
 });
 
-export function parseBoard(json: unknown): Board {
+export function parseBoard(json: unknown, fetchedAt: number = Date.now()): Board {
   const data = boardJson.parse(json);
   return {
     now: data.now,
+    fetchedAt,
     timezone: data.timezone,
     role: data.role,
     myWaiterId: data.my_waiter_id,
