@@ -72,6 +72,7 @@ function RealtimeChannelBridge({ restaurantId, memberId, children }: LiveProvide
       if (queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) === 0) {
         void queryClient.invalidateQueries({ queryKey: ['board'] });
       }
+      void queryClient.invalidateQueries({ queryKey: ['billing'] });
       if (menuChanged && queryClient.isMutating({ mutationKey: MENU_MUTATION_KEY }) === 0) {
         void queryClient.invalidateQueries({ queryKey: ['menu'] });
         menuChanged = false;

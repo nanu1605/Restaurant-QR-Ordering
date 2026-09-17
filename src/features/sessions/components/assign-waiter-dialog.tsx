@@ -80,6 +80,8 @@ function Picker({ board, sessionId, tableLabel, currentWaiterId, onDone }: Picke
       if (queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) === 1) {
         void queryClient.invalidateQueries({ queryKey: ['board'] });
       }
+      // The bill builder shows the waiter too.
+      void queryClient.invalidateQueries({ queryKey: ['billing'] });
     },
   });
 

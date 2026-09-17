@@ -30,6 +30,8 @@ export function getQueryClient(): QueryClient {
  */
 export const boardKey = (memberId: string) => ['board', memberId] as const;
 export const menuKey = (restaurantId: string) => ['menu', restaurantId] as const;
+/** Billing screens (open tables, bill previews) refresh with the same events. */
+export const billingKey = (memberId: string) => ['billing', memberId] as const;
 
 /** Every change to the board runs under this key (see useBoardAction). */
 export const BOARD_MUTATION_KEY = ['board-change'] as const;
