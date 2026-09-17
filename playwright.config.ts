@@ -28,10 +28,14 @@ export default defineConfig({
     },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
+    // Live board specs open their own phone for the customer.
     {
       name: 'mobile',
       use: { ...devices['Pixel 7'] },
-      testIgnore: /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
+      testIgnore: [
+        /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
+        /(live-orders|staff-board)\.spec\.ts/,
+      ],
     },
   ],
   webServer: {

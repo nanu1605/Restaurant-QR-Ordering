@@ -6,18 +6,29 @@ import { adminClient, createTestRestaurant } from './helpers';
 
 const TOKEN_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+const newToken = () => Array.from({ length: 16 }, () => TOKEN_ALPHABET[randomInt(62)]).join('');
+
 /**
- * A fresh restaurant with one table (label "5") and a small menu, for customer
+ * A fresh restaurant with tables (label "5" unless given) and a small menu, for
  * ordering tests (docs/DECISIONS.md P3-17):
  * - Starters: Paneer Tikka (veg, ₹280), Chicken 65 (non-veg, ₹320)
  * - Mains: Butter Chicken (Half ₹280 / Full ₹480), Malai Kofta (out of stock)
+ * `token`, `tableId` and `url` are the first table's.
  */
 export async function createOrderingTable({
   approval = true,
   cancelWindowSeconds = 120,
   prefix = 'order',
-}: { approval?: boolean; cancelWindowSeconds?: number; prefix?: string } = {}) {
-  const restaurant = await createTestRestaurant({ prefix, cuisine: 'blank' });
+  plan = 'growth',
+  labels = ['5'],
+}: {
+  approval?: boolean;
+  cancelWindowSeconds?: number;
+  prefix?: string;
+  plan?: string;
+  labels?: string[];
+} = {}) {
+  const restaurant = await createTestRestaurant({ prefix, plan, cuisine: 'blank' });
   const db = adminClient();
   const restaurantId = restaurant.restaurantId;
 
@@ -30,13 +41,22 @@ export async function createOrderingTable({
     .eq('id', restaurantId)
     .throwOnError();
 
-  const token = Array.from({ length: 16 }, () => TOKEN_ALPHABET[randomInt(62)]).join('');
-  const { data: table } = await db
+  const { data: diningTables } = await db
     .from('dining_tables')
-    .insert({ restaurant_id: restaurantId, label: '5', qr_token: token })
-    .select('id')
-    .single()
+    .insert(
+      labels.map((label, index) => ({
+        restaurant_id: restaurantId,
+        label,
+        qr_token: newToken(),
+        sort_order: index + 1,
+      })),
+    )
+    .select('id, label, qr_token')
     .throwOnError();
+  const tables = Object.fromEntries(
+    diningTables!.map((t) => [t.label, { id: t.id, token: t.qr_token, url: `/t/${t.qr_token}` }]),
+  );
+  const first = tables[labels[0]!]!;
 
   const { data: categories } = await db
     .from('menu_categories')
@@ -116,9 +136,11 @@ export async function createOrderingTable({
 
   return {
     restaurantId,
-    token,
-    tableId: table!.id,
-    url: `/t/${token}`,
+    restaurant,
+    token: first.token,
+    tableId: first.id,
+    url: first.url,
+    tables,
     item: {
       paneer: itemId('Paneer Tikka'),
       chicken65: itemId('Chicken 65'),
