@@ -563,7 +563,12 @@ bottom of each section.
 - **P5-6 · What a bill freezes:** the restaurant's name, legal name, address, phone, GSTIN, FSSAI,
   logo and footer, the waiter, the tax settings and the lines. How it prints is read at print time:
   paper width, the "Served by" line, branding (`remove_branding`) and the UPI QR, which needs the
-  setting, the plan feature and a UPI ID, so a reprint pays today's UPI ID.
+  setting, the plan feature and a UPI ID, so a reprint pays today's UPI ID. The tax settings stored
+  on the bill come from the same read the totals were worked out with. Known limit: the logo is
+  frozen as a path, and uploading a new logo replaces that file, so old bills reprint with the new
+  logo (or none after the logo is removed).
+- **UPI QR payload (§11.3):** `upi://pay?pa=<vpa>&pn=…&am=…&cu=INR&tn=…` with the UPI ID as it is
+  (its pattern allows only URL-safe characters and `@`); the payee name and note are URL-encoded.
 - **P5-17 · Discounts:** percent up to 100% with two decimals (stored as basis points), flat in
   rupees capped at the subtotal by the calculation, a reason of 1–200 characters when the discount
   is above zero, and `FEATURE_NOT_IN_PLAN` without `discounts`. A service charge is added only when
@@ -578,8 +583,8 @@ bottom of each section.
   The cash change calculator is on screen only.
 - **P5-7 · Void** marks the bill void and its payments `is_void`; `payment_status` stays as history
   and voiding twice changes nothing. **Reopen** is allowed only while `reopen_window_minutes > 0`,
-  within the window, and while the table has no new session; otherwise `REOPEN_NOT_ALLOWED`
-  (`window` / `table_busy`) and nothing is voided. The session opens again (billed time cleared)
+  within the window, while the table is still switched on and has no new session; otherwise
+  `REOPEN_NOT_ALLOWED` (`window` / `table_inactive` / `table_busy`) and nothing is voided. The session opens again (billed time cleared)
   and its waiter comes back if still active, on duty and under the table limit (waiter row locked),
   else the table is Unassigned. A void without reopening leaves the session billed. Locks: table →
   session → bill → waiter.
@@ -592,9 +597,12 @@ bottom of each section.
 - **P5-10 · Print pages have no admin chrome:** the admin pages moved into the route group
   `src/app/admin/(panel)` (URLs unchanged) and `src/app/admin/(print)` holds
   `/admin/bills/[billId]/print` and `/admin/settings/test-print` behind the same login check,
-  without the live connection. The print page sets `@page { size: 80mm auto; margin: 0 }` (or
-  58 mm) with a 72 / 48 mm printable width, opens the print dialog once on load and counts the print
-  after `window.print()` returns. `?copy=office` adds the discount reason and who generated the
+  without the live connection. §15's `@page { size: 80mm auto }` isn't valid CSS (Chromium drops
+  it), and a fixed height would split long bills into pages, so the print page sets only
+  `@page { margin: 0 }`, lays the bill out 72 mm (or 48 mm) wide and leaves the paper size to the
+  printer driver, as §15 expects. The A4 page size of the QR card sheet moved from the global
+  stylesheet into that page, so it no longer applies to bills. The page opens the print dialog once
+  on load and counts the print after `window.print()` returns. `?copy=office` adds the discount reason and who generated the
   bill. Test print uses `admin_sample_bill()` (the §11.1 dishes with the saved settings) and counts
   nothing.
 - **P5-11 · No A4 bill layout:** `paper_width` only has 58 mm and 80 mm (§15 lists A4 as optional).
@@ -602,20 +610,28 @@ bottom of each section.
   range covers from the start hour of the first day to the start hour after the last, at most 366
   days, default today's business day), table, waiter, payment status and mode, invoice number
   (plain text match), void bills shown or hidden, the Closed without bill view, 50 rows a page.
-  Void bills never count in the summary; "Net collected" sums non-void payments; "Items" is billed
-  quantities. Business-day and financial-year logic lives in SQL only, so the §18 edge cases (3:59
+  Void bills never count in the summary; "Net collected" sums non-void payments (only those in the
+  chosen mode when a payment mode is picked); "Items" is billed quantities. Impossible dates in the
+  URL are dropped, and a range longer than a year is cut to a year, with a note on the page. Business-day and financial-year logic lives in SQL only, so the §18 edge cases (3:59
   am, 31 March 11:59 pm) are pgTAP tests rather than a `time.ts`; the filters live in the URL.
 - **P5-13 · Billing screens stay live:** open tables and the bill preview are TanStack queries under
   `['billing', memberId, …]`, refreshed by the restaurant channel's events (and a 30 s poll); the bill
   page and Total orders are server-rendered and refresh after their own actions.
 - **P5-14 · The bill builder** is a page per table (`/admin/billing/[sessionId]`). The preview
   refetches 300 ms after the discount or service charge stops changing and keeps the previous
-  numbers meanwhile; Generate bill stays disabled until the preview matches the choice, so the
-  bill is the one on screen. Unserved dishes get the §10.5 confirmation ("2 items not marked served
+  numbers meanwhile; Generate bill stays disabled until the preview matches the choice (background
+  refetches don't disable it, so keyboard focus stays). Generation sends the grand total the
+  confirmation shows; if the bill now comes to something else (a dish removed, settings changed
+  meanwhile), `BILL_CHANGED` saves nothing and the screen shows the new preview. Unserved dishes get the §10.5 confirmation ("2 items not marked served
   — bill anyway?") with the list.
 - **P5-15 · Bill history** shows the audit entries of the bill and its table session, oldest first.
 - **New error codes:** `ORDERS_WAITING`, `NOTHING_TO_BILL`, `WAITER_REQUIRED`, `ALREADY_BILLED`,
-  `BILL_VOID`, `BILL_ALREADY_PAID`, `PAYMENT_MISMATCH`, `REOPEN_NOT_ALLOWED`.
+  `BILL_VOID`, `BILL_ALREADY_PAID`, `PAYMENT_MISMATCH`, `REOPEN_NOT_ALLOWED`, `BILL_CHANGED`.
+- **Review fixes (database, money, React, accessibility):** the print page size above,
+  `BILL_CHANGED`, per-mode collected totals, reopen on a switched-off table, date validation on
+  Total orders, a single settings read when generating, the UPI payload, focus after recording a
+  payment or voiding (the status line), "Short by ₹…" in the cash calculator, the bill page
+  refreshing after a refused payment or void, and a login check on each print page.
 
 ### Tests
 
