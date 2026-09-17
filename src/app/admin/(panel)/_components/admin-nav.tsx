@@ -43,6 +43,8 @@ const NAV_ITEMS: NavItem[] = [
 
 function isActive(pathname: string, href: string) {
   if (href === '/admin') return pathname === '/admin';
+  // A bill belongs to Billing.
+  if (href === '/admin/billing' && pathname.startsWith('/admin/bills/')) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
