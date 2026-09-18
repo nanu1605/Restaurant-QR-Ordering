@@ -81,6 +81,28 @@ window. **Total orders** lists bills by business day with filters, a summary str
 closed without a bill. Print on a real thermal printer by choosing it in the browser's print
 dialog, with the paper size set in the printer driver and headers and footers turned off.
 
+### Dashboard and reports
+
+`/admin` opens on today: sales, bills and the average bill for the business day, the open tables and
+dishes in progress, orders waiting for approval, tables without a waiter, the waiters on duty and a
+compact board of every table. The numbers move as bills are generated, without a reload.
+
+`/admin/reports` covers a range of business days (Today, Yesterday, Last 7 days, This month or your
+own dates):
+
+- **Sales**: the summary (gross, discounts, service charge, GST, net sales, total billed, average
+  bill), how it was paid, a day-by-day chart and a weekday × hour heatmap of the busy hours.
+- **Dishes**: quantities and sales per dish and per category.
+- **Tables**: sittings, average table time and sales per table.
+- **Waiters** (Growth): the tables each waiter finished, their sales, average table time, rounds and
+  dishes, and the tables they are serving right now. A table handed over counts for whoever billed
+  it.
+- **Activity**: voids and discounts, removed dishes and deleted orders — who did it, their role and
+  why.
+
+Every report downloads as a CSV (Growth), written so Excel opens it cleanly. The Starter plan sees
+the sales summary for today or yesterday.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:

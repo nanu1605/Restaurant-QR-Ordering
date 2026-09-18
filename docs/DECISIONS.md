@@ -645,3 +645,96 @@ bottom of each section.
   `billing.spec.ts` covers void and reopen, blockers, split payments and the change calculator,
   Starter limits, read-only billing, Total orders filters and test print. Printing on a real 80 mm
   printer stays a manual check.
+
+## Phase 6 — dashboard and reports (2026-09-18)
+
+### Definitions
+
+- **P6-1 · Sales are counted by bill:** every report covers the active (non-void) bills whose
+  `generated_at` falls in the chosen business days, in the restaurant's timezone — the same rule as
+  Total orders (P5-12). So the dashboard's "today", Reports → Today and Total orders → Today always
+  agree. A voided bill leaves the money behind but still shows in the Voids log.
+- **P6-2 · What the summary means:** bills; **gross sales** (the menu value on the bills);
+  discounts; service charge; GST (CGST + SGST); round off; **net sales** = the taxable value, so
+  after discounts, with service charge and without GST; **total billed** = the grand totals; and
+  **average bill** = total billed ÷ bills. Payment modes come from the non-void payments on those
+  bills, with the unpaid bills counted separately. The screen says what net sales means, because
+  owners and accountants read it differently.
+- **P6-3 · Dish and category sales** come from the billed dishes of those bills (the same filter
+  the bill lines use: a billable status on an accepted round), at menu prices **before the bill's
+  discount** — the screen says so, since a bill-level discount can't be split over dishes honestly.
+  Dishes group by dish and option, so a renamed dish stays one row (the current name wins, the
+  snapshot is the fallback), and a category is the dish's **current** category.
+- **P6-4 · Busy hours** are a weekday × hour grid: the weekday of the **business day** and the hour
+  on the restaurant's clock, ordered from the business-day start hour. A 1:30 am Saturday bill is
+  Friday night's, where a restaurant would look for it.
+- **P6-5 · The day trend** has a row per business date in range, zero days included, each carrying
+  the whole summary and the payment modes. The chart and the Sales CSV read the same rows.
+- **P6-6 · Table turnover:** per table, the bills in range, the average table time (first order
+  until the bill, so a table reopened after a void counts its whole stay), sales and average bill.
+  Tables with no sittings are listed at zero; "sittings per table" divides by the tables listed.
+- **P6-7 · The waiter report** counts a table for the waiter it was assigned to **when the bill was
+  made** (`bills.waiter_id`), so a table handed over counts once, for whoever finished it. Sales
+  are those bills' grand totals; rounds are their accepted rounds; dishes are the billed
+  quantities, not only the ones tapped as served, which some restaurants never tap. "Open tables
+  now" is live, not in the range. Deleted waiters stay listed while they have bills in range.
+- **P6-8 · The activity logs read the audit log,** not the current rows, because who did it, their
+  role at the time and why only exist there — and a partial removal leaves no trace anywhere else.
+  Three logs: voids and discounts (joined to the bill for its number, table and amounts), removed
+  dishes (quantity taken off, what it was worth, whether it had been served, table and round) and
+  deleted orders (the round, its dishes and their value). 50 rows a page, newest first.
+
+### Rules
+
+- **P6-9 · Plan gating, in SQL and in the screens:** Starter gets the sales **summary** only, for a
+  single day that is today or yesterday; a wider range raises `FEATURE_NOT_IN_PLAN` and the page
+  falls back to today with a note, and payment modes, the trend and the heatmap come back null.
+  Dishes, tables and activity need `advanced_reports`; the waiter report needs `waiter_reports`.
+  Asking for a CSV (`"export": true`) needs `csv_export`, so the database refuses a typed-in
+  download URL too. A read-only restaurant can still read every report it pays for (§10.6).
+- **P6-10 · One function per report screen**, `(p_filters jsonb) → jsonb`, sharing
+  `private.report_window(ctx, filters, feature)`: it validates `from`/`to` (default today, at most
+  366 days), applies the gating and returns the times the range spans. Each response echoes
+  `today`, `from` and `to`, so the screens need no timezone maths.
+- **P6-11 · The dashboard mixes two sources:** today's money comes from `admin_report_sales({})`
+  under the billing query keys, so a new bill refreshes it through Realtime; open tables, dishes in
+  progress and orders waiting for approval come from the board data the Live orders screen already
+  keeps, so there is no second channel. It reuses the unassigned-tables queue and the waiter strip,
+  and adds a compact board of every table. Subscription warnings stay in the panel's own banner.
+- **P6-12 · "Sales today" is the total billed** (what the guests paid, GST included), the number an
+  owner counts at the counter; Reports shows net sales beside it.
+- **P6-13 · CSV downloads** go through `GET /admin/reports/export`: the role and `csv_export` are
+  checked, then the same report function runs with `"export": true` (unpaged). Files carry a
+  byte-order mark so Excel reads ₹ and Hindi, use CRLF, quote what needs quoting and prefix a cell
+  that starts with `=`, `+`, `-` or `@` so a dish name can't run as a formula. Money is written in
+  rupees (`662.50`) so spreadsheets can add it up, and times use the restaurant's clock.
+- **P6-14 · Reports is one page** (`/admin/reports?report=…&from=…&to=…`), server-rendered, with
+  tabs as links, the Total orders date presets plus custom dates, and every chart beside the table
+  of the same numbers. Charts are Recharts with one series and one hue; the busy-hours heatmap is a
+  plain table of coloured cells, which keeps it readable and searchable. Wide tables scroll inside
+  a positioned box, so their screen-reader text can't push the page sideways on a phone.
+- **P6-15 · The waiter chart is small multiples:** one row of bars per waiter (up to six, for
+  ranges up to 31 days), rather than the stacked bars the plan sketched. One hue needs no
+  categorical palette and no legend, and comparing waiters row by row is easier than reading a
+  stack.
+- **P6-16 · Shared date-range helpers** moved to `src/lib/date-range.ts` (`readDateRange`,
+  `datePresets`, `addDays`, `hrefWithParams`), used by both Total orders and Reports.
+- **Not added:** Total orders keeps its own screen without a CSV (it isn't a report), and menu costs
+  or profit stay out of scope.
+
+### Tests
+
+- **pgTAP 260–290:** the sales summary over mixed bills (discount, service charge, inclusive tax,
+  round off), a 1:30 am bill counted in the previous business day, 03:59 versus 04:00, zero-filled
+  days, the heatmap's business-day weekday, Starter's today/yesterday limit and its refusals; dish
+  and category sales (merged rounds, removed, cancelled, rejected and waiting dishes left out,
+  renames and category moves); table turnover with quiet tables; the waiter report including a
+  handed-over table, a deleted waiter and open tables now; and the activity logs built from real
+  removals, bills and voids, with paging and export.
+- **Unit:** the shared date-range helpers, the report URL params, the CSV writer (quoting, formula
+  guard, byte-order mark, rupees, the restaurant clock) and the parsers.
+- **E2E (`reports.spec.ts`):** the dashboard's numbers, alerts and a bill appearing live; the sales,
+  dish, table and activity tabs with a CSV download checked line by line; the waiter report's
+  handover rule and column sorting; and Starter seeing the summary only, with the export URL
+  refused. The data is made through the real functions, so bills, audit rows and waiter history are
+  genuine.
