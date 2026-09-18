@@ -1,8 +1,11 @@
-import { LayoutDashboard } from 'lucide-react';
+import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 import type { Metadata } from 'next';
 
-import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { Dashboard } from '@/features/dashboard/components/dashboard';
+import { billingKey, boardKey, getQueryClient } from '@/features/live/query-client';
+import { getBoard } from '@/features/orders/queries';
+import { getSalesReport } from '@/features/reports/queries';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 
@@ -10,18 +13,21 @@ export const metadata: Metadata = {
   title: 'Dashboard',
 };
 
+/** Dashboard (spec §13.3): today's sales, the tables right now and what needs attention. */
 export default async function AdminDashboardPage() {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
+  const queryClient = getQueryClient();
+  const [board, sales] = await Promise.all([getBoard(), getSalesReport()]);
+  queryClient.setQueryData(boardKey(membership.memberId), board);
+  if (sales) queryClient.setQueryData([...billingKey(membership.memberId), 'today'], sales);
 
   return (
-    <>
-      <PageHeader title={`Welcome, ${membership.displayName}`} />
-      <EmptyState
-        icon={LayoutDashboard}
-        title="Today at a glance"
-        description="Sales, open tables and alerts will show here once orders come in. Start by setting up your menu and tables."
-        className="flex-1"
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <PageHeader
+        title={`Welcome, ${membership.displayName}`}
+        description="Today at a glance, with the tables as they are right now."
       />
-    </>
+      <Dashboard />
+    </HydrationBoundary>
   );
 }
