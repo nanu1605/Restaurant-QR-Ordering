@@ -1,13 +1,15 @@
 'use client';
 
 import { cn } from 'cn';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { useState } from 'react';
 
+import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
 import { addDays, daysBetween } from '@/lib/date-range';
 
 import { minutesLabel, type WaiterReport, type WaiterRow } from '../report';
+import { ScrollRegion } from './scroll-region';
 
 /**
  * Waiter report (spec §19 Phase 6, feature waiter_reports): the tables each
@@ -38,9 +40,19 @@ export function WaiterReportView({ report }: { report: WaiterReport }) {
     return sort.desc ? -order : order;
   });
 
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="No waiters yet"
+        description="Add waiter profiles in Waiters, and assign them to tables, to see who is finishing tables."
+      />
+    );
+  }
+
   return (
     <>
-      <div className="relative min-w-0 overflow-x-auto">
+      <ScrollRegion label="Waiters">
         <table className="w-full border-collapse text-base">
           <caption className="sr-only">
             Waiters and the tables they billed, sortable by column
@@ -108,7 +120,7 @@ export function WaiterReportView({ report }: { report: WaiterReport }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
       <p className="text-sm text-ink-muted">
         A table counts for the waiter it was assigned to when the bill was made, so a table handed
         over counts once. Dishes are the ones on those bills.
@@ -168,8 +180,47 @@ function WaiterDays({ report, rows }: { report: WaiterReport; rows: WaiterRow[] 
         ))}
       </ul>
       <p className="text-sm text-ink-muted">
-        {report.from} to {report.to}, on the same scale. Hover a bar for the day.
+        {report.from} to {report.to}, on the same scale. Hover a bar for the day, or open the
+        numbers.
       </p>
+      <details className="text-base text-ink">
+        <summary className="cursor-pointer text-sm text-ink-muted">Show the numbers</summary>
+        <ScrollRegion label="Tables per day">
+          <table className="mt-2 w-full border-collapse text-base">
+            <caption className="sr-only">Tables each waiter billed per business day</caption>
+            <thead>
+              <tr className="border-b border-line text-left text-sm text-ink-muted">
+                <th scope="col" className="py-2 pr-3 font-medium">
+                  Day
+                </th>
+                {busy.map((waiter) => (
+                  <th
+                    key={waiter.waiterId}
+                    scope="col"
+                    className="py-2 pr-3 text-right font-medium"
+                  >
+                    {waiter.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {dates.map((date) => (
+                <tr key={date} className="border-b border-line">
+                  <th scope="row" className="py-2 pr-3 text-left font-normal">
+                    {date}
+                  </th>
+                  {busy.map((waiter) => (
+                    <td key={waiter.waiterId} className="py-2 pr-3 text-right tabular-nums">
+                      {counts.get(`${waiter.waiterId}-${date}`) ?? 0}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollRegion>
+      </details>
     </section>
   );
 }

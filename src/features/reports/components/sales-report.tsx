@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { PAYMENT_MODE_LABELS } from '@/features/billing/bill';
+import { addDays, daysBetween } from '@/lib/date-range';
 import { formatINR } from '@/lib/money';
 
 import {
@@ -13,6 +14,7 @@ import {
   WEEKDAYS_SHORT,
 } from '../report';
 import { SalesTrendChart, type TrendPoint } from './sales-trend-chart';
+import { ScrollRegion } from './scroll-region';
 
 /** Sales report (spec §13.3, §19 Phase 6): the summary, how it was paid, the
  * day trend and the busy hours. */
@@ -91,19 +93,18 @@ export function PaymentModes({ report }: { report: SalesReport }) {
               </td>
             </tr>
           ))}
-          <tr>
-            <th scope="row" className="py-2 text-left font-normal text-ink">
-              Unpaid bills
-            </th>
-            <td className="py-2 text-right text-ink">
-              <Money paise={report.summary.unpaidPaise} />
-            </td>
-            <td className="py-2 text-right text-ink-muted tabular-nums">
-              {report.summary.unpaidBills}
-            </td>
-          </tr>
         </tbody>
       </table>
+      <p className="text-sm text-ink">
+        {report.summary.unpaidBills === 0 ? (
+          'Every bill is paid.'
+        ) : (
+          <>
+            {report.summary.unpaidBills} {report.summary.unpaidBills === 1 ? 'bill' : 'bills'} not
+            paid yet: <Money paise={report.summary.unpaidPaise} />.
+          </>
+        )}
+      </p>
     </section>
   );
 }
@@ -168,12 +169,36 @@ export function SalesTrend({ report }: { report: SalesReport }) {
   );
 }
 
+/** ISO weekday (1 = Monday) of a 'YYYY-MM-DD' business date. */
+function isoWeekday(date: string): number {
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  return ((new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7) + 1;
+}
+
+/** The weekdays a range covers, Monday first; all seven from a week up. */
+function weekdaysIn(from: string, to: string): number[] {
+  const span = daysBetween(from, to) + 1;
+  if (span >= 7) return [1, 2, 3, 4, 5, 6, 7];
+  const covered = new Set(Array.from({ length: span }, (_, i) => isoWeekday(addDays(from, i))));
+  return [1, 2, 3, 4, 5, 6, 7].filter((weekday) => covered.has(weekday));
+}
+
+/** Cell fill: the quietest hour at 30% of the chart hue, the busiest at full strength. */
+function cellColor(share: number): string {
+  return `color-mix(in oklab, var(--chart-1) ${Math.round(30 + share * 70)}%, var(--surface))`;
+}
+
 export function SalesHeatmap({ report }: { report: SalesReport }) {
   const hours = report.hours;
   if (!hours || hours.length === 0) return null;
   const busiest = Math.max(...hours.map((h) => h.totalPaise));
+  const quietest = Math.min(...hours.map((h) => h.totalPaise));
   const cells = new Map(hours.map((h) => [`${h.weekday}-${h.hour}`, h]));
   const columns = hourOrder(report.startHour);
+  const rows = weekdaysIn(report.from, report.to);
+  const ranked = [...hours].sort(
+    (a, b) => b.totalPaise - a.totalPaise || a.weekday - b.weekday || a.hour - b.hour,
+  );
 
   return (
     <section aria-labelledby="heatmap-heading" className="flex min-w-0 flex-col gap-2">
@@ -184,9 +209,11 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
         Bills by the hour they were generated, on the restaurant’s 24-hour clock. Late-night hours
         belong to the day the guests sat down.
       </p>
-      <div className="relative min-w-0 overflow-x-auto">
+      <ScrollRegion label="Busy hours grid">
         <table className="border-collapse text-sm">
-          <caption className="sr-only">Sales by weekday and hour, darker cells are busier</caption>
+          <caption className="sr-only">
+            Bills and sales by weekday and hour; darker cells are busier
+          </caption>
           <thead>
             <tr>
               <th scope="col" className="p-1 text-left font-medium text-ink-muted">
@@ -198,39 +225,39 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
                   scope="col"
                   className="p-1 text-center text-xs font-medium text-ink-muted"
                 >
-                  {hour}
+                  <span aria-hidden>{hour}</span>
+                  <span className="sr-only">{hourLabel(hour)}</span>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {WEEKDAYS.map((weekday, index) => (
+            {rows.map((weekday) => (
               <tr key={weekday}>
                 <th scope="row" className="p-1 text-left font-medium text-ink-muted">
-                  {WEEKDAYS_SHORT[index]}
+                  <span aria-hidden>{WEEKDAYS_SHORT[weekday - 1]}</span>
+                  <span className="sr-only">{WEEKDAYS[weekday - 1]}</span>
                 </th>
                 {columns.map((hour) => {
-                  const cell = cells.get(`${index + 1}-${hour}`);
+                  const cell = cells.get(`${weekday}-${hour}`);
                   const share = cell && busiest > 0 ? cell.totalPaise / busiest : 0;
                   return (
                     <td key={hour} className="p-0.5">
                       <span
                         title={
                           cell
-                            ? `${weekday} ${hourLabel(hour)}: ${cell.bills} ${cell.bills === 1 ? 'bill' : 'bills'}, ${formatINR(cell.totalPaise)}`
-                            : `${weekday} ${hourLabel(hour)}: no bills`
+                            ? `${WEEKDAYS[weekday - 1]} ${hourLabel(hour)}: ${cell.bills} ${cell.bills === 1 ? 'bill' : 'bills'}, ${formatINR(cell.totalPaise)}`
+                            : undefined
                         }
                         className="relative block size-6 rounded-sm border border-line"
-                        style={{
-                          backgroundColor: cell
-                            ? `color-mix(in oklab, var(--chart-1) ${Math.round(20 + share * 80)}%, var(--surface))`
-                            : 'var(--surface)',
-                        }}
+                        style={{ backgroundColor: cell ? cellColor(share) : 'var(--surface)' }}
                       >
-                        <span className="sr-only">
-                          {weekday} {hourLabel(hour)}:{' '}
-                          {cell ? `${cell.bills} bills, ${formatINR(cell.totalPaise)}` : 'no bills'}
-                        </span>
+                        {cell && (
+                          <span className="sr-only">
+                            {cell.bills} {cell.bills === 1 ? 'bill' : 'bills'},{' '}
+                            {formatINR(cell.totalPaise)}
+                          </span>
+                        )}
                       </span>
                     </td>
                   );
@@ -239,7 +266,53 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
             ))}
           </tbody>
         </table>
+      </ScrollRegion>
+      <div aria-hidden className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+        <span>Quieter</span>
+        {[0, 0.33, 0.66, 1].map((share) => (
+          <span
+            key={share}
+            className="block size-4 rounded-sm border border-line"
+            style={{ backgroundColor: cellColor(share) }}
+          />
+        ))}
+        <span>Busier</span>
+        <span className="tabular-nums">
+          ({formatINR(quietest)} to {formatINR(busiest)} in an hour)
+        </span>
       </div>
+      <details className="text-base text-ink">
+        <summary className="cursor-pointer text-sm text-ink-muted">Show the numbers</summary>
+        <table className="mt-2 w-full border-collapse text-base">
+          <caption className="sr-only">Busy hours, busiest first</caption>
+          <thead>
+            <tr className="border-b border-line text-left text-sm text-ink-muted">
+              <th scope="col" className="py-2 font-medium">
+                Day and hour
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Bills
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Total billed
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranked.map((cell) => (
+              <tr key={`${cell.weekday}-${cell.hour}`} className="border-b border-line">
+                <th scope="row" className="py-2 text-left font-normal">
+                  {WEEKDAYS[cell.weekday - 1]} {hourLabel(cell.hour)}
+                </th>
+                <td className="py-2 text-right tabular-nums">{cell.bills}</td>
+                <td className="py-2 text-right">
+                  <Money paise={cell.totalPaise} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
     </section>
   );
 }

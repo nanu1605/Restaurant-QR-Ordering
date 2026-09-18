@@ -214,8 +214,11 @@ test.describe('reports', () => {
       .click();
     await expect(page.getByText('Available on Growth')).toBeVisible();
     await page.goto('/admin/reports?from=2026-01-01&to=2026-01-31');
+    // While the page streams in, a hidden copy can sit next to the shown one.
     await expect(
-      page.getByText('Your plan shows today and yesterday, so today is shown.'),
+      page
+        .getByText('Your plan shows today and yesterday, so today is shown.')
+        .filter({ visible: true }),
     ).toBeVisible();
 
     // The export URL is refused even when typed in.

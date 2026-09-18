@@ -103,13 +103,22 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
               basic={sales.basic}
             />
             {!sales.basic && (
-              <ExportLink
-                report="sales"
-                from={sales.from}
-                to={sales.to}
-                label="Sales CSV"
-                canExport={canExport}
-              />
+              <div className="flex flex-wrap gap-2">
+                <ExportLink
+                  report="sales"
+                  from={sales.from}
+                  to={sales.to}
+                  label="Sales CSV"
+                  canExport={canExport}
+                />
+                <ExportLink
+                  report="hours"
+                  from={sales.from}
+                  to={sales.to}
+                  label="Busy hours CSV"
+                  canExport={canExport}
+                />
+              </div>
             )}
           </div>
           <SalesSummary report={sales} />
@@ -203,7 +212,11 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
         <EmptyState
           icon={ChartColumn}
           title={`${REPORT_LABELS[params.report]} report`}
-          description={`${upgradeHint(REPORT_FEATURE[params.report])}. Ask the owner to upgrade to see this report.`}
+          description={`${upgradeHint(REPORT_FEATURE[params.report])}. ${
+            membership.role === 'owner'
+              ? 'Upgrade to Growth on the Subscription page to see this report.'
+              : 'Ask the owner to upgrade to see this report.'
+          }`}
         />
       )}
     </>

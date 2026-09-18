@@ -1,14 +1,13 @@
 'use client';
 
 import { cn } from 'cn';
-import { Download } from 'lucide-react';
+import { Download, Lock } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useId, type FormEvent } from 'react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useRouter } from 'next/navigation';
-
 import { datePresets } from '@/lib/date-range';
 
 import {
@@ -41,12 +40,14 @@ export function ReportTabs({
               <Link
                 href={reportHref(params, { report })}
                 aria-current={current ? 'page' : undefined}
-                className={cn(
-                  buttonVariants({ variant: current ? 'default' : 'outline', size: 'touch' }),
-                  !allowed[report] && !current && 'text-ink-muted',
-                )}
+                className={buttonVariants({
+                  variant: current ? 'default' : 'outline',
+                  size: 'touch',
+                })}
               >
+                {!allowed[report] && <Lock aria-hidden />}
                 {REPORT_LABELS[report]}
+                {!allowed[report] && <span className="sr-only"> (Growth plan)</span>}
               </Link>
             </li>
           );
@@ -69,10 +70,9 @@ export function ReportRange({ params, today, from, to, basic = false }: ReportRa
   const router = useRouter();
   const fromId = useId();
   const toId = useId();
-  const presets = datePresets(today).filter((preset) => !basic || preset.key !== 'week');
-  const visible = basic
-    ? presets.filter((p) => p.key === 'today' || p.key === 'yesterday')
-    : presets;
+  const visible = datePresets(today).filter(
+    (preset) => !basic || preset.key === 'today' || preset.key === 'yesterday',
+  );
 
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

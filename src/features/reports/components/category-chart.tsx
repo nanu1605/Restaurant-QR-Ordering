@@ -40,10 +40,12 @@ export function CategoryChart({ points }: { points: CategoryPoint[] }) {
           <YAxis
             type="category"
             dataKey="name"
-            width={120}
+            width={150}
             tickLine={false}
             axisLine={false}
             tick={{ fill: 'var(--ink-muted)', fontSize: 12 }}
+            // Long names are shortened here; the table under the chart has them in full.
+            tickFormatter={(name: string) => (name.length > 22 ? `${name.slice(0, 21)}…` : name)}
           />
           <Tooltip
             cursor={{ fill: 'var(--muted)' }}

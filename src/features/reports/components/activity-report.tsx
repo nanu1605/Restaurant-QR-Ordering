@@ -8,6 +8,7 @@ import { formatBillDate } from '@/features/billing/components/bill-document';
 import { tableHeading } from '@/features/ordering/format';
 
 import { type ActivityReport, dishLabel } from '../report';
+import { ScrollRegion } from './scroll-region';
 
 /**
  * The activity logs (spec §19 Phase 6, §10.8): voids and discounts, removed
@@ -159,7 +160,7 @@ function Log({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative min-w-0 overflow-x-auto">
+    <ScrollRegion label={caption}>
       <table className="w-full border-collapse text-base">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -181,6 +182,6 @@ function Log({
         </thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
+    </ScrollRegion>
   );
 }

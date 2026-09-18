@@ -2,6 +2,7 @@ import { Money } from '@/components/shared/money';
 import { tableHeading } from '@/features/ordering/format';
 
 import { minutesLabel, type TablesReport } from '../report';
+import { ScrollRegion } from './scroll-region';
 
 /** Table turnover (spec §19 Phase 6): how often each table filled and for how long. */
 export function TablesReportView({ report }: { report: TablesReport }) {
@@ -23,7 +24,7 @@ export function TablesReportView({ report }: { report: TablesReport }) {
         its whole stay.
       </p>
 
-      <div className="relative min-w-0 overflow-x-auto">
+      <ScrollRegion label="Tables">
         <table className="w-full border-collapse text-base">
           <caption className="sr-only">Tables, busiest first</caption>
           <thead>
@@ -66,7 +67,7 @@ export function TablesReportView({ report }: { report: TablesReport }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
     </>
   );
 }
