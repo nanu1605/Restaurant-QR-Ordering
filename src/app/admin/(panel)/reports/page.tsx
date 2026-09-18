@@ -3,6 +3,22 @@ import type { Metadata } from 'next';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { hasFeature, upgradeHint } from '@/features/plans/plan-features';
+import { getPlanFeatures } from '@/features/plans/queries';
+import {
+  REPORT_FEATURE,
+  REPORT_LABELS,
+  readReportParams,
+  type ReportKey,
+} from '@/features/reports/params';
+import { getSalesReport } from '@/features/reports/queries';
+import { ExportLink, ReportRange, ReportTabs } from '@/features/reports/components/report-nav';
+import {
+  PaymentModes,
+  SalesHeatmap,
+  SalesSummary,
+  SalesTrend,
+} from '@/features/reports/components/sales-report';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 
@@ -10,18 +26,91 @@ export const metadata: Metadata = {
   title: 'Reports',
 };
 
-export default async function ReportsPage() {
-  await requireMember(ADMIN_PANEL_ROLES);
+const STARTER_RANGE_NOTICE = 'Your plan shows today and yesterday, so today is shown.';
+
+/** Reports (spec §13.3, §19 Phase 6): sales, dishes, tables, waiters and activity. */
+export default async function ReportsPage({ searchParams }: PageProps<'/admin/reports'>) {
+  const membership = await requireMember(ADMIN_PANEL_ROLES);
+  const plan = await getPlanFeatures(membership.restaurant.id);
+  const params = readReportParams(await searchParams);
+  const canExport = hasFeature(plan, 'csv_export');
+  const allowed = Object.fromEntries(
+    Object.entries(REPORT_FEATURE).map(([report, feature]) => [
+      report,
+      report === 'sales' || hasFeature(plan, feature),
+    ]),
+  ) as Record<ReportKey, boolean>;
+
+  const filters = { from: params.range.from, to: params.range.to };
+  let notice = params.notice;
+  let sales = params.report === 'sales' ? await getSalesReport(filters) : null;
+  if (params.report === 'sales' && !sales) {
+    // Starter asked for a range its plan doesn't cover: fall back to today.
+    sales = await getSalesReport();
+    notice = STARTER_RANGE_NOTICE;
+  }
 
   return (
     <>
-      <PageHeader title="Reports" />
-      <EmptyState
-        icon={ChartColumn}
-        title="No reports yet"
-        description="Sales, item and waiter reports will show here once bills are generated."
-        className="flex-1"
+      <PageHeader
+        title="Reports"
+        description="How the restaurant is doing, by business day in your timezone."
       />
+      <ReportTabs params={params} allowed={allowed} />
+
+      {notice && (
+        <p
+          role="status"
+          className="rounded-lg border-2 border-attention bg-surface p-3 text-base text-ink"
+        >
+          {notice}
+        </p>
+      )}
+
+      {params.report === 'sales' && sales && (
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <ReportRange
+              params={params}
+              today={sales.today}
+              from={sales.from}
+              to={sales.to}
+              basic={sales.basic}
+            />
+            {!sales.basic && (
+              <ExportLink
+                report="sales"
+                from={sales.from}
+                to={sales.to}
+                label="Sales CSV"
+                canExport={canExport}
+              />
+            )}
+          </div>
+          <SalesSummary report={sales} />
+          {sales.basic ? (
+            <EmptyState
+              icon={ChartColumn}
+              title="More reports on Growth"
+              description={`${upgradeHint('advanced_reports')}. Growth adds payment modes, dishes, tables, waiters, busy hours and CSV downloads.`}
+            />
+          ) : (
+            <>
+              <PaymentModes report={sales} />
+              <SalesTrend report={sales} />
+              <SalesHeatmap report={sales} />
+            </>
+          )}
+        </>
+      )}
+
+      {params.report !== 'sales' && !allowed[params.report] && (
+        <EmptyState
+          icon={ChartColumn}
+          title={`${REPORT_LABELS[params.report]} report`}
+          description={`${upgradeHint(REPORT_FEATURE[params.report])}. Ask the owner to upgrade to see this report.`}
+        />
+      )}
     </>
   );
 }
