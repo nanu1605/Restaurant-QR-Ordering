@@ -1406,6 +1406,7 @@ export type Database = {
       admin_report_items: { Args: { p_filters: Json }; Returns: Json }
       admin_report_sales: { Args: { p_filters: Json }; Returns: Json }
       admin_report_tables: { Args: { p_filters: Json }; Returns: Json }
+      admin_report_waiters: { Args: { p_filters: Json }; Returns: Json }
       admin_reset_staff_password: {
         Args: { p_member_id: string }
         Returns: string

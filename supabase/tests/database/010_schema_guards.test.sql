@@ -141,7 +141,8 @@ select set_eq(
       -- Phase 6: dashboard and reports
       ('public.admin_report_sales'),
       ('public.admin_report_items'),
-      ('public.admin_report_tables')
+      ('public.admin_report_tables'),
+      ('public.admin_report_waiters')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
