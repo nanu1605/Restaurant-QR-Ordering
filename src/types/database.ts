@@ -1403,6 +1403,7 @@ export type Database = {
         Args: { p_category_id?: string; p_ids: string[]; p_kind: string }
         Returns: undefined
       }
+      admin_report_activity: { Args: { p_filters: Json }; Returns: Json }
       admin_report_items: { Args: { p_filters: Json }; Returns: Json }
       admin_report_sales: { Args: { p_filters: Json }; Returns: Json }
       admin_report_tables: { Args: { p_filters: Json }; Returns: Json }

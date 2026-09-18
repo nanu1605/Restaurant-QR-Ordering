@@ -142,7 +142,8 @@ select set_eq(
       ('public.admin_report_sales'),
       ('public.admin_report_items'),
       ('public.admin_report_tables'),
-      ('public.admin_report_waiters')
+      ('public.admin_report_waiters'),
+      ('public.admin_report_activity')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
