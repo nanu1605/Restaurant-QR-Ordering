@@ -11,8 +11,22 @@ import {
   readReportParams,
   type ReportKey,
 } from '@/features/reports/params';
-import { getSalesReport } from '@/features/reports/queries';
-import { ExportLink, ReportRange, ReportTabs } from '@/features/reports/components/report-nav';
+import {
+  getActivityReport,
+  getItemsReport,
+  getSalesReport,
+  getTablesReport,
+} from '@/features/reports/queries';
+import { ActivityReportView } from '@/features/reports/components/activity-report';
+import { ItemsReportView } from '@/features/reports/components/items-report';
+import {
+  ActivityKindTabs,
+  ExportLink,
+  ReportPager,
+  ReportRange,
+  ReportTabs,
+} from '@/features/reports/components/report-nav';
+import { TablesReportView } from '@/features/reports/components/tables-report';
 import {
   PaymentModes,
   SalesHeatmap,
@@ -42,6 +56,7 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
   ) as Record<ReportKey, boolean>;
 
   const filters = { from: params.range.from, to: params.range.to };
+  const open = allowed[params.report];
   let notice = params.notice;
   let sales = params.report === 'sales' ? await getSalesReport(filters) : null;
   if (params.report === 'sales' && !sales) {
@@ -49,6 +64,13 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
     sales = await getSalesReport();
     notice = STARTER_RANGE_NOTICE;
   }
+  const items = open && params.report === 'items' ? await getItemsReport(filters) : null;
+  const tables = open && params.report === 'tables' ? await getTablesReport(filters) : null;
+  const activity =
+    open && params.report === 'activity'
+      ? await getActivityReport({ ...filters, kind: params.kind, page: params.page })
+      : null;
+  const range = sales ?? items ?? tables ?? activity;
 
   return (
     <>
@@ -101,6 +123,66 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
               <SalesHeatmap report={sales} />
             </>
           )}
+        </>
+      )}
+
+      {range && params.report !== 'sales' && (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <ReportRange params={params} today={range.today} from={range.from} to={range.to} />
+          <div className="flex flex-wrap gap-2">
+            {items && (
+              <>
+                <ExportLink
+                  report="items"
+                  from={range.from}
+                  to={range.to}
+                  label="Dishes CSV"
+                  canExport={canExport}
+                />
+                <ExportLink
+                  report="categories"
+                  from={range.from}
+                  to={range.to}
+                  label="Categories CSV"
+                  canExport={canExport}
+                />
+              </>
+            )}
+            {tables && (
+              <ExportLink
+                report="tables"
+                from={range.from}
+                to={range.to}
+                label="Tables CSV"
+                canExport={canExport}
+              />
+            )}
+            {activity && (
+              <ExportLink
+                report="activity"
+                from={range.from}
+                to={range.to}
+                kind={params.kind}
+                label="Activity CSV"
+                canExport={canExport}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {items && <ItemsReportView report={items} />}
+      {tables && <TablesReportView report={tables} />}
+      {activity && (
+        <>
+          <ActivityKindTabs params={params} />
+          <ActivityReportView report={activity} timezone={membership.restaurant.timezone} />
+          <ReportPager
+            params={params}
+            page={activity.page}
+            pageSize={activity.pageSize}
+            total={activity.total}
+          />
         </>
       )}
 
