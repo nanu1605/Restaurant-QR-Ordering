@@ -16,6 +16,7 @@ import {
   getItemsReport,
   getSalesReport,
   getTablesReport,
+  getWaiterReport,
 } from '@/features/reports/queries';
 import { ActivityReportView } from '@/features/reports/components/activity-report';
 import { ItemsReportView } from '@/features/reports/components/items-report';
@@ -27,6 +28,7 @@ import {
   ReportTabs,
 } from '@/features/reports/components/report-nav';
 import { TablesReportView } from '@/features/reports/components/tables-report';
+import { WaiterReportView } from '@/features/reports/components/waiter-report';
 import {
   PaymentModes,
   SalesHeatmap,
@@ -66,11 +68,12 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
   }
   const items = open && params.report === 'items' ? await getItemsReport(filters) : null;
   const tables = open && params.report === 'tables' ? await getTablesReport(filters) : null;
+  const waiters = open && params.report === 'waiters' ? await getWaiterReport(filters) : null;
   const activity =
     open && params.report === 'activity'
       ? await getActivityReport({ ...filters, kind: params.kind, page: params.page })
       : null;
-  const range = sales ?? items ?? tables ?? activity;
+  const range = sales ?? items ?? tables ?? waiters ?? activity;
 
   return (
     <>
@@ -157,6 +160,15 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
                 canExport={canExport}
               />
             )}
+            {waiters && (
+              <ExportLink
+                report="waiters"
+                from={range.from}
+                to={range.to}
+                label="Waiters CSV"
+                canExport={canExport}
+              />
+            )}
             {activity && (
               <ExportLink
                 report="activity"
@@ -173,6 +185,7 @@ export default async function ReportsPage({ searchParams }: PageProps<'/admin/re
 
       {items && <ItemsReportView report={items} />}
       {tables && <TablesReportView report={tables} />}
+      {waiters && <WaiterReportView report={waiters} />}
       {activity && (
         <>
           <ActivityKindTabs params={params} />
