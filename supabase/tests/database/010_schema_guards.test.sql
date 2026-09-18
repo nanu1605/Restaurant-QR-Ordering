@@ -136,7 +136,10 @@ select set_eq(
       ('public.admin_record_payment'),
       ('public.admin_void_bill'),
       ('public.admin_increment_print_count'),
-      ('public.admin_total_orders')
+      ('public.admin_total_orders'),
+
+      -- Phase 6: dashboard and reports
+      ('public.admin_report_sales')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
