@@ -7,9 +7,10 @@ import { useId, type FormEvent } from 'react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { datePresets, hrefWithParams } from '@/lib/date-range';
 
 import { PAYMENT_MODE_LABELS, type TotalOrders } from '../bill';
-import { datePresets, filterParams, totalOrdersHref, type TotalOrdersFilters } from '../schemas';
+import { filterParams, type TotalOrdersFilters } from '../schemas';
 
 const SELECT_CLASS =
   'h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
@@ -39,7 +40,7 @@ export function TotalOrdersFiltersForm({ data, filters }: TotalOrdersFiltersForm
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
     router.push(
-      totalOrdersHref(pathname, {
+      hrefWithParams(pathname, {
         ...current,
         from: text('from'),
         to: text('to'),
@@ -64,7 +65,7 @@ export function TotalOrdersFiltersForm({ data, filters }: TotalOrdersFiltersForm
           return (
             <Link
               key={tab.key}
-              href={totalOrdersHref(pathname, {
+              href={hrefWithParams(pathname, {
                 from: current.from,
                 to: current.to,
                 table: current.table,
@@ -89,7 +90,7 @@ export function TotalOrdersFiltersForm({ data, filters }: TotalOrdersFiltersForm
           return (
             <Link
               key={preset.key}
-              href={totalOrdersHref(pathname, { ...current, from: preset.from, to: preset.to })}
+              href={hrefWithParams(pathname, { ...current, from: preset.from, to: preset.to })}
               aria-current={selected ? 'true' : undefined}
               className={cn(
                 buttonVariants({ variant: 'outline', size: 'touch' }),
@@ -205,7 +206,7 @@ export function TotalOrdersFiltersForm({ data, filters }: TotalOrdersFiltersForm
             Apply filters
           </Button>
           <Link
-            href={totalOrdersHref(pathname, { view: current.view })}
+            href={hrefWithParams(pathname, { view: current.view })}
             className={buttonVariants({ variant: 'ghost', size: 'touch' })}
           >
             Clear filters

@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { formatElapsed } from '@/features/orders/board-view';
+import { hrefWithParams } from '@/lib/date-range';
 
 import {
   type ClosedSession,
@@ -13,7 +14,7 @@ import {
   type TotalOrders,
   type TotalOrdersBill,
 } from '../bill';
-import { filterParams, totalOrdersHref, type TotalOrdersFilters } from '../schemas';
+import { filterParams, type TotalOrdersFilters } from '../schemas';
 import { BillStatusBadge } from './bill-activity';
 import { formatBillDate } from './bill-document';
 
@@ -210,7 +211,7 @@ function Pagination({ data, filters }: { data: TotalOrders; filters: TotalOrders
   const last = Math.min(data.total, data.page * data.pageSize);
   const params = filterParams(filters);
   const href = (page: number) =>
-    totalOrdersHref(PATH, { ...params, page: page > 1 ? String(page) : undefined });
+    hrefWithParams(PATH, { ...params, page: page > 1 ? String(page) : undefined });
 
   return (
     <nav

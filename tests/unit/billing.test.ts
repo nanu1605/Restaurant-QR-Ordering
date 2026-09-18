@@ -11,15 +11,14 @@ import {
   percentLabel,
 } from '@/features/billing/bill';
 import {
-  addDays,
   cashChange,
   checkPayments,
-  datePresets,
   discountValue,
   generateBillSchema,
   readTotalOrdersParams,
   totalOrdersFilters,
 } from '@/features/billing/schemas';
+import { addDays, datePresets } from '@/lib/date-range';
 import { dbErrorMessage } from '@/lib/db-errors';
 import { amountInWords } from '@/lib/money';
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { MAX_REASON, reasonSchema } from '@/features/orders/schemas';
+import { firstParam, readDateRange, type SearchParams } from '@/lib/date-range';
 import { rupeesToPaise, type Paise } from '@/lib/money';
 import { Constants } from '@/types/database';
 
@@ -130,7 +131,6 @@ export const VOID_REASONS = [
 
 // ─── Total orders filters (URL search params) ─────────────────────────────────
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type TotalOrdersView = 'bills' | 'closed_unbilled';
@@ -148,26 +148,6 @@ export type TotalOrdersFilters = {
   page?: number;
 };
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function one(params: SearchParams, key: string): string | undefined {
-  const value = params[key];
-  const text = (Array.isArray(value) ? value[0] : value)?.trim();
-  return text ? text : undefined;
-}
-
-/** The longest range Total orders shows at once (admin_total_orders checks it too). */
-export const MAX_RANGE_DAYS = 366;
-
-/** A real calendar date in 'YYYY-MM-DD' form (2026-02-30 isn't). */
-function isDate(text: string | undefined): text is string {
-  return !!text && DATE.test(text) && addDays(text, 0) === text;
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
-
 /**
  * Filters from the page URL for admin_total_orders, plus a note when the
  * dates had to be changed. Anything malformed is dropped rather than failing
@@ -177,71 +157,29 @@ export function readTotalOrdersParams(params: SearchParams): {
   filters: TotalOrdersFilters;
   notice: string | null;
 } {
-  const filters: TotalOrdersFilters = {};
-  let notice: string | null = null;
-  const from = one(params, 'from');
-  const to = one(params, 'to');
-  if (isDate(from)) filters.from = from;
-  else if (from) notice = 'That date doesn’t exist, so today is shown.';
-  if (filters.from && isDate(to)) {
-    if (to < filters.from) {
-      notice = 'The end date was before the start date, so one day is shown.';
-    } else if (daysBetween(filters.from, to) > MAX_RANGE_DAYS) {
-      filters.to = addDays(filters.from, MAX_RANGE_DAYS);
-      notice = 'Total orders shows up to a year at a time, so the range was shortened.';
-    } else {
-      filters.to = to;
-    }
-  } else if (filters.from && to) {
-    notice = 'That end date doesn’t exist, so one day is shown.';
-  }
-  const table = one(params, 'table');
+  const { range, notice } = readDateRange(params, 'Total orders');
+  const filters: TotalOrdersFilters = { ...range };
+  const table = firstParam(params, 'table');
   if (table && UUID.test(table)) filters.table_id = table;
-  const waiter = one(params, 'waiter');
+  const waiter = firstParam(params, 'waiter');
   if (waiter && UUID.test(waiter)) filters.waiter_id = waiter;
-  const status = one(params, 'payment');
+  const status = firstParam(params, 'payment');
   if (status === 'paid' || status === 'unpaid') filters.payment_status = status;
-  const mode = one(params, 'mode');
+  const mode = firstParam(params, 'mode');
   if (mode && (Constants.public.Enums.payment_mode as readonly string[]).includes(mode)) {
     filters.payment_mode = mode as PaymentMode;
   }
-  const invoice = one(params, 'invoice');
+  const invoice = firstParam(params, 'invoice');
   if (invoice) filters.invoice = invoice.slice(0, 40);
-  if (one(params, 'void') === 'hide') filters.show_void = false;
-  if (one(params, 'view') === 'closed') filters.view = 'closed_unbilled';
-  const page = Number(one(params, 'page'));
+  if (firstParam(params, 'void') === 'hide') filters.show_void = false;
+  if (firstParam(params, 'view') === 'closed') filters.view = 'closed_unbilled';
+  const page = Number(firstParam(params, 'page'));
   if (Number.isInteger(page) && page > 1 && page <= 10_000) filters.page = page;
   return { filters, notice };
 }
 
 export function totalOrdersFilters(params: SearchParams): TotalOrdersFilters {
   return readTotalOrdersParams(params).filters;
-}
-
-/** 'YYYY-MM-DD' plus whole days (calendar arithmetic, no timezones). */
-export function addDays(date: string, days: number): string {
-  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
-  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
-}
-
-export type DatePreset = { key: string; label: string; from: string; to: string };
-
-/** Quick ranges relative to the restaurant's current business day. */
-export function datePresets(today: string): DatePreset[] {
-  return [
-    { key: 'today', label: 'Today', from: today, to: today },
-    { key: 'yesterday', label: 'Yesterday', from: addDays(today, -1), to: addDays(today, -1) },
-    { key: 'week', label: 'Last 7 days', from: addDays(today, -6), to: today },
-    { key: 'month', label: 'This month', from: `${today.slice(0, 8)}01`, to: today },
-  ];
-}
-
-/** The URL for Total orders with these filters (page resets to 1). */
-export function totalOrdersHref(pathname: string, params: Record<string, string | undefined>) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value) search.set(key, value);
-  const query = search.toString();
-  return query ? `${pathname}?${query}` : pathname;
 }
 
 /** URL params for the current filters, to change one and keep the rest. */
