@@ -23,7 +23,7 @@ export function TablesReportView({ report }: { report: TablesReport }) {
         its whole stay.
       </p>
 
-      <div className="overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full border-collapse text-base">
           <caption className="sr-only">Tables, busiest first</caption>
           <thead>

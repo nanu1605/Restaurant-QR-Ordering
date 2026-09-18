@@ -159,7 +159,7 @@ function Log({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative min-w-0 overflow-x-auto">
       <table className="w-full border-collapse text-base">
         <caption className="sr-only">{caption}</caption>
         <thead>

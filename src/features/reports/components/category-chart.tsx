@@ -20,7 +20,7 @@ export function CategoryChart({ points }: { points: CategoryPoint[] }) {
           : 'No category sales in this range.'
       }
       style={{ height: `${Math.max(140, points.length * 44 + 40)}px` }}
-      className="w-full"
+      className="w-full min-w-0"
     >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart

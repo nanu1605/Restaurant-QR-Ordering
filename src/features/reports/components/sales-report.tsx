@@ -59,7 +59,7 @@ export function PaymentModes({ report }: { report: SalesReport }) {
   const total = MODES.reduce((sum, mode) => sum + collected[mode], 0);
 
   return (
-    <section aria-labelledby="modes-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="modes-heading" className="flex min-w-0 flex-col gap-2">
       <h2 id="modes-heading" className="text-base font-semibold text-ink">
         How it was paid
       </h2>
@@ -125,7 +125,7 @@ export function SalesTrend({ report }: { report: SalesReport }) {
   const best = days.reduce((top, day) => (day.totalPaise > top.totalPaise ? day : top), days[0]!);
 
   return (
-    <section aria-labelledby="trend-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="trend-heading" className="flex min-w-0 flex-col gap-2">
       <h2 id="trend-heading" className="text-base font-semibold text-ink">
         Day by day
       </h2>
@@ -176,7 +176,7 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
   const columns = hourOrder(report.startHour);
 
   return (
-    <section aria-labelledby="heatmap-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="heatmap-heading" className="flex min-w-0 flex-col gap-2">
       <h2 id="heatmap-heading" className="text-base font-semibold text-ink">
         Busy hours
       </h2>
@@ -184,7 +184,7 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
         Bills by the hour they were generated, on the restaurant’s 24-hour clock. Late-night hours
         belong to the day the guests sat down.
       </p>
-      <div className="overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="border-collapse text-sm">
           <caption className="sr-only">Sales by weekday and hour, darker cells are busier</caption>
           <thead>
@@ -220,7 +220,7 @@ export function SalesHeatmap({ report }: { report: SalesReport }) {
                             ? `${weekday} ${hourLabel(hour)}: ${cell.bills} ${cell.bills === 1 ? 'bill' : 'bills'}, ${formatINR(cell.totalPaise)}`
                             : `${weekday} ${hourLabel(hour)}: no bills`
                         }
-                        className="block size-6 rounded-sm border border-line"
+                        className="relative block size-6 rounded-sm border border-line"
                         style={{
                           backgroundColor: cell
                             ? `color-mix(in oklab, var(--chart-1) ${Math.round(20 + share * 80)}%, var(--surface))`

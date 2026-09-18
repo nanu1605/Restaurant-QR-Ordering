@@ -40,7 +40,7 @@ export function WaiterReportView({ report }: { report: WaiterReport }) {
 
   return (
     <>
-      <div className="overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full border-collapse text-base">
           <caption className="sr-only">
             Waiters and the tables they billed, sortable by column
@@ -135,11 +135,11 @@ function WaiterDays({ report, rows }: { report: WaiterReport; rows: WaiterRow[] 
   const busiest = Math.max(...report.days.map((day) => day.tables), 1);
 
   return (
-    <section aria-labelledby="waiter-days-heading" className="flex flex-col gap-3">
+    <section aria-labelledby="waiter-days-heading" className="flex min-w-0 flex-col gap-3">
       <h2 id="waiter-days-heading" className="text-base font-semibold text-ink">
         Tables per day
       </h2>
-      <ul className="flex flex-col gap-3">
+      <ul className="flex min-w-0 flex-col gap-3">
         {busy.map((waiter) => (
           <li key={waiter.waiterId} className="flex flex-col gap-1">
             <span className="text-sm font-medium text-ink">{waiter.name}</span>

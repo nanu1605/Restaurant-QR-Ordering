@@ -20,7 +20,7 @@ type SalesTrendChartProps = {
  */
 export function SalesTrendChart({ points, summary }: SalesTrendChartProps) {
   return (
-    <div role="img" aria-label={summary} className="h-64 w-full">
+    <div role="img" aria-label={summary} className="h-64 w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
           <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />

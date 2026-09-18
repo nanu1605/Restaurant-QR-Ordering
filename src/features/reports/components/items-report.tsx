@@ -27,21 +27,21 @@ export function ItemsReportView({ report }: { report: ItemsReport }) {
 
   return (
     <>
-      <section aria-labelledby="categories-heading" className="flex flex-col gap-2">
+      <section aria-labelledby="categories-heading" className="flex min-w-0 flex-col gap-2">
         <h2 id="categories-heading" className="text-base font-semibold text-ink">
           Categories
         </h2>
         <CategoryChart points={points} />
       </section>
 
-      <section aria-labelledby="dishes-heading" className="flex flex-col gap-2">
+      <section aria-labelledby="dishes-heading" className="flex min-w-0 flex-col gap-2">
         <h2 id="dishes-heading" className="text-base font-semibold text-ink">
           Dishes
         </h2>
         <p className="text-sm text-ink-muted">
           Quantities and sales at menu prices, before any discount on the bill.
         </p>
-        <div className="overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full border-collapse text-base">
             <thead>
               <tr className="border-b border-line text-left text-sm text-ink-muted">

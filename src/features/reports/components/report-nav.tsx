@@ -32,7 +32,7 @@ export function ReportTabs({
   allowed: Record<ReportKey, boolean>;
 }) {
   return (
-    <nav aria-label="Reports" className="-mx-1 overflow-x-auto px-1 pb-1">
+    <nav aria-label="Reports" className="-mx-1 min-w-0 overflow-x-auto px-1 pb-1">
       <ul className="flex min-w-max gap-2">
         {REPORTS.map((report) => {
           const current = report === params.report;
