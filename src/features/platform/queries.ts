@@ -1,0 +1,115 @@
+import 'server-only';
+
+import { dbErrorCode } from '@/lib/db-errors';
+import { createClient } from '@/lib/supabase/server';
+
+import type { AuditFilters, RestaurantFilters, SubscriptionFilters } from './params';
+import {
+  parseAuditList,
+  parseOverview,
+  parseRestaurantDetail,
+  parseRestaurantList,
+  parseSubscriptionList,
+  planSchema,
+  supportRestaurantSchema,
+  type SupportSection,
+} from './platform';
+
+/**
+ * Super-admin reads (spec §13.4). They run as the signed-in platform admin;
+ * the database checks the second factor (docs/DECISIONS.md P7-1).
+ */
+
+export async function getPlatformOverview() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_overview');
+  if (error) throw new Error(`Could not load the overview: ${error.message}`);
+  return parseOverview(data);
+}
+
+export async function listRestaurants(filters: RestaurantFilters) {
+  const supabase = await createClient();
+  const { page, ...rest } = filters;
+  const { data, error } = await supabase.rpc('platform_list_restaurants', {
+    p_filters: { ...rest, page },
+  });
+  if (error) throw new Error(`Could not load restaurants: ${error.message}`);
+  return parseRestaurantList(data);
+}
+
+export async function listSubscriptions(filters: SubscriptionFilters) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_subscriptions', {
+    p_filters: filters,
+  });
+  if (error) throw new Error(`Could not load subscriptions: ${error.message}`);
+  return parseSubscriptionList(data);
+}
+
+/** One restaurant, or null when there is no such restaurant. */
+export async function getRestaurantDetail(restaurantId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_get_restaurant', {
+    p_restaurant_id: restaurantId,
+  });
+  if (error) {
+    if (dbErrorCode(error) === 'RESTAURANT_NOT_FOUND' || error.code === '22P02') return null;
+    throw new Error(`Could not load the restaurant: ${error.message}`);
+  }
+  return parseRestaurantDetail(data);
+}
+
+/**
+ * One section of a restaurant for the read-only support view, audited by the
+ * database. Null when there is no such restaurant.
+ */
+export async function getSupportView(
+  restaurantId: string,
+  section: SupportSection,
+  filters?: Record<string, unknown>,
+) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_support_view', {
+    p_restaurant_id: restaurantId,
+    p_section: section,
+    p_filters: (filters ?? {}) as never,
+  });
+  if (error) {
+    if (dbErrorCode(error) === 'RESTAURANT_NOT_FOUND' || error.code === '22P02') return null;
+    throw new Error(`Could not load the support view: ${error.message}`);
+  }
+  const result = data as { restaurant: unknown; data: unknown };
+  return { restaurant: supportRestaurantSchema.parse(result.restaurant), data: result.data };
+}
+
+export async function listPlatformAudit(filters: AuditFilters) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_audit', { p_filters: filters });
+  if (error) throw new Error(`Could not load the audit log: ${error.message}`);
+  return parseAuditList(data);
+}
+
+/** Every plan, active or not, in display order. */
+export async function listPlans() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('plans')
+    .select(
+      'id, code, name, price_monthly_paise, price_yearly_paise, razorpay_plan_id_monthly, razorpay_plan_id_yearly, max_tables, max_staff, features, is_active, sort_order',
+    )
+    .order('sort_order')
+    .order('code');
+  if (error) throw new Error(`Could not load plans: ${error.message}`);
+  return planSchema.array().parse(data);
+}
+
+export async function getTrialDays(): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('trial_days')
+    .eq('id', 1)
+    .single();
+  if (error) throw new Error(`Could not load platform settings: ${error.message}`);
+  return data.trial_days;
+}
