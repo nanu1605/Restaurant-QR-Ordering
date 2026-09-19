@@ -739,6 +739,10 @@ bottom of each section.
   - The dashboard stays up if today's sales can't be prefetched; the browser fetches them instead.
   - Links styled as outline buttons had lost their border across the app, because the button
     classes weren't merged. `buttonVariants` now merges them.
+  - The heatmap and the waiter chart compute each bill's business date inline rather than through
+    `private.business_date`. A function with `search_path` set is never inlined, and calling it
+    once per bill made a year of 200 bills a day take 1.6 s instead of 0.3 s. The expression gives
+    the same dates (checked over 74,664 bills).
 
 ### Tests
 
