@@ -72,11 +72,18 @@ begin
   into v_counts
   from states;
 
+  -- MRR counts the restaurants in the "active" state above: paid, not
+  -- suspended and still within their period. A manual subscription stays
+  -- 'active' after its period ends (nothing renews it), so the status alone
+  -- would keep counting a restaurant that stopped paying.
   select coalesce(sum(private.monthly_paise(p, s.billing_cycle)), 0)
   into v_mrr
   from public.restaurant_subscriptions s
+  join public.restaurants r on r.id = s.restaurant_id
   join public.plans p on p.id = s.plan_id
-  where s.status = 'active' and s.source is not null;
+  cross join lateral public.restaurant_access(r.id) as a
+  where s.status = 'active' and s.source is not null
+    and r.status = 'active' and a.state = 'full';
 
   select count(*) into v_orders
   from public.orders o

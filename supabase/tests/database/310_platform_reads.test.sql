@@ -11,7 +11,9 @@ select tests.clear_auth();
 
 -- alpha: trial with data; beta: paid monthly Growth; gamma: paid yearly Pro;
 -- delta: suspended; epsilon: trial ended (read-only); zeta: payment failed,
--- still in grace; eta: trial ending in 3 days.
+-- still in grace; eta: trial ending in 3 days; theta: paid manually, but the
+-- period ended long ago (still 'active', since nothing renews it); iota: paid
+-- and suspended.
 select tests.create_restaurant('alpha') as rest_a \gset
 select tests.create_restaurant('beta') as rest_b \gset
 select tests.create_restaurant('gamma') as rest_c \gset
@@ -19,6 +21,8 @@ select tests.create_restaurant('delta') as rest_d \gset
 select tests.create_restaurant('epsilon') as rest_e \gset
 select tests.create_restaurant('zeta') as rest_f \gset
 select tests.create_restaurant('eta') as rest_g \gset
+select tests.create_restaurant('theta') as rest_h \gset
+select tests.create_restaurant('iota') as rest_i \gset
 
 update public.restaurants set city = 'Testpur' where id in (:'rest_a', :'rest_b');
 update public.restaurants set city = 'Bhopal' where id = :'rest_c';
@@ -41,6 +45,15 @@ update public.restaurant_subscriptions
   where restaurant_id = :'rest_f';
 update public.restaurant_subscriptions set trial_ends_at = now() + interval '3 days'
   where restaurant_id = :'rest_g';
+update public.restaurant_subscriptions
+  set status = 'active', source = 'manual', billing_cycle = 'monthly',
+      current_period_start = now() - interval '230 days', current_period_end = now() - interval '200 days'
+  where restaurant_id = :'rest_h';
+update public.restaurant_subscriptions
+  set status = 'active', source = 'manual', billing_cycle = 'monthly',
+      current_period_start = now() - interval '10 days', current_period_end = now() + interval '20 days'
+  where restaurant_id = :'rest_i';
+select tests.suspend(:'rest_i');
 
 -- alpha's usage: one table, a bill and an order now, plus orders 8 and 40
 -- days ago; an owner with a real email and one with a staff login.
@@ -64,7 +77,7 @@ select public.platform_overview() as after \gset
 
 select is(
   (:'after'::jsonb #>> '{restaurants,total}')::int - (:'before'::jsonb #>> '{restaurants,total}')::int,
-  59, 'total counts every new restaurant'
+  61, 'total counts every new restaurant'
 );
 select is(
   (:'after'::jsonb #>> '{restaurants,trialing}')::int - (:'before'::jsonb #>> '{restaurants,trialing}')::int,
@@ -80,16 +93,16 @@ select is(
 );
 select is(
   (:'after'::jsonb #>> '{restaurants,read_only}')::int - (:'before'::jsonb #>> '{restaurants,read_only}')::int,
-  1, 'read-only: epsilon, whose trial ended'
+  2, 'read-only: epsilon, whose trial ended, and theta, whose paid period ended'
 );
 select is(
   (:'after'::jsonb #>> '{restaurants,suspended}')::int - (:'before'::jsonb #>> '{restaurants,suspended}')::int,
-  1, 'suspended: delta'
+  2, 'suspended: delta and iota'
 );
 select is(
   (:'after'::jsonb ->> 'mrr_paise')::bigint - (:'before'::jsonb ->> 'mrr_paise')::bigint,
   89900::bigint + round(1799000 / 12.0)::bigint,
-  'MRR: Growth monthly plus Pro yearly ÷ 12; trials and past due left out'
+  'MRR: Growth monthly plus Pro yearly ÷ 12; trials, past due, lapsed and suspended left out'
 );
 select is(
   (:'after'::jsonb ->> 'orders_24h')::int - (:'before'::jsonb ->> 'orders_24h')::int,
@@ -122,8 +135,8 @@ select is(
 );
 select is(
   (select jsonb_agg(r ->> 'slug') from jsonb_array_elements(
-    public.platform_list_restaurants('{"status": "suspended"}') -> 'rows') as r),
-  '["delta"]'::jsonb,
+    public.platform_list_restaurants('{"status": "suspended", "sort": "name"}') -> 'rows') as r),
+  '["delta", "iota"]'::jsonb,
   'status filter'
 );
 select is(
