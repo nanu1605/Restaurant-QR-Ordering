@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
 const isCI = Boolean(process.env.CI);
+const MOCK_VISION_PORT = 3190;
 
 /**
  * E2E runs against a production build (`next start`) and the local Supabase
@@ -34,14 +35,31 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|staff-board|billing|reports|super-admin)\.spec\.ts/,
+        /(live-orders|staff-board|billing|reports|super-admin|menu-import)\.spec\.ts/,
       ],
     },
   ],
-  webServer: {
-    command: isCI ? `pnpm start --port ${PORT}` : `pnpm build && pnpm start --port ${PORT}`,
-    url: `${baseURL}/api/health`,
-    reuseExistingServer: !isCI,
-    timeout: 180_000,
-  },
+  webServer: [
+    // A stand-in menu reader for photo imports (tests/e2e/mock-vision-server.mjs).
+    {
+      command: `node tests/e2e/mock-vision-server.mjs`,
+      url: `http://127.0.0.1:${MOCK_VISION_PORT}/health`,
+      env: { MOCK_VISION_PORT: String(MOCK_VISION_PORT) },
+      reuseExistingServer: !isCI,
+    },
+    {
+      command: isCI ? `pnpm start --port ${PORT}` : `pnpm build && pnpm start --port ${PORT}`,
+      url: `${baseURL}/api/health`,
+      reuseExistingServer: !isCI,
+      timeout: 180_000,
+      // The server reads these at run time, so the build doesn't need them. A
+      // reused dev server lacks them: the photo import tests then skip.
+      env: {
+        MENU_IMPORT_API_KEY: 'e2e-menu-reader-key',
+        MENU_IMPORT_BASE_URL: `http://127.0.0.1:${MOCK_VISION_PORT}/v1`,
+        MENU_IMPORT_FALLBACK_API_KEY: '',
+        CRON_SECRET: 'e2e-cron-secret',
+      },
+    },
+  ],
 });
