@@ -11,3 +11,5 @@ src/types/database.ts
 graphify-out
 # Source-of-truth spec, kept exactly as supplied
 docs/SPEC.md
+# Local git worktrees, each a full copy of the repo
+.claude

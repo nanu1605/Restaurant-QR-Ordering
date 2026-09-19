@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     'playwright-report/**',
     'blob-report/**',
     'supabase/.temp/**',
+    // Local git worktrees, each a full copy of the repo
+    '.claude/**',
   ]),
 ]);
 
