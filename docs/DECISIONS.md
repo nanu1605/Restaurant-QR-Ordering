@@ -290,6 +290,12 @@ bottom of each section.
   requirement). The UPI QR switch needs the `upi_qr_on_bill` feature to turn on (never to turn
   off) and a UPI ID. GST rate is a choice of the standard slabs. **"Test print" moves to Phase 5**
   with the bill print page.
+- **Settings forms follow the server instead of remounting.** The refresh after a save lands a
+  moment after the "Settings saved" toast, and the forms used to remount on `updated_at`, which
+  wiped anything typed in the meantime, even in another tab. Each form now takes the stored values
+  through react-hook-form's `values` with `keepDirtyValues`, and a save makes the submitted values
+  the new baseline (`resetDefaultValues`), so the refresh still shows what was stored (the GSTIN in
+  capitals) without touching edits made since.
 - **`upi_vpa` check fixed:** the Phase 1 regex used `{2,256}`, above Postgres' repetition limit of
   255, so every VPA failed at runtime; now `{2,255}`.
 
