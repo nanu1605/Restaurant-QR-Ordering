@@ -12,7 +12,6 @@ import {
   TotalOrdersSummary,
 } from '@/features/billing/components/total-orders-view';
 import { readTotalOrdersParams } from '@/features/billing/schemas';
-import { parseBoard } from '@/features/orders/board';
 import { SupportBoard } from '@/features/platform/components/support-board';
 import { SupportMenuList, SupportTablesList } from '@/features/platform/components/support-view';
 import {
@@ -88,7 +87,7 @@ export default async function SupportViewPage({
 
       {section === 'menu' && <SupportMenuList menu={parseSupportMenu(view.data)} />}
       {section === 'tables' && <SupportTablesList tables={parseSupportTables(view.data)} />}
-      {section === 'board' && <SupportBoard board={parseBoard(view.data)} />}
+      {section === 'board' && <SupportBoard json={view.data} />}
       {section === 'total_orders' && totalOrders && (
         <TotalOrdersSection
           json={view.data}
