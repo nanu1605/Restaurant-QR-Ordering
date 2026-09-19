@@ -1500,7 +1500,15 @@ export type Database = {
         Returns: Database["public"]["Enums"]["member_role"]
       }
       platform_admin_status: { Args: never; Returns: string }
+      platform_change_plan: {
+        Args: { p_plan_code: string; p_restaurant_id: string }
+        Returns: Json
+      }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_extend_trial: {
+        Args: { p_days: number; p_restaurant_id: string }
+        Returns: Json
+      }
       platform_get_restaurant: {
         Args: { p_restaurant_id: string }
         Returns: Json
@@ -1508,6 +1516,18 @@ export type Database = {
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
+      platform_record_manual_payment: {
+        Args: { p_payment: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_reset_owner_password: {
+        Args: { p_member_id: string }
+        Returns: string
+      }
+      platform_set_restaurant_status: {
+        Args: { p_reason: string; p_restaurant_id: string; p_status: string }
+        Returns: Json
+      }
       restaurant_access: {
         Args: { p_at?: string; p_restaurant_id: string }
         Returns: {
