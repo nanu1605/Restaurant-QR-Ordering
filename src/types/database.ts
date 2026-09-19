@@ -1513,6 +1513,7 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
@@ -1530,6 +1531,10 @@ export type Database = {
       }
       platform_support_view: {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
+        Returns: Json
+      }
+      platform_update_plan: {
+        Args: { p_patch: Json; p_plan_id: string }
         Returns: Json
       }
       restaurant_access: {

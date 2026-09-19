@@ -141,8 +141,8 @@ select throws_ok(
   null,
   'orders cannot be changed directly, even by a manager'
 );
-select is(
-  tests.row_count($$ update public.plans set name = 'Free' $$), 0::bigint,
+select throws_ok(
+  $$ update public.plans set name = 'Free' $$, '42501', null,
   'managers cannot edit plans'
 );
 
@@ -219,9 +219,9 @@ select is(
   2::bigint,
   'platform admin reads subscriptions'
 );
-select is(
-  tests.row_count($$ update public.plans set name = 'Starter' where code = 'starter' $$), 1::bigint,
-  'platform admin edits plans'
+select throws_ok(
+  $$ update public.plans set name = 'Starter' where code = 'starter' $$, '42501', null,
+  'platform admins edit plans only through platform_update_plan (audited)'
 );
 
 -- ─── Anonymous ──────────────────────────────────────────────────────────────

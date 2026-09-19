@@ -36,8 +36,8 @@ select is_empty(
   'authenticated never gets TRUNCATE, REFERENCES or TRIGGER'
 );
 
--- Only plans (platform admins, via RLS) accept direct writes; everything else,
--- menu and tables included, changes through business functions (P2-3).
+-- No table accepts direct writes: menu and tables change through business
+-- functions (P2-3), and plans through platform_update_plan (P7-10).
 select is_empty(
   $$
     select table_name || ':' || privilege_type
@@ -45,9 +45,8 @@ select is_empty(
     where grantee = 'authenticated'
       and table_schema = 'public'
       and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
-      and table_name <> 'plans'
   $$,
-  'only plans accept direct writes from authenticated users'
+  'no table accepts direct writes from authenticated users'
 );
 
 select is_empty(
@@ -57,7 +56,6 @@ select is_empty(
     where grantee = 'authenticated'
       and table_schema = 'public'
       and privilege_type in ('INSERT', 'UPDATE')
-      and table_name <> 'plans'
   $$,
   'no column-level write grants remain'
 );
@@ -155,7 +153,9 @@ select set_eq(
       ('public.platform_change_plan'),
       ('public.platform_record_manual_payment'),
       ('public.platform_reset_owner_password'),
-      ('public.platform_support_view')
+      ('public.platform_support_view'),
+      ('public.platform_update_plan'),
+      ('public.platform_list_audit')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
