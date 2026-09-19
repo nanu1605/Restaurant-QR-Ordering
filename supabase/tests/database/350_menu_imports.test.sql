@@ -116,13 +116,23 @@ select throws_ok(
 );
 
 -- ─── Daily limit: 5 photo imports per restaurant in 24 hours ────────────────
+-- Only imports whose pages were read count (they are the ones that cost money).
 select tests.authenticate_as(:'a_owner');
 select public.menu_import_create(:'rest_a', 'photo', 1) ->> 'import_id' as photo3 \gset
 select public.menu_import_create(:'rest_a', 'photo', 1) ->> 'import_id' as photo4 \gset
 select public.menu_import_create(:'rest_a', 'photo', 1) ->> 'import_id' as photo5 \gset
+select lives_ok(
+  format($$ select public.menu_import_create(%L, 'photo', 1) $$, :'rest_a'),
+  'an import whose photos were never read does not use up the day''s limit'
+);
+select tests.as_service_role();
+select public.menu_import_claim_page(i.id, 1)
+  from public.menu_imports i
+  where i.restaurant_id = :'rest_a' and i.source = 'photo' and i.page_count = 1;
+select tests.authenticate_as(:'a_owner');
 select throws_ok(
   format($$ select public.menu_import_create(%L, 'photo', 1) $$, :'rest_a'),
-  'P0001', 'IMPORT_LIMIT_REACHED', 'the sixth photo import in a day is refused'
+  'P0001', 'IMPORT_LIMIT_REACHED', 'the sixth photo import that was read is refused'
 );
 select lives_ok(
   format($$ select public.menu_import_create(%L, 'csv', 0) $$, :'rest_a'),

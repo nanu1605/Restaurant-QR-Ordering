@@ -106,6 +106,7 @@ export const ITEM_FLAGS = {
   price_missing: { label: 'Price missing', hard: true },
   food_type_unknown: { label: 'Veg/non-veg not detected', hard: true },
   duplicate_option: { label: 'Two options have the same name', hard: true },
+  variant_name_invalid: { label: 'An option has no name', hard: true },
   name_invalid: { label: 'Name missing or too long', hard: true },
   low_confidence: { label: 'Not sure this was read right', hard: false },
   already_in_menu: { label: 'Already on the menu', hard: false },
@@ -165,6 +166,9 @@ export function itemFlags(
   if (item.food_type === 'unknown') flags.push('food_type_unknown');
   const optionNames = item.variants.map((variant) => normalizeItemName(variant.name));
   if (new Set(optionNames).size !== optionNames.length) flags.push('duplicate_option');
+  if (optionNames.some((option) => option.length === 0 || option.length > 40)) {
+    flags.push('variant_name_invalid');
+  }
 
   if (!item.reviewed) {
     if (item.confidence !== 'high') flags.push('low_confidence');

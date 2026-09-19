@@ -157,13 +157,18 @@ begin
     end if;
     v_pages := p_page_count;
 
-    -- Serialise concurrent creates so the daily count holds.
+    -- Serialise concurrent creates so the daily count holds. Only imports
+    -- that reached the reader count: the limit is there to cap what the
+    -- reader costs, and an import whose photos were never read costs nothing.
     perform 1 from public.restaurants r where r.id = p_restaurant_id for update;
     if (
       select count(*) from public.menu_imports i
       where i.restaurant_id = p_restaurant_id
         and i.source = 'photo'
         and i.created_at > now() - interval '24 hours'
+        and exists (
+          select 1 from jsonb_array_elements(i.pages) as p where p ->> 'status' <> 'pending'
+        )
     ) >= 5 then
       perform private.fail('IMPORT_LIMIT_REACHED');
     end if;

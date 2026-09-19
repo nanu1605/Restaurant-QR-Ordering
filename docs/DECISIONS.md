@@ -952,7 +952,9 @@ variant_name, variant_price`. Rows in a row with the same category and name are 
   time the review opens and again on every edit in the review, since renaming a row, moving it or
   renaming its category changes what it matches: a row matching an active dish in the same category
   is skipped by default, with "Update price instead" offered only when the row and the dish have
-  the same shape (one price, or the same option names). A row that matches but is still set to
+  the same shape (one price, or the same option names). Everything the screen shows — the counts,
+  the flags, the Import button and the confirmation — is worked out from exactly what the commit
+  will be sent, so the two can never disagree. A row that matches but is still set to
   import is flagged "Already on the menu". Rows can be moved into the menu's own categories as well
   as the extracted ones.
 - **P7-18 · Commit** (`menu_import_commit`): one transaction under a row lock, with
@@ -971,8 +973,9 @@ variant_name, variant_price`. Rows in a row with the same category and name are 
 - **P7-19 · Who and how much:** the restaurant's owner or manager, or a platform admin (aal2) for
   any restaurant; waiters and kitchen can't. Creating and committing need full access, so a lapsed
   restaurant's import waits until the trial is extended or paid. At most 10 pages an import and
-  500 dishes. The 5-a-day limit counts **photo** imports only: it guards the reader's cost, and a
-  CSV costs nothing (a deviation from §20A.5, which doesn't tell them apart).
+  500 dishes. The 5-a-day limit counts **photo** imports whose pages were actually read: it guards
+  the reader's cost, so a CSV (which costs nothing) and photos that were never read don't use it up
+  (a deviation from §20A.5, which doesn't tell them apart).
 - **P7-20 · Photo cleanup:** a daily `/api/cron/daily` (scheduled in `vercel.json` for 03:00 India
   time) deletes the photos of imports that ended 7 days ago, and of any import started 30 days ago
   and never finished, then marks them (`files_removed_at`); drafts and counts stay. The route wants

@@ -111,11 +111,14 @@ export function csvToDraft(text: string): CsvResult {
     ]);
   }
 
-  const records = parseCsv(text).filter((record) => record.some((cell) => cell.trim() !== ''));
+  // Row numbers are the ones a spreadsheet shows, so blank lines still count.
+  const records = parseCsv(text)
+    .map((cells, index) => ({ cells, row: index + 1 }))
+    .filter((record) => record.cells.some((cell) => cell.trim() !== ''));
   if (records.length === 0) return fail([{ row: null, message: 'The file is empty.' }]);
 
   // Header row.
-  const header = records[0]!.map(headerKey);
+  const header = records[0]!.cells.map(headerKey);
   const columns = new Map<Column, number>();
   for (const column of CSV_COLUMNS) {
     const index = header.indexOf(column);
@@ -143,8 +146,7 @@ export function csvToDraft(text: string): CsvResult {
   let dishes = 0;
   let previous: { category: string; name: string; item: DraftItem; row: number } | null = null;
 
-  records.slice(1).forEach((record, index) => {
-    const row = index + 2; // spreadsheet row number; the header is row 1
+  records.slice(1).forEach(({ cells: record, row }) => {
     const rowErrors: string[] = [];
 
     const categoryName = cell(record, 'category');

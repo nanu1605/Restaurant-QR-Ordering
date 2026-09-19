@@ -217,10 +217,33 @@ export function ReviewScreen({
     return found;
   }, [draft, byCategory]);
 
-  const counts = useMemo(() => draftCounts(draft, new Set(matches.keys())), [draft, matches]);
+  // What the server is sent: the rows carry the match they have right now, so
+  // a renamed or moved row never updates the price of a dish it no longer
+  // matches. Every count, flag and check below reads this, so what the screen
+  // says is exactly what the commit will do.
+  const payload = useMemo(
+    (): Draft => ({
+      ...draft,
+      categories: draft.categories.map((category) => ({
+        ...category,
+        items: category.items.map((item) => {
+          const match = matches.get(item.key) ?? null;
+          const canUpdate = match !== null && match.hasVariants === item.variants.length > 0;
+          return {
+            ...item,
+            existing_item_id: match?.id ?? null,
+            action: item.action === 'update_price' && !canUpdate ? 'import' : item.action,
+          };
+        }),
+      })),
+    }),
+    [draft, matches],
+  );
+
+  const counts = useMemo(() => draftCounts(payload, new Set(matches.keys())), [payload, matches]);
   const flagsByKey = useMemo(() => {
     const flags = new Map<string, ItemFlag[]>();
-    for (const category of draft.categories) {
+    for (const category of payload.categories) {
       for (const item of category.items) {
         flags.set(
           item.key,
@@ -229,7 +252,7 @@ export function ReviewScreen({
       }
     }
     return flags;
-  }, [draft, duplicates, matches]);
+  }, [payload, duplicates, matches]);
 
   // "Needs a check" is on by default. Rows stay listed while they are being
   // fixed; the list is taken again when the filter is switched on.
@@ -275,7 +298,7 @@ export function ReviewScreen({
 
   const blockingRows = useMemo(() => {
     const rows: string[] = [];
-    for (const category of draft.categories) {
+    for (const category of payload.categories) {
       for (const item of category.items) {
         const flags = flagsByKey.get(item.key) ?? [];
         if (flags.some((flag) => ITEM_FLAGS[flag].hard && flag !== 'food_type_unknown')) {
@@ -284,36 +307,17 @@ export function ReviewScreen({
       }
     }
     return rows;
-  }, [draft.categories, flagsByKey]);
-  const badCategory = draft.categories.some(
+  }, [payload.categories, flagsByKey]);
+  // The database checks a category's name when it takes new dishes, and also
+  // when it is being shown again.
+  const badCategory = payload.categories.some(
     (category) =>
       !category.skip &&
-      category.items.some((item) => item.action === 'import') &&
+      (category.items.some((item) => item.action === 'import') || category.show_hidden) &&
       (category.name.trim() === '' || category.name.trim().length > 60),
   );
   const canImport =
     counts.items > 0 && blockingRows.length === 0 && !badCategory && counts.items <= 500;
-
-  // What the server is sent: the rows carry the match they have right now, so
-  // a renamed or moved row never updates the price of a dish it no longer matches.
-  const payload = useMemo(
-    (): Draft => ({
-      ...draft,
-      categories: draft.categories.map((category) => ({
-        ...category,
-        items: category.items.map((item) => {
-          const match = matches.get(item.key) ?? null;
-          const canUpdate = match !== null && match.hasVariants === item.variants.length > 0;
-          return {
-            ...item,
-            existing_item_id: match?.id ?? null,
-            action: item.action === 'update_price' && !canUpdate ? 'import' : item.action,
-          };
-        }),
-      })),
-    }),
-    [draft, matches],
-  );
 
   function save() {
     startTransition(async () => {
@@ -406,7 +410,14 @@ export function ReviewScreen({
             (flagsByKey.get(item.key)?.length ?? 0) > 0 ||
             flaggedWhenFiltered.has(item.key),
         );
-        if (onlyFlagged && rows.length === 0) return null;
+        // A category with nothing flagged is hidden by the filter, unless it
+        // carries something the owner still has to see or decide.
+        const mustShow =
+          hidden.has(normalizeCategoryName(category.name)) ||
+          category.show_hidden ||
+          category.name.trim() === '' ||
+          category.name.trim().length > 60;
+        if (onlyFlagged && rows.length === 0 && !mustShow) return null;
         return (
           <CategorySection
             key={category.key}
