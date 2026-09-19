@@ -14,6 +14,7 @@ import {
   tableTone,
   waiterName,
 } from '@/features/orders/board-view';
+import type { Board } from '@/features/orders/board';
 import { TableStateBadge } from '@/features/orders/components/table-state-badge';
 import { useBoard } from '@/features/orders/use-board';
 import { useServerNow } from '@/features/orders/use-server-now';
@@ -50,14 +51,25 @@ export function MiniBoard() {
           Open Live orders
         </Link>
       </div>
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        {board.tables.map((table) => (
-          <li key={table.id}>
-            <MiniTile table={table} board={board} nowMs={nowMs} />
-          </li>
-        ))}
-      </ul>
+      <BoardTiles board={board} nowMs={nowMs} href="/admin/live" />
     </section>
+  );
+}
+
+/**
+ * Every table as a small tile: state, waiter, time seated and dishes on the
+ * way. With `href`, each tile links there; without, the tiles are read-only
+ * (the super-admin support view).
+ */
+export function BoardTiles({ board, nowMs, href }: { board: Board; nowMs: number; href?: string }) {
+  return (
+    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {board.tables.map((table) => (
+        <li key={table.id}>
+          <MiniTile table={table} board={board} nowMs={nowMs} href={href} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -65,10 +77,12 @@ function MiniTile({
   table,
   board,
   nowMs,
+  href,
 }: {
   table: BoardTable;
   board: Parameters<typeof waiterName>[0];
   nowMs: number;
+  href?: string;
 }) {
   const state = tableState(table);
   const session = table.session;
@@ -76,17 +90,14 @@ function MiniTile({
   const pending = counts.placed + counts.preparing + counts.ready;
   const waiter = session ? waiterName(board, session.assignedWaiterId) : null;
 
-  return (
-    <Link
-      href="/admin/live"
-      data-table={table.label}
-      data-state={state}
-      className={cn(
-        'flex h-full flex-col gap-1.5 rounded-lg border border-l-4 border-line bg-surface p-3',
-        'hover:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-        EDGE[tableTone(table)],
-      )}
-    >
+  const className = cn(
+    'flex h-full flex-col gap-1.5 rounded-lg border border-l-4 border-line bg-surface p-3',
+    href &&
+      'hover:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+    EDGE[tableTone(table)],
+  );
+  const content = (
+    <>
       <span className="text-base font-semibold text-ink">{tableHeading(table.label)}</span>
       <TableStateBadge state={state} className="h-7 self-start text-sm" />
       <span className="text-sm text-ink-muted">
@@ -99,6 +110,16 @@ function MiniTile({
           {pending} {pending === 1 ? 'dish' : 'dishes'} on the way
         </span>
       )}
+    </>
+  );
+
+  return href ? (
+    <Link href={href} data-table={table.label} data-state={state} className={className}>
+      {content}
     </Link>
+  ) : (
+    <div data-table={table.label} data-state={state} className={className}>
+      {content}
+    </div>
   );
 }

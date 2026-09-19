@@ -52,10 +52,16 @@ export function TotalOrdersResults({
   data,
   filters,
   timezone,
+  basePath = PATH,
+  linkBills = true,
 }: {
   data: TotalOrders;
   filters: TotalOrdersFilters;
   timezone: string;
+  /** The page the pager links to (the super-admin support view shows this too). */
+  basePath?: string;
+  /** Invoice numbers open the bill; off in the read-only support view. */
+  linkBills?: boolean;
 }) {
   const range =
     data.from === data.to
@@ -80,12 +86,12 @@ export function TotalOrdersResults({
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         {data.view === 'bills' ? (
-          <BillsTable rows={data.rows} timezone={timezone} range={range} />
+          <BillsTable rows={data.rows} timezone={timezone} range={range} linkBills={linkBills} />
         ) : (
           <ClosedTable rows={data.rows} timezone={timezone} range={range} />
         )}
       </div>
-      <Pagination data={data} filters={filters} />
+      <Pagination data={data} filters={filters} basePath={basePath} />
     </div>
   );
 }
@@ -94,10 +100,12 @@ function BillsTable({
   rows,
   timezone,
   range,
+  linkBills,
 }: {
   rows: TotalOrdersBill[];
   timezone: string;
   range: string;
+  linkBills: boolean;
 }) {
   return (
     <table className="w-full min-w-[56rem] text-left text-sm text-ink">
@@ -128,12 +136,16 @@ function BillsTable({
         {rows.map((row) => (
           <tr key={row.id} className={row.status === 'void' ? 'text-ink-muted' : undefined}>
             <td className="px-3 py-2">
-              <Link
-                href={`/admin/bills/${row.id}`}
-                className="font-semibold text-primary underline-offset-4 hover:underline"
-              >
-                {row.invoiceNumber}
-              </Link>
+              {linkBills ? (
+                <Link
+                  href={`/admin/bills/${row.id}`}
+                  className="font-semibold text-primary underline-offset-4 hover:underline"
+                >
+                  {row.invoiceNumber}
+                </Link>
+              ) : (
+                <span className="font-semibold">{row.invoiceNumber}</span>
+              )}
               {row.status === 'void' && (
                 <span className="ml-2 rounded border border-status-void px-1 text-xs font-bold text-status-void">
                   VOID
@@ -205,13 +217,21 @@ function ClosedTable({
   );
 }
 
-function Pagination({ data, filters }: { data: TotalOrders; filters: TotalOrdersFilters }) {
+function Pagination({
+  data,
+  filters,
+  basePath,
+}: {
+  data: TotalOrders;
+  filters: TotalOrdersFilters;
+  basePath: string;
+}) {
   const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
   const first = (data.page - 1) * data.pageSize + 1;
   const last = Math.min(data.total, data.page * data.pageSize);
   const params = filterParams(filters);
   const href = (page: number) =>
-    hrefWithParams(PATH, { ...params, page: page > 1 ? String(page) : undefined });
+    hrefWithParams(basePath, { ...params, page: page > 1 ? String(page) : undefined });
 
   return (
     <nav
