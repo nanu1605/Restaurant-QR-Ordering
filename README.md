@@ -30,14 +30,15 @@ Open http://localhost:3000/login. Every password is `Password123!`.
 
 | Who            | Log in with                                   | Lands on |
 | -------------- | --------------------------------------------- | -------- |
-| Platform admin | Email `super@local.test`                      | `/super` |
+| Platform admin | Email `super@local.test`, then a TOTP code    | `/super` |
 | Owner          | Email `owner@local.test`, or `demo` / `owner` | `/admin` |
 | Manager        | Restaurant code `demo`, username `manager`    | `/admin` |
 | Waiter (Ravi)  | `demo` / `waiter1`                            | `/staff` |
 | Kitchen        | `demo` / `kitchen1`                           | `/staff` |
 
-Add another restaurant (it starts with the default menu categories for its cuisine: `north_indian`
-by default, or `south_indian`, `cafe`, `fast_food`, `bakery`, `multi_cuisine`, `blank`):
+Add another restaurant from `/super` → Onboard restaurant, or from the command line (it starts
+with the default menu categories for its cuisine: `north_indian` by default, or `south_indian`,
+`cafe`, `fast_food`, `bakery`, `multi_cuisine`, `blank`):
 
 ```bash
 pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba --owner-name "Vikram Sharma" --owner-username vikram --owner-password "choose-a-password" --cuisine north_indian
@@ -102,6 +103,34 @@ own dates):
 
 Every report downloads as a CSV (Growth), written so Excel opens it cleanly. The Starter plan sees
 the sales summary for today or yesterday.
+
+### Super-admin panel
+
+`/super` is for running the platform (spec §13.4). Platform admins need an authenticator app
+(Google Authenticator, Microsoft Authenticator, 1Password…): the first visit shows a QR code to
+scan, and every later login asks for the 6-digit code. Without the code the database shows a
+platform admin nothing.
+
+- **Overview**: restaurants by state, MRR, orders in the last 24 hours, trials ending this week.
+- **Restaurants**: search and filters; each restaurant's profile, owner login, subscription,
+  payments, usage and access, with actions to extend the trial, change the plan, record a payment
+  received outside Razorpay, suspend or unsuspend, and set a new owner password.
+- **Onboard restaurant**: details → owner login → tax → plan and trial, then the login details to
+  hand over.
+- **Support view**: the restaurant's menu, tables, live board and Total orders, read-only. Each
+  look is recorded in that restaurant's audit log.
+- **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids) and the **Audit log**.
+
+A platform admin who loses their phone can't pass the second factor. Remove their authenticator in
+the Supabase SQL editor, and they enrol again on the next login:
+
+```sql
+delete from auth.mfa_factors
+where user_id = (select id from auth.users where email = 'admin@example.com');
+```
+
+To make someone a platform admin, create their login in Supabase Auth, then
+`insert into public.platform_admins (user_id) select id from auth.users where email = '…';`.
 
 ### Admin panel
 

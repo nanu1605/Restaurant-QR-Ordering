@@ -769,3 +769,96 @@ bottom of each section.
   handover rule and column sorting; and Starter seeing the summary only, with the export URL
   refused. The data is made through the real functions, so bills, audit rows and waiter history are
   genuine.
+
+## Phase 7 — super-admin panel (2026-09-19)
+
+Phase 7 has two review stops: the super-admin panel first, then menu import (CSV and photos).
+
+### Access
+
+- **P7-1 · Platform data needs the second factor, in the database.** `is_platform_admin()` now
+  also requires an `aal2` session (`auth.jwt() ->> 'aal'`), so every policy and function built on
+  it (13 policies, `restaurant_access`, `restaurant_plan`) refuses a platform admin who has only
+  typed a password: a stolen password can't read every tenant through PostgREST.
+  `platform_admin_status()` (`none` / `mfa_required` / `ok`) is what login, the access summary and
+  the guards use for routing; only `requirePlatformAdmin()` tells the last two apart.
+- **P7-2 · TOTP at `/super/mfa`** (Supabase Auth MFA). The first visit enrols an authenticator app
+  (QR code, or the key as text), clearing any enrolment left unfinished; later logins ask for the
+  code. `/super`'s own layout has no guard so that page can open; the `(panel)` layout and every
+  page guard themselves. A lost device is fixed in SQL (README). E2E tests make their own platform
+  admins and compute the codes (RFC 6238), so the seeded `super@local.test` stays for people.
+
+### Platform functions
+
+- **P7-3 · Platform functions are `authenticated` RPCs** that check `current_platform_admin()`
+  (aal2) and audit as `platform_admin` with the label "Platform admin" — owners can read their own
+  restaurant's log, so the label is neutral; the platform log shows the admin's email.
+  `platform_create_restaurant` stays service-role only, because the owner's login is created
+  through the Admin API first; the wizard's action checks the platform admin before calling it.
+- **P7-4 · Actions**, each with an audit row:
+  - **Suspend** needs a reason (≤ 300). `restaurant_access` does the rest: customers can't order,
+    tables already eating can still be billed. **Unsuspend** clears the reason.
+  - **Extend trial:** trials only, 1–90 days, added to the trial's end or to now if it has ended.
+  - **Change plan:** active plans only; status and dates stay; a smaller plan never deactivates
+    tables or staff (§14.2).
+  - **Manual payment** (§14.5): amount, how it was paid, cycle, first and last day (business days in
+    the restaurant's timezone, last day included), notes. The payment row stores the period from
+    the first day's business-day start to the start of the day after the last. The subscription
+    becomes active and manual with that cycle (payments have no cycle column, and MRR needs it),
+    its period moves only forward (an older payment never shortens access), and grace and
+    cancel-at-period-end are cleared. A suspension stays until someone lifts it.
+  - **Reset owner password:** the database logs it and returns the login; the server sets the new
+    password through the Admin API, as for staff. The dialog offers a generated password without
+    look-alike characters.
+- **P7-5 · Not in Phase 7:** send payment link, resend invite (email), the webhook events page and
+  real Razorpay plan ids arrive with Razorpay and Resend in Phase 8; there is no platform settings
+  editor (not in §13.4). The plans editor already stores Razorpay plan ids as text.
+- **P7-6 · Support view:** `platform_support_view(restaurant, section, filters)` returns the menu
+  (hidden dishes and categories included), the tables (never their QR tokens, which are what lets a
+  phone order), the live board or Total orders. The board and Total orders bodies moved unchanged
+  into `private.board_json(restaurant, role, member)` and `private.total_orders_json(restaurant,
+filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with the same output,
+  and the support view shows the board as a manager would. **Each look is audited
+  (`support.viewed`), once per admin, restaurant and section in 10 minutes** — a small departure
+  from "every view", because the board reloads itself every 15 seconds (platform admins get no
+  Realtime). The screens have no buttons at all; bill numbers aren't links.
+- **P7-7 · Overview and lists:** restaurants by state with no overlaps (suspended, then read-only,
+  then trial / active / payment failed); **MRR** = the plan's monthly price, or yearly ÷ 12, over
+  active subscriptions with a source (trials and failed payments left out); orders in the last 24
+  hours; trials ending within 7 days. The restaurants list searches name, code and city and
+  filters by status, plan, subscription, city and created dates (India time), 50 a page. The
+  subscriptions list puts failed payments first, then whatever ends soonest.
+- **P7-8 · Restaurant detail:** profile, owners (a staff login address such as
+  `owner@code.staff.domain` isn't shown as a contact), subscription, payments, access state and
+  usage (active tables, staff logins, waiters, orders in 7 and 30 days, last order, bills).
+- **P7-9 · Onboarding wizard** (restaurant → owner login → tax → plan and trial → one save → the
+  login details to hand over, with a Copy button). It reuses `onboardRestaurant()`, which now takes
+  the address, contact, tax and trial fields and checks the code before creating the login (the
+  staff login address contains the code, so a retry would otherwise fail as "email exists").
+  `platform_create_restaurant` now refuses a bad trial length, GST rate or mode as
+  `INVALID_INPUT` instead of a cast error, and the form mirrors the column checks, so errors go
+  back to the right step. `pnpm create-restaurant` stays as a developer tool.
+- **P7-10 · Plans change only through `platform_update_plan`,** which audits the fields that
+  changed (a platform-level row, no restaurant). The direct insert/update policies and grants on
+  `plans` are gone, so the schema guard now says no table accepts direct writes. Features are the
+  eight known keys, merged into the plan's; limits are 1–10,000 or empty for unlimited.
+- **P7-11 · Platform audit log:** every restaurant's log plus platform events, filtered by
+  restaurant, who (staff, customer, system, platform admin), an action prefix such as `bill.` and
+  dates (India time), newest first, 50 a page, with before/after in a disclosure.
+
+### Tests (Stop A)
+
+- **pgTAP 300–340:** aal1 versus aal2 across policies and functions; the overview counted against
+  a baseline (the demo seed has a restaurant), MRR, list filters and paging, detail usage and owner
+  emails; every action and its audit row, including suspension stopping `customer_place_order`
+  while `admin_generate_bill` still works on an open table; the support view matching the member
+  functions' output, without QR tokens, with the 10-minute audit window; plan edits and their
+  audit, direct writes refused; the platform log's filters and paging.
+- **Unit:** payment periods (short months, leap years), the code suggestion, generated passwords,
+  the wizard, payment and plan forms, and the list filters read from URLs.
+- **E2E (`super-admin.spec.ts`, and the platform-admin login in `auth.spec.ts`):** TOTP enrolment
+  and a second login; onboarding through the wizard with the owner logging in on the handed-over
+  details, and a taken code sent back to step 1; extend trial, change plan and a manual payment,
+  each in the audit log; suspend → a customer can't order while the open table is billed →
+  unsuspend; the support view's four sections with nothing to press and four `support.viewed` rows;
+  a plan edit saved, audited and restored.

@@ -1,7 +1,8 @@
 # Running a pilot
 
-Phases 0–6 are the pilot milestone (spec §19): enough to run a real restaurant for free. This is
-what works, what a pilot still needs from you, and how a pilot day goes.
+Phases 0–6 are the pilot milestone (spec §19): enough to run a real restaurant for free. Phase 7
+adds the super-admin panel. This is what works, what a pilot still needs from you, and how a pilot
+day goes.
 
 ## What the product does today
 
@@ -17,13 +18,16 @@ what works, what a pilot still needs from you, and how a pilot day goes.
   (tax, charges, bill options, ordering rules, business-day start, timezone).
 - **Plans** gate features already (Starter / Growth / Pro), and a lapsed subscription turns the
   restaurant read-only without losing data.
+- **You** run the platform from `/super` (with an authenticator app): onboard restaurants, extend
+  trials, change plans, record payments received by bank transfer or UPI, suspend a restaurant,
+  look at its menu, tables, live board and Total orders read-only, edit the plans and read the
+  audit log.
 
 ## What a pilot does not have yet
 
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
-| Super-admin panel and the onboarding wizard              | 7     | Onboard with `pnpm create-restaurant`             |
-| Menu import from photos                                  | 7     | Type the menu in, or import a CSV later           |
+| Menu import from photos and CSV                          | 7     | Type the menu in                                  |
 | Razorpay subscriptions and invoices                      | 8     | Pilots are free; no payment details are collected |
 | Hindi customer screens, service requests, offline polish | 9     | English only for now                              |
 | Staging and production deployment, Sentry, backups, cron | 10    | Deploy before the first guest scans a code        |
@@ -43,6 +47,8 @@ Before the first pilot:
       restaurants.
 - [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act).
 - [ ] Recruit 2–3 pilot restaurants.
+- [ ] Make yourself a platform admin on production (a login, then one row in `platform_admins`, in
+      the Supabase SQL editor) and enrol an authenticator app on the first visit to `/super`.
 
 Before charging anyone (Phase 8):
 
@@ -52,7 +58,8 @@ Before charging anyone (Phase 8):
 ## Setting a restaurant up
 
 1. Deploy the app and point `NEXT_PUBLIC_APP_URL` at the real domain.
-2. Onboard the restaurant (`pnpm create-restaurant`): name, code, owner login, plan, cuisine.
+2. Onboard the restaurant at `/super` → Onboard restaurant: details, owner login, tax defaults,
+   plan and trial length. Copy the login details from the last step and give them to the owner.
 3. As the owner: add the tables, print their QR codes, enter the menu, add the waiter profiles and
    the staff logins, then set the tax, charges, bill options and business-day start.
 4. Print a test bill from Settings → Bill on the restaurant's own printer, with the paper size set
