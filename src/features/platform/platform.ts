@@ -350,6 +350,11 @@ export function formatDateTime(value: string | null): string {
   return value ? dateTimeFormat.format(new Date(value)) : '—';
 }
 
+/** Today's date in India, 'YYYY-MM-DD'. */
+export function todayInIndia(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE }).format(now);
+}
+
 export function formatDate(value: string | null): string {
   return value ? dateFormat.format(new Date(value)) : '—';
 }

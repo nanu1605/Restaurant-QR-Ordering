@@ -35,6 +35,17 @@ const MESSAGES: Record<string, Message> = {
     `Your plan allows up to ${max} staff logins. Upgrade for more, or deactivate one first.`,
   FEATURE_NOT_IN_PLAN: "This feature isn't included in your plan.",
 
+  // Super-admin (spec §13.4)
+  MFA_REQUIRED: 'Enter the code from your authenticator app first.',
+  RESTAURANT_NOT_FOUND: 'That restaurant no longer exists.',
+  SUBSCRIPTION_NOT_FOUND: 'This restaurant has no subscription yet.',
+  NOT_TRIALING: 'Only a trial can be extended. Record a payment instead.',
+  PLAN_INACTIVE: 'That plan is switched off. Choose an active plan.',
+  INVALID_PERIOD: 'Check the period: the last day is on or after the first, within 3 years.',
+  MEMBER_NOT_FOUND: 'That owner login no longer exists.',
+  SLUG_TAKEN: 'That restaurant code is taken. Choose another.',
+  INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
+
   // Menu
   INVALID_CATEGORY_NAME: 'Enter a category name of up to 60 characters.',
   CATEGORY_NAME_TAKEN: (name) =>
