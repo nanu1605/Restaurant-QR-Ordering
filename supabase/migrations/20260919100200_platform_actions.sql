@@ -157,9 +157,10 @@ $$;
 
 -- A payment received outside Razorpay (§14.5): bank transfer, cash, UPI or
 -- cheque. Keys: amount_paise, mode, billing_cycle, period_start, period_end
--- (business dates, end inclusive), notes. The subscription becomes active and
--- manual; its period moves to the payment's end when that is later, so a
--- payment for an earlier period never shortens access.
+-- (business dates, end inclusive), notes. When the payment keeps the
+-- restaurant going for longer, the subscription becomes active and manual
+-- until the payment's end; a payment for a period already covered is only
+-- recorded, so it never shortens access.
 create or replace function public.platform_record_manual_payment(
   p_restaurant_id uuid,
   p_payment jsonb
@@ -183,6 +184,8 @@ declare
   v_notes text;
   v_starts_at timestamptz;
   v_ends_at timestamptz;
+  v_lapse timestamptz;
+  v_extended boolean;
   v_payment_id uuid;
 begin
   perform private.assert_keys(
@@ -237,19 +240,39 @@ begin
   )
   returning id into v_payment_id;
 
-  update public.restaurant_subscriptions s
-    set status = 'active',
-        source = 'manual',
-        billing_cycle = v_cycle::public.billing_cycle,
-        current_period_start = case
-          when s.current_period_end is null or v_ends_at > s.current_period_end then v_starts_at
-          else s.current_period_start
-        end,
-        current_period_end = greatest(s.current_period_end, v_ends_at),
-        grace_until = null,
-        cancel_at_period_end = false
-    where s.id = v_subscription.id
-    returning * into v_subscription;
+  -- When access lapses now, as restaurant_access works it out. The payment
+  -- changes the subscription only if it keeps the restaurant going for
+  -- longer (as an active subscription, lapse = period end + 2 days): a
+  -- payment for a period already covered, say arrears during grace or a
+  -- month inside a long trial, is recorded and nothing else changes.
+  v_lapse := case v_subscription.status
+    when 'trialing' then v_subscription.trial_ends_at
+    when 'active' then v_subscription.current_period_end + interval '2 days'
+    when 'past_due' then coalesce(
+      v_subscription.grace_until, v_subscription.current_period_end + interval '2 days'
+    )
+    when 'halted' then coalesce(
+      v_subscription.grace_until, v_subscription.current_period_end + interval '2 days'
+    )
+    else coalesce(v_subscription.current_period_end, v_subscription.trial_ends_at)
+  end;
+  v_extended := v_ends_at + interval '2 days' > coalesce(v_lapse, '-infinity'::timestamptz);
+
+  if v_extended then
+    update public.restaurant_subscriptions s
+      set status = 'active',
+          source = 'manual',
+          billing_cycle = v_cycle::public.billing_cycle,
+          current_period_start = case
+            when s.current_period_end is null or v_ends_at > s.current_period_end then v_starts_at
+            else s.current_period_start
+          end,
+          current_period_end = greatest(s.current_period_end, v_ends_at),
+          grace_until = null,
+          cancel_at_period_end = false
+      where s.id = v_subscription.id
+      returning * into v_subscription;
+  end if;
 
   perform private.audit_platform(
     v_admin, p_restaurant_id, 'subscription.payment_recorded', 'subscription_payment', v_payment_id,
@@ -260,6 +283,7 @@ begin
       'billing_cycle', v_cycle,
       'period_start', v_starts_at,
       'period_end', v_ends_at,
+      'extended', v_extended,
       'current_period_end', v_subscription.current_period_end
     ),
     v_notes
@@ -267,6 +291,7 @@ begin
 
   return jsonb_build_object(
     'payment_id', v_payment_id,
+    'extended', v_extended,
     'status', v_subscription.status,
     'current_period_end', v_subscription.current_period_end
   );

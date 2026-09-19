@@ -167,6 +167,7 @@ select public.platform_record_manual_payment(:'rest_b', '{
   "period_start": "2026-09-01", "period_end": "2026-09-30", "notes": "UTR 1234"
 }') as paid \gset
 select is(:'paid'::jsonb ->> 'status', 'active', 'the subscription is active again');
+select is(:'paid'::jsonb ->> 'extended', 'true', 'the payment moved the period forward');
 select is(
   (:'paid'::jsonb ->> 'current_period_end')::timestamptz,
   '2026-10-01 04:00+05:30'::timestamptz,
@@ -195,6 +196,58 @@ select is(
   '2026-10-01 04:00+05:30'::timestamptz,
   'a payment for an earlier period keeps the later end'
 );
+
+-- A month paid inside a long trial doesn't cut the trial short.
+select tests.clear_auth();
+select tests.create_restaurant('kappa') as rest_k \gset
+update public.restaurant_subscriptions set trial_ends_at = now() + interval '60 days'
+  where restaurant_id = :'rest_k';
+select tests.authenticate_as_platform_admin(:'admin');
+select is(
+  public.platform_record_manual_payment(:'rest_k', jsonb_build_object(
+    'amount_paise', 89900, 'mode', 'upi', 'billing_cycle', 'monthly',
+    'period_start', current_date::text, 'period_end', (current_date + 29)::text
+  )) ->> 'extended',
+  'false', 'a month inside a 60-day trial extends nothing'
+);
+select tests.clear_auth();
+select is(
+  (select row(status, trial_ends_at, source, billing_cycle)::text
+   from public.restaurant_subscriptions where restaurant_id = :'rest_k'),
+  row('trialing', now() + interval '60 days', null::text, null::text)::text,
+  'the trial runs on unchanged'
+);
+select is(
+  (select count(*) from public.subscription_payments where restaurant_id = :'rest_k'),
+  1::bigint, 'the payment is still recorded'
+);
+
+-- Arrears paid during grace keep the grace period.
+select tests.create_restaurant('lambda') as rest_l \gset
+update public.restaurant_subscriptions
+  set status = 'past_due', source = 'manual', billing_cycle = 'monthly',
+      current_period_start = now() - interval '35 days', current_period_end = now() - interval '5 days',
+      grace_until = now() + interval '3 days'
+  where restaurant_id = :'rest_l';
+select tests.authenticate_as_platform_admin(:'admin');
+select is(
+  public.platform_record_manual_payment(:'rest_l', jsonb_build_object(
+    'amount_paise', 89900, 'mode', 'cash', 'billing_cycle', 'monthly',
+    'period_start', (current_date - 70)::text, 'period_end', (current_date - 41)::text
+  )) ->> 'extended',
+  'false', 'an arrears payment for an old month extends nothing'
+);
+select is(
+  (select state from public.restaurant_access(:'rest_l')), 'full',
+  'still open during grace'
+);
+select tests.clear_auth();
+select is(
+  (select row(status, grace_until)::text from public.restaurant_subscriptions where restaurant_id = :'rest_l'),
+  row('past_due', now() + interval '3 days')::text,
+  'still past due, grace kept'
+);
+select tests.authenticate_as_platform_admin(:'admin');
 
 -- A yearly payment on a trial.
 select is(
