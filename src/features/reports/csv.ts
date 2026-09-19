@@ -23,6 +23,8 @@ export type CsvTable = { headers: string[]; rows: CsvCell[][] };
 
 const NEEDS_QUOTES = /[",\r\n]/;
 const LOOKS_LIKE_FORMULA = /^[=+\-@\t\r]/;
+/** A plain amount such as "-0.50": a spreadsheet must read it as a number. */
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
 
 /** Rupees with two decimals, without a currency sign: 66250 → "662.50". */
 export function paiseToRupees(paise: number): string {
@@ -34,7 +36,7 @@ export function paiseToRupees(paise: number): string {
 function cell(value: CsvCell): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'number') return String(value);
-  const text = LOOKS_LIKE_FORMULA.test(value) ? `'${value}` : value;
+  const text = LOOKS_LIKE_FORMULA.test(value) && !PLAIN_NUMBER.test(value) ? `'${value}` : value;
   return NEEDS_QUOTES.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 

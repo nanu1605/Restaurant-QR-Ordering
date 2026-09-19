@@ -273,6 +273,18 @@ describe('csv', () => {
     expect(csv).toContain(`'@sum,`);
   });
 
+  it('keeps a negative round off a number a spreadsheet can add up', () => {
+    const report = parseSalesReport({
+      ...salesJson,
+      days: [{ ...salesJson.days[0], round_off_paise: -50 }],
+    });
+    const csv = toCsv(salesCsv(report));
+    expect(csv).toContain(',-0.50,');
+    expect(csv).not.toContain("'-0.50");
+    // Text that starts with a minus is still defused.
+    expect(toCsv({ headers: ['Reason'], rows: [['-1+2']] })).toContain("'-1+2");
+  });
+
   it('writes the sales day rows', () => {
     const table = salesCsv(parseSalesReport(salesJson));
     expect(table.headers[0]).toBe('Date');

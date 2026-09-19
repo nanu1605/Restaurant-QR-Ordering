@@ -26,8 +26,9 @@ export function SalesSummary({ report }: { report: SalesReport }) {
     { label: 'Gross sales', value: <Money paise={s.grossPaise} /> },
     { label: 'Discounts', value: <Money paise={s.discountPaise} /> },
     { label: 'Service charge', value: <Money paise={s.serviceChargePaise} /> },
-    { label: 'GST', value: <Money paise={s.taxPaise} /> },
     { label: 'Net sales', value: <Money paise={s.netPaise} /> },
+    { label: 'GST', value: <Money paise={s.taxPaise} /> },
+    { label: 'Round off', value: <Money paise={s.roundOffPaise} signDisplay="exceptZero" /> },
     { label: 'Total billed', value: <Money paise={s.totalPaise} /> },
     { label: 'Average bill', value: <Money paise={s.averagePaise} /> },
   ];
@@ -36,7 +37,7 @@ export function SalesSummary({ report }: { report: SalesReport }) {
     <>
       <dl
         aria-label="Summary"
-        className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-4"
+        className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-3"
       >
         {stats.map((stat) => (
           <div key={stat.label} className="flex flex-col">
@@ -46,8 +47,8 @@ export function SalesSummary({ report }: { report: SalesReport }) {
         ))}
       </dl>
       <p className="text-sm text-ink-muted">
-        Net sales is what is left after discounts, including service charge and without GST. Void
-        bills are not counted.
+        Net sales is what is left after discounts, including service charge and without GST; net
+        sales, GST and round off add up to the total billed. Void bills are not counted.
       </p>
     </>
   );
