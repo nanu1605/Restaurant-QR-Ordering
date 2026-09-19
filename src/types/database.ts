@@ -381,6 +381,83 @@ export type Database = {
           },
         ]
       }
+      menu_imports: {
+        Row: {
+          completed_at: string | null
+          cost_paise: number | null
+          created_at: string
+          created_by: string | null
+          draft: Json | null
+          error: string | null
+          file_paths: string[]
+          files_removed_at: string | null
+          id: string
+          imported_counts: Json | null
+          input_tokens: number
+          model: string | null
+          output_tokens: number
+          page_count: number
+          pages: Json
+          raw_result: Json | null
+          restaurant_id: string
+          source: Database["public"]["Enums"]["menu_import_source"]
+          status: Database["public"]["Enums"]["menu_import_status"]
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          draft?: Json | null
+          error?: string | null
+          file_paths?: string[]
+          files_removed_at?: string | null
+          id?: string
+          imported_counts?: Json | null
+          input_tokens?: number
+          model?: string | null
+          output_tokens?: number
+          page_count: number
+          pages?: Json
+          raw_result?: Json | null
+          restaurant_id: string
+          source: Database["public"]["Enums"]["menu_import_source"]
+          status: Database["public"]["Enums"]["menu_import_status"]
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          draft?: Json | null
+          error?: string | null
+          file_paths?: string[]
+          files_removed_at?: string | null
+          id?: string
+          imported_counts?: Json | null
+          input_tokens?: number
+          model?: string | null
+          output_tokens?: number
+          page_count?: number
+          pages?: Json
+          raw_result?: Json | null
+          restaurant_id?: string
+          source?: Database["public"]["Enums"]["menu_import_source"]
+          status?: Database["public"]["Enums"]["menu_import_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_imports_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_item_variants: {
         Row: {
           created_at: string
@@ -1499,6 +1576,47 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
       }
+      menu_import_commit: {
+        Args: {
+          p_confirm_food_types?: boolean
+          p_draft: Json
+          p_import_id: string
+        }
+        Returns: Json
+      }
+      menu_import_create: {
+        Args: {
+          p_page_count: number
+          p_restaurant_id: string
+          p_source: string
+        }
+        Returns: Json
+      }
+      menu_import_discard: { Args: { p_import_id: string }; Returns: undefined }
+      menu_import_files_to_remove: {
+        Args: { p_limit?: number }
+        Returns: {
+          file_paths: string[]
+          import_id: string
+        }[]
+      }
+      menu_import_mark_files_removed: {
+        Args: { p_import_ids: string[] }
+        Returns: number
+      }
+      menu_import_record_page: {
+        Args: { p_import_id: string; p_page: Json }
+        Returns: Json
+      }
+      menu_import_set_draft: {
+        Args: {
+          p_draft?: Json
+          p_error?: string
+          p_import_id: string
+          p_status: string
+        }
+        Returns: undefined
+      }
       platform_admin_status: { Args: never; Returns: string }
       platform_change_plan: {
         Args: { p_plan_code: string; p_restaurant_id: string }
@@ -1610,6 +1728,14 @@ export type Database = {
       gst_mode: "none" | "regular" | "composition"
       manual_payment_mode: "bank_transfer" | "cash" | "upi" | "cheque"
       member_role: "owner" | "manager" | "waiter" | "kitchen"
+      menu_import_source: "photo" | "csv"
+      menu_import_status:
+        | "uploaded"
+        | "processing"
+        | "review"
+        | "imported"
+        | "failed"
+        | "discarded"
       order_item_status:
         | "placed"
         | "preparing"
@@ -1771,6 +1897,15 @@ export const Constants = {
       gst_mode: ["none", "regular", "composition"],
       manual_payment_mode: ["bank_transfer", "cash", "upi", "cheque"],
       member_role: ["owner", "manager", "waiter", "kitchen"],
+      menu_import_source: ["photo", "csv"],
+      menu_import_status: [
+        "uploaded",
+        "processing",
+        "review",
+        "imported",
+        "failed",
+        "discarded",
+      ],
       order_item_status: [
         "placed",
         "preparing",

@@ -155,7 +155,13 @@ select set_eq(
       ('public.platform_reset_owner_password'),
       ('public.platform_support_view'),
       ('public.platform_update_plan'),
-      ('public.platform_list_audit')
+      ('public.platform_list_audit'),
+      -- Phase 7: menu import
+      ('public.menu_import_create'),
+      ('public.menu_import_record_page'),
+      ('public.menu_import_set_draft'),
+      ('public.menu_import_commit'),
+      ('public.menu_import_discard')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -196,7 +202,7 @@ from unnest(array[
   'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
-  'restaurant_subscriptions', 'subscription_payments'
+  'restaurant_subscriptions', 'subscription_payments', 'menu_imports'
 ]) as t;
 
 select is_empty(
@@ -206,7 +212,7 @@ select is_empty(
       'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
-      'restaurant_subscriptions', 'subscription_payments'
+      'restaurant_subscriptions', 'subscription_payments', 'menu_imports'
     ]) as t
     where not exists (
       select 1

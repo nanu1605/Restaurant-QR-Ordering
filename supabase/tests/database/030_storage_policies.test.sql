@@ -71,6 +71,43 @@ select policy_roles_are(
   'delete policy applies to signed-in users only'
 );
 
+-- Menu import photos (docs/DECISIONS.md P7-14): private, and signed-in users
+-- get no policy at all; the server signs uploads and reads the files.
+select is(
+  (select public from storage.buckets where id = 'menu-imports'),
+  false,
+  'the menu-imports bucket is private'
+);
+select is(
+  (select allowed_mime_types from storage.buckets where id = 'menu-imports'),
+  array['image/jpeg'],
+  'the menu-imports bucket takes JPEG pages only'
+);
+select is_empty(
+  $$
+    select policyname from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and (qual like '%menu-imports%' or with_check like '%menu-imports%')
+  $$,
+  'no storage policy mentions the menu-imports bucket'
+);
+select tests.authenticate_as(:'a_manager');
+select throws_ok(
+  format(
+    $f$insert into storage.objects (bucket_id, name) values ('menu-imports', %L)$f$,
+    :'rest_a' || '/import/page-1.jpg'
+  ),
+  '42501',
+  null,
+  'a manager cannot upload import pages directly'
+);
+select is(
+  (select count(*) from storage.objects where bucket_id = 'menu-imports'),
+  0::bigint,
+  'signed-in users cannot list import pages'
+);
+select tests.clear_auth();
+
 select * from finish();
 
 rollback;
