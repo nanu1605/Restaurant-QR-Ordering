@@ -154,7 +154,8 @@ select set_eq(
       ('public.platform_extend_trial'),
       ('public.platform_change_plan'),
       ('public.platform_record_manual_payment'),
-      ('public.platform_reset_owner_password')
+      ('public.platform_reset_owner_password'),
+      ('public.platform_support_view')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

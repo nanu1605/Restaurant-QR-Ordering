@@ -1528,6 +1528,10 @@ export type Database = {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
       }
+      platform_support_view: {
+        Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
+        Returns: Json
+      }
       restaurant_access: {
         Args: { p_at?: string; p_restaurant_id: string }
         Returns: {
