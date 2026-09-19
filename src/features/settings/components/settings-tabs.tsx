@@ -22,9 +22,6 @@ export function SettingsTabs({
   upgradeHint,
   readOnly,
 }: SettingsTabsProps) {
-  // Forms remount after a save so they show the stored (normalised) values,
-  // e.g. the GSTIN in capitals; the selected tab stays put.
-  const version = settings.updated_at;
   return (
     <Tabs defaultValue="restaurant" className="gap-4">
       <TabsList className="h-10 w-full max-w-xl">
@@ -35,19 +32,13 @@ export function SettingsTabs({
       </TabsList>
       <div className="rounded-lg border border-line bg-surface p-4 md:p-6">
         <TabsContent value="restaurant">
-          <RestaurantForm
-            key={version}
-            settings={settings}
-            readOnly={readOnly}
-            supabaseUrl={supabaseUrl}
-          />
+          <RestaurantForm settings={settings} readOnly={readOnly} supabaseUrl={supabaseUrl} />
         </TabsContent>
         <TabsContent value="tax">
-          <TaxForm key={version} settings={settings} readOnly={readOnly} />
+          <TaxForm settings={settings} readOnly={readOnly} />
         </TabsContent>
         <TabsContent value="bill">
           <BillForm
-            key={version}
             settings={settings}
             readOnly={readOnly}
             canShowUpiQr={canShowUpiQr}
@@ -55,7 +46,7 @@ export function SettingsTabs({
           />
         </TabsContent>
         <TabsContent value="ordering">
-          <OrderingForm key={version} settings={settings} readOnly={readOnly} />
+          <OrderingForm settings={settings} readOnly={readOnly} />
         </TabsContent>
       </div>
     </Tabs>

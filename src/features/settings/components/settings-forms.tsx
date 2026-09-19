@@ -11,7 +11,7 @@ import {
   useWatch,
   type FieldValues,
   type Path,
-  type UseFormSetError,
+  type UseFormReturn,
 } from 'react-hook-form';
 import { toast } from 'sonner';
 
@@ -49,17 +49,29 @@ import {
 
 type FormProps = { settings: RestaurantSettings; readOnly: boolean };
 
-function useSave<T extends FieldValues>(tab: SettingsTabName, setError: UseFormSetError<T>) {
+// Forms follow the server's values (`values` + keepDirtyValues) instead of
+// remounting, so the refresh after a save, which can land a moment later,
+// never wipes what is being typed, in this tab or another.
+const FOLLOW_SERVER = { keepDirtyValues: true } as const;
+
+function useSave<T extends FieldValues>(
+  tab: SettingsTabName,
+  form: Pick<UseFormReturn<T>, 'getValues' | 'resetDefaultValues' | 'setError'>,
+) {
   return async (values: T) => {
+    const submitted = form.getValues();
     const result = await saveSettings(tab, values);
     if (!result.ok) {
       for (const [key, message] of Object.entries(result.fieldErrors ?? {})) {
-        setError(key as Path<T>, { message });
+        form.setError(key as Path<T>, { message });
       }
-      if (!result.fieldErrors) setError('root' as Path<T>, { message: result.error });
+      if (!result.fieldErrors) form.setError('root' as Path<T>, { message: result.error });
       else toast.error(result.error);
       return;
     }
+    // Saved fields are no longer edits, so the refresh shows what was stored
+    // (e.g. the GSTIN in capitals); anything typed since stays put.
+    form.resetDefaultValues(submitted);
     toast.success('Settings saved');
   };
 }
@@ -135,15 +147,9 @@ export function RestaurantForm({
   supabaseUrl,
 }: FormProps & { supabaseUrl: string }) {
   const ids = useId();
-  const {
-    register,
-    control,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm({
+  const form = useForm({
     resolver: zodResolver(restaurantTabSchema),
-    defaultValues: {
+    values: {
       name: settings.name,
       legalName: settings.legal_name ?? '',
       addressLine: settings.address_line ?? '',
@@ -154,8 +160,15 @@ export function RestaurantForm({
       email: settings.email ?? '',
       accentColor: settings.accent_color,
     } satisfies RestaurantTab,
+    resetOptions: FOLLOW_SERVER,
   });
-  const save = useSave<RestaurantTab>('restaurant', setError);
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = form;
+  const save = useSave<RestaurantTab>('restaurant', form);
   const text = (name: keyof RestaurantTab, label: string, props: object = {}) => (
     <Field data-invalid={errors[name] ? true : undefined}>
       <FieldLabel htmlFor={`${ids}-${name}`}>{label}</FieldLabel>
@@ -323,15 +336,9 @@ const GST_MODE_OPTIONS = [
 
 export function TaxForm({ settings, readOnly }: FormProps) {
   const ids = useId();
-  const {
-    register,
-    control,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm({
+  const form = useForm({
     resolver: zodResolver(taxTabSchema),
-    defaultValues: {
+    values: {
       gstMode: settings.gst_mode,
       gstRateBps: settings.gst_rate_bps,
       pricesIncludeTax: settings.prices_include_tax,
@@ -340,8 +347,15 @@ export function TaxForm({ settings, readOnly }: FormProps) {
       gstin: settings.gstin ?? '',
       fssaiLicense: settings.fssai_license ?? '',
     } satisfies TaxTab,
+    resetOptions: FOLLOW_SERVER,
   });
-  const save = useSave<TaxTab>('tax', setError);
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = form;
+  const save = useSave<TaxTab>('tax', form);
   const gstMode = useWatch({ control, name: 'gstMode' });
   const serviceChargeEnabled = useWatch({ control, name: 'serviceChargeEnabled' });
   const rateItems = GST_RATES_BPS.map((bps) => ({
@@ -500,15 +514,9 @@ export function BillForm({
   upgradeHint,
 }: FormProps & { canShowUpiQr: boolean; upgradeHint: string }) {
   const ids = useId();
-  const {
-    register,
-    control,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm({
+  const form = useForm({
     resolver: zodResolver(billTabSchema),
-    defaultValues: {
+    values: {
       invoicePrefix: settings.invoice_prefix,
       paperWidth: settings.paper_width,
       billFooterText: settings.bill_footer_text ?? '',
@@ -517,8 +525,15 @@ export function BillForm({
       upiVpa: settings.upi_vpa ?? '',
       upiPayeeName: settings.upi_payee_name ?? '',
     } satisfies BillTab,
+    resetOptions: FOLLOW_SERVER,
   });
-  const save = useSave<BillTab>('bill', setError);
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = form;
+  const save = useSave<BillTab>('bill', form);
   const prefix = useWatch({ control, name: 'invoicePrefix' });
   const vpa = useWatch({ control, name: 'upiVpa' });
   const payeeName = useWatch({ control, name: 'upiPayeeName' });
@@ -711,15 +726,9 @@ function hourLabel(hour: number) {
 
 export function OrderingForm({ settings, readOnly }: FormProps) {
   const ids = useId();
-  const {
-    register,
-    control,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm({
+  const form = useForm({
     resolver: zodResolver(orderingTabSchema),
-    defaultValues: {
+    values: {
       requireFirstOrderApproval: settings.require_first_order_approval,
       customerCancelWindowSeconds: settings.customer_cancel_window_seconds,
       reopenWindowMinutes: settings.reopen_window_minutes,
@@ -727,8 +736,15 @@ export function OrderingForm({ settings, readOnly }: FormProps) {
       maxTablesPerWaiter: settings.max_tables_per_waiter,
       staffCanRemoveServedItems: settings.staff_can_remove_served_items,
     } satisfies OrderingTab,
+    resetOptions: FOLLOW_SERVER,
   });
-  const save = useSave<OrderingTab>('ordering', setError);
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = form;
+  const save = useSave<OrderingTab>('ordering', form);
   const hourItems = Array.from({ length: 24 }, (_, hour) => ({
     value: String(hour),
     label: hourLabel(hour),
