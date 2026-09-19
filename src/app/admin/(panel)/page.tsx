@@ -17,7 +17,8 @@ export const metadata: Metadata = {
 export default async function AdminDashboardPage() {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
   const queryClient = getQueryClient();
-  const [board, sales] = await Promise.all([getBoard(), getSalesReport()]);
+  // Today's sales are a head start only: if they fail here, the page fetches them itself.
+  const [board, sales] = await Promise.all([getBoard(), getSalesReport().catch(() => null)]);
   queryClient.setQueryData(boardKey(membership.memberId), board);
   if (sales) queryClient.setQueryData([...billingKey(membership.memberId), 'today'], sales);
 

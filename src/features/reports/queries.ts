@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 
 import { dbErrorCode } from '@/lib/db-errors';
 import { createClient } from '@/lib/supabase/server';
@@ -41,6 +41,17 @@ type ReportFunction =
   | 'admin_report_waiters'
   | 'admin_report_activity';
 
+/** A report the database refused, with its error code (e.g. INVALID_INPUT). */
+export class ReportError extends Error {
+  readonly code: string | null;
+
+  constructor(error: PostgrestError) {
+    super(`Could not load the report: ${error.message}`);
+    this.name = 'ReportError';
+    this.code = dbErrorCode(error);
+  }
+}
+
 async function callReport(
   name: ReportFunction,
   filters: ReportFilters,
@@ -50,7 +61,7 @@ async function callReport(
   const { data, error } = await supabase.rpc(name, { p_filters: filters });
   if (!error) return data;
   if (dbErrorCode(error) === 'FEATURE_NOT_IN_PLAN') return null;
-  throw new Error(`Could not load the report: ${error.message}`);
+  throw new ReportError(error);
 }
 
 export async function getSalesReport(

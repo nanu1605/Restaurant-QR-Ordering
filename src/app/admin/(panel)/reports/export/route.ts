@@ -18,11 +18,12 @@ import {
   getSalesReport,
   getTablesReport,
   getWaiterReport,
+  ReportError,
 } from '@/features/reports/queries';
 import { ACTIVITY_KINDS, type ActivityKind } from '@/features/reports/report';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 import { getCurrentMembership } from '@/lib/auth/session';
-import { isDate } from '@/lib/date-range';
+import { daysBetween, isDate, MAX_RANGE_DAYS } from '@/lib/date-range';
 
 /**
  * CSV downloads of the reports (spec §19 Phase 6, plan feature csv_export;
@@ -53,14 +54,27 @@ export async function GET(request: Request) {
   const kind: ActivityKind = (ACTIVITY_KINDS as readonly string[]).includes(kindParam)
     ? (kindParam as ActivityKind)
     : 'voids_discounts';
-  const from = url.searchParams.get('from') ?? undefined;
-  const to = url.searchParams.get('to') ?? undefined;
-  if ((from && !isDate(from)) || (to && !isDate(to))) {
-    return new Response('Those dates are not right', { status: 400 });
-  }
+  const from = url.searchParams.get('from') || undefined;
+  const to = url.searchParams.get('to') || undefined;
+  // The same range rules as the page: an end needs a start, and at most a year.
+  const badRange =
+    (from !== undefined && !isDate(from)) ||
+    (to !== undefined && (!isDate(to) || from === undefined)) ||
+    (from !== undefined &&
+      to !== undefined &&
+      (to < from || daysBetween(from, to) > MAX_RANGE_DAYS));
+  if (badRange) return new Response('Those dates are not right', { status: 400 });
   const filters: Filters = { from, to, export: true };
 
-  const built = await build(report as CsvReport, filters, kind, membership.restaurant.timezone);
+  let built: Awaited<ReturnType<typeof build>>;
+  try {
+    built = await build(report as CsvReport, filters, kind, membership.restaurant.timezone);
+  } catch (error) {
+    if (error instanceof ReportError && error.code === 'INVALID_INPUT') {
+      return new Response('Those dates are not right', { status: 400 });
+    }
+    throw error;
+  }
   if (!built) return new Response('That report is not in your plan', { status: 403 });
 
   return new Response(toCsv(built.table), {
