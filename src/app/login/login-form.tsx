@@ -113,7 +113,10 @@ function Field({ name, label, error, ...inputProps }: FieldProps) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
+      {/* A new default (the values sent back after a failed login) remounts the
+          input: Base UI warns when an uncontrolled default changes in place. */}
       <Input
+        key={String(inputProps.defaultValue ?? '')}
         id={id}
         name={name}
         className="h-11 text-base"
