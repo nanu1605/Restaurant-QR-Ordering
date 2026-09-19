@@ -144,7 +144,12 @@ select set_eq(
       ('public.admin_report_items'),
       ('public.admin_report_tables'),
       ('public.admin_report_waiters'),
-      ('public.admin_report_activity')
+      ('public.admin_report_activity'),
+      -- Phase 7: super-admin panel
+      ('public.platform_overview'),
+      ('public.platform_list_restaurants'),
+      ('public.platform_list_subscriptions'),
+      ('public.platform_get_restaurant')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

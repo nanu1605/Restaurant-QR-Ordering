@@ -1501,6 +1501,13 @@ export type Database = {
       }
       platform_admin_status: { Args: never; Returns: string }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_get_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
+      platform_overview: { Args: never; Returns: Json }
       restaurant_access: {
         Args: { p_at?: string; p_restaurant_id: string }
         Returns: {
