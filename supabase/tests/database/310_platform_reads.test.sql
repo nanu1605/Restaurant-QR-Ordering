@@ -4,6 +4,10 @@
 begin;
 select no_plan();
 
+-- Restaurants left by other runs (E2E) are unsuspended so the filters below
+-- only find this file's; the transaction is rolled back at the end.
+update public.restaurants set status = 'active', suspended_reason = null where status = 'suspended';
+
 select tests.create_platform_admin('platform@admin.test') as admin \gset
 select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_overview() as before \gset
@@ -216,7 +220,10 @@ select is(
   'usage: tables, staff logins, waiters, orders 7/30 days, bills'
 );
 select is(
-  (select jsonb_agg(jsonb_build_object('username', o ->> 'username', 'real', o -> 'email_is_real'))
+  -- Both owners are created in this transaction, so they share a created_at.
+  (select jsonb_agg(
+     jsonb_build_object('username', o ->> 'username', 'real', o -> 'email_is_real')
+     order by o ->> 'username')
    from jsonb_array_elements(:'detail'::jsonb -> 'owners') as o),
   '[{"username": "anita", "real": true}, {"username": "boss", "real": false}]'::jsonb,
   'owners, with staff login addresses flagged as not real'

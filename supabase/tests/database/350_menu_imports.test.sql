@@ -623,8 +623,13 @@ update public.menu_imports set created_at = now() - interval '31 days' where id 
 update public.menu_imports set completed_at = now() - interval '6 days' where id = :'photo2';
 
 select tests.as_service_role();
+-- Only this file's imports: other runs may have left some behind.
 select set_eq(
-  $$ select import_id from public.menu_import_files_to_remove() $$,
+  format(
+    $$ select import_id from public.menu_import_files_to_remove(1000)
+       where import_id in (%L, %L, %L) $$,
+    :'photo1', :'photo2', :'photo3'
+  ),
   format($$ values (%L::uuid), (%L::uuid) $$, :'photo1', :'photo3'),
   'photos go 7 days after an import ends, or 30 days after an unfinished one started'
 );
@@ -634,7 +639,8 @@ select is(
   'the cleanup marks the imports whose photos it deleted'
 );
 select is(
-  (select count(*) from public.menu_import_files_to_remove()),
+  (select count(*) from public.menu_import_files_to_remove(1000)
+    where import_id in (:'photo1', :'photo3')),
   0::bigint,
   'marked imports are not listed again'
 );

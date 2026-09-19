@@ -3,6 +3,9 @@
 begin;
 select no_plan();
 
+-- Audit rows are read with created_at = now(): only this transaction's, not
+-- those left by other runs (the E2E plan editor).
+
 select tests.create_platform_admin('platform@admin.test') as admin \gset
 select tests.create_restaurant('alpha') as rest_a \gset
 select tests.create_restaurant('beta') as rest_b \gset
@@ -31,7 +34,7 @@ select is(
 );
 select is(
   (select row(before, after)::text from public.audit_logs
-   where action = 'plan.updated' and entity_id = :'starter'),
+   where action = 'plan.updated' and entity_id = :'starter' and created_at = now()),
   row(
     '{"code": "starter", "max_tables": 8, "price_monthly_paise": 39900,
       "razorpay_plan_id_monthly": null,
@@ -46,7 +49,8 @@ select is(
   'the audit row holds only what changed'
 );
 select is(
-  (select restaurant_id from public.audit_logs where action = 'plan.updated'), null::uuid,
+  (select restaurant_id from public.audit_logs
+   where action = 'plan.updated' and created_at = now()), null::uuid,
   'a platform-level event (no restaurant)'
 );
 
@@ -55,7 +59,8 @@ select is(
   null, 'null means unlimited'
 );
 select is(
-  (select count(*) from public.audit_logs where action = 'plan.updated' and entity_id = :'pro'),
+  (select count(*) from public.audit_logs
+   where action = 'plan.updated' and entity_id = :'pro' and created_at = now()),
   0::bigint, 'nothing changed, nothing audited'
 );
 select is(

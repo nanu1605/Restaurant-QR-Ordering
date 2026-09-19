@@ -343,6 +343,11 @@ test('the daily cleanup deletes old import photos and refuses callers without th
   expect(
     (await request.get('/api/cron/daily', { headers: { Authorization: 'Bearer wrong' } })).status(),
   ).toBe(401);
+  const secret = { Authorization: 'Bearer e2e-cron-secret' };
+  test.skip(
+    (await request.get('/api/cron/daily', { headers: secret })).status() === 401,
+    'The running server has no CRON_SECRET for E2E (reuse of a dev server without the E2E env).',
+  );
 
   const restaurant = await createTestRestaurant({ prefix: 'cron' });
   const db = adminClient();
@@ -367,13 +372,7 @@ test('the daily cleanup deletes old import photos and refuses callers without th
     })
     .throwOnError();
 
-  const response = await request.get('/api/cron/daily', {
-    headers: { Authorization: 'Bearer e2e-cron-secret' },
-  });
-  test.skip(
-    response.status() === 401,
-    'The running server has no CRON_SECRET for E2E (reuse of a dev server without the E2E env).',
-  );
+  const response = await request.get('/api/cron/daily', { headers: secret });
   expect(response.status()).toBe(200);
   expect((await response.json()).menuImports.imports).toBeGreaterThanOrEqual(1);
 
