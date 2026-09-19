@@ -36,6 +36,10 @@ const nextConfig: NextConfig = {
     // local Supabase stack (dev and CI) serves from one.
     dangerouslyAllowLocalIP: images.local,
   },
+  experimental: {
+    // A menu CSV may be up to 1 MB (docs/DECISIONS.md P7-16); the default limit is 1 MB.
+    serverActions: { bodySizeLimit: '2mb' },
+  },
 };
 
 export default nextConfig;

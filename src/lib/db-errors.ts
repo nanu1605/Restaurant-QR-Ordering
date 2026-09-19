@@ -35,6 +35,14 @@ const MESSAGES: Record<string, Message> = {
     `Your plan allows up to ${max} staff logins. Upgrade for more, or deactivate one first.`,
   FEATURE_NOT_IN_PLAN: "This feature isn't included in your plan.",
 
+  // Menu import (spec §20A)
+  IMPORT_LIMIT_REACHED:
+    'Five photo imports a day is the limit. Try again tomorrow, or import a CSV file.',
+  IMPORT_NOT_OPEN: 'This import is already finished. Open the menu to see it.',
+  IMPORT_TOO_LARGE: 'An import can add at most 500 dishes. Skip some rows or split the menu.',
+  FOOD_TYPE_UNCONFIRMED: 'Confirm that you checked the veg and non-veg marks first.',
+  PAGE_ALREADY_READ: 'This page has been read already.',
+
   // Super-admin (spec §13.4)
   MFA_REQUIRED: 'Enter the code from your authenticator app first.',
   RESTAURANT_NOT_FOUND: 'That restaurant no longer exists.',

@@ -1,0 +1,346 @@
+'use server';
+
+import { refresh } from 'next/cache';
+import { z } from 'zod';
+
+import { actionError, actionOk, fromDbError, type ActionResult } from '@/lib/action-result';
+import { requireUser } from '@/lib/auth/guards';
+import { dbErrorCode, GENERIC_ERROR, type DbErrorLike } from '@/lib/db-errors';
+import { getServerEnv } from '@/lib/env.server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
+import type { Json } from '@/types/database';
+
+import { csvToDraft, MAX_CSV_BYTES, type CsvError } from './csv-reader';
+import {
+  commitPayload,
+  draftSchema,
+  MAX_IMPORT_PAGES,
+  pageExtractionSchema,
+  type Draft,
+} from './draft';
+import { extractPage, READER_UNAVAILABLE } from './extract';
+import { mergePages } from './merge';
+import { menuImportProviders } from './providers';
+import { IMPORT_BUCKET, type ImportedCounts } from './queries';
+
+/**
+ * Menu import steps (spec §20A.1, docs/DECISIONS.md P7-14 to P7-18). The
+ * database functions decide who may do what; the server only signs uploads
+ * and reads photos with the service role after the caller's own client could
+ * create or read the import.
+ */
+
+const uuid = z.uuid();
+
+const NOT_FOUND = 'That import no longer exists. Start a new one from the Menu page.';
+const NO_DISHES_FOUND =
+  'No dishes could be read from these photos. Take a sharper photo, straight on and in good light, of one page at a time.';
+
+function importError(error: DbErrorLike, context: string) {
+  const detail = error.details ?? '';
+  const dish = detail ? ` “${detail}”` : '';
+  switch (dbErrorCode(error)) {
+    case 'INVALID_ITEM_NAME':
+      return actionError(`A dish name${dish} is missing or longer than 80 characters.`);
+    case 'INVALID_PRICE':
+      return actionError(`Check the price of${dish || ' a dish'}: enter ₹0 to ₹10,00,000.`);
+    case 'INVALID_VARIANT_NAME':
+      return actionError(`Give each option of${dish || ' a dish'} a name of up to 40 characters.`);
+    case 'VARIANT_NAME_DUPLICATE':
+      return actionError(`Two options of${dish || ' a dish'} have the same name.`);
+    case 'INVALID_CATEGORY_NAME':
+      return actionError('Give every category a name of up to 60 characters.');
+    case 'NOT_FOUND':
+      return actionError(
+        detail === 'existing_item_id'
+          ? 'A dish to update is no longer on the menu. Reload the page to check again.'
+          : NOT_FOUND,
+      );
+    default:
+      return fromDbError(error, context);
+  }
+}
+
+export type PhotoUpload = { path: string; token: string };
+
+/** Creates a photo import and signed upload links, one per page. */
+export async function startPhotoImport(
+  restaurantId: string,
+  pageCount: number,
+): Promise<ActionResult<{ importId: string; uploads: PhotoUpload[] }>> {
+  await requireUser();
+  if (!uuid.safeParse(restaurantId).success) return actionError(GENERIC_ERROR);
+  if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > MAX_IMPORT_PAGES) {
+    return actionError(`Choose 1 to ${MAX_IMPORT_PAGES} pages.`);
+  }
+  if (menuImportProviders().length === 0) {
+    return actionError('Photo import is not set up. Import a CSV file or add dishes by hand.');
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('menu_import_create', {
+    p_restaurant_id: restaurantId,
+    p_source: 'photo',
+    p_page_count: pageCount,
+  });
+  if (error) return importError(error, 'Start photo import');
+  const created = data as { import_id: string; file_paths: string[] };
+
+  const storage = createAdminClient().storage.from(IMPORT_BUCKET);
+  const uploads: PhotoUpload[] = [];
+  for (const path of created.file_paths) {
+    const signed = await storage.createSignedUploadUrl(path, { upsert: true });
+    if (signed.error) {
+      console.error('Could not sign an import upload:', signed.error.message);
+      return actionError(GENERIC_ERROR);
+    }
+    uploads.push({ path, token: signed.data.token });
+  }
+  return actionOk({ importId: created.import_id, uploads });
+}
+
+export type CsvImportOutcome =
+  | { kind: 'created'; importId: string }
+  | { kind: 'invalid'; errors: CsvError[]; moreErrors: number };
+
+/** Reads a CSV into a draft and opens it for review. Nothing reaches the menu yet. */
+export async function startCsvImport(
+  restaurantId: string,
+  csv: string,
+): Promise<ActionResult<CsvImportOutcome>> {
+  await requireUser();
+  if (!uuid.safeParse(restaurantId).success || typeof csv !== 'string') {
+    return actionError(GENERIC_ERROR);
+  }
+  if (csv.length > MAX_CSV_BYTES * 2) {
+    return actionOk({
+      kind: 'invalid',
+      errors: [
+        { row: null, message: 'The file is larger than 1 MB. Split it into smaller files.' },
+      ],
+      moreErrors: 0,
+    });
+  }
+  const parsed = csvToDraft(csv);
+  if (!parsed.ok) {
+    return actionOk({ kind: 'invalid', errors: parsed.errors, moreErrors: parsed.moreErrors });
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('menu_import_create', {
+    p_restaurant_id: restaurantId,
+    p_source: 'csv',
+    p_page_count: 0,
+  });
+  if (error) return importError(error, 'Start CSV import');
+  const importId = (data as { import_id: string }).import_id;
+
+  const saved = await supabase.rpc('menu_import_set_draft', {
+    p_import_id: importId,
+    p_status: 'review',
+    p_draft: parsed.draft as unknown as Json,
+  });
+  if (saved.error) return importError(saved.error, 'Save CSV draft');
+  return actionOk({ kind: 'created', importId });
+}
+
+export type ReadProgress = { total: number; done: number; failed: number };
+
+type PageRow = { index: number; status: string };
+
+function progressOf(pages: PageRow[]): ReadProgress {
+  return {
+    total: pages.length,
+    done: pages.filter((page) => page.status === 'done').length,
+    failed: pages.filter((page) => page.status === 'failed').length,
+  };
+}
+
+/** Reads one page (spec §20A.1 step 2: one page per request). */
+export async function readMenuPage(
+  importId: string,
+  page: number,
+): Promise<ActionResult<ReadProgress>> {
+  await requireUser();
+  if (!uuid.safeParse(importId).success || !Number.isInteger(page) || page < 1) {
+    return actionError(GENERIC_ERROR);
+  }
+
+  const supabase = await createClient();
+  const { data: row, error } = await supabase
+    .from('menu_imports')
+    .select('status, source, file_paths, pages')
+    .eq('id', importId)
+    .maybeSingle();
+  if (error) return fromDbError(error, 'Load import');
+  if (!row || row.source !== 'photo') return actionError(NOT_FOUND);
+
+  const pages = (row.pages as PageRow[]) ?? [];
+  const entry = pages[page - 1];
+  const path = row.file_paths[page - 1];
+  if (!entry || !path) return actionError(GENERIC_ERROR);
+  if (!['uploaded', 'processing'].includes(row.status) || entry.status === 'done') {
+    return actionOk(progressOf(pages));
+  }
+
+  // The caller could read the import, so the server may fetch its photo.
+  const download = await createAdminClient().storage.from(IMPORT_BUCKET).download(path);
+  const env = getServerEnv();
+  const outcome = download.error
+    ? null
+    : await extractPage({
+        imageJpegBase64: Buffer.from(await download.data.arrayBuffer()).toString('base64'),
+        providers: menuImportProviders(env),
+        usdToInr: env.MENU_IMPORT_USD_INR,
+      });
+
+  const record = outcome
+    ? {
+        index: page,
+        status: outcome.status,
+        error: outcome.error,
+        notes: outcome.result?.page_notes ?? null,
+        provider: outcome.provider,
+        model: outcome.model,
+        input_tokens: outcome.inputTokens,
+        output_tokens: outcome.outputTokens,
+        cost_paise: outcome.costPaise,
+        result: outcome.result,
+        raw: typeof outcome.raw === 'string' ? outcome.raw.slice(0, 100_000) : outcome.raw,
+      }
+    : {
+        index: page,
+        status: 'failed',
+        error: 'The photo of this page did not upload. Start a new import with this page.',
+      };
+
+  const saved = await supabase.rpc('menu_import_record_page', {
+    p_import_id: importId,
+    p_page: record as unknown as Json,
+  });
+  if (saved.error) {
+    if (dbErrorCode(saved.error) === 'PAGE_ALREADY_READ') {
+      const { data: again } = await supabase
+        .from('menu_imports')
+        .select('pages')
+        .eq('id', importId)
+        .maybeSingle();
+      return actionOk(progressOf((again?.pages as PageRow[]) ?? pages));
+    }
+    return importError(saved.error, 'Record import page');
+  }
+  return actionOk(saved.data as ReadProgress);
+}
+
+/** Merges the pages read into one draft, or fails the import when nothing was found. */
+export async function finishReading(
+  importId: string,
+): Promise<ActionResult<{ status: 'review' | 'failed' }>> {
+  await requireUser();
+  if (!uuid.safeParse(importId).success) return actionError(GENERIC_ERROR);
+
+  const supabase = await createClient();
+  const { data: row, error } = await supabase
+    .from('menu_imports')
+    .select('status, pages')
+    .eq('id', importId)
+    .maybeSingle();
+  if (error) return fromDbError(error, 'Load import');
+  if (!row) return actionError(NOT_FOUND);
+  if (row.status === 'review' || row.status === 'failed') return actionOk({ status: row.status });
+  if (!['uploaded', 'processing'].includes(row.status)) return actionError(NOT_FOUND);
+
+  const pages = (row.pages ?? []) as Array<{
+    index: number;
+    status: string;
+    error?: string | null;
+    notes?: string | null;
+    result?: unknown;
+  }>;
+  if (pages.some((page) => page.status === 'pending')) {
+    return actionError('Some pages have not been read yet.');
+  }
+
+  const read = pages.flatMap((page) => {
+    if (page.status !== 'done') return [];
+    const parsed = pageExtractionSchema.safeParse(page.result);
+    return parsed.success ? [{ page: page.index, extraction: parsed.data }] : [];
+  });
+  const draft = mergePages(read);
+  const items = draft.categories.reduce((sum, category) => sum + category.items.length, 0);
+
+  if (items === 0) {
+    const unavailable = pages.every((page) => page.error === READER_UNAVAILABLE);
+    const note = pages.find((page) => page.notes)?.notes;
+    const message = unavailable
+      ? 'The menu reader is not answering right now. Try again in a few minutes.'
+      : note
+        ? `${NO_DISHES_FOUND} (${note.slice(0, 200)})`
+        : NO_DISHES_FOUND;
+    const failed = await supabase.rpc('menu_import_set_draft', {
+      p_import_id: importId,
+      p_status: 'failed',
+      p_error: message.slice(0, 500),
+    });
+    if (failed.error) return importError(failed.error, 'Fail import');
+    refresh();
+    return actionOk({ status: 'failed' });
+  }
+
+  const saved = await supabase.rpc('menu_import_set_draft', {
+    p_import_id: importId,
+    p_status: 'review',
+    p_draft: draft as unknown as Json,
+  });
+  if (saved.error) return importError(saved.error, 'Save import draft');
+  refresh();
+  return actionOk({ status: 'review' });
+}
+
+/** "Save draft and finish later" (§20A.4). */
+export async function saveImportDraft(importId: string, draft: Draft): Promise<ActionResult> {
+  await requireUser();
+  const parsed = draftSchema.safeParse(draft);
+  if (!uuid.safeParse(importId).success || !parsed.success) return actionError(GENERIC_ERROR);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('menu_import_set_draft', {
+    p_import_id: importId,
+    p_status: 'review',
+    p_draft: parsed.data as unknown as Json,
+  });
+  if (error) return importError(error, 'Save import draft');
+  return actionOk();
+}
+
+/** Writes the reviewed draft to the menu in one transaction (§20A.5). */
+export async function commitMenuImport(
+  importId: string,
+  draft: Draft,
+  confirmFoodTypes: boolean,
+): Promise<ActionResult<ImportedCounts & { already_imported?: boolean }>> {
+  await requireUser();
+  const parsed = draftSchema.safeParse(draft);
+  if (!uuid.safeParse(importId).success || !parsed.success) return actionError(GENERIC_ERROR);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('menu_import_commit', {
+    p_import_id: importId,
+    p_draft: commitPayload(parsed.data) as unknown as Json,
+    p_confirm_food_types: confirmFoodTypes === true,
+  });
+  if (error) return importError(error, 'Import menu');
+  refresh();
+  return actionOk(data as ImportedCounts & { already_imported?: boolean });
+}
+
+export async function discardMenuImport(importId: string): Promise<ActionResult> {
+  await requireUser();
+  if (!uuid.safeParse(importId).success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('menu_import_discard', { p_import_id: importId });
+  if (error) return importError(error, 'Discard import');
+  refresh();
+  return actionOk();
+}
