@@ -30,6 +30,7 @@ import {
   SUPPORT_SECTION_LABELS,
   SUPPORT_SECTIONS,
   todayInIndia,
+  type RestaurantDetail,
 } from '@/features/platform/platform';
 import { getRestaurantDetail, listPlans } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
@@ -79,7 +80,7 @@ export default async function SuperRestaurantPage({
                 : null
             }
             plans={plans.filter((plan) => plan.is_active).map(({ code, name }) => ({ code, name }))}
-            today={todayInIndia()}
+            paymentStart={firstUnpaidDay(detail)}
           />
         }
       />
@@ -256,6 +257,19 @@ export default async function SuperRestaurantPage({
       </Section>
     </>
   );
+}
+
+/**
+ * The first business day a new payment would pay for: after the trial or the
+ * paid period when either still runs, otherwise today (India).
+ */
+function firstUnpaidDay({ subscription, access }: RestaurantDetail): string {
+  const today = todayInIndia();
+  let covered: string | null = null;
+  if (subscription?.status === 'trialing') covered = access.restriction_at;
+  else if (subscription?.status === 'active') covered = subscription.current_period_end;
+  const day = covered ? todayInIndia(new Date(covered)) : today;
+  return day > today ? day : today;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

@@ -118,10 +118,11 @@ export async function changePlan(
   return actionOk();
 }
 
+/** Whether the payment moved the paid period forward (it may cover time already paid). */
 export async function recordManualPayment(
   restaurantId: string,
   input: ManualPaymentInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ extended: boolean }>> {
   await requirePlatformAdmin();
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = manualPaymentSchema.safeParse(input);
@@ -129,7 +130,7 @@ export async function recordManualPayment(
   if (!parsed.success) return fromZodError(parsed.error);
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc('platform_record_manual_payment', {
+  const { data, error } = await supabase.rpc('platform_record_manual_payment', {
     p_restaurant_id: id.data,
     p_payment: {
       amount_paise: parsePriceInput(parsed.data.amount),
@@ -142,7 +143,7 @@ export async function recordManualPayment(
   });
   if (error) return fromDbError(error, 'platform_record_manual_payment');
   refresh();
-  return actionOk();
+  return actionOk({ extended: (data as { extended?: boolean }).extended === true });
 }
 
 /** Sets a new password for a restaurant owner (the database logs it first). */

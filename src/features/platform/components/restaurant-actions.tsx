@@ -66,8 +66,8 @@ type RestaurantActionsProps = {
   status: 'active' | 'suspended';
   subscription: { status: SubscriptionStatus; planCode: string } | null;
   plans: { code: string; name: string }[];
-  /** Today in India, 'YYYY-MM-DD', for the payment period. */
-  today: string;
+  /** The first day a new payment would cover ('YYYY-MM-DD', India). */
+  paymentStart: string;
 };
 
 /** Actions on one restaurant (spec §13.4, docs/DECISIONS.md P7-4). */
@@ -77,7 +77,7 @@ export function RestaurantActions({
   status,
   subscription,
   plans,
-  today,
+  paymentStart,
 }: RestaurantActionsProps) {
   const [open, setOpen] = useState<Dialogs>(null);
   const close = () => setOpen(null);
@@ -139,9 +139,9 @@ export function RestaurantActions({
         open={open === 'payment'}
         onClose={close}
         title="Record payment"
-        description="A payment received outside Razorpay. The subscription becomes active until the last day of the period."
+        description="A payment received outside Razorpay. It starts on the first day not yet covered; the subscription becomes active until the last day. A period that is already covered is only recorded."
       >
-        <ManualPaymentForm restaurantId={restaurantId} today={today} onDone={close} />
+        <ManualPaymentForm restaurantId={restaurantId} start={paymentStart} onDone={close} />
       </FormDialog>
       <FormDialog
         open={open === 'suspend'}
@@ -187,8 +187,8 @@ function FormDialog({
   );
 }
 
-function applyResult<T extends FieldValues>(
-  result: ActionResult,
+function applyResult<T extends FieldValues, R>(
+  result: ActionResult<R>,
   setError: UseFormSetError<T>,
 ): boolean {
   if (result.ok) return true;
@@ -313,11 +313,11 @@ function ChangePlanForm({
 
 function ManualPaymentForm({
   restaurantId,
-  today,
+  start,
   onDone,
 }: {
   restaurantId: string;
-  today: string;
+  start: string;
   onDone: () => void;
 }) {
   const ids = useId();
@@ -334,8 +334,8 @@ function ManualPaymentForm({
       amount: '',
       mode: 'bank_transfer',
       billingCycle: 'monthly',
-      periodStart: today,
-      periodEnd: periodEnd(today, 'monthly'),
+      periodStart: start,
+      periodEnd: periodEnd(start, 'monthly'),
       notes: '',
     },
   });
@@ -350,8 +350,13 @@ function ManualPaymentForm({
   };
 
   const onSubmit = handleSubmit(async (values) => {
-    if (!applyResult(await recordManualPayment(restaurantId, values), setError)) return;
-    toast.success('Payment recorded');
+    const result = await recordManualPayment(restaurantId, values);
+    if (!applyResult(result, setError)) return;
+    if (result.ok && !result.data.extended) {
+      toast.success('Payment recorded. That period was already covered, so access is unchanged.');
+    } else {
+      toast.success('Payment recorded');
+    }
     onDone();
   });
 
