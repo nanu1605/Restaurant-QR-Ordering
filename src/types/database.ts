@@ -1576,6 +1576,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
       }
+      menu_import_claim_page: {
+        Args: { p_import_id: string; p_index: number }
+        Returns: boolean
+      }
       menu_import_commit: {
         Args: {
           p_confirm_food_types?: boolean

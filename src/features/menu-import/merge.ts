@@ -164,6 +164,23 @@ export function markExistingItems(draft: Draft, menu: CurrentMenu): Draft {
   };
 }
 
+/** The menu as the review screen needs it: dish names per category name. */
+export type MenuIndex = Array<{
+  name: string;
+  isActive: boolean;
+  items: Array<{ id: string; name: string; hasVariants: boolean }>;
+}>;
+
+export function menuIndex(menu: CurrentMenu): MenuIndex {
+  return menu.categories.map((category) => ({
+    name: category.name,
+    isActive: category.isActive,
+    items: category.items
+      .filter((item) => item.isActive)
+      .map((item) => ({ id: item.id, name: item.name, hasVariants: item.hasVariants })),
+  }));
+}
+
 /** Draft categories that match a hidden menu category, by draft key. */
 export function hiddenCategoryKeys(draft: Draft, menu: CurrentMenu): Set<string> {
   const hidden = new Set(

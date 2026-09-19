@@ -201,11 +201,60 @@ begin
 end;
 $$;
 
--- ─── Record one page ────────────────────────────────────────────────────────
+-- ─── Read one page ──────────────────────────────────────────────────────────
+-- Claims a page so two browser tabs (or a reload) don't pay to read the same
+-- one twice. A claim lapses after 3 minutes, longer than a page can take, so a
+-- read that never came back can be tried again. Returns false when the page is
+-- done or someone else is reading it. Service role only: the server reads the
+-- page, and the tokens and cost it records must not come from the browser.
+create or replace function public.menu_import_claim_page(p_import_id uuid, p_index int)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_import public.menu_imports;
+  v_page jsonb;
+begin
+  select * into v_import from public.menu_imports i where i.id = p_import_id for update;
+  if not found then
+    perform private.fail('NOT_FOUND');
+  end if;
+  if v_import.source <> 'photo' or v_import.status not in ('uploaded', 'processing') then
+    return false;
+  end if;
+  if p_index is null or p_index not between 1 and v_import.page_count then
+    perform private.fail('INVALID_INPUT', 'index');
+  end if;
+
+  v_page := v_import.pages -> (p_index - 1);
+  if v_page ->> 'status' = 'done'
+     or (
+       v_page ->> 'status' = 'reading'
+       and (v_page ->> 'claimed_at')::timestamptz > now() - interval '3 minutes'
+     ) then
+    return false;
+  end if;
+
+  update public.menu_imports i
+    set status = 'processing',
+        pages = jsonb_set(
+          i.pages,
+          array[(p_index - 1)::text],
+          v_page || jsonb_build_object('status', 'reading', 'claimed_at', now())
+        )
+    where i.id = p_import_id;
+  return true;
+end;
+$$;
+
 -- p_page: { index (1-based), status: done|failed, error?, notes?, provider?, model?,
--- input_tokens?, output_tokens?, cost_paise?, result?, raw? }. A page read
--- successfully cannot be recorded again; a failed page can be retried. Tokens
--- and cost add up across retries. Returns the progress.
+-- input_tokens?, output_tokens?, cost_paise?, result?, raw? }. Tokens and cost
+-- add up across retries, including a read of a page someone else finished
+-- first: every call is paid for, so every call is counted. The first result
+-- read is the one kept. Service role only (see the claim above).
 create or replace function public.menu_import_record_page(p_import_id uuid, p_page jsonb)
 returns jsonb
 language plpgsql
@@ -214,7 +263,9 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_import public.menu_imports := private.lock_menu_import(p_import_id);
+  v_import public.menu_imports;
+  v_done boolean;
+  v_old jsonb;
   v_index int;
   v_status text;
   v_error text;
@@ -227,6 +278,10 @@ declare
   v_entry jsonb;
   v_pages jsonb;
 begin
+  select * into v_import from public.menu_imports i where i.id = p_import_id for update;
+  if not found then
+    perform private.fail('NOT_FOUND');
+  end if;
   if v_import.source <> 'photo' or v_import.status not in ('uploaded', 'processing') then
     perform private.fail('IMPORT_NOT_OPEN');
   end if;
@@ -242,9 +297,8 @@ begin
   if v_index not between 1 and v_import.page_count then
     perform private.fail('INVALID_INPUT', 'index');
   end if;
-  if v_import.pages -> (v_index - 1) ->> 'status' = 'done' then
-    perform private.fail('PAGE_ALREADY_READ');
-  end if;
+  v_old := v_import.pages -> (v_index - 1);
+  v_done := v_old ->> 'status' = 'done';
 
   v_status := private.json_text(p_page, 'status');
   if v_status is null or v_status not in ('done', 'failed') then
@@ -271,17 +325,21 @@ begin
     perform private.fail('INVALID_INPUT', 'usage');
   end if;
 
+  -- A page another reader finished first keeps its result; only the usage adds up.
   v_entry := jsonb_build_object(
     'index', v_index,
-    'status', v_status,
-    'error', v_error,
-    'notes', v_notes,
-    'provider', v_provider,
-    'model', v_model,
-    'input_tokens', v_in + coalesce((v_import.pages -> (v_index - 1) ->> 'input_tokens')::bigint, 0),
-    'output_tokens', v_out + coalesce((v_import.pages -> (v_index - 1) ->> 'output_tokens')::bigint, 0),
-    'cost_paise', v_cost,
-    'result', case when v_status = 'done' then p_page -> 'result' end
+    'status', case when v_done then 'done' else v_status end,
+    'error', case when v_done then v_old ->> 'error' else v_error end,
+    'notes', case when v_done then v_old ->> 'notes' else v_notes end,
+    'provider', case when v_done then v_old ->> 'provider' else v_provider end,
+    'model', case when v_done then v_old ->> 'model' else v_model end,
+    'input_tokens', v_in + coalesce((v_old ->> 'input_tokens')::bigint, 0),
+    'output_tokens', v_out + coalesce((v_old ->> 'output_tokens')::bigint, 0),
+    'cost_paise', case
+      when v_cost is null or (v_old ? 'cost_paise' and v_old ->> 'cost_paise' is null) then null
+      else v_cost + coalesce((v_old ->> 'cost_paise')::bigint, 0)
+    end,
+    'result', case when v_done then v_old -> 'result' when v_status = 'done' then p_page -> 'result' end
   );
   v_pages := jsonb_set(v_import.pages, array[(v_index - 1)::text], v_entry);
 
@@ -297,7 +355,7 @@ begin
           else i.cost_paise + coalesce(v_cost, 0)
         end,
         raw_result = case
-          when p_page ? 'raw' then
+          when p_page ? 'raw' and not v_done then
             coalesce(i.raw_result, '{}'::jsonb) || jsonb_build_object(v_index::text, p_page -> 'raw')
           else i.raw_result
         end
@@ -394,6 +452,7 @@ declare
   v_cat_name text;
   v_cat_id uuid;
   v_cat_active boolean;
+  v_cat_new boolean;
   v_name text;
   v_description text;
   v_food_type text;
@@ -470,10 +529,12 @@ begin
     end if;
 
     v_cat_id := null;
-    -- A category is only needed for new dishes.
-    if exists (
+    v_cat_new := exists (
       select 1 from jsonb_array_elements(v_cat -> 'items') as i where i ->> 'action' = 'import'
-    ) then
+    );
+    -- A category is looked up for new dishes, and to show it again when the
+    -- owner asked for that (even if the rows only update prices).
+    if v_cat_new or v_cat -> 'show_hidden' = 'true'::jsonb then
       v_cat_name := private.tidy_text(private.json_text(v_cat, 'name'));
       if v_cat_name is null or length(v_cat_name) > 60 then
         perform private.fail('INVALID_CATEGORY_NAME', v_cat_name);
@@ -484,7 +545,10 @@ begin
         where c.restaurant_id = v_restaurant
           and private.normalize_name(c.name) = private.normalize_name(v_cat_name)
         for update;
-      if v_cat_id is null then
+      if v_cat_id is null and not v_cat_new then
+        -- Nothing new to put in it: no category is created.
+        null;
+      elsif v_cat_id is null then
         insert into public.menu_categories (restaurant_id, name, sort_order, source)
         values (
           v_restaurant,
@@ -554,11 +618,28 @@ begin
           perform private.fail('NOT_FOUND', 'existing_item_id');
         end if;
 
+        -- A price update only makes sense when the row and the dish have the
+        -- same shape: one price, or the same option names.
         if exists (
           select 1 from public.menu_item_variants mv
           where mv.menu_item_id = v_item_id and mv.is_active
         ) then
-          -- Options keep their names; matching ones get the new prices.
+          if cardinality(v_vnames) = 0 then
+            perform private.fail('ITEM_HAS_VARIANTS', v_name);
+          end if;
+          if exists (
+            select 1 from unnest(v_vnames) as n
+            where not exists (
+              select 1 from public.menu_item_variants mv
+              where mv.menu_item_id = v_item_id
+                and mv.is_active
+                and private.normalize_name(mv.name) = n
+            )
+          ) then
+            perform private.fail('VARIANTS_DIFFER', v_name);
+          end if;
+
+          -- Options keep their names; each one gets the new price.
           for v_variant in select value from jsonb_array_elements(v_variants) loop
             update public.menu_item_variants mv
               set price_paise = (v_variant ->> 'price_paise')::bigint
@@ -573,6 +654,9 @@ begin
             )
             where i.id = v_item_id;
         else
+          if cardinality(v_vnames) > 0 then
+            perform private.fail('VARIANTS_DIFFER', v_name);
+          end if;
           update public.menu_items i set price_paise = v_price where i.id = v_item_id;
         end if;
         v_items_updated := v_items_updated + 1;
@@ -701,7 +785,10 @@ end;
 $$;
 
 revoke execute on function public.menu_import_create(uuid, text, int) from public, anon;
-revoke execute on function public.menu_import_record_page(uuid, jsonb) from public, anon;
+revoke execute on function public.menu_import_claim_page(uuid, int)
+  from public, anon, authenticated;
+revoke execute on function public.menu_import_record_page(uuid, jsonb)
+  from public, anon, authenticated;
 revoke execute on function public.menu_import_set_draft(uuid, text, jsonb, text) from public, anon;
 revoke execute on function public.menu_import_commit(uuid, jsonb, boolean) from public, anon;
 revoke execute on function public.menu_import_discard(uuid) from public, anon;
@@ -709,7 +796,8 @@ revoke execute on function public.menu_import_files_to_remove(int) from public, 
 revoke execute on function public.menu_import_mark_files_removed(uuid[])
   from public, anon, authenticated;
 grant execute on function public.menu_import_create(uuid, text, int) to authenticated;
-grant execute on function public.menu_import_record_page(uuid, jsonb) to authenticated;
+grant execute on function public.menu_import_claim_page(uuid, int) to service_role;
+grant execute on function public.menu_import_record_page(uuid, jsonb) to service_role;
 grant execute on function public.menu_import_set_draft(uuid, text, jsonb, text) to authenticated;
 grant execute on function public.menu_import_commit(uuid, jsonb, boolean) to authenticated;
 grant execute on function public.menu_import_discard(uuid) to authenticated;

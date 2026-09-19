@@ -30,7 +30,7 @@ day goes.
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
 | Razorpay subscriptions and invoices                      | 8     | Pilots are free; no payment details are collected |
 | Hindi customer screens, service requests, offline polish | 9     | English only for now                              |
-| Staging and production deployment, Sentry, backups, cron | 10    | Deploy before the first guest scans a code        |
+| Staging and production deployment, Sentry, backups       | 10    | Deploy before the first guest scans a code        |
 
 ## Human tasks (only you can do these)
 

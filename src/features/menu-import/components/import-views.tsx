@@ -6,12 +6,13 @@ import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
-import { markExistingItems } from '../merge';
+import { markExistingItems, menuIndex } from '../merge';
 import { isPhotoImportEnabled } from '../providers';
 import {
   getCurrentMenu,
   getMenuImport,
   listMenuImports,
+  menuImportSpend,
   pageImageUrls,
   type ImportStatus,
   type ImportSummary,
@@ -55,7 +56,10 @@ export async function ImportStartView({
   /** Platform admins see what each import cost (P7-13). */
   showCost?: boolean;
 }) {
-  const imports = await listMenuImports(restaurantId);
+  const [imports, spend] = await Promise.all([
+    listMenuImports(restaurantId),
+    showCost ? menuImportSpend(restaurantId) : null,
+  ]);
   return (
     <>
       {readOnly ? (
@@ -68,6 +72,14 @@ export async function ImportStartView({
           importBasePath={importBasePath}
           photoEnabled={isPhotoImportEnabled()}
         />
+      )}
+      {spend && spend.photoImports > 0 && (
+        <p className="text-sm text-ink-muted" data-testid="import-spend">
+          {spend.photoImports} photo {spend.photoImports === 1 ? 'import' : 'imports'} so far,
+          costing{' '}
+          {spend.costPaise === null ? 'an unknown amount' : <Money paise={spend.costPaise} />} in
+          total.
+        </p>
       )}
       {imports.length > 0 && (
         <ImportList imports={imports} importBasePath={importBasePath} showCost={showCost} />
@@ -178,10 +190,7 @@ export async function ImportDetailView({
             importId={menuImport.id}
             source={menuImport.source}
             initialDraft={draft}
-            menuCategoryNames={menu.categories.map((category) => category.name)}
-            hiddenCategoryNames={menu.categories
-              .filter((category) => !category.isActive)
-              .map((category) => category.name)}
+            menu={menuIndex(menu)}
             pageUrls={pageUrls}
             failedPages={menuImport.pages
               .filter((page) => page.status === 'failed')

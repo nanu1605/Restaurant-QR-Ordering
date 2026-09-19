@@ -14,7 +14,8 @@ export const IMPORT_BUCKET = 'menu-imports';
 
 const pageSchema = z.object({
   index: z.number().int().positive(),
-  status: z.enum(['pending', 'done', 'failed']),
+  status: z.enum(['pending', 'reading', 'done', 'failed']),
+  claimed_at: z.string().nullish(),
   error: z.string().nullish(),
   notes: z.string().nullish(),
   provider: z.string().nullish(),
@@ -153,6 +154,27 @@ export async function listMenuImports(restaurantId: string, limit = 10): Promise
       costPaise: row.cost_paise === null ? null : Number(row.cost_paise),
     };
   });
+}
+
+export type ImportSpend = { photoImports: number; costPaise: number | null };
+
+/**
+ * What every photo import of a restaurant has cost so far (P7-13). Null when
+ * any of them has an unknown cost, so the total is never understated.
+ */
+export async function menuImportSpend(restaurantId: string): Promise<ImportSpend> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('menu_imports')
+    .select('cost_paise')
+    .eq('restaurant_id', restaurantId)
+    .eq('source', 'photo');
+  if (error) throw new Error(`Could not add up import costs: ${error.message}`);
+  const unknown = data.some((row) => row.cost_paise === null);
+  return {
+    photoImports: data.length,
+    costPaise: unknown ? null : data.reduce((sum, row) => sum + Number(row.cost_paise), 0),
+  };
 }
 
 /**

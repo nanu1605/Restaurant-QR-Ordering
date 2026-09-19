@@ -158,7 +158,6 @@ select set_eq(
       ('public.platform_list_audit'),
       -- Phase 7: menu import
       ('public.menu_import_create'),
-      ('public.menu_import_record_page'),
       ('public.menu_import_set_draft'),
       ('public.menu_import_commit'),
       ('public.menu_import_discard')

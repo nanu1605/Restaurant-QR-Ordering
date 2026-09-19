@@ -11,7 +11,12 @@ import {
   type DraftItem,
   type PageExtraction,
 } from '@/features/menu-import/draft';
-import { hiddenCategoryKeys, markExistingItems, mergePages } from '@/features/menu-import/merge';
+import {
+  hiddenCategoryKeys,
+  markExistingItems,
+  menuIndex,
+  mergePages,
+} from '@/features/menu-import/merge';
 
 // Menu import (spec §20A.3, docs/DECISIONS.md P7-16, P7-17).
 
@@ -280,6 +285,13 @@ describe('itemFlags', () => {
     ).toEqual(['duplicate_option']);
   });
 
+  it('flags a row that is already on the menu, until it is skipped or updated', () => {
+    expect(itemFlags(item(), none, true)).toEqual(['already_in_menu']);
+    expect(itemFlags(item({ action: 'update_price' }), none, true)).toEqual([]);
+    expect(itemFlags(item({ action: 'skip' }), none, true)).toEqual([]);
+    expect(itemFlags(item({ reviewed: true }), none, true)).toEqual([]);
+  });
+
   it('drops the soft flags once the owner has looked at the row', () => {
     expect(
       itemFlags(item({ reviewed: true, confidence: 'low', price_paise: 700_000 }), none),
@@ -344,6 +356,32 @@ describe('rupeesToImportPaise', () => {
     expect(rupeesToImportPaise(null)).toBeNull();
     expect(rupeesToImportPaise(-5)).toBeNull();
     expect(rupeesToImportPaise(2_000_000)).toBeNull();
+  });
+});
+
+describe('menuIndex', () => {
+  it('keeps active dishes per category, with whether they have options', () => {
+    expect(
+      menuIndex({
+        categories: [
+          {
+            id: 'c1',
+            name: 'Starters',
+            isActive: false,
+            items: [
+              { id: 'i1', name: 'Tikka', isActive: true, hasVariants: true },
+              { id: 'i2', name: 'Gone', isActive: false, hasVariants: false },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        name: 'Starters',
+        isActive: false,
+        items: [{ id: 'i1', name: 'Tikka', hasVariants: true }],
+      },
+    ]);
   });
 });
 

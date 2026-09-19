@@ -42,6 +42,7 @@ const MESSAGES: Record<string, Message> = {
   IMPORT_TOO_LARGE: 'An import can add at most 500 dishes. Skip some rows or split the menu.',
   FOOD_TYPE_UNCONFIRMED: 'Confirm that you checked the veg and non-veg marks first.',
   PAGE_ALREADY_READ: 'This page has been read already.',
+  VARIANTS_DIFFER: 'The options do not match the ones on the menu.',
 
   // Super-admin (spec §13.4)
   MFA_REQUIRED: 'Enter the code from your authenticator app first.',

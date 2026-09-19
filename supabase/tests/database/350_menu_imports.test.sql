@@ -178,7 +178,40 @@ select ok(
 );
 
 -- ─── Pages ──────────────────────────────────────────────────────────────────
+-- Claiming and recording belong to the server (docs/DECISIONS.md P7-15): the
+-- tokens and cost they record must not come from a restaurant's own browser.
 select tests.authenticate_as(:'a_owner');
+select throws_ok(
+  format($$ select public.menu_import_claim_page(%L, 1) $$, :'photo1'),
+  '42501', null, 'signed-in users cannot claim a page'
+);
+select throws_ok(
+  format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "failed"}') $$, :'photo1'),
+  '42501', null, 'signed-in users cannot record a page'
+);
+
+select tests.as_service_role();
+select is(public.menu_import_claim_page(:'photo1', 1), true, 'the first reader claims the page');
+select is(
+  public.menu_import_claim_page(:'photo1', 1),
+  false,
+  'a second reader is turned away while the first is reading'
+);
+select is(
+  (select pages -> 0 ->> 'status' from public.menu_imports where id = :'photo1'),
+  'reading',
+  'the page shows as being read'
+);
+select tests.clear_auth();
+update public.menu_imports
+  set pages = jsonb_set(pages, '{0,claimed_at}', to_jsonb(now() - interval '4 minutes'))
+  where id = :'photo1';
+select tests.as_service_role();
+select is(
+  public.menu_import_claim_page(:'photo1', 1),
+  true,
+  'a claim that never came back lapses after 3 minutes'
+);
 select is(
   public.menu_import_record_page(:'photo1', jsonb_build_object(
     'index', 1, 'status', 'done', 'provider', 'commandcode', 'model', 'google/gemini-3.8-flash',
@@ -204,9 +237,21 @@ select is(
   '{"categories": []}'::jsonb,
   'the raw model output is kept by page number'
 );
-select throws_ok(
-  format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "done", "result": {}}') $$, :'photo1'),
-  'P0001', 'PAGE_ALREADY_READ', 'a page read successfully is not recorded twice'
+select is(
+  public.menu_import_claim_page(:'photo1', 1),
+  false,
+  'a page already read is not claimed again'
+);
+select public.menu_import_record_page(:'photo1', jsonb_build_object(
+  'index', 1, 'status', 'done', 'input_tokens', 10, 'output_tokens', 5, 'cost_paise', 2,
+  'result', '{"categories": [{"name": "Late"}]}'::jsonb
+));
+select is(
+  (select (pages -> 0 -> 'result') ->> 'categories' is null
+     || '/' || (pages -> 0 ->> 'input_tokens') || '/' || cost_paise
+     from public.menu_imports where id = :'photo1'),
+  'false/1010/62',
+  'a page read twice keeps the first result and still counts what the second cost'
 );
 
 select is(
@@ -228,7 +273,7 @@ select is(
 select is(
   (select (pages -> 1 ->> 'input_tokens') || '/' || cost_paise
      from public.menu_imports where id = :'photo1'),
-  '1700/150',
+  '1700/152',
   'retries add their tokens and cost to the page and the import'
 );
 select public.menu_import_record_page(:'photo1', jsonb_build_object(
@@ -261,16 +306,12 @@ select throws_ok(
   format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "failed"}') $$, :'csv1'),
   'P0001', 'IMPORT_NOT_OPEN', 'a csv import has no pages to read'
 );
-select tests.authenticate_as(:'a_waiter');
 select throws_ok(
-  format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "failed"}') $$, :'photo2'),
-  'P0001', 'FORBIDDEN', 'a waiter cannot record pages'
+  $$ select public.menu_import_record_page(
+       '00000000-0000-4000-8000-000000000000', '{"index": 1, "status": "failed"}') $$,
+  'P0001', 'NOT_FOUND', 'an import that does not exist cannot be recorded'
 );
-select tests.authenticate_as(:'b_owner');
-select throws_ok(
-  format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "failed"}') $$, :'photo2'),
-  'P0001', 'FORBIDDEN', 'another restaurant''s owner cannot record pages'
-);
+select tests.clear_auth();
 
 -- ─── Draft ──────────────────────────────────────────────────────────────────
 select tests.authenticate_as(:'a_owner');
@@ -283,10 +324,17 @@ select is(
   'review',
   'the import is in review'
 );
+select tests.as_service_role();
 select throws_ok(
   format($$ select public.menu_import_record_page(%L, '{"index": 1, "status": "failed"}') $$, :'photo1'),
   'P0001', 'IMPORT_NOT_OPEN', 'pages cannot change once the draft exists'
 );
+select is(
+  public.menu_import_claim_page(:'photo1', 1),
+  false,
+  'no page is claimed once the draft exists'
+);
+select tests.authenticate_as(:'a_owner');
 select lives_ok(
   format($$ select public.menu_import_set_draft(%L, 'review', '{"categories": [], "saved": true}') $$, :'photo1'),
   'a draft in review can be saved again'
@@ -462,6 +510,25 @@ select is(
   'the category is visible again'
 );
 
+-- Hiding again, then showing a category whose rows only update a price.
+select tests.clear_auth();
+update public.menu_categories set is_active = false where id = :'desserts';
+select tests.authenticate_as(:'a_manager');
+select public.menu_import_create(:'rest_a', 'csv', 0) ->> 'import_id' as csv5 \gset
+select public.menu_import_set_draft(:'csv5', 'review', '{"categories": []}');
+select is(
+  public.menu_import_commit(:'csv5', format($j${"categories": [{"name": "Desserts", "show_hidden": true, "items": [
+    {"name": "Rasmalai", "food_type": "veg", "price_paise": 14000, "variants": [], "action": "update_price", "existing_item_id": "%s"}
+  ]}]}$j$, (select id from public.menu_items where restaurant_id = :'rest_a' and name = 'Rasmalai'))::jsonb),
+  '{"categories_created": 0, "categories_shown": 1, "items_created": 0, "items_updated": 1, "items_skipped": 0}'::jsonb,
+  'a category with only price updates is shown again when asked'
+);
+select is(
+  (select is_active from public.menu_categories where id = :'desserts'),
+  true,
+  'the hidden category is visible again'
+);
+
 -- Bad drafts are refused before anything is written.
 select public.menu_import_create(:'rest_a', 'csv', 0) ->> 'import_id' as csv4 \gset
 select public.menu_import_set_draft(:'csv4', 'review', '{"categories": []}');
@@ -539,6 +606,32 @@ select throws_ok(
     :'csv4'
   ),
   'P0001', 'IMPORT_TOO_LARGE', 'an import has at most 500 dishes'
+);
+select throws_ok(
+  format($$ select public.menu_import_commit(%L, '{"categories": [{"name": "Starters", "items": [
+    {"name": "Chicken 65", "food_type": "non_veg", "price_paise": 35000, "variants": [], "action": "update_price", "existing_item_id": "%s"}
+  ]}]}') $$, :'csv4', :'chicken'),
+  'P0001', 'ITEM_HAS_VARIANTS',
+  'one price cannot replace the options of a dish that has them'
+);
+select throws_ok(
+  format($$ select public.menu_import_commit(%L, '{"categories": [{"name": "Starters", "items": [
+    {"name": "Chicken 65", "food_type": "non_veg", "variants": [{"name": "Small", "price_paise": 20000}], "action": "update_price", "existing_item_id": "%s"}
+  ]}]}') $$, :'csv4', :'chicken'),
+  'P0001', 'VARIANTS_DIFFER',
+  'an option name that is not on the dish is refused'
+);
+select throws_ok(
+  format($$ select public.menu_import_commit(%L, '{"categories": [{"name": "Starters", "items": [
+    {"name": "Paneer Tikka", "food_type": "veg", "variants": [{"name": "Half", "price_paise": 20000}], "action": "update_price", "existing_item_id": "%s"}
+  ]}]}') $$, :'csv4', :'tikka'),
+  'P0001', 'VARIANTS_DIFFER',
+  'options cannot be added to a dish that has one price'
+);
+select is(
+  (select price_paise from public.menu_items where id = :'chicken'),
+  20000::bigint,
+  'a refused price update changes nothing'
 );
 select is(
   (select status::text from public.menu_imports where id = :'csv4'),

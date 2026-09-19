@@ -51,6 +51,14 @@ function importError(error: DbErrorLike, context: string) {
       return actionError(`Two options of${dish || ' a dish'} have the same name.`);
     case 'INVALID_CATEGORY_NAME':
       return actionError('Give every category a name of up to 60 characters.');
+    case 'ITEM_HAS_VARIANTS':
+      return actionError(
+        `${dish || 'That dish'} already has options on the menu. Give this row the same options, or add it as a new dish.`,
+      );
+    case 'VARIANTS_DIFFER':
+      return actionError(
+        `The options of${dish || ' a dish'} don't match the ones on the menu. Use the same option names, or add it as a new dish.`,
+      );
     case 'NOT_FOUND':
       return actionError(
         detail === 'existing_item_id'
@@ -184,8 +192,18 @@ export async function readMenuPage(
     return actionOk(progressOf(pages));
   }
 
-  // The caller could read the import, so the server may fetch its photo.
-  const download = await createAdminClient().storage.from(IMPORT_BUCKET).download(path);
+  // The caller could read the import, so from here the server acts for it: it
+  // claims the page (so a reload or a second tab doesn't pay for the same page
+  // twice), fetches the photo and records what the reader charged.
+  const admin = createAdminClient();
+  const claim = await admin.rpc('menu_import_claim_page', {
+    p_import_id: importId,
+    p_index: page,
+  });
+  if (claim.error) return importError(claim.error, 'Claim import page');
+  if (!claim.data) return actionOk(await progressFor(supabase, importId, pages));
+
+  const download = await admin.storage.from(IMPORT_BUCKET).download(path);
   const env = getServerEnv();
   const outcome = download.error
     ? null
@@ -215,22 +233,33 @@ export async function readMenuPage(
         error: 'The photo of this page did not upload. Start a new import with this page.',
       };
 
-  const saved = await supabase.rpc('menu_import_record_page', {
+  const saved = await admin.rpc('menu_import_record_page', {
     p_import_id: importId,
     p_page: record as unknown as Json,
   });
+  // The import may have been discarded or finished while the page was read:
+  // the reading is lost, not the import.
   if (saved.error) {
-    if (dbErrorCode(saved.error) === 'PAGE_ALREADY_READ') {
-      const { data: again } = await supabase
-        .from('menu_imports')
-        .select('pages')
-        .eq('id', importId)
-        .maybeSingle();
-      return actionOk(progressOf((again?.pages as PageRow[]) ?? pages));
+    if (dbErrorCode(saved.error) === 'IMPORT_NOT_OPEN') {
+      return actionOk(await progressFor(supabase, importId, pages));
     }
     return importError(saved.error, 'Record import page');
   }
   return actionOk(saved.data as ReadProgress);
+}
+
+/** The progress as the database has it now, falling back to what we last saw. */
+async function progressFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  importId: string,
+  fallback: PageRow[],
+): Promise<ReadProgress> {
+  const { data } = await supabase
+    .from('menu_imports')
+    .select('pages')
+    .eq('id', importId)
+    .maybeSingle();
+  return progressOf((data?.pages as PageRow[]) ?? fallback);
 }
 
 /** Merges the pages read into one draft, or fails the import when nothing was found. */
@@ -258,7 +287,7 @@ export async function finishReading(
     notes?: string | null;
     result?: unknown;
   }>;
-  if (pages.some((page) => page.status === 'pending')) {
+  if (pages.some((page) => page.status === 'pending' || page.status === 'reading')) {
     return actionError('Some pages have not been read yet.');
   }
 

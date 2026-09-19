@@ -91,11 +91,14 @@ select is_empty(
   $$,
   'no storage policy mentions the menu-imports bucket'
 );
+insert into storage.objects (bucket_id, name)
+  values ('menu-imports', :'rest_a' || '/00000000-0000-4000-8000-000000000001/page-1.jpg');
+
 select tests.authenticate_as(:'a_manager');
 select throws_ok(
   format(
     $f$insert into storage.objects (bucket_id, name) values ('menu-imports', %L)$f$,
-    :'rest_a' || '/import/page-1.jpg'
+    :'rest_a' || '/import/page-2.jpg'
   ),
   '42501',
   null,
@@ -104,7 +107,7 @@ select throws_ok(
 select is(
   (select count(*) from storage.objects where bucket_id = 'menu-imports'),
   0::bigint,
-  'signed-in users cannot list import pages'
+  'a manager cannot see their own restaurant''s import pages'
 );
 select tests.clear_auth();
 

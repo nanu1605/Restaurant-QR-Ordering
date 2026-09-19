@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 import { finishReading, readMenuPage } from '../actions';
 
-type PageState = { index: number; status: 'pending' | 'done' | 'failed' };
+type PageState = { index: number; status: 'pending' | 'reading' | 'done' | 'failed' };
 
 /**
  * Reads the pages one request at a time (spec §20A.1 step 2), showing
@@ -18,9 +18,12 @@ type PageState = { index: number; status: 'pending' | 'done' | 'failed' };
 export function ImportProgress({ importId, pages }: { importId: string; pages: PageState[] }) {
   const router = useRouter();
   const [current, setCurrent] = useState<number | null>(null);
-  const [done, setDone] = useState(pages.filter((page) => page.status !== 'pending').length);
+  const waiting = (page: PageState) => page.status === 'pending' || page.status === 'reading';
+  const [done, setDone] = useState(pages.filter((page) => !waiting(page)).length);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by "Try again", which also re-reads the pages that failed.
   const [attempt, setAttempt] = useState(0);
+  const retry = attempt > 0;
   const running = useRef(false);
 
   // One reading loop at a time. It is not cancelled on unmount: each step is
@@ -32,7 +35,10 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
     (async () => {
       setError(null);
       for (const page of pages) {
-        if (page.status !== 'pending') continue;
+        // A page another reader is on is claimed by the server, which returns
+        // the progress without paying for a second read. Failed pages are only
+        // read again when the owner presses "Try again".
+        if (!waiting(page) && !(retry && page.status === 'failed')) continue;
         setCurrent(page.index);
         try {
           const result = await readMenuPage(importId, page.index);
@@ -61,6 +67,8 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
     })().finally(() => {
       running.current = false;
     });
+    // `retry` and `waiting` are derived from the values already listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importId, pages, router, attempt]);
 
   const total = pages.length;

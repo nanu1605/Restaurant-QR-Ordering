@@ -108,6 +108,7 @@ export const ITEM_FLAGS = {
   duplicate_option: { label: 'Two options have the same name', hard: true },
   name_invalid: { label: 'Name missing or too long', hard: true },
   low_confidence: { label: 'Not sure this was read right', hard: false },
+  already_in_menu: { label: 'Already on the menu', hard: false },
   price_range: { label: 'Price looks unusual', hard: false },
   name_length: { label: 'Name looks too short', hard: false },
   duplicate_name: { label: 'Same name in another category', hard: false },
@@ -142,8 +143,16 @@ function unusualPrice(paise: number): boolean {
   return paise < MIN_USUAL_PAISE || paise > MAX_USUAL_PAISE;
 }
 
-/** Why a row needs a check, worked out from its current values. */
-export function itemFlags(item: DraftItem, duplicates: ReadonlySet<string>): ItemFlag[] {
+/**
+ * Why a row needs a check, worked out from its current values.
+ * `alreadyInMenu` is the live match against the menu, which changes as the
+ * owner edits a name or moves a row (spec §20A.4).
+ */
+export function itemFlags(
+  item: DraftItem,
+  duplicates: ReadonlySet<string>,
+  alreadyInMenu = false,
+): ItemFlag[] {
   const flags: ItemFlag[] = [];
   const name = item.name.trim();
   const prices =
@@ -164,6 +173,7 @@ export function itemFlags(item: DraftItem, duplicates: ReadonlySet<string>): Ite
     }
     if (name.length > 0 && name.length < 3) flags.push('name_length');
     if (duplicates.has(normalizeItemName(item.name))) flags.push('duplicate_name');
+    if (alreadyInMenu && item.action === 'import') flags.push('already_in_menu');
   }
   return flags;
 }
@@ -184,7 +194,10 @@ export type DraftCounts = {
   unknownFoodType: number;
 };
 
-export function draftCounts(draft: Pick<Draft, 'categories'>): DraftCounts {
+export function draftCounts(
+  draft: Pick<Draft, 'categories'>,
+  alreadyInMenu: ReadonlySet<string> = new Set(),
+): DraftCounts {
   const duplicates = duplicateNames(draft);
   const counts: DraftCounts = {
     categories: 0,
@@ -199,7 +212,7 @@ export function draftCounts(draft: Pick<Draft, 'categories'>): DraftCounts {
     let included = false;
     for (const item of category.items) {
       if (!isIncluded(category, item)) continue;
-      const flags = itemFlags(item, duplicates);
+      const flags = itemFlags(item, duplicates, alreadyInMenu.has(item.key));
       counts.items += 1;
       if (item.action === 'update_price') counts.priceUpdates += 1;
       else {

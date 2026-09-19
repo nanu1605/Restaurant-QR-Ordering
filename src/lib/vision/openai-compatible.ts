@@ -137,6 +137,27 @@ export async function chatCompletion({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await call(provider, body, jsonSchema, controller, fetchImpl);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ProviderError(`${provider.name} did not answer in time`, 'timeout');
+    }
+    throw error;
+  } finally {
+    // Cleared only once the body has been read too, so a provider that sends
+    // headers and then stalls still runs out of time.
+    clearTimeout(timer);
+  }
+}
+
+async function call(
+  provider: VisionProvider,
+  body: Record<string, unknown>,
+  jsonSchema: JsonSchemaFormat | null,
+  controller: AbortController,
+  fetchImpl: typeof fetch,
+): Promise<ChatResult> {
   let response: Response;
   try {
     response = await fetchImpl(`${provider.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -146,15 +167,11 @@ export async function chatCompletion({
       signal: controller.signal,
     });
   } catch (error) {
-    if (controller.signal.aborted) {
-      throw new ProviderError(`${provider.name} did not answer in time`, 'timeout');
-    }
+    if (controller.signal.aborted) throw error;
     throw new ProviderError(
       `${provider.name} could not be reached: ${error instanceof Error ? error.message : String(error)}`,
       'network',
     );
-  } finally {
-    clearTimeout(timer);
   }
 
   if (!response.ok) {

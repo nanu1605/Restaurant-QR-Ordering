@@ -923,7 +923,13 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   has checked the caller; signed-in users have no storage policy on that bucket at all. Thumbnails
   in the review are one-hour signed links.
 - **P7-15 · The browser drives the reading, one page per server action** (§20A.1 step 2): "Reading
-  page 2 of 4…", and a reload carries on with the pages still pending. Each page gets 150 s for its
+  page 2 of 4…", and a reload carries on with the pages still pending. The server claims a page
+  before it pays to read it (`menu_import_claim_page`, service role), so a reload or a second tab
+  can't buy the same page twice; a claim that never comes back lapses after 3 minutes. Claiming and
+  recording are service-role only: the tokens and cost shown in super-admin must not come from a
+  restaurant's own browser. A read that lands after someone else finished the page keeps the first
+  result and still counts what it cost — every paid call is counted. "Try again" after a failure
+  re-reads the pages that failed. Each page gets 150 s for its
   retry and fallback; the import pages set `maxDuration = 180`. The server reads the photo with the
   service role only after the caller's own client could read the import. When no page yields a
   dish, the import fails with a message saying so (and the reader's note, e.g. "the photo is
@@ -943,14 +949,22 @@ variant_name, variant_price`. Rows in a row with the same category and name are 
   option names and a missing or too-long name must be fixed (or the row skipped); low confidence, a
   price outside ₹5–₹5,000 or zero, a name under 3 characters and a name used in another category go
   away once the owner edits the row or presses "Looks right". "Already in menu" is worked out each
-  time the review opens: a row matching an active dish in the same category is skipped by default,
-  with "Update price instead" as an option.
+  time the review opens and again on every edit in the review, since renaming a row, moving it or
+  renaming its category changes what it matches: a row matching an active dish in the same category
+  is skipped by default, with "Update price instead" offered only when the row and the dish have
+  the same shape (one price, or the same option names). A row that matches but is still set to
+  import is flagged "Already on the menu". Rows can be moved into the menu's own categories as well
+  as the extracted ones.
 - **P7-18 · Commit** (`menu_import_commit`): one transaction under a row lock, with
   `assert_full_access`, checking every field again as `admin_save_menu_item` does. Categories match
   ignoring case and spacing, hidden ones included (the unique index covers them); a matched hidden
   category stays hidden unless the owner ticks "Show it again", as `admin_add_categories` does. A
-  category gets created only for new dishes. `update_price` sets a plain dish's price, or the prices
-  of its options with the same names and then the dish price to the cheapest. A row still marked
+  category gets created only for new dishes, but one that only updates prices is still shown again
+  when the owner ticks "Show it again". `update_price` sets a plain dish's price, or the prices
+  of its options with the same names and then the dish price to the cheapest; it refuses to change
+  the shape of a dish (`ITEM_HAS_VARIANTS` for one price against a dish with options,
+  `VARIANTS_DIFFER` for options that the dish doesn't have), so a price update can never drop an
+  option or silently change what a dish costs. A row still marked
   "unknown" needs the owner's "I checked the veg and non-veg marks" and then becomes veg (§20A.5).
   One `menu.imported` audit row with the counts. Committing again returns the counts with
   `already_imported`; a discarded or failed import can't be committed.

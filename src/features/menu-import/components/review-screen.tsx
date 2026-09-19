@@ -25,6 +25,7 @@ import { normalizeCategoryName } from '@/features/menu/default-categories';
 import { formatPriceInput, parsePriceInput } from '@/features/menu/schemas';
 
 import { commitMenuImport, discardMenuImport, saveImportDraft } from '../actions';
+import type { MenuIndex } from '../merge';
 import {
   draftCounts,
   duplicateNames,
@@ -48,7 +49,7 @@ import {
 type ReviewAction =
   | { type: 'item'; category: string; key: string; patch: Partial<DraftItem>; review?: boolean }
   | { type: 'category'; category: string; patch: Partial<DraftCategory> }
-  | { type: 'move'; category: string; key: string; to: string }
+  | { type: 'move'; category: string; key: string; to: string; newName?: string }
   | { type: 'delete'; category: string; key: string }
   | { type: 'merge'; category: string; into: string };
 
@@ -86,6 +87,17 @@ function reviewReducer(draft: Draft, action: ReviewAction): Draft {
         .find((category) => category.key === action.category)
         ?.items.find((row) => row.key === action.key);
       if (!item || action.to === action.category) return draft;
+      // Moving into a category that is on the menu but not in this draft adds
+      // it to the draft first (spec §20A.4: existing plus extracted).
+      if (action.newName !== undefined) {
+        draft = {
+          ...draft,
+          categories: [
+            ...draft.categories,
+            { key: action.to, name: action.newName, skip: false, show_hidden: false, items: [] },
+          ],
+        };
+      }
       return {
         ...draft,
         categories: draft.categories.map((category) =>
@@ -146,10 +158,8 @@ type ReviewScreenProps = {
   importId: string;
   source: 'photo' | 'csv';
   initialDraft: Draft;
-  /** Names of every category on the menu, for suggestions. */
-  menuCategoryNames: string[];
-  /** Names of hidden categories on the menu (P7-18). */
-  hiddenCategoryNames: string[];
+  /** The menu as it is now: for suggestions, hidden categories and matches. */
+  menu: MenuIndex;
   /** Page photo links by page number (photo imports). */
   pageUrls: Record<number, string>;
   failedPages: Array<{ index: number; error: string }>;
@@ -161,8 +171,7 @@ export function ReviewScreen({
   importId,
   source,
   initialDraft,
-  menuCategoryNames,
-  hiddenCategoryNames,
+  menu,
   pageUrls,
   failedPages,
   startHref,
@@ -177,16 +186,50 @@ export function ReviewScreen({
   const [viewingPage, setViewingPage] = useState<number | null>(null);
 
   const duplicates = useMemo(() => duplicateNames(draft), [draft]);
-  const counts = useMemo(() => draftCounts(draft), [draft]);
+
+  // "Already in menu" is worked out again on every edit: renaming a row or
+  // moving it to another category changes what it matches (spec §20A.4).
+  const byCategory = useMemo(() => {
+    const index = new Map<string, Map<string, { id: string; hasVariants: boolean }>>();
+    for (const category of menu) {
+      index.set(
+        normalizeCategoryName(category.name),
+        new Map(
+          category.items.map((item) => [
+            normalizeCategoryName(item.name),
+            { id: item.id, hasVariants: item.hasVariants },
+          ]),
+        ),
+      );
+    }
+    return index;
+  }, [menu]);
+  const matches = useMemo(() => {
+    const found = new Map<string, { id: string; hasVariants: boolean }>();
+    for (const category of draft.categories) {
+      const dishes = byCategory.get(normalizeCategoryName(category.name));
+      if (!dishes) continue;
+      for (const item of category.items) {
+        const match = dishes.get(normalizeCategoryName(item.name));
+        if (match) found.set(item.key, match);
+      }
+    }
+    return found;
+  }, [draft, byCategory]);
+
+  const counts = useMemo(() => draftCounts(draft, new Set(matches.keys())), [draft, matches]);
   const flagsByKey = useMemo(() => {
     const flags = new Map<string, ItemFlag[]>();
     for (const category of draft.categories) {
       for (const item of category.items) {
-        flags.set(item.key, isIncluded(category, item) ? itemFlags(item, duplicates) : []);
+        flags.set(
+          item.key,
+          isIncluded(category, item) ? itemFlags(item, duplicates, matches.has(item.key)) : [],
+        );
       }
     }
     return flags;
-  }, [draft, duplicates]);
+  }, [draft, duplicates, matches]);
 
   // "Needs a check" is on by default. Rows stay listed while they are being
   // fixed; the list is taken again when the filter is switched on.
@@ -204,13 +247,31 @@ export function ReviewScreen({
   }
 
   const hidden = useMemo(
-    () => new Set(hiddenCategoryNames.map(normalizeCategoryName)),
-    [hiddenCategoryNames],
+    () =>
+      new Set(
+        menu.filter((category) => !category.isActive).map((c) => normalizeCategoryName(c.name)),
+      ),
+    [menu],
   );
-  const categoryOptions = useMemo(
-    () => draft.categories.map((category) => ({ key: category.key, name: category.name })),
-    [draft.categories],
-  );
+  // Where a row can be moved: the draft's categories plus the menu's own
+  // (spec §20A.4). Picking one of the menu's adds it to the draft.
+  const categoryOptions = useMemo((): CategoryOption[] => {
+    const inDraft = new Set(draft.categories.map((c) => normalizeCategoryName(c.name)));
+    return [
+      ...draft.categories.map((category) => ({
+        key: category.key,
+        name: category.name,
+        isNew: false,
+      })),
+      ...menu
+        .filter((category) => !inDraft.has(normalizeCategoryName(category.name)))
+        .map((category, index) => ({
+          key: `menu-${index}-${normalizeCategoryName(category.name)}`,
+          name: category.name,
+          isNew: true,
+        })),
+    ];
+  }, [draft.categories, menu]);
 
   const blockingRows = useMemo(() => {
     const rows: string[] = [];
@@ -233,9 +294,30 @@ export function ReviewScreen({
   const canImport =
     counts.items > 0 && blockingRows.length === 0 && !badCategory && counts.items <= 500;
 
+  // What the server is sent: the rows carry the match they have right now, so
+  // a renamed or moved row never updates the price of a dish it no longer matches.
+  const payload = useMemo(
+    (): Draft => ({
+      ...draft,
+      categories: draft.categories.map((category) => ({
+        ...category,
+        items: category.items.map((item) => {
+          const match = matches.get(item.key) ?? null;
+          const canUpdate = match !== null && match.hasVariants === item.variants.length > 0;
+          return {
+            ...item,
+            existing_item_id: match?.id ?? null,
+            action: item.action === 'update_price' && !canUpdate ? 'import' : item.action,
+          };
+        }),
+      })),
+    }),
+    [draft, matches],
+  );
+
   function save() {
     startTransition(async () => {
-      const result = await saveImportDraft(importId, draft);
+      const result = await saveImportDraft(importId, payload);
       if (result.ok) toast.success('Draft saved. Open it again from Import menu to finish.');
       else toast.error(result.error);
     });
@@ -243,7 +325,7 @@ export function ReviewScreen({
 
   function commit() {
     startTransition(async () => {
-      const result = await commitMenuImport(importId, draft, foodTypesChecked);
+      const result = await commitMenuImport(importId, payload, foodTypesChecked);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -310,7 +392,7 @@ export function ReviewScreen({
       </section>
 
       <datalist id={`${ids}-categories`}>
-        {[...new Set([...menuCategoryNames, ...draft.categories.map((c) => c.name)])].map(
+        {[...new Set([...menu.map((c) => c.name), ...draft.categories.map((c) => c.name)])].map(
           (name) => (
             <option key={name} value={name} />
           ),
@@ -331,6 +413,7 @@ export function ReviewScreen({
             category={category}
             rows={rows}
             flagsByKey={flagsByKey}
+            matches={matches}
             isHidden={hidden.has(normalizeCategoryName(category.name))}
             categoryOptions={categoryOptions}
             datalistId={`${ids}-categories`}
@@ -422,7 +505,8 @@ export function ReviewScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>Discard this import?</AlertDialogTitle>
             <AlertDialogDescription>
-              Nothing from it has reached the menu. The draft and its photos are dropped.
+              Nothing from it has reached the menu, and nothing will. The draft stays listed under
+              Recent imports, and its photos are deleted within a week.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -453,12 +537,18 @@ export function ReviewScreen({
   );
 }
 
+type MenuMatch = { id: string; hasVariants: boolean };
+
+/** A category a row can move into: one of the draft's, or one from the menu. */
+type CategoryOption = { key: string; name: string; isNew: boolean };
+
 type CategorySectionProps = {
   category: DraftCategory;
   rows: DraftItem[];
   flagsByKey: Map<string, ItemFlag[]>;
+  matches: Map<string, MenuMatch>;
   isHidden: boolean;
-  categoryOptions: Array<{ key: string; name: string }>;
+  categoryOptions: CategoryOption[];
   datalistId: string;
   pageUrls: Record<number, string>;
   onViewPage: (page: number) => void;
@@ -469,6 +559,7 @@ function CategorySection({
   category,
   rows,
   flagsByKey,
+  matches,
   isHidden,
   categoryOptions,
   datalistId,
@@ -478,6 +569,8 @@ function CategorySection({
 }: CategorySectionProps) {
   const headingId = useId();
   const others = categoryOptions.filter((option) => option.key !== category.key);
+  // Merging moves every row at once, so only the draft's own categories.
+  const mergeInto = others.filter((option) => !option.isNew);
   const name = category.name.trim();
 
   // Rows grouped by the page they came from, so the photo sits beside them.
@@ -532,7 +625,7 @@ function CategorySection({
           />
           Skip this category
         </label>
-        {others.length > 0 && (
+        {mergeInto.length > 0 && (
           <select
             aria-label={`Merge ${category.name || 'category'} into`}
             className={SELECT_CLASS}
@@ -543,7 +636,7 @@ function CategorySection({
             }
           >
             <option value="">Merge into…</option>
-            {others.map((option) => (
+            {mergeInto.map((option) => (
               <option key={option.key} value={option.key}>
                 {option.name || 'Unnamed category'}
               </option>
@@ -607,6 +700,7 @@ function CategorySection({
                   categoryKey={category.key}
                   item={item}
                   flags={flagsByKey.get(item.key) ?? []}
+                  match={matches.get(item.key) ?? null}
                   others={others}
                   dispatch={dispatch}
                 />
@@ -622,7 +716,9 @@ type ItemRowProps = {
   categoryKey: string;
   item: DraftItem;
   flags: ItemFlag[];
-  others: Array<{ key: string; name: string }>;
+  /** The dish with this name in this category on the menu, if there is one. */
+  match: MenuMatch | null;
+  others: CategoryOption[];
   dispatch: Dispatch<ReviewAction>;
 };
 
@@ -630,6 +726,7 @@ const ItemRow = memo(function ItemRow({
   categoryKey,
   item,
   flags,
+  match,
   others,
   dispatch,
 }: ItemRowProps) {
@@ -693,7 +790,7 @@ const ItemRow = memo(function ItemRow({
         <PriceEditor item={item} label={label} update={update} />
 
         <div className="flex flex-wrap items-center gap-1">
-          {item.existing_item_id && (
+          {match && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-ink">
               Already in menu
             </span>
@@ -704,8 +801,12 @@ const ItemRow = memo(function ItemRow({
             value={item.action}
             onChange={(event) => update({ action: event.target.value as ItemAction })}
           >
-            <option value="import">{item.existing_item_id ? 'Add as a new dish' : 'Import'}</option>
-            {item.existing_item_id && <option value="update_price">Update price instead</option>}
+            <option value="import">{match ? 'Add as a new dish' : 'Import'}</option>
+            {/* Only when the row and the dish have the same shape: the
+                database refuses a price update that changes the options. */}
+            {match && match.hasVariants === item.variants.length > 0 && (
+              <option value="update_price">Update price instead</option>
+            )}
             <option value="skip">Skip</option>
           </select>
           {others.length > 0 && (
@@ -713,15 +814,17 @@ const ItemRow = memo(function ItemRow({
               aria-label={`Move ${label} to`}
               className={SELECT_CLASS}
               value=""
-              onChange={(event) =>
-                event.target.value &&
+              onChange={(event) => {
+                const option = others.find((other) => other.key === event.target.value);
+                if (!option) return;
                 dispatch({
                   type: 'move',
                   category: categoryKey,
                   key: item.key,
-                  to: event.target.value,
-                })
-              }
+                  to: option.key,
+                  ...(option.isNew ? { newName: option.name } : {}),
+                });
+              }}
             >
               <option value="">Move to…</option>
               {others.map((option) => (
