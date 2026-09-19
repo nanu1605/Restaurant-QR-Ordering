@@ -102,8 +102,10 @@ async function completeSignIn(
     return { error: wrongCredentials, values };
   }
 
+  // The session is password-only here, so ask for the status rather than
+  // is_platform_admin(), which needs the second factor (/super asks for it).
   const [adminCheck, membership] = await Promise.all([
-    supabase.rpc('is_platform_admin'),
+    supabase.rpc('platform_admin_status'),
     supabase
       .from('restaurant_members')
       .select('role')
@@ -116,7 +118,10 @@ async function completeSignIn(
   if (adminCheck.error) throw new Error(`Platform admin check failed: ${adminCheck.error.message}`);
   if (membership.error) throw new Error(`Membership lookup failed: ${membership.error.message}`);
 
-  const access = { isPlatformAdmin: adminCheck.data === true, role: membership.data?.role ?? null };
+  const access = {
+    isPlatformAdmin: adminCheck.data === 'ok' || adminCheck.data === 'mfa_required',
+    role: membership.data?.role ?? null,
+  };
   const home = homePathFor(access);
 
   if (!home) {

@@ -71,14 +71,25 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
   };
 });
 
-export const getIsPlatformAdmin = cache(async (): Promise<boolean> => {
+export type PlatformAdminStatus = 'none' | 'mfa_required' | 'ok';
+
+/**
+ * Whether the user is a platform admin, and whether this session has passed
+ * the second factor (docs/DECISIONS.md P7-1). Only 'ok' can read platform data.
+ */
+export const getPlatformAdminStatus = cache(async (): Promise<PlatformAdminStatus> => {
   const user = await getCurrentUser();
-  if (!user) return false;
+  if (!user) return 'none';
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('is_platform_admin');
+  const { data, error } = await supabase.rpc('platform_admin_status');
   if (error) throw new Error(`Could not check platform admin: ${error.message}`);
-  return data === true;
+  return data === 'ok' || data === 'mfa_required' ? data : 'none';
 });
+
+/** A platform admin, with or without the second factor yet (routing only). */
+export const getIsPlatformAdmin = cache(
+  async (): Promise<boolean> => (await getPlatformAdminStatus()) !== 'none',
+);
 
 export async function getAccessSummary(): Promise<AccessSummary> {
   const [isPlatformAdmin, membership] = await Promise.all([

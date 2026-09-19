@@ -1,19 +1,7 @@
-import { PanelHeader } from '@/components/shared/panel-header';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
-import { APP_NAME } from '@/lib/config';
-
-export default async function SuperLayout({ children }: LayoutProps<'/super'>) {
-  const user = await requirePlatformAdmin();
-
-  return (
-    <div className="flex flex-1 flex-col">
-      <PanelHeader
-        panel="Platform admin"
-        title={APP_NAME}
-        userName={user.email ?? 'Platform admin'}
-        roleLabel="Platform admin"
-      />
-      <main className="flex flex-1 flex-col p-4 md:p-6">{children}</main>
-    </div>
-  );
+/**
+ * No guard here: /super/mfa must open for a platform admin who hasn't entered
+ * the second factor yet. The (panel) layout and every page guard themselves.
+ */
+export default function SuperLayout({ children }: LayoutProps<'/super'>) {
+  return <div className="flex flex-1 flex-col">{children}</div>;
 }

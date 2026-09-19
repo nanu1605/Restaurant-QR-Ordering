@@ -8,6 +8,7 @@ import {
   getCurrentMembership,
   getCurrentUser,
   getIsPlatformAdmin,
+  getPlatformAdminStatus,
   type CurrentMembership,
   type CurrentUser,
 } from './session';
@@ -43,10 +44,21 @@ export async function requireMember(roles?: readonly MemberRole[]): Promise<Curr
   return membership;
 }
 
+/**
+ * A platform admin who has passed the second factor. Without it, the admin is
+ * sent to /super/mfa to enrol or enter a code (docs/DECISIONS.md P7-1).
+ */
 export async function requirePlatformAdmin(): Promise<CurrentUser> {
+  const user = await requirePlatformAdminLogin();
+  if ((await getPlatformAdminStatus()) !== 'ok') redirect('/super/mfa');
+  return user;
+}
+
+/** A platform admin, second factor or not: only for the /super/mfa page. */
+export async function requirePlatformAdminLogin(): Promise<CurrentUser> {
   const user = await requireUser();
 
-  if (!(await getIsPlatformAdmin())) {
+  if ((await getPlatformAdminStatus()) === 'none') {
     const membership = await getCurrentMembership();
     redirect(
       homePathFor({ isPlatformAdmin: false, role: membership?.role ?? null }) ??

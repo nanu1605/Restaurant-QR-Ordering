@@ -4,7 +4,9 @@ import {
   DEMO_PASSWORD,
   logInWithCode as logInWithCodeAs,
   logInWithEmail as logInWithEmailAs,
+  TEST_PASSWORD,
 } from './helpers';
+import { createPlatformAdmin, totpCode } from './platform-fixtures';
 
 // Seeded local accounts (supabase/seed.sql) all use DEMO_PASSWORD.
 const logInWithCode = (page: Page, code: string, username: string, password = DEMO_PASSWORD) =>
@@ -60,14 +62,40 @@ test('owner logs in with their email', async ({ page }) => {
   await expect(page).toHaveURL(/\/admin$/);
 });
 
-test('platform admin lands on super-admin and has no restaurant panel', async ({ page }) => {
+test('platform admin needs a second factor, then lands on super-admin', async ({ page }) => {
+  const admin = await createPlatformAdmin();
   await page.goto('/login');
-  await logInWithEmail(page, 'super@local.test');
+  await logInWithEmail(page, admin.email, TEST_PASSWORD);
 
+  // Password only: every /super page asks for the authenticator first.
+  await expect(page).toHaveURL(/\/super\/mfa$/);
+  await page.goto('/super');
+  await expect(page).toHaveURL(/\/super\/mfa$/);
+  await expect(page.getByRole('heading', { name: 'Two-step sign-in' })).toBeVisible();
+
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Set up authenticator app' }).click();
+  const secret = (await main.getByTestId('totp-secret').textContent())?.trim() ?? '';
+  await main.getByLabel('6-digit code').fill('000000');
+  await main.getByRole('button', { name: 'Verify' }).click();
+  await expect(main.getByRole('alert')).toContainText("That code didn't work");
+
+  await main.getByLabel('6-digit code').fill(totpCode(secret));
+  await main.getByRole('button', { name: 'Verify' }).click();
   await expect(page).toHaveURL(/\/super$/);
   await expect(header(page).getByText('Platform admin').first()).toBeVisible();
 
   await page.goto('/admin');
+  await expect(page).toHaveURL(/\/super$/);
+
+  // Next login: the authenticator is set up, so only the code is asked.
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await logInWithEmail(page, admin.email, TEST_PASSWORD);
+  await expect(page).toHaveURL(/\/super\/mfa$/);
+  await expect(main.getByRole('button', { name: 'Set up authenticator app' })).toHaveCount(0);
+  await main.getByLabel('6-digit code').fill(totpCode(secret));
+  await main.getByRole('button', { name: 'Verify' }).click();
   await expect(page).toHaveURL(/\/super$/);
 });
 
