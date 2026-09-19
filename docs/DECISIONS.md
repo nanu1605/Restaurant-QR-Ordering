@@ -803,10 +803,14 @@ Phase 7 has two review stops: the super-admin panel first, then menu import (CSV
     tables or staff (§14.2).
   - **Manual payment** (§14.5): amount, how it was paid, cycle, first and last day (business days in
     the restaurant's timezone, last day included), notes. The payment row stores the period from
-    the first day's business-day start to the start of the day after the last. The subscription
-    becomes active and manual with that cycle (payments have no cycle column, and MRR needs it),
-    its period moves only forward (an older payment never shortens access), and grace and
-    cancel-at-period-end are cleared. A suspension stays until someone lifts it.
+    the first day's business-day start to the start of the day after the last. **The payment
+    changes the subscription only when it keeps the restaurant going for longer** than it goes now
+    (the trial's end, the period end + 2 days, or the grace period, as `restaurant_access` works it
+    out). Then the subscription becomes active and manual with that cycle (payments have no cycle
+    column, and MRR needs it), the period moves forward, and grace and cancel-at-period-end are
+    cleared. A payment for time already covered — a month inside a long trial, arrears during
+    grace — is only recorded, and the screen says access didn't change; the form starts the period
+    on the first day not yet covered. A suspension stays until someone lifts it.
   - **Reset owner password:** the database logs it and returns the login; the server sets the new
     password through the Admin API, as for staff. The dialog offers a generated password without
     look-alike characters.
@@ -824,7 +828,9 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   Realtime). The screens have no buttons at all; bill numbers aren't links.
 - **P7-7 · Overview and lists:** restaurants by state with no overlaps (suspended, then read-only,
   then trial / active / payment failed); **MRR** = the plan's monthly price, or yearly ÷ 12, over
-  active subscriptions with a source (trials and failed payments left out); orders in the last 24
+  the restaurants in the "active" state: paid, not suspended and still within their period (a
+  manual subscription stays `active` after its period ends, because nothing renews it, so the
+  status alone would keep counting a restaurant that stopped paying); orders in the last 24
   hours; trials ending within 7 days. The restaurants list searches name, code and city and
   filters by status, plan, subscription, city and created dates (India time), 50 a page. The
   subscriptions list puts failed payments first, then whatever ends soonest.
@@ -846,14 +852,26 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   restaurant, who (staff, customer, system, platform admin), an action prefix such as `bill.` and
   dates (India time), newest first, 50 a page, with before/after in a disclosure.
 
+### Review fixes (Stop A)
+
+- A manual payment no longer shortens access (a month paid inside a long trial, arrears paid
+  during grace), and MRR leaves out lapsed and suspended restaurants — both above.
+- The onboarding wizard's "Create restaurant" waits a moment after the last step appears, so a
+  double-click on Next can't create the restaurant before the plan and trial step is seen; the
+  summary follows the fields as they change and shows the trial length.
+- The support board is parsed on the device, so elapsed times are corrected against the device's
+  clock like the staff board.
+
 ### Tests (Stop A)
 
 - **pgTAP 300–340:** aal1 versus aal2 across policies and functions; the overview counted against
-  a baseline (the demo seed has a restaurant), MRR, list filters and paging, detail usage and owner
+  a baseline (the demo seed has a restaurant), MRR (lapsed and suspended left out), list filters
+  and paging, detail usage and owner
   emails; every action and its audit row, including suspension stopping `customer_place_order`
   while `admin_generate_bill` still works on an open table; the support view matching the member
   functions' output, without QR tokens, with the 10-minute audit window; plan edits and their
-  audit, direct writes refused; the platform log's filters and paging.
+  audit, direct writes refused; the platform log's filters and paging; payments that extend access
+  and payments that don't (long trial, arrears in grace).
 - **Unit:** payment periods (short months, leap years), the code suggestion, generated passwords,
   the wizard, payment and plan forms, and the list filters read from URLs.
 - **E2E (`super-admin.spec.ts`, and the platform-admin login in `auth.spec.ts`):** TOTP enrolment
