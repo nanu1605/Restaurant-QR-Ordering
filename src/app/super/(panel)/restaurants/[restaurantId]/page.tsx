@@ -1,4 +1,4 @@
-import { Eye, ScrollText } from 'lucide-react';
+import { Eye, FileUp, ScrollText } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -32,11 +32,21 @@ import {
   todayInIndia,
   type RestaurantDetail,
 } from '@/features/platform/platform';
+import { listMenuImports } from '@/features/menu-import/queries';
 import { getRestaurantDetail, listPlans } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Restaurant',
+};
+
+const IMPORT_STATUS_LABELS: Record<string, string> = {
+  uploaded: 'Reading',
+  processing: 'Reading',
+  review: 'In review',
+  imported: 'Imported',
+  failed: 'Failed',
+  discarded: 'Discarded',
 };
 
 const GST_MODE_LABELS: Record<string, string> = {
@@ -56,6 +66,7 @@ export default async function SuperRestaurantPage({
   const { restaurantId } = await params;
   const [detail, plans] = await Promise.all([getRestaurantDetail(restaurantId), listPlans()]);
   if (!detail) notFound();
+  const imports = await listMenuImports(restaurantId, 5);
   const { restaurant, subscription, access, usage } = detail;
 
   return (
@@ -111,6 +122,13 @@ export default async function SuperRestaurantPage({
         >
           <ScrollText aria-hidden />
           Audit log
+        </Link>
+        <Link
+          href={`/super/restaurants/${restaurant.id}/menu-import`}
+          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+        >
+          <FileUp aria-hidden />
+          Import menu
         </Link>
       </nav>
 
@@ -249,6 +267,52 @@ export default async function SuperRestaurantPage({
                   </TableCell>
                   <TableCell>{formatPeriod(payment.period_start, payment.period_end)}</TableCell>
                   <TableCell className="whitespace-normal">{payment.notes ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+
+      <Section title="Menu imports">
+        {imports.length === 0 ? (
+          <p className="text-sm text-ink-muted">No menu imports yet.</p>
+        ) : (
+          <Table aria-label="Menu imports">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Started</TableHead>
+                <TableHead>From</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Dishes</TableHead>
+                <TableHead>Cost</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {imports.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <Link
+                      href={`/super/restaurants/${restaurant.id}/menu-import/${item.id}`}
+                      className="text-brand underline-offset-4 hover:underline"
+                    >
+                      {formatDateTime(item.createdAt)}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    {item.source === 'photo' ? `${item.pageCount} photo pages` : 'CSV'}
+                  </TableCell>
+                  <TableCell>{IMPORT_STATUS_LABELS[item.status]}</TableCell>
+                  <TableCell>{item.items ?? '—'}</TableCell>
+                  <TableCell>
+                    {item.source === 'csv' ? (
+                      '—'
+                    ) : item.costPaise === null ? (
+                      'Unknown'
+                    ) : (
+                      <Money paise={item.costPaise} />
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
