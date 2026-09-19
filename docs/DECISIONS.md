@@ -851,6 +851,15 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
 - **P7-11 · Platform audit log:** every restaurant's log plus platform events, filtered by
   restaurant, who (staff, customer, system, platform admin), an action prefix such as `bill.` and
   dates (India time), newest first, 50 a page, with before/after in a disclosure.
+- **P7-21 · The owner's Subscription page shows the subscription now,** not in Phase 8 (spec
+  §13.3 said "Phase 8"). Once platform admins record trials, plan changes and manual payments,
+  the owner needs to see them. The page shows the plan, its status (free trial, paid, payment
+  failed, ended, suspended) with days left, trial end or paid period and next payment date, the
+  price, tables and staff logins used against the plan's limits, the included features, and the
+  payment history (date, amount, method, period covered; the platform admin's payment notes stay
+  internal). It reads through the existing owner RLS on subscriptions and payments, so no new
+  function was needed. Plan cards, Razorpay checkout and cancelling stay in Phase 8; until then
+  the page says to contact support.
 
 ### Review fixes (Stop A)
 
@@ -873,10 +882,12 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   audit, direct writes refused; the platform log's filters and paging; payments that extend access
   and payments that don't (long trial, arrears in grace).
 - **Unit:** payment periods (short months, leap years), the code suggestion, generated passwords,
-  the wizard, payment and plan forms, and the list filters read from URLs.
+  the wizard, payment and plan forms, the list filters read from URLs, and the owner's
+  subscription status (days left, last paid day, each status).
 - **E2E (`super-admin.spec.ts`, and the platform-admin login in `auth.spec.ts`):** TOTP enrolment
   and a second login; onboarding through the wizard with the owner logging in on the handed-over
   details, and a taken code sent back to step 1; extend trial, change plan and a manual payment,
   each in the audit log; suspend → a customer can't order while the open table is billed →
   unsuspend; the support view's four sections with nothing to press and four `support.viewed` rows;
-  a plan edit saved, audited and restored.
+  a plan edit saved, audited and restored; the owner's Subscription page before (free trial) and
+  after (paid Starter, the payment without its notes) a manual payment.

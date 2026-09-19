@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import type { FeatureKey } from '@/features/plans/plan-features';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
 /**
@@ -315,16 +314,7 @@ export type AuditRow = z.infer<typeof auditRowSchema>;
 export const parseAuditList = (json: unknown) => auditListSchema.parse(json);
 
 // ─── Plans ───────────────────────────────────────────────────────────────────
-export const FEATURE_LABELS: Record<FeatureKey, string> = {
-  kds: 'Kitchen view',
-  discounts: 'Discounts',
-  split_payments: 'Split payments',
-  upi_qr_on_bill: 'UPI QR on bills',
-  advanced_reports: 'Advanced reports',
-  waiter_reports: 'Waiter report',
-  csv_export: 'CSV export',
-  remove_branding: 'No "Powered by" line',
-};
+export { FEATURE_LABELS } from '@/features/plans/plan-features';
 
 export const planSchema = z.object({
   id: z.string(),

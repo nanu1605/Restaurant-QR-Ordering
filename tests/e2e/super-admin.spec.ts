@@ -82,8 +82,26 @@ test('onboards a restaurant, hands over the login, and the owner logs in', async
   await expect(main.getByText('That restaurant code is taken. Choose another.')).toBeVisible();
 });
 
-test('extends a trial, changes the plan and records a manual payment', async ({ page }) => {
+test('extends a trial, changes the plan and records a manual payment', async ({
+  page,
+  browser,
+  baseURL,
+}) => {
   const restaurant = await createTestRestaurant({ prefix: 'sup' });
+
+  // The owner sees the trial on their Subscription page.
+  const ownerContext = await browser.newContext({ baseURL });
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto('/login');
+  await logInWithCode(ownerPage, restaurant.slug, 'owner', restaurant.password);
+  await expect(ownerPage).toHaveURL(/\/admin$/);
+  await ownerPage.goto('/admin/subscription');
+  const ownerPlan = ownerPage.getByRole('region', { name: 'Your plan' });
+  await expect(ownerPage.getByTestId('subscription-status')).toHaveText('Free trial');
+  await expect(ownerPlan).toContainText('days left');
+  await expect(ownerPlan.getByLabel('Subscription details')).toContainText('Trial ends');
+  await expect(ownerPage.getByText('No payments yet.')).toBeVisible();
+
   const db = adminClient();
   const trialBefore = async () =>
     (
@@ -133,6 +151,17 @@ test('extends a trial, changes the plan and records a manual payment', async ({ 
   // Paid now: the trial is over and the subscription is active.
   await expect(main.getByRole('button', { name: 'Extend trial' })).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('Active');
+
+  // The owner now sees a paid Starter plan and the payment.
+  await ownerPage.reload();
+  await expect(ownerPage.getByTestId('subscription-status')).toHaveText('Paid');
+  await expect(ownerPlan).toContainText('Starter');
+  await expect(ownerPlan.getByLabel('Subscription details')).toContainText('Paid through support');
+  const ownerPayments = ownerPage.getByRole('table', { name: 'Payments' });
+  await expect(ownerPayments).toContainText('₹399.00');
+  await expect(ownerPayments).toContainText('UPI');
+  await expect(ownerPayments).not.toContainText('UTR 998877');
+  await ownerContext.close();
 
   // The actions are in the audit log.
   await main.getByRole('link', { name: 'Audit log' }).click();

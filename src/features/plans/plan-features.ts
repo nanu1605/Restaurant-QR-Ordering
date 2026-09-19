@@ -17,6 +17,18 @@ export const FEATURE_KEYS = [
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
+/** Feature names as owners and platform admins read them. */
+export const FEATURE_LABELS: Record<FeatureKey, string> = {
+  kds: 'Kitchen view',
+  discounts: 'Discounts',
+  split_payments: 'Split payments',
+  upi_qr_on_bill: 'UPI QR on bills',
+  advanced_reports: 'Advanced reports',
+  waiter_reports: 'Waiter report',
+  csv_export: 'CSV export',
+  remove_branding: 'No "Powered by" line',
+};
+
 export type PlanFeatures = {
   planCode: string;
   planName: string;
