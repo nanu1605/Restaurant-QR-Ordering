@@ -15,7 +15,8 @@ day goes.
   billing with discounts and service charge, printing on 80 mm or 58 mm, payments (split on
   Growth), voids with an optional table reopen, Total orders, the dashboard and the reports.
 - **Setup** covers the menu, tables and QR codes, waiter profiles, staff logins and settings
-  (tax, charges, bill options, ordering rules, business-day start, timezone).
+  (tax, charges, bill options, ordering rules, business-day start, timezone). The menu can be
+  imported from photos of the printed menu, a PDF or a CSV file, checked before it is added.
 - **Plans** gate features already (Starter / Growth / Pro), and a lapsed subscription turns the
   restaurant read-only without losing data.
 - **You** run the platform from `/super` (with an authenticator app): onboard restaurants, extend
@@ -27,7 +28,6 @@ day goes.
 
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
-| Menu import from photos and CSV                          | 7     | Type the menu in                                  |
 | Razorpay subscriptions and invoices                      | 8     | Pilots are free; no payment details are collected |
 | Hindi customer screens, service requests, offline polish | 9     | English only for now                              |
 | Staging and production deployment, Sentry, backups, cron | 10    | Deploy before the first guest scans a code        |
@@ -47,6 +47,10 @@ Before the first pilot:
       restaurants.
 - [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act).
 - [ ] Recruit 2–3 pilot restaurants.
+- [ ] For menu import from photos: create a Command Code API key (Command Code Studio) and,
+      as the fallback, an OpenRouter key, each with a monthly spend limit, and set them in Vercel
+      (`MENU_IMPORT_API_KEY`, `MENU_IMPORT_FALLBACK_API_KEY`). Set `CRON_SECRET` (a long random
+      string) so the daily photo cleanup runs. Without the keys, menus import from CSV only.
 - [ ] Make yourself a platform admin on production (a login, then one row in `platform_admins`, in
       the Supabase SQL editor) and enrol an authenticator app on the first visit to `/super`.
 

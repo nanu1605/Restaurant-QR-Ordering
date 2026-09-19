@@ -132,12 +132,41 @@ where user_id = (select id from auth.users where email = 'admin@example.com');
 To make someone a platform admin, create their login in Supabase Auth, then
 `insert into public.platform_admins (user_id) select id from auth.users where email = '…';`.
 
+### Menu import
+
+Menu → **Import menu** (owners and managers; platform admins from a restaurant's page) turns a
+printed menu into dishes without typing them (spec §20A). Photos (or a PDF) of up to 10 pages are
+read by a vision model; a CSV file works without one. Either way the owner checks a draft first:
+the rows most likely to be wrong come first, every field can be edited, and nothing reaches the
+menu until they press Import.
+
+The reader is any OpenAI-compatible `/chat/completions` API. Set in `.env.local`:
+
+| Variable                        | Default                                  |
+| ------------------------------- | ---------------------------------------- |
+| `MENU_IMPORT_API_KEY`           | none (a key from Command Code Studio)    |
+| `MENU_IMPORT_BASE_URL`          | `https://api.commandcode.ai/provider/v1` |
+| `MENU_IMPORT_MODEL`             | `google/gemini-3.8-flash`                |
+| `MENU_IMPORT_FALLBACK_API_KEY`  | none (an OpenRouter key)                 |
+| `MENU_IMPORT_FALLBACK_BASE_URL` | `https://openrouter.ai/api/v1`           |
+| `MENU_IMPORT_FALLBACK_MODEL`    | `google/gemini-3.8-flash`                |
+| `MENU_IMPORT_USD_INR`           | `96`                                     |
+
+With neither key set, the Import menu page offers CSV only. A page costs about ₹0.30 with the
+default model; super-admin shows each import's tokens and cost. Five photo imports a day per
+restaurant. Photos are deleted 7 days after an import ends by `/api/cron/daily`, which needs
+`CRON_SECRET` (`Authorization: Bearer …`; Vercel's scheduler sends it, see `vercel.json`).
+
+CSV columns (first row, any order): `category, name, description, food_type, price, variant_name,
+variant_price`. Rows with the same category and name and a `variant_name` are the options of one
+dish (Half, Full). The Import menu page has a sample file to download.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:
 
 - **Menu**: categories and dishes (drag to reorder), Half/Full style options, photos, in-stock
-  switch, suggested category sets.
+  switch, suggested category sets, and importing a menu from photos or a CSV file.
 - **Tables & QR**: add tables one at a time or as a range (`1-20`), download a table's QR code,
   print A4 sheets of QR cards. QR codes open `NEXT_PUBLIC_APP_URL`, so set it to the real domain
   before printing cards for customers.
