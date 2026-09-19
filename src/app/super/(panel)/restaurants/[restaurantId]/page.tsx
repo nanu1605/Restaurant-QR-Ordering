@@ -102,35 +102,38 @@ export default async function SuperRestaurantPage({
         </p>
       )}
 
-      <nav aria-label="Support view" className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-ink">
-          <Eye aria-hidden className="mr-1 inline size-4" />
-          Look (read-only):
-        </span>
-        {SUPPORT_SECTIONS.map((section) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="Support view" className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-ink">
+            <Eye aria-hidden className="mr-1 inline size-4" />
+            Look (read-only):
+          </span>
+          {SUPPORT_SECTIONS.map((section) => (
+            <Link
+              key={section}
+              href={`/super/restaurants/${restaurant.id}/support/${section}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              {SUPPORT_SECTION_LABELS[section]}
+            </Link>
+          ))}
           <Link
-            key={section}
-            href={`/super/restaurants/${restaurant.id}/support/${section}`}
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            href={`/super/audit?restaurant=${restaurant.id}`}
+            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
           >
-            {SUPPORT_SECTION_LABELS[section]}
+            <ScrollText aria-hidden />
+            Audit log
           </Link>
-        ))}
-        <Link
-          href={`/super/audit?restaurant=${restaurant.id}`}
-          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-        >
-          <ScrollText aria-hidden />
-          Audit log
-        </Link>
+        </nav>
+        {/* Not a look: an import changes the restaurant's menu. */}
         <Link
           href={`/super/restaurants/${restaurant.id}/menu-import`}
-          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
         >
           <FileUp aria-hidden />
           Import menu
         </Link>
-      </nav>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Subscription">
