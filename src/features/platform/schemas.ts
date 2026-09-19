@@ -56,14 +56,20 @@ export const manualPaymentSchema = z
   });
 export type ManualPaymentInput = z.input<typeof manualPaymentSchema>;
 
-/** The last day of a period starting on `start`: a month or a year, less a day. */
+/**
+ * The last day of a period starting on `start`: the day before the same date
+ * a month (or year) later, or the last day of that month when the date doesn't
+ * exist there (31 Jan → 28 Feb).
+ */
 export function periodEnd(start: string, cycle: 'monthly' | 'yearly'): string {
   const [year, month, day] = start.split('-').map(Number) as [number, number, number];
-  const next =
-    cycle === 'yearly'
-      ? new Date(Date.UTC(year + 1, month - 1, day))
-      : new Date(Date.UTC(year, month, day));
-  return addDays(next.toISOString().slice(0, 10), -1);
+  const targetYear = cycle === 'yearly' ? year + 1 : year + Math.floor(month / 12);
+  const targetMonth = cycle === 'yearly' ? month - 1 : month % 12; // 0-based
+  const daysInTarget = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  if (day > daysInTarget) {
+    return new Date(Date.UTC(targetYear, targetMonth, daysInTarget)).toISOString().slice(0, 10);
+  }
+  return addDays(new Date(Date.UTC(targetYear, targetMonth, day)).toISOString().slice(0, 10), -1);
 }
 
 // Supabase Auth hashes with bcrypt, which only reads the first 72 bytes.
@@ -174,6 +180,8 @@ export function suggestRestaurantCode(name: string): string {
   const code = name
     .toLowerCase()
     .normalize('NFKD')
+    // Accent marks split off by NFKD: "café" → "cafe".
+    .replace(/\p{M}/gu, '')
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
