@@ -7,6 +7,10 @@ import { billTable, ownerClient, seatTable } from './report-fixtures';
 /**
  * Dashboard and reports (spec §13.3, §19 Phase 6): today's numbers, the report
  * tabs, the waiter report's handover rule, CSV downloads and the Starter limits.
+ *
+ * Reports has a loading screen, so Next streams each page into a hidden block
+ * outside <main> before swapping it in; text and label lookups stay inside
+ * <main> so they never see that copy.
  */
 
 test.describe('dashboard', () => {
@@ -29,16 +33,18 @@ test.describe('dashboard', () => {
       baseURL!,
     );
 
-    const today = page.getByLabel('Today');
+    const today = page.getByRole('main').getByLabel('Today');
     await expect(today).toContainText('Bills2');
     await expect(today).toContainText('Open tables1');
     await expect(today).toContainText('Dishes in progress1');
-    await expect(page.getByText('Sales today')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Sales today')).toBeVisible();
 
     // Table 5's waiter was assigned with its order, so nothing is unassigned.
     await expect(page.getByRole('heading', { name: 'Tables' })).toBeVisible();
-    await expect(page.locator('[data-table="5"][data-state="in_progress"]')).toBeVisible();
-    await expect(page.locator('li[data-waiter="Ravi Kumar"]')).toBeVisible();
+    await expect(
+      page.getByRole('main').locator('[data-table="5"][data-state="in_progress"]'),
+    ).toBeVisible();
+    await expect(page.getByRole('main').locator('li[data-waiter="Ravi Kumar"]')).toBeVisible();
 
     // A third bill arrives while the page is open.
     const before = await today.textContent();
@@ -49,7 +55,7 @@ test.describe('dashboard', () => {
 
     await page.getByRole('link', { name: 'Reports' }).click();
     await expect(page.getByRole('heading', { name: 'Reports', level: 1 })).toBeVisible();
-    await expect(page.getByLabel('Summary')).toContainText('Bills3');
+    await expect(page.getByRole('main').getByLabel('Summary')).toContainText('Bills3');
     expect(first.invoiceNumber).toMatch(/\/00001$/);
     await context.close();
   });
@@ -99,7 +105,7 @@ test.describe('reports', () => {
     const tabs = page.getByRole('navigation', { name: 'Reports' });
 
     // Sales: the voided bill is out of the summary.
-    const summary = page.getByLabel('Summary');
+    const summary = page.getByRole('main').getByLabel('Summary');
     await expect(summary).toContainText('Bills1');
     await expect(page.getByRole('heading', { name: 'How it was paid' })).toBeVisible();
     await expect(page.getByRole('row', { name: /^UPI/ })).toContainText('₹560.00');
@@ -113,15 +119,15 @@ test.describe('reports', () => {
 
     // Tables.
     await tabs.getByRole('link', { name: 'Tables' }).click();
-    await expect(page.getByLabel('Turnover')).toContainText('Tables billed1');
+    await expect(page.getByRole('main').getByLabel('Turnover')).toContainText('Tables billed1');
     await expect(page.getByRole('row', { name: /^Table 4/ })).toContainText('₹560.00');
 
     // Activity: the void, the discount and the removed dish, with who and why.
     await tabs.getByRole('link', { name: 'Activity' }).click();
     const voids = page.getByRole('row', { name: new RegExp(discounted.invoiceNumber) });
     await expect(voids.first()).toContainText('Test Owner');
-    await expect(page.getByText('Wrong table')).toBeVisible();
-    await expect(page.getByText('Regular guest')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Wrong table')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Regular guest')).toBeVisible();
 
     await page.getByRole('link', { name: 'Removed dishes' }).click();
     await expect(page).toHaveURL(/kind=removed_items/);
@@ -189,8 +195,8 @@ test.describe('reports', () => {
       baseURL!,
     );
 
-    const suresh = page.locator('tr[data-waiter="Suresh Patel"]');
-    const ravi = page.locator('tr[data-waiter="Ravi Kumar"]');
+    const suresh = page.getByRole('main').locator('tr[data-waiter="Suresh Patel"]');
+    const ravi = page.getByRole('main').locator('tr[data-waiter="Ravi Kumar"]');
     await expect(suresh).toContainText('₹560.00');
     await expect(suresh.locator('td').first()).toHaveText('1');
     await expect(ravi.locator('td').first()).toHaveText('0');
@@ -199,7 +205,10 @@ test.describe('reports', () => {
     await page.getByRole('button', { name: 'Waiter' }).click();
     const header = page.getByRole('columnheader', { name: 'Waiter' });
     await expect(header).toHaveAttribute('aria-sort', 'ascending');
-    await expect(page.locator('tbody tr').first()).toHaveAttribute('data-waiter', 'Ravi Kumar');
+    await expect(page.getByRole('main').locator('tbody tr').first()).toHaveAttribute(
+      'data-waiter',
+      'Ravi Kumar',
+    );
     await context.close();
   });
 
@@ -216,13 +225,13 @@ test.describe('reports', () => {
       baseURL!,
     );
 
-    await expect(page.getByLabel('Summary')).toContainText('Bills1');
+    await expect(page.getByRole('main').getByLabel('Summary')).toContainText('Bills1');
     // Today and yesterday only, no custom dates, no payment modes, no CSV.
     const presets = page.getByRole('group', { name: 'Date presets' });
     await expect(presets.getByRole('link')).toHaveCount(2);
     await expect(page.getByRole('heading', { name: 'How it was paid' })).toBeHidden();
     await expect(page.getByRole('link', { name: 'Sales CSV' })).toBeHidden();
-    await expect(page.getByText('Available on Growth')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Available on Growth')).toBeVisible();
 
     // A locked tab says so, opens to the upgrade hint and shows no waiter numbers.
     const waitersTab = page
@@ -231,15 +240,14 @@ test.describe('reports', () => {
     await waitersTab.click();
     await expect(page).toHaveURL(/report=waiters/);
     await expect(waitersTab).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByText('Waiters report').filter({ visible: true })).toBeVisible();
-    await expect(page.getByText('Upgrade to Growth on the Subscription page')).toBeVisible();
-    await expect(page.locator('tr[data-waiter]')).toHaveCount(0);
-    await page.goto('/admin/reports?from=2026-01-01&to=2026-01-31');
-    // While the page streams in, a hidden copy can sit next to the shown one.
+    await expect(page.getByRole('main').getByText('Waiters report')).toBeVisible();
     await expect(
-      page
-        .getByText('Your plan shows today and yesterday, so today is shown.')
-        .filter({ visible: true }),
+      page.getByRole('main').getByText('Upgrade to Growth on the Subscription page'),
+    ).toBeVisible();
+    await expect(page.getByRole('main').locator('tr[data-waiter]')).toHaveCount(0);
+    await page.goto('/admin/reports?from=2026-01-01&to=2026-01-31');
+    await expect(
+      page.getByRole('main').getByText('Your plan shows today and yesterday, so today is shown.'),
     ).toBeVisible();
 
     // The export URL is refused even when typed in.
@@ -265,7 +273,7 @@ test.describe('reports on a phone', () => {
     await page.goto('/admin/reports');
     await expectLive(page);
 
-    await expect(page.getByLabel('Summary')).toContainText('Bills1');
+    await expect(page.getByRole('main').getByLabel('Summary')).toContainText('Bills1');
     const width = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
