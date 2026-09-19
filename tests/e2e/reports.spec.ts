@@ -79,6 +79,9 @@ test.describe('reports', () => {
       })
       .throwOnError();
     await owner
+      .rpc('admin_remove_order', { p_order_id: open.orderId, p_reason: 'Kitchen ran out' })
+      .throwOnError();
+    await owner
       .rpc('admin_void_bill', {
         p_bill_id: discounted.billId,
         p_reason: 'Wrong table',
@@ -121,9 +124,23 @@ test.describe('reports', () => {
     await expect(page.getByText('Regular guest')).toBeVisible();
 
     await page.getByRole('link', { name: 'Removed dishes' }).click();
-    const removed = page.getByRole('row', { name: /Paneer Tikka/ });
-    await expect(removed).toContainText('Spilled');
+    await expect(page).toHaveURL(/kind=removed_items/);
+    const removed = page.getByRole('row', { name: /Spilled/ });
+    await expect(removed).toContainText('Paneer Tikka');
     await expect(removed).toContainText('₹280.00');
+
+    await page.getByRole('link', { name: 'Deleted orders' }).click();
+    await expect(page).toHaveURL(/kind=deleted_orders/);
+    const deleted = page.getByRole('row', { name: /Kitchen ran out/ });
+    await expect(deleted).toContainText('Table 5');
+    await expect(deleted).toContainText('Paneer Tikka × 2');
+    await expect(deleted).toContainText('₹560.00');
+
+    // A range the database would refuse is a plain 400, not a server error.
+    const reversed = await page.request.get(
+      '/admin/reports/export?report=sales&from=2026-09-10&to=2026-09-01',
+    );
+    expect(reversed.status()).toBe(400);
 
     // A CSV download.
     await tabs.getByRole('link', { name: 'Dishes' }).click();
@@ -207,12 +224,16 @@ test.describe('reports', () => {
     await expect(page.getByRole('link', { name: 'Sales CSV' })).toBeHidden();
     await expect(page.getByText('Available on Growth')).toBeVisible();
 
-    // A locked tab, and a range the plan doesn't cover, explain themselves.
-    await page
+    // A locked tab says so, opens to the upgrade hint and shows no waiter numbers.
+    const waitersTab = page
       .getByRole('navigation', { name: 'Reports' })
-      .getByRole('link', { name: 'Waiters' })
-      .click();
-    await expect(page.getByText('Available on Growth')).toBeVisible();
+      .getByRole('link', { name: 'Waiters (Growth plan)' });
+    await waitersTab.click();
+    await expect(page).toHaveURL(/report=waiters/);
+    await expect(waitersTab).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByText('Waiters report').filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('Upgrade to Growth on the Subscription page')).toBeVisible();
+    await expect(page.locator('tr[data-waiter]')).toHaveCount(0);
     await page.goto('/admin/reports?from=2026-01-01&to=2026-01-31');
     // While the page streams in, a hidden copy can sit next to the shown one.
     await expect(

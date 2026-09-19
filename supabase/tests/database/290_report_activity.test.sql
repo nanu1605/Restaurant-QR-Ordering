@@ -10,6 +10,7 @@ select no_plan();
 
 -- ─── Fixtures ───────────────────────────────────────────────────────────────
 select tests.create_restaurant('p6-290-a') as rest_a \gset
+select tests.create_restaurant('p6-290-b') as rest_b \gset
 select tests.create_restaurant('p6-290-c') as rest_c \gset
 select tests.set_plan(:'rest_c', 'starter');
 select tests.add_member(:'rest_a', 'manager', 'a_manager') as a_manager \gset
@@ -21,11 +22,40 @@ select tests.create_ordering_fixture(:'rest_a', 'P6290A0000TABLE5') as fx \gset
 select :'fx'::jsonb ->> 'table' as table5 \gset
 
 insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
-values (:'rest_a', '6', 'P6290A0000TABLE6', 6), (:'rest_a', '7', 'P6290A0000TABLE7', 7);
+values
+  (:'rest_a', '6', 'P6290A0000TABLE6', 6),
+  (:'rest_a', '7', 'P6290A0000TABLE7', 7),
+  (:'rest_a', '8', 'P6290A0000TABLE8', 8);
 select
   (select id from public.dining_tables where qr_token = 'P6290A0000TABLE6') as table6,
-  (select id from public.dining_tables where qr_token = 'P6290A0000TABLE7') as table7
+  (select id from public.dining_tables where qr_token = 'P6290A0000TABLE7') as table7,
+  (select id from public.dining_tables where qr_token = 'P6290A0000TABLE8') as table8
 \gset
+
+-- Another restaurant's activity today; none of it may reach restaurant A.
+insert into public.audit_logs (
+  restaurant_id, actor_type, actor_role, actor_label, action, entity_type, entity_id, before,
+  after, reason
+)
+values
+  (:'rest_b', 'staff', 'manager', 'B_manager', 'order_item.removed', 'order_item',
+   gen_random_uuid(), '{"name": "Not ours", "status": "served", "quantity": 1}',
+   '{"removed_quantity": 1}', 'Not ours'),
+  (:'rest_b', 'staff', 'manager', 'B_manager', 'order.removed', 'order', gen_random_uuid(),
+   '{"round_number": 1, "items": []}', '{"status": "removed"}', 'Not ours'),
+  (:'rest_b', 'staff', 'manager', 'B_manager', 'bill.voided', 'bill', gen_random_uuid(),
+   '{"status": "active"}', '{"status": "void"}', 'Not ours');
+
+-- 52 removals on 12 September, a minute apart, for paging and order.
+insert into public.audit_logs (
+  restaurant_id, actor_type, actor_role, actor_label, action, entity_type, entity_id, before,
+  after, reason, created_at
+)
+select :'rest_a', 'staff', 'manager', 'A_manager', 'order_item.removed', 'order_item',
+       gen_random_uuid(), '{"name": "Paneer Tikka", "status": "placed", "quantity": 1}',
+       '{"removed_quantity": 1}', 'Batch ' || n,
+       '2026-09-12 12:00+05:30'::timestamptz + make_interval(mins => n)
+from generate_series(1, 52) as n;
 
 update public.restaurants
 set gst_mode = 'none', staff_can_remove_served_items = true
@@ -115,6 +145,8 @@ select pg_temp.served_round(:'s6', 2) as item6 \gset
 select pg_temp.open_session(:'table7') as s7 \gset
 select pg_temp.served_round(:'s7', 1) as item7 \gset
 select pg_temp.served_round(:'s7', 3) as item7b \gset
+select pg_temp.open_session(:'table8') as s8 \gset
+select pg_temp.served_round(:'s8', 1) as item8 \gset
 
 -- ─── Real activity ──────────────────────────────────────────────────────────
 select tests.authenticate_as(:'a_manager');
@@ -126,7 +158,13 @@ select (public.admin_get_bill(:'bill5'::uuid) -> 'bill' ->> 'invoice_number') as
 
 -- Table 6: billed, then voided without reopening.
 select public.admin_generate_bill(:'s6', 'none', 0, null, false) ->> 'bill_id' as bill6 \gset
+select (public.admin_get_bill(:'bill6'::uuid) -> 'bill' ->> 'invoice_number') as invoice6 \gset
 select public.admin_void_bill(:'bill6'::uuid, 'Wrong table', false);
+
+-- Table 8: billed, then voided and reopened to add a dish.
+select public.admin_generate_bill(:'s8', 'none', 0, null, false) ->> 'bill_id' as bill8 \gset
+select (public.admin_get_bill(:'bill8'::uuid) -> 'bill' ->> 'invoice_number') as invoice8 \gset
+select public.admin_void_bill(:'bill8'::uuid, 'Add more dishes', true);
 
 -- Table 7: the whole second round deleted, and a served dish removed.
 select public.admin_remove_order(pg_temp.order_of(:'item7b'), 'Kitchen ran out');
@@ -137,8 +175,17 @@ select pg_temp.activity('{"kind": "voids_discounts"}') as voids \gset
 
 select is(
   (:'voids'::jsonb) -> 'total',
-  '2'::jsonb,
-  'the void and the discount are both listed'
+  '3'::jsonb,
+  'both voids and the discount are listed, and nothing of another restaurant'
+);
+select is(
+  (
+    select jsonb_agg(r -> 'reopened')
+    from jsonb_array_elements((:'voids'::jsonb) -> 'rows') as r
+    where r ->> 'invoice_number' = :'invoice8'
+  ),
+  '[true]'::jsonb,
+  'a void that reopened the table says so'
 );
 select is(
   (
@@ -146,6 +193,7 @@ select is(
       r - 'at' - 'bill_id' - 'total_paise' order by r ->> 'kind'
     )
     from jsonb_array_elements((:'voids'::jsonb) -> 'rows') as r
+    where r ->> 'invoice_number' <> :'invoice8'
   ),
   format($json$
     [
@@ -157,7 +205,7 @@ select is(
        "amount_paise": 56000, "discount_type": null, "discount_value": null, "reopened": false,
        "actor_name": "A_manager", "actor_role": "manager", "reason": "Wrong table"}
     ]
-  $json$, :'invoice5', 'INV/2026-27/00002')::jsonb,
+  $json$, :'invoice5', :'invoice6')::jsonb,
   'each row carries the invoice, the amount, who did it, their role and why'
 );
 
@@ -191,15 +239,45 @@ select is(
 );
 
 -- ─── Paging, range and plan ─────────────────────────────────────────────────
+select pg_temp.activity('{"kind": "removed_items", "from": "2026-09-12"}') as page1 \gset
 select is(
-  pg_temp.activity('{"kind": "voids_discounts", "page": 2}') -> 'rows',
-  '[]'::jsonb,
-  'the second page of two rows is empty'
+  (:'page1'::jsonb) -> 'total',
+  '52'::jsonb,
+  'the total counts every removal in range'
 );
 select is(
-  pg_temp.activity('{"kind": "voids_discounts", "export": true}') -> 'page_size',
-  '1000000'::jsonb,
-  'an export is not paged'
+  jsonb_array_length((:'page1'::jsonb) -> 'rows'),
+  50,
+  'a page holds 50 rows'
+);
+select is(
+  (
+    select jsonb_agg(r ->> 'reason')
+    from (
+      select r from jsonb_array_elements((:'page1'::jsonb) -> 'rows') with ordinality as x (r, i)
+      where i <= 3
+      order by i
+    ) as firsts
+  ),
+  '["Batch 52", "Batch 51", "Batch 50"]'::jsonb,
+  'newest first'
+);
+select is(
+  (
+    select jsonb_agg(r ->> 'reason')
+    from jsonb_array_elements(
+      pg_temp.activity('{"kind": "removed_items", "from": "2026-09-12", "page": 2}') -> 'rows'
+    ) as r
+  ),
+  '["Batch 2", "Batch 1"]'::jsonb,
+  'the second page carries on where the first stopped'
+);
+select is(
+  jsonb_array_length(
+    pg_temp.activity('{"kind": "removed_items", "from": "2026-09-12", "export": true}') -> 'rows'
+  ),
+  52,
+  'an export has every row'
 );
 select is(
   jsonb_array_length(

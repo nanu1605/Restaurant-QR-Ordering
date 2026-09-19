@@ -10,6 +10,7 @@ select no_plan();
 
 -- ─── Fixtures ───────────────────────────────────────────────────────────────
 select tests.create_restaurant('p6-280-a') as rest_a \gset
+select tests.create_restaurant('p6-280-b') as rest_b \gset
 select tests.create_restaurant('p6-280-c') as rest_c \gset
 select tests.set_plan(:'rest_c', 'starter');
 select tests.add_member(:'rest_a', 'manager', 'a_manager') as a_manager \gset
@@ -172,6 +173,30 @@ insert into public.table_sessions (
 )
 values (:'rest_a', :'table7', '7', 'open', true, now() - interval '20 minutes', :'w_ravi');
 
+-- Deepak billed a late table at 1:30 am on the 13th: the 12th's business day.
+select pg_temp.served(:'table5', :'w_deepak', '2026-09-13 01:30+05:30', 6, 15000, 50, 1, 1, :'paneer');
+
+-- Another restaurant's waiter bills a table on the 10th and is serving one now;
+-- none of it may reach restaurant A's report.
+select tests.add_waiter(:'rest_b', 'Bobby') as w_bobby \gset
+insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
+values (:'rest_b', '5', 'P6280B0000TABLE5', 5), (:'rest_b', '6', 'P6280B0000TABLE6', 6);
+insert into public.menu_categories (restaurant_id, name, sort_order) values (:'rest_b', 'Starters', 1);
+insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise)
+select :'rest_b', c.id, 'Paneer Tikka', 'veg', 28000
+from public.menu_categories c where c.restaurant_id = :'rest_b';
+select pg_temp.served(
+  (select id from public.dining_tables where qr_token = 'P6280B0000TABLE5'), :'w_bobby',
+  '2026-09-10 13:00+05:30', 1, 99900, 30, 3, 3,
+  (select id from public.menu_items where restaurant_id = :'rest_b')
+);
+insert into public.table_sessions (
+  restaurant_id, dining_table_id, table_label_snapshot, status, is_approved, opened_at,
+  assigned_waiter_id
+)
+select :'rest_b', id, '6', 'open', true, now() - interval '10 minutes', :'w_bobby'
+from public.dining_tables where qr_token = 'P6280B0000TABLE6';
+
 -- Anita has since been deleted.
 update public.waiters set is_active = false, deleted_at = now() where id = :'w_anita';
 
@@ -237,6 +262,12 @@ select is(
   jsonb_array_length(public.admin_report_waiters('{"from": "2026-09-08"}') -> 'days'),
   0,
   'a day without bills has no chart rows'
+);
+
+select is(
+  public.admin_report_waiters('{"from": "2026-09-12", "to": "2026-09-13"}') -> 'days',
+  format('[{"date": "2026-09-12", "waiter_id": "%s", "tables": 1}]', :'w_deepak')::jsonb,
+  'a bill at 1:30 am lands on the previous business day in the chart'
 );
 
 select * from finish();

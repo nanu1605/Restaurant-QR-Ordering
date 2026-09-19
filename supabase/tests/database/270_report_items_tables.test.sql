@@ -10,6 +10,7 @@ select no_plan();
 
 -- ─── Fixtures ───────────────────────────────────────────────────────────────
 select tests.create_restaurant('p6-270-a') as rest_a \gset
+select tests.create_restaurant('p6-270-b') as rest_b \gset
 select tests.create_restaurant('p6-270-c') as rest_c \gset
 select tests.set_plan(:'rest_c', 'starter');
 select tests.add_member(:'rest_a', 'manager', 'a_manager') as a_manager \gset
@@ -27,7 +28,8 @@ values
   (:'rest_a', '8', 'P6270A0000TABLE8', 8, false);
 select
   (select id from public.dining_tables where qr_token = 'P6270A0000TABLE5') as table5,
-  (select id from public.dining_tables where qr_token = 'P6270A0000TABLE6') as table6
+  (select id from public.dining_tables where qr_token = 'P6270A0000TABLE6') as table6,
+  (select id from public.dining_tables where qr_token = 'P6270A0000TABLE8') as table8
 \gset
 
 insert into public.menu_categories (restaurant_id, name, sort_order)
@@ -189,6 +191,35 @@ select pg_temp.visit(:'table6', '2026-09-09 21:00+05:30', 4, format($json$
   [{"status": "accepted", "items": [{"item": "%1$s", "qty": 1, "price": 12000}]}]
 $json$, :'soup')::jsonb);
 
+-- 12 September: table 6 fills twice, table 5 once and table 8 (since taken out
+-- of use) once; table 7 stays empty.
+select pg_temp.visit(t.table_id, t.at, t.seq, format($json$
+  [{"status": "accepted", "items": [{"item": "%1$s", "qty": 1, "price": 28000}]}]
+$json$, :'paneer')::jsonb)
+from (
+  values
+    (:'table6'::uuid, '2026-09-12 13:00+05:30'::timestamptz, 5),
+    (:'table6'::uuid, '2026-09-12 20:00+05:30'::timestamptz, 6),
+    (:'table5'::uuid, '2026-09-12 21:00+05:30'::timestamptz, 7),
+    (:'table8'::uuid, '2026-09-12 22:00+05:30'::timestamptz, 8)
+) as t (table_id, at, seq);
+
+-- Another restaurant bills the same dishes' namesakes on 10 September; none of
+-- it may reach restaurant A's reports.
+insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
+values (:'rest_b', '5', 'P6270B0000TABLE5', 5);
+insert into public.menu_categories (restaurant_id, name, sort_order) values (:'rest_b', 'Starters', 1);
+insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise)
+select :'rest_b', c.id, 'Paneer Tikka', 'veg', 28000
+from public.menu_categories c where c.restaurant_id = :'rest_b';
+select pg_temp.visit(
+  (select id from public.dining_tables where qr_token = 'P6270B0000TABLE5'),
+  '2026-09-10 13:00+05:30', 1,
+  format($json$
+    [{"status": "accepted", "items": [{"item": "%1$s", "qty": 9, "price": 28000}]}]
+  $json$, (select id from public.menu_items where restaurant_id = :'rest_b'))::jsonb
+);
+
 -- The dish is renamed and moved to another category after being billed.
 update public.menu_items set name = 'Butter Chicken Special', category_id = :'mains'
 where id = :'chicken';
@@ -271,6 +302,24 @@ select is(
   :'turnover'::jsonb -> 'overall',
   '{"sessions": 2, "minutes": 75, "total_paise": 160000, "tables": 3, "per_table": 0.67}'::jsonb,
   'turnover counts the sessions per active table'
+);
+
+select public.admin_report_tables('{"from": "2026-09-12"}') as busy_day \gset
+select is(
+  (
+    select jsonb_agg(t - 'table_id')
+    from jsonb_array_elements(:'busy_day'::jsonb -> 'tables') as t
+  ),
+  '[{"label": "6", "is_active": true, "sessions": 2, "minutes": 75, "total_paise": 56000, "average_paise": 28000},
+    {"label": "5", "is_active": true, "sessions": 1, "minutes": 75, "total_paise": 28000, "average_paise": 28000},
+    {"label": "8", "is_active": false, "sessions": 1, "minutes": 75, "total_paise": 28000, "average_paise": 28000},
+    {"label": "7", "is_active": true, "sessions": 0, "minutes": 0, "total_paise": 0, "average_paise": 0}]'::jsonb,
+  'the busiest table comes first, and a table taken out of use still shows the sittings it had'
+);
+select is(
+  (:'busy_day'::jsonb -> 'overall' -> 'per_table')::numeric,
+  1.00,
+  'four sittings over the four tables listed'
 );
 
 select * from finish();

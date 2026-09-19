@@ -133,6 +133,23 @@ select pg_temp.sale(:'table_a', '2026-09-09 23:00+05:30', 5, 10000, 0, 0, 10000,
   false, 'active', '[{"mode": "other", "amount": 10500}]');
 select pg_temp.sale(:'table_b', '2026-09-10 13:00+05:30', 1, 99900, 0, 0, 99900, 0, 0);
 
+-- ─── Business dates ─────────────────────────────────────────────────────────
+select is(
+  private.business_date('2026-09-11 01:30+05:30', 'Asia/Kolkata', 4),
+  '2026-09-10'::date,
+  '1:30 am belongs to the previous business day'
+);
+select is(
+  private.business_date('2026-09-11 03:59:59+05:30', 'Asia/Kolkata', 4),
+  '2026-09-10'::date,
+  '03:59:59 still belongs to the previous business day'
+);
+select is(
+  private.business_date('2026-09-11 04:00+05:30', 'Asia/Kolkata', 4),
+  '2026-09-11'::date,
+  '04:00 starts the next business day'
+);
+
 -- ─── Roles ──────────────────────────────────────────────────────────────────
 select tests.authenticate_as(:'a_waiter');
 select throws_ok($$ select public.admin_report_sales('{}') $$, 'P0001', 'FORBIDDEN', 'waiters cannot see reports');
@@ -238,6 +255,11 @@ select is(
   public.admin_report_sales('{}') ->> 'from',
   public.admin_report_sales('{}') ->> 'today',
   'no dates means today'
+);
+select is(
+  public.admin_report_sales('{}') ->> 'today',
+  (((now() at time zone 'Asia/Kolkata') - interval '4 hours')::date)::text,
+  'today is the business date on the restaurant''s clock, days starting at 4 am'
 );
 select is(
   public.admin_report_sales('{"from": "2026-09-10", "export": true}') -> 'summary' -> 'bills',
