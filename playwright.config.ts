@@ -34,7 +34,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|staff-board|billing|reports)\.spec\.ts/,
+        /(live-orders|staff-board|billing|reports|super-admin)\.spec\.ts/,
       ],
     },
   ],
