@@ -721,6 +721,24 @@ bottom of each section.
   `datePresets`, `addDays`, `hrefWithParams`), used by both Total orders and Reports.
 - **Not added:** Total orders keeps its own screen without a CSV (it isn't a report), and menu costs
   or profit stay out of scope.
+- **Review fixes (accessibility, money, React, tests):**
+  - Unpaid bills left the "How it was paid" table for a line of their own.
+  - Round off joined the on-screen summary, with a note that net sales, GST and round off make the
+    total billed.
+  - Negative amounts in a CSV stay numbers (the formula guard skips plain numbers), so a round off
+    of `-0.50` adds up in a spreadsheet.
+  - The heatmap got a legend, a "Show the numbers" table, a Busy hours CSV link, rows only for the
+    weekdays the range covers and short screen-reader text on busy cells only.
+  - The category chart and the waiter chart got the same numbers table.
+  - Wide tables scroll inside a focusable region, so the keyboard can scroll them.
+  - Locked tabs carry a lock icon and "(Growth plan)" in their name.
+  - An owner on Starter is pointed to the Subscription page, while a manager is told to ask the
+    owner.
+  - An empty waiter report explains itself, and Reports has a loading skeleton.
+  - The export route answers a reversed, too-long or end-only range with a 400.
+  - The dashboard stays up if today's sales can't be prefetched; the browser fetches them instead.
+  - Links styled as outline buttons had lost their border across the app, because the button
+    classes weren't merged. `buttonVariants` now merges them.
 
 ### Tests
 
@@ -728,9 +746,12 @@ bottom of each section.
   round off), a 1:30 am bill counted in the previous business day, 03:59 versus 04:00, zero-filled
   days, the heatmap's business-day weekday, Starter's today/yesterday limit and its refusals; dish
   and category sales (merged rounds, removed, cancelled, rejected and waiting dishes left out,
-  renames and category moves); table turnover with quiet tables; the waiter report including a
-  handed-over table, a deleted waiter and open tables now; and the activity logs built from real
-  removals, bills and voids, with paging and export.
+  renames and category moves); table turnover with quiet tables, busiest first and a table taken
+  out of use; the waiter report including a handed-over table, a deleted waiter, open tables now
+  and a 1:30 am bill on the chart; and the activity logs built from real removals, bills and voids
+  (one reopening the table), with 52 rows to prove paging, order and export. Each file also seeds a
+  second restaurant's data to show none of it leaks, and `today` is checked against the
+  restaurant's clock directly.
 - **Unit:** the shared date-range helpers, the report URL params, the CSV writer (quoting, formula
   guard, byte-order mark, rupees, the restaurant clock) and the parsers.
 - **E2E (`reports.spec.ts`):** the dashboard's numbers, alerts and a bill appearing live; the sales,
