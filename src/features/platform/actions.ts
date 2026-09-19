@@ -23,6 +23,7 @@ import {
   manualPaymentSchema,
   onboardSchema,
   ownerPasswordSchema,
+  planFormSchema,
   restaurantIdSchema,
   suspendSchema,
   type ChangePlanInput,
@@ -30,6 +31,7 @@ import {
   type ManualPaymentInput,
   type OnboardFormInput,
   type OwnerPasswordInput,
+  type PlanFormInput,
   type SuspendInput,
 } from './schemas';
 
@@ -248,4 +250,35 @@ export async function onboardNewRestaurant(
     console.error('Onboarding failed:', error.code, error.message);
     return actionError(GENERIC_ERROR);
   }
+}
+
+/** Saves a plan (spec §13.4 Plans); the database audits what changed. */
+export async function updatePlan(planId: string, input: PlanFormInput): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(planId);
+  const parsed = planFormSchema.safeParse(input);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const plan = parsed.data;
+  const limit = (text: string) => (text === '' ? null : Number(text));
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_update_plan', {
+    p_plan_id: id.data,
+    p_patch: {
+      name: plan.name,
+      price_monthly_paise: parsePriceInput(plan.priceMonthly),
+      price_yearly_paise: parsePriceInput(plan.priceYearly),
+      max_tables: limit(plan.maxTables),
+      max_staff: limit(plan.maxStaff),
+      features: plan.features,
+      razorpay_plan_id_monthly: plan.razorpayMonthly || null,
+      razorpay_plan_id_yearly: plan.razorpayYearly || null,
+      is_active: plan.isActive,
+      sort_order: plan.sortOrder,
+    },
+  });
+  if (error) return fromDbError(error, 'platform_update_plan');
+  refresh();
+  return actionOk();
 }

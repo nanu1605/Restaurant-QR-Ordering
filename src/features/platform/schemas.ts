@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { CUISINE_SETS } from '@/features/menu/default-categories';
 import { parsePriceInput } from '@/features/menu/schemas';
+import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 import { GST_RATES_BPS } from '@/features/settings/schemas';
 import { RESTAURANT_CODE_PATTERN, USERNAME_PATTERN } from '@/lib/auth/staff-email';
 import { addDays, isDate } from '@/lib/date-range';
@@ -180,3 +181,46 @@ export function suggestRestaurantCode(name: string): string {
     .replace(/-+$/, '');
   return code.length >= 3 ? code : '';
 }
+
+// ─── Plans editor (spec §13.4, docs/DECISIONS.md P7-10) ─────────────────────
+const rupeesSchema = z
+  .string()
+  .trim()
+  .refine((text) => parsePriceInput(text) !== null, 'Enter an amount in rupees, e.g. 899.');
+const limitSchema = z
+  .string()
+  .trim()
+  .refine(
+    (text) => text === '' || (/^\d+$/.test(text) && Number(text) >= 1 && Number(text) <= 10000),
+    'Leave empty for unlimited, or enter 1 to 10,000.',
+  );
+const razorpayIdSchema = z
+  .string()
+  .trim()
+  .refine(
+    (text) => text === '' || /^[A-Za-z0-9_]{1,60}$/.test(text),
+    'Paste the id, e.g. plan_Nx12.',
+  );
+
+export const planFormSchema = z.object({
+  name: z.string().trim().min(1, 'Enter a name.').max(40, 'Use 40 characters or fewer.'),
+  priceMonthly: rupeesSchema,
+  priceYearly: rupeesSchema,
+  maxTables: limitSchema,
+  maxStaff: limitSchema,
+  features: z.object(
+    Object.fromEntries(FEATURE_KEYS.map((key) => [key, z.boolean()])) as Record<
+      FeatureKey,
+      z.ZodBoolean
+    >,
+  ),
+  razorpayMonthly: razorpayIdSchema,
+  razorpayYearly: razorpayIdSchema,
+  isActive: z.boolean(),
+  sortOrder: z.coerce
+    .number({ message: 'Enter a number.' })
+    .int('Enter a whole number.')
+    .min(0, '0 or more.')
+    .max(1000, '1000 or less.'),
+});
+export type PlanFormInput = z.input<typeof planFormSchema>;
