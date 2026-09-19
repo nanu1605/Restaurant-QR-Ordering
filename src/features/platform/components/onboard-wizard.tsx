@@ -51,6 +51,9 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
   // The code follows the name until someone edits it.
   const [slugEdited, setSlugEdited] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // "Create restaurant" takes Next's place, so it waits a moment after the
+  // last step appears: a double-click on Next must not also create.
+  const [createReady, setCreateReady] = useState(true);
 
   const {
     register,
@@ -59,7 +62,6 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
     trigger,
     setError,
     setValue,
-    getValues,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<OnboardFormInput>({
@@ -87,10 +89,15 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
     },
   });
   const gstMode = useWatch({ control, name: 'gstMode' });
+  const watched = useWatch({ control }) as OnboardFormInput;
   const current = ONBOARD_STEPS[step]!;
   const last = step === ONBOARD_STEPS.length - 1;
 
   function goTo(next: number) {
+    if (next === ONBOARD_STEPS.length - 1) {
+      setCreateReady(false);
+      setTimeout(() => setCreateReady(true), 600);
+    }
     setStep(next);
     // Move focus to the new step's heading so keyboard and screen reader users follow.
     requestAnimationFrame(() => headingRef.current?.focus());
@@ -190,7 +197,13 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
       <form
         onSubmit={
           last
-            ? (event) => handleSubmit(create)(event)
+            ? (event) => {
+                if (!createReady) {
+                  event.preventDefault();
+                  return;
+                }
+                void handleSubmit(create)(event);
+              }
             : (event) => {
                 event.preventDefault();
                 void next();
@@ -356,8 +369,8 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
             </Field>
             {field('trialDays', 'Trial days', { type: 'number', inputMode: 'numeric' })}
             <Summary
-              values={getValues()}
-              planName={plans.find((plan) => plan.code === getValues().plan)?.name}
+              values={watched}
+              planName={plans.find((plan) => plan.code === watched.plan)?.name}
             />
           </div>
         )}
@@ -378,7 +391,7 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
           >
             Back
           </Button>
-          <Button type="submit" size="touch" disabled={isSubmitting}>
+          <Button type="submit" size="touch" disabled={isSubmitting || (last && !createReady)}>
             {last ? (isSubmitting ? 'Creating…' : 'Create restaurant') : 'Next'}
           </Button>
         </div>
@@ -395,7 +408,7 @@ function Summary({ values, planName }: { values: OnboardFormInput; planName?: st
     >
       <dt className="text-ink-muted">Restaurant</dt>
       <dd className="text-ink">
-        {values.name} ({values.slug})
+        {values.name} ({values.slug.trim().toLowerCase()})
       </dd>
       <dt className="text-ink-muted">Owner</dt>
       <dd className="text-ink">
@@ -404,7 +417,9 @@ function Summary({ values, planName }: { values: OnboardFormInput; planName?: st
       <dt className="text-ink-muted">GST</dt>
       <dd className="text-ink">{GST_MODE_LABELS[values.gstMode]}</dd>
       <dt className="text-ink-muted">Trial</dt>
-      <dd className="text-ink">{planName ?? values.plan}</dd>
+      <dd className="text-ink">
+        {planName ?? values.plan}, {String(values.trialDays)} days
+      </dd>
     </dl>
   );
 }
