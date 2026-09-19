@@ -46,6 +46,39 @@ begin
 end;
 $$;
 
+-- A platform admin (spec §8.1).
+create or replace function tests.create_platform_admin(p_email text)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_id uuid := tests.create_user(p_email);
+begin
+  insert into public.platform_admins (user_id) values (v_id);
+  return v_id;
+end;
+$$;
+
+-- Act as a platform admin. Platform access needs an aal2 session (password
+-- + TOTP, docs/DECISIONS.md P7-1); pass 'aal1' for a password-only session.
+create or replace function tests.authenticate_as_platform_admin(
+  p_user_id uuid,
+  p_aal text default 'aal2'
+)
+returns void
+language plpgsql
+as $$
+begin
+  perform set_config('role', 'authenticated', true);
+  perform set_config(
+    'request.jwt.claims',
+    json_build_object('sub', p_user_id, 'role', 'authenticated', 'aal', p_aal)::text,
+    true
+  );
+  perform set_config('request.jwt.claim.sub', p_user_id::text, true);
+end;
+$$;
+
 create or replace function tests.as_anon()
 returns void
 language plpgsql

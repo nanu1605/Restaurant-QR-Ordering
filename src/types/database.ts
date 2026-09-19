@@ -1499,6 +1499,7 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
       }
+      platform_admin_status: { Args: never; Returns: string }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
       restaurant_access: {
         Args: { p_at?: string; p_restaurant_id: string }

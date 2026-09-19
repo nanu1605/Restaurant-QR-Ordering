@@ -18,8 +18,7 @@ select tests.add_member(:'rest_a', 'kitchen', 'a_kitchen') as a_kitchen \gset
 select tests.add_member(:'rest_a', 'kitchen', 'a_former') as a_former \gset
 update public.restaurant_members set is_active = false where user_id = :'a_former';
 
-select tests.create_user('platform@admin.test') as platform_admin \gset
-insert into public.platform_admins (user_id) values (:'platform_admin');
+select tests.create_platform_admin('platform@admin.test') as platform_admin \gset
 
 select id as a_table from public.dining_tables where restaurant_id = :'rest_a' \gset
 select id as b_category from public.menu_categories where restaurant_id = :'rest_b' \gset
@@ -206,7 +205,7 @@ select is((select count(*) from public.restaurants), 0::bigint, 'inactive member
 select is((select count(*) from public.orders), 0::bigint, 'inactive member sees no orders');
 
 -- ─── Platform admin ─────────────────────────────────────────────────────────
-select tests.authenticate_as(:'platform_admin');
+select tests.authenticate_as_platform_admin(:'platform_admin');
 select is(
   (select count(*) from public.restaurants where id in (:'rest_a', :'rest_b')), 2::bigint,
   'platform admin reads every restaurant'

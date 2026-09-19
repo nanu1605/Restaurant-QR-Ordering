@@ -85,6 +85,7 @@ select set_eq(
   $$
     values
       ('public.is_platform_admin'),
+      ('public.platform_admin_status'),
       ('public.member_role'),
       ('public.has_role'),
       ('public.restaurant_access'),
