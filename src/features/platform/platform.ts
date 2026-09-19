@@ -377,3 +377,15 @@ export function formatPeriod(start: string | null, end: string | null): string {
   const lastDay = new Date(new Date(end).getTime() - 24 * 60 * 60 * 1000).toISOString();
   return `${formatDate(start)} – ${formatDate(lastDay)}`;
 }
+
+/**
+ * The authenticator QR code as an image src. GoTrue returns the SVG as raw
+ * text behind a data: prefix, with a trailing newline, which next/image
+ * rejects and a `#` in the markup would cut short, so it is percent-encoded.
+ */
+export function qrCodeDataUrl(qrCode: string): string {
+  const raw = qrCode.trim();
+  if (raw.startsWith('data:') && raw.slice(0, raw.indexOf(',')).endsWith(';base64')) return raw;
+  const svg = raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.trim())}`;
+}

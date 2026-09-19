@@ -9,6 +9,8 @@ import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { createClient } from '@/lib/supabase/server';
 
+import { qrCodeDataUrl } from './platform';
+
 /**
  * Two-step sign-in for platform admins (spec §9.5, docs/DECISIONS.md P7-2):
  * enrol an authenticator app once, then enter its code after each password
@@ -49,7 +51,7 @@ export async function startTotpEnrolment(): Promise<ActionResult<TotpEnrolment>>
   const { qr_code: qrCode, secret } = enrolled.data.totp;
   return actionOk({
     factorId: enrolled.data.id,
-    qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/svg+xml;utf-8,${qrCode}`,
+    qrCode: qrCodeDataUrl(qrCode),
     secret,
   });
 }

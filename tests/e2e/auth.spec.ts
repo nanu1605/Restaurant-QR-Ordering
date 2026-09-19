@@ -76,6 +76,11 @@ test('platform admin needs a second factor, then lands on super-admin', async ({
   const main = page.getByRole('main');
   await main.getByRole('button', { name: 'Set up authenticator app' }).click();
   const secret = (await main.getByTestId('totp-secret').textContent())?.trim() ?? '';
+  // The QR code renders as an image, not a broken one.
+  const qr = main.getByRole('img', { name: /QR code/ });
+  await expect
+    .poll(() => qr.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
   await main.getByLabel('6-digit code').fill('000000');
   await main.getByRole('button', { name: 'Verify' }).click();
   await expect(main.getByRole('alert')).toContainText("That code didn't work");

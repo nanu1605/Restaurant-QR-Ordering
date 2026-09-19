@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { readAuditFilters, readRestaurantFilters } from '@/features/platform/params';
-import { formatPeriod, todayInIndia } from '@/features/platform/platform';
+import { formatPeriod, qrCodeDataUrl, todayInIndia } from '@/features/platform/platform';
 import {
   generatePassword,
   manualPaymentSchema,
@@ -223,5 +223,23 @@ describe('list filters from the URL', () => {
       page: 3,
     });
     expect(readAuditFilters({ action: 'drop table;' }).action).toBeUndefined();
+  });
+});
+
+describe('qrCodeDataUrl', () => {
+  it('percent-encodes the raw svg GoTrue returns and drops the trailing newline', () => {
+    const svg = '<?xml version="1.0"?>\n<svg fill="#000"></svg>';
+    const url = qrCodeDataUrl(`data:image/svg+xml;utf-8,${svg}\n`);
+    expect(url).toBe(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+    expect(url).not.toMatch(/[\s#<]/);
+  });
+
+  it('accepts bare svg and keeps base64 data urls as they are', () => {
+    expect(qrCodeDataUrl('<svg></svg>')).toBe(
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg></svg>')}`,
+    );
+    expect(qrCodeDataUrl(' data:image/png;base64,iVBORw0KGgo= ')).toBe(
+      'data:image/png;base64,iVBORw0KGgo=',
+    );
   });
 });
