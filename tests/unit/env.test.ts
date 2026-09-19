@@ -35,8 +35,10 @@ describe('parseServerEnv', () => {
     const env = parseServerEnv({ ...validServer, PLATFORM_TRIAL_DAYS: '' });
     expect(env.PLATFORM_TRIAL_DAYS).toBe(14);
     expect(env.PLATFORM_GRACE_DAYS).toBe(7);
-    expect(env.MENU_IMPORT_MODEL).toBe('claude-sonnet-5');
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.MENU_IMPORT_MODEL).toBe('google/gemini-3.8-flash');
+    expect(env.MENU_IMPORT_BASE_URL).toBe('https://api.commandcode.ai/provider/v1');
+    expect(env.MENU_IMPORT_FALLBACK_BASE_URL).toBe('https://openrouter.ai/api/v1');
+    expect(env.MENU_IMPORT_API_KEY).toBeUndefined();
   });
 
   it('coerces numeric settings and rejects a short cookie secret', () => {

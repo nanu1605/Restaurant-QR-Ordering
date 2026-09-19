@@ -11,6 +11,10 @@ import { emptyToUndefined, formatIssues, optionalString } from './env';
 
 const positiveInt = (fallback: number) =>
   z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(fallback));
+const stringWithDefault = (fallback: string) =>
+  z.preprocess(emptyToUndefined, z.string().min(1).default(fallback));
+const urlWithDefault = (fallback: string) =>
+  z.preprocess(emptyToUndefined, z.url({ protocol: /^https?$/ }).default(fallback));
 
 const serverSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
@@ -31,8 +35,16 @@ const serverSchema = z.object({
   RAZORPAY_KEY_SECRET: optionalString,
   RAZORPAY_WEBHOOK_SECRET: optionalString,
   CRON_SECRET: optionalString,
-  ANTHROPIC_API_KEY: optionalString,
-  MENU_IMPORT_MODEL: z.preprocess(emptyToUndefined, z.string().min(1).default('claude-sonnet-5')),
+  // Menu photo import (docs/DECISIONS.md P7-12): any OpenAI-compatible
+  // /chat/completions API; the fallback takes a page when the first fails.
+  MENU_IMPORT_API_KEY: optionalString,
+  MENU_IMPORT_BASE_URL: urlWithDefault('https://api.commandcode.ai/provider/v1'),
+  MENU_IMPORT_MODEL: stringWithDefault('google/gemini-3.8-flash'),
+  MENU_IMPORT_FALLBACK_API_KEY: optionalString,
+  MENU_IMPORT_FALLBACK_BASE_URL: urlWithDefault('https://openrouter.ai/api/v1'),
+  MENU_IMPORT_FALLBACK_MODEL: stringWithDefault('google/gemini-3.8-flash'),
+  // Rupees per US dollar, for the cost of each import (P7-13).
+  MENU_IMPORT_USD_INR: z.preprocess(emptyToUndefined, z.coerce.number().positive().default(96)),
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
   SENTRY_DSN: optionalString,
