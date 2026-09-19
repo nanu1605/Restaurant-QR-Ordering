@@ -193,10 +193,13 @@ begin
     ), '[]'::jsonb)
     into v_hours
     from (
+      -- The business date written out (private.business_date's answer) so it
+      -- is computed inline: a function call per bill made a year's range 5x slower.
       select
-        extract(isodow from private.business_date(
-          b.generated_at, v_window.timezone, v_window.start_hour
-        ))::int as weekday,
+        extract(isodow from (
+          (b.generated_at at time zone v_window.timezone)
+          - make_interval(hours => v_window.start_hour)
+        )::date)::int as weekday,
         extract(hour from b.generated_at at time zone v_window.timezone)::int as hour,
         count(*) as bills,
         sum(b.grand_total_paise) as total_paise

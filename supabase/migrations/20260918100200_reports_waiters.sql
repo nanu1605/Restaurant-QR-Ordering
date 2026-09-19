@@ -29,7 +29,12 @@ begin
       b.session_id,
       b.grand_total_paise,
       extract(epoch from b.generated_at - s.opened_at) / 60 as minutes,
-      private.business_date(b.generated_at, v_window.timezone, v_window.start_hour) as day
+      -- The business date inline (see private.business_date): one call per bill
+      -- made a year's range 5x slower.
+      (
+        (b.generated_at at time zone v_window.timezone)
+        - make_interval(hours => v_window.start_hour)
+      )::date as day
     from public.bills b
     join public.table_sessions s on s.restaurant_id = b.restaurant_id and s.id = b.session_id
     where b.restaurant_id = v_window.restaurant_id and b.status = 'active'
