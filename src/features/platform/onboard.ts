@@ -29,6 +29,19 @@ export type OnboardInput = {
   plan?: string;
   city?: string;
   cuisine?: CuisineSet;
+  /** More details from the super-admin wizard (all optional). */
+  legalName?: string;
+  addressLine?: string;
+  state?: string;
+  pincode?: string;
+  phone?: string;
+  /** The restaurant's contact email (not the owner's login). */
+  email?: string;
+  gstMode?: 'none' | 'regular' | 'composition';
+  gstRateBps?: number;
+  pricesIncludeTax?: boolean;
+  /** Trial length; the platform default when left out. */
+  trialDays?: number;
   staffEmailDomain: string;
   /** Platform admin doing the onboarding (null = script/system). */
   actorUserId?: string;
@@ -63,9 +76,20 @@ export async function onboardRestaurant(
     throw new OnboardError('The owner password must be at least 8 characters.', 'WEAK_PASSWORD');
   }
 
-  const ownerEmail =
-    input.ownerEmail?.trim().toLowerCase() ||
-    staffEmail(ownerUsername, slug, input.staffEmailDomain);
+  const realEmail = input.ownerEmail?.trim().toLowerCase() || undefined;
+  const ownerEmail = realEmail ?? staffEmail(ownerUsername, slug, input.staffEmailDomain);
+
+  // Checked before the login exists: the staff login address contains the
+  // code, so a second try with a taken code would otherwise fail as "email
+  // exists" (the database checks again).
+  const { data: taken, error: slugError } = await admin
+    .from('restaurants')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (slugError)
+    throw new OnboardError(`Could not check the code: ${slugError.message}`, 'CHECK_FAILED');
+  if (taken) throw new OnboardError('That restaurant code is taken.', 'SLUG_TAKEN');
 
   const { data: created, error: createUserError } = await admin.auth.admin.createUser({
     email: ownerEmail,
@@ -74,9 +98,15 @@ export async function onboardRestaurant(
     user_metadata: { display_name: input.ownerName.trim() },
   });
   if (createUserError || !created.user) {
+    const code =
+      createUserError?.code === 'email_exists'
+        ? realEmail
+          ? 'EMAIL_TAKEN'
+          : 'SLUG_TAKEN'
+        : (createUserError?.code ?? 'CREATE_USER_FAILED');
     throw new OnboardError(
       `Could not create the owner login: ${createUserError?.message ?? 'unknown error'}`,
-      createUserError?.code ?? 'CREATE_USER_FAILED',
+      code,
     );
   }
 
@@ -85,6 +115,16 @@ export async function onboardRestaurant(
       name: input.name.trim(),
       slug,
       city: input.city,
+      legal_name: input.legalName,
+      address_line: input.addressLine,
+      state: input.state,
+      pincode: input.pincode,
+      phone: input.phone,
+      email: input.email,
+      gst_mode: input.gstMode,
+      gst_rate_bps: input.gstRateBps,
+      prices_include_tax: input.pricesIncludeTax,
+      trial_days: input.trialDays,
       plan_code: input.plan ?? 'growth',
       actor_user_id: input.actorUserId,
       categories: [...DEFAULT_CATEGORY_SETS[input.cuisine ?? DEFAULT_CUISINE]],

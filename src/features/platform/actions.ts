@@ -12,19 +12,23 @@ import {
 } from '@/lib/action-result';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { GENERIC_ERROR } from '@/lib/db-errors';
+import { getServerEnv } from '@/lib/env.server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
+import { onboardRestaurant, OnboardError } from './onboard';
 import {
   changePlanSchema,
   extendTrialSchema,
   manualPaymentSchema,
+  onboardSchema,
   ownerPasswordSchema,
   restaurantIdSchema,
   suspendSchema,
   type ChangePlanInput,
   type ExtendTrialInput,
   type ManualPaymentInput,
+  type OnboardFormInput,
   type OwnerPasswordInput,
   type SuspendInput,
 } from './schemas';
@@ -168,4 +172,80 @@ export async function resetOwnerPassword(
     return actionError(GENERIC_ERROR);
   }
   return actionOk();
+}
+
+export type OnboardHandover = {
+  restaurantId: string;
+  slug: string;
+  ownerUsername: string;
+  /** The owner's real email, when one was given (they can log in with it too). */
+  ownerEmail: string | null;
+};
+
+// Onboarding errors that belong to one field of the wizard.
+const ONBOARD_FIELD_ERRORS: Record<string, { field: keyof OnboardFormInput; message: string }> = {
+  SLUG_TAKEN: { field: 'slug', message: 'That restaurant code is taken. Choose another.' },
+  INVALID_SLUG: { field: 'slug', message: 'Use 3–32 lowercase letters, numbers or hyphens.' },
+  EMAIL_TAKEN: { field: 'ownerEmail', message: 'This email already has a login. Use another.' },
+  USER_ALREADY_MEMBER: {
+    field: 'ownerEmail',
+    message: 'This email already belongs to a restaurant. Use another.',
+  },
+  INVALID_OWNER: { field: 'ownerUsername', message: 'Check the owner name and username.' },
+  WEAK_PASSWORD: { field: 'ownerPassword', message: 'Use at least 8 characters.' },
+  weak_password: { field: 'ownerPassword', message: 'Choose a longer, harder to guess password.' },
+  PLAN_NOT_FOUND: { field: 'plan', message: 'That plan is switched off. Choose another.' },
+};
+
+/**
+ * Creates a restaurant with its owner login and a trial (spec §13.4
+ * onboarding, docs/DECISIONS.md P7-9). The owner's password stays in the
+ * browser for the handover card; it isn't sent back.
+ */
+export async function onboardNewRestaurant(
+  input: OnboardFormInput,
+): Promise<ActionResult<OnboardHandover>> {
+  const user = await requirePlatformAdmin();
+  const parsed = onboardSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const form = parsed.data;
+  const optional = (value: string) => value || undefined;
+
+  try {
+    const result = await onboardRestaurant(createAdminClient(), {
+      name: form.name,
+      slug: form.slug,
+      cuisine: form.cuisine,
+      legalName: optional(form.legalName),
+      addressLine: optional(form.addressLine),
+      city: optional(form.city),
+      state: optional(form.state),
+      pincode: optional(form.pincode),
+      phone: optional(form.phone),
+      email: optional(form.email),
+      ownerName: form.ownerName,
+      ownerUsername: form.ownerUsername,
+      ownerEmail: optional(form.ownerEmail),
+      ownerPassword: form.ownerPassword,
+      gstMode: form.gstMode,
+      gstRateBps: form.gstRateBps,
+      pricesIncludeTax: form.pricesIncludeTax,
+      plan: form.plan,
+      trialDays: form.trialDays,
+      staffEmailDomain: getServerEnv().STAFF_EMAIL_DOMAIN,
+      actorUserId: user.id,
+    });
+    return actionOk({
+      restaurantId: result.restaurantId,
+      slug: result.slug,
+      ownerUsername: result.ownerUsername,
+      ownerEmail: form.ownerEmail || null,
+    });
+  } catch (error) {
+    if (!(error instanceof OnboardError)) throw error;
+    const known = ONBOARD_FIELD_ERRORS[error.code];
+    if (known) return actionError(known.message, { [known.field]: known.message });
+    console.error('Onboarding failed:', error.code, error.message);
+    return actionError(GENERIC_ERROR);
+  }
 }
