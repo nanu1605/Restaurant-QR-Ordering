@@ -103,6 +103,43 @@ export async function listPlans() {
   return planSchema.array().parse(data);
 }
 
+export const WEBHOOK_PAGE_SIZE = 50;
+
+/** Razorpay webhooks, newest first; platform admins read them through RLS. */
+export async function listWebhookEvents({
+  failedOnly,
+  page,
+}: {
+  failedOnly: boolean;
+  page: number;
+}) {
+  const supabase = await createClient();
+  const from = (page - 1) * WEBHOOK_PAGE_SIZE;
+  let query = supabase
+    .from('webhook_events')
+    .select('id, event_id, event_type, payload, received_at, processed_at, processing_error', {
+      count: 'exact',
+    })
+    .order('received_at', { ascending: false })
+    .range(from, from + WEBHOOK_PAGE_SIZE - 1);
+  if (failedOnly) query = query.not('processing_error', 'is', null);
+  const { data, error, count } = await query;
+  if (error) throw new Error(`Could not load webhooks: ${error.message}`);
+  return { rows: data, total: count ?? 0 };
+}
+
+/** The setup fee a payment link suggests (paise). */
+export async function getSetupFeePaise(): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('setup_fee_paise')
+    .eq('id', 1)
+    .single();
+  if (error) throw new Error(`Could not load platform settings: ${error.message}`);
+  return data.setup_fee_paise;
+}
+
 export async function getTrialDays(): Promise<number> {
   const supabase = await createClient();
   const { data, error } = await supabase

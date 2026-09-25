@@ -1,9 +1,25 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Ban, CalendarPlus, CreditCard, KeyRound, RotateCcw, Tags } from 'lucide-react';
+import {
+  Ban,
+  CalendarPlus,
+  CircleStop,
+  CreditCard,
+  KeyRound,
+  Link2,
+  RefreshCw,
+  RotateCcw,
+  Tags,
+} from 'lucide-react';
 import { useId, useState, useTransition, type ReactNode } from 'react';
-import { useForm, type FieldValues, type Path, type UseFormSetError } from 'react-hook-form';
+import {
+  useForm,
+  useWatch,
+  type FieldValues,
+  type Path,
+  type UseFormSetError,
+} from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
@@ -30,13 +46,17 @@ import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { ActionResult } from '@/lib/action-result';
+import { APP_NAME } from '@/lib/config';
 
 import {
+  cancelRestaurantAutopay,
   changePlan,
   extendTrial,
   recordManualPayment,
   resetOwnerPassword,
+  sendPaymentLink,
   suspendRestaurant,
+  syncRazorpay,
   unsuspendRestaurant,
 } from '../actions';
 import { MANUAL_MODE_LABELS, MANUAL_MODES, type SubscriptionStatus } from '../platform';
@@ -46,19 +66,29 @@ import {
   generatePassword,
   manualPaymentSchema,
   ownerPasswordSchema,
+  paymentLinkSchema,
   periodEnd,
   suspendSchema,
   type ChangePlanInput,
   type ExtendTrialInput,
   type ManualPaymentInput,
   type OwnerPasswordInput,
+  type PaymentLinkInput,
   type SuspendInput,
 } from '../schemas';
 
 const SELECT_CLASS =
   'h-9 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
 
-type Dialogs = 'trial' | 'plan' | 'payment' | 'suspend' | 'unsuspend' | null;
+type Dialogs = 'trial' | 'plan' | 'payment' | 'link' | 'autopay' | 'suspend' | 'unsuspend' | null;
+
+/** What a payment link form starts with (paise). */
+export type LinkDefaults = {
+  planName: string;
+  monthlyPaise: number;
+  yearlyPaise: number;
+  setupFeePaise: number;
+};
 
 type RestaurantActionsProps = {
   restaurantId: string;
@@ -68,6 +98,12 @@ type RestaurantActionsProps = {
   plans: { code: string; name: string }[];
   /** The first day a new payment would cover ('YYYY-MM-DD', India). */
   paymentStart: string;
+  /** Null while the Razorpay keys aren't set. */
+  razorpay: {
+    subscriptionId: string | null;
+    autopay: 'on' | 'ending' | 'off';
+    linkDefaults: LinkDefaults;
+  } | null;
 };
 
 /** Actions on one restaurant (spec §13.4, docs/DECISIONS.md P7-4). */
@@ -78,9 +114,19 @@ export function RestaurantActions({
   subscription,
   plans,
   paymentStart,
+  razorpay,
 }: RestaurantActionsProps) {
   const [open, setOpen] = useState<Dialogs>(null);
   const close = () => setOpen(null);
+  const [syncing, startSync] = useTransition();
+
+  function sync() {
+    startSync(async () => {
+      const result = await syncRazorpay(restaurantId);
+      if (result.ok) toast.success('Saved what Razorpay says');
+      else toast.error(result.error);
+    });
+  }
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -100,6 +146,24 @@ export function RestaurantActions({
         <Button variant="outline" size="touch" onClick={() => setOpen('payment')}>
           <CreditCard aria-hidden />
           Record payment
+        </Button>
+      )}
+      {subscription && razorpay && (
+        <Button variant="outline" size="touch" onClick={() => setOpen('link')}>
+          <Link2 aria-hidden />
+          Send payment link
+        </Button>
+      )}
+      {razorpay?.subscriptionId && (
+        <Button variant="outline" size="touch" onClick={sync} disabled={syncing}>
+          <RefreshCw aria-hidden />
+          {syncing ? 'Syncing…' : 'Sync with Razorpay'}
+        </Button>
+      )}
+      {razorpay?.autopay === 'on' && (
+        <Button variant="outline" size="touch" onClick={() => setOpen('autopay')}>
+          <CircleStop aria-hidden />
+          Cancel autopay
         </Button>
       )}
       {status === 'active' ? (
@@ -143,6 +207,26 @@ export function RestaurantActions({
       >
         <ManualPaymentForm restaurantId={restaurantId} start={paymentStart} onDone={close} />
       </FormDialog>
+      {razorpay && (
+        <FormDialog
+          open={open === 'link'}
+          onClose={close}
+          title="Send payment link"
+          description="Razorpay emails or texts the link to the restaurant. A paid subscription link extends access from the first day not yet paid for; a setup fee is only recorded."
+        >
+          <PaymentLinkForm
+            restaurantId={restaurantId}
+            defaults={razorpay.linkDefaults}
+            onDone={close}
+          />
+        </FormDialog>
+      )}
+      <CancelAutopayDialog
+        open={open === 'autopay'}
+        onClose={close}
+        restaurantId={restaurantId}
+        restaurantName={restaurantName}
+      />
       <FormDialog
         open={open === 'suspend'}
         onClose={close}
@@ -463,6 +547,196 @@ function SuspendForm({ restaurantId, onDone }: { restaurantId: string; onDone: (
       </Field>
       <FormFooter pending={isSubmitting} label="Suspend" error={errors.root?.message} />
     </form>
+  );
+}
+
+/** Rupees for a form field: 149900 → "1499". */
+const rupees = (paise: number) => String(paise / 100);
+
+function linkAmount(defaults: LinkDefaults, purpose: string, months: number): string {
+  if (purpose === 'setup_fee') return rupees(defaults.setupFeePaise);
+  if (!Number.isInteger(months) || months < 1) return '';
+  return rupees(
+    months % 12 === 0 ? (months / 12) * defaults.yearlyPaise : months * defaults.monthlyPaise,
+  );
+}
+
+function linkDescription(defaults: LinkDefaults, purpose: string, months: number): string {
+  if (purpose === 'setup_fee') return `${APP_NAME} setup fee`;
+  return `${APP_NAME} ${defaults.planName}, ${months} ${months === 1 ? 'month' : 'months'}`;
+}
+
+function PaymentLinkForm({
+  restaurantId,
+  defaults,
+  onDone,
+}: {
+  restaurantId: string;
+  defaults: LinkDefaults;
+  onDone: () => void;
+}) {
+  const ids = useId();
+  const [sentUrl, setSentUrl] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    setValue,
+    getValues,
+    control,
+    formState: { errors, isSubmitting, dirtyFields },
+  } = useForm<PaymentLinkInput>({
+    resolver: zodResolver(paymentLinkSchema),
+    defaultValues: {
+      purpose: 'subscription',
+      months: 1,
+      amount: linkAmount(defaults, 'subscription', 1),
+      description: linkDescription(defaults, 'subscription', 1),
+    },
+  });
+  const purpose = useWatch({ control, name: 'purpose' });
+
+  // Amount and description follow the purpose and months until someone edits them.
+  const refill = () => {
+    const { purpose: next, months } = getValues();
+    if (!dirtyFields.amount) setValue('amount', linkAmount(defaults, next, Number(months)));
+    if (!dirtyFields.description) {
+      setValue('description', linkDescription(defaults, next, Number(months)));
+    }
+  };
+
+  const onSubmit = handleSubmit(async (values) => {
+    const result = await sendPaymentLink(restaurantId, values);
+    if (!applyResult(result, setError) || !result.ok) return;
+    toast.success('Payment link sent');
+    setSentUrl(result.data.shortUrl);
+  });
+
+  if (sentUrl) return <SentLink url={sentUrl} onDone={onDone} />;
+
+  return (
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field data-invalid={errors.purpose ? true : undefined}>
+          <FieldLabel htmlFor={`${ids}-purpose`}>For</FieldLabel>
+          <select
+            id={`${ids}-purpose`}
+            className={SELECT_CLASS}
+            {...register('purpose', { onChange: refill })}
+          >
+            <option value="subscription">Subscription</option>
+            <option value="setup_fee">Setup fee</option>
+          </select>
+          <FieldError errors={[errors.purpose]} />
+        </Field>
+        {purpose === 'subscription' && (
+          <Field data-invalid={errors.months ? true : undefined}>
+            <FieldLabel htmlFor={`${ids}-months`}>Months</FieldLabel>
+            <Input
+              id={`${ids}-months`}
+              type="number"
+              min={1}
+              max={24}
+              className="h-9"
+              {...register('months', { onChange: refill })}
+            />
+            <FieldError errors={[errors.months]} />
+          </Field>
+        )}
+      </div>
+      <Field data-invalid={errors.amount ? true : undefined}>
+        <FieldLabel htmlFor={`${ids}-amount`}>Amount (₹)</FieldLabel>
+        <Input id={`${ids}-amount`} inputMode="decimal" className="h-9" {...register('amount')} />
+        <FieldError errors={[errors.amount]} />
+      </Field>
+      <Field data-invalid={errors.description ? true : undefined}>
+        <FieldLabel htmlFor={`${ids}-description`}>Description</FieldLabel>
+        <Input id={`${ids}-description`} className="h-9" {...register('description')} />
+        <FieldDescription>Shown to the restaurant on the payment page.</FieldDescription>
+        <FieldError errors={[errors.description]} />
+      </Field>
+      <FormFooter pending={isSubmitting} label="Send link" error={errors.root?.message} />
+    </form>
+  );
+}
+
+function SentLink({ url, onDone }: { url: string; onDone: () => void }) {
+  const ids = useId();
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied');
+    } catch {
+      toast.error("Couldn't copy. Select the link and copy it instead.");
+    }
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <Field>
+        <FieldLabel htmlFor={`${ids}-url`}>Payment link</FieldLabel>
+        <div className="flex gap-2">
+          <Input id={`${ids}-url`} readOnly value={url} className="h-9 font-mono" />
+          <Button type="button" variant="outline" onClick={copy}>
+            Copy
+          </Button>
+        </div>
+        <FieldDescription>
+          Razorpay has sent it to the restaurant too. The payment shows here once it is paid.
+        </FieldDescription>
+      </Field>
+      <DialogFooter>
+        <Button type="button" size="lg" onClick={onDone}>
+          Done
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+function CancelAutopayDialog({
+  open,
+  onClose,
+  restaurantId,
+  restaurantName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  restaurantId: string;
+  restaurantName: string;
+}) {
+  const [pending, startTransition] = useTransition();
+
+  function confirm() {
+    startTransition(async () => {
+      const result = await cancelRestaurantAutopay(restaurantId);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success('Autopay cancelled');
+      onClose();
+    });
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel autopay for {restaurantName}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Once it has charged, it stops at the end of the paid period; set up during a trial, it
+            stops now and the trial carries on. Razorpay can&apos;t undo this. The owner can
+            subscribe again, for example to a new plan.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep autopay</AlertDialogCancel>
+          <AlertDialogAction onClick={confirm} disabled={pending}>
+            Cancel autopay
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

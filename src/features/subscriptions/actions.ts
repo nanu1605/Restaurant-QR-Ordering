@@ -3,7 +3,7 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
-import { actionError, actionOk, fromDbError, type ActionResult } from '@/lib/action-result';
+import { actionError, actionOk, type ActionResult } from '@/lib/action-result';
 import { requireMember, requireUser } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
@@ -11,16 +11,15 @@ import {
   cancelSubscription,
   createSubscription,
   fetchSubscription,
-  RazorpayError,
   razorpayConfig,
   verifyCheckoutSignature,
   type RazorpayConfig,
   type SubscriptionEntity,
 } from '@/lib/razorpay/razorpay';
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { Json } from '@/types/database';
 
-import { autopayStartAt, autopayState, cancelsAtCycleEnd, TOTAL_COUNT } from './autopay';
+import { autopayStartAt, autopayState, TOTAL_COUNT } from './autopay';
+import { loadSubscription, razorpayFailed, saveSubscription, stopAutopay } from './razorpay-sync';
 
 /**
  * The owner's Razorpay autopay (spec §14.3, docs/DECISIONS.md P8-6, P8-7):
@@ -31,8 +30,6 @@ import { autopayStartAt, autopayState, cancelsAtCycleEnd, TOTAL_COUNT } from './
  */
 
 const NOT_SET_UP = 'Paying online is not set up yet. Contact support to pay.';
-const RAZORPAY_DOWN = 'Razorpay could not be reached. Try again in a minute.';
-const RAZORPAY_REFUSED = 'Razorpay refused this. Contact support if it keeps happening.';
 
 export type CheckoutStart = {
   keyId: string;
@@ -63,45 +60,8 @@ async function ownerWithRazorpay(): Promise<Owner | null> {
   return { userId: user.id, restaurantId: membership.restaurant.id, config };
 }
 
-async function loadSubscription(restaurantId: string) {
-  const { data, error } = await createAdminClient()
-    .from('restaurant_subscriptions')
-    .select(
-      'status, trial_ends_at, current_period_end, cancel_at_period_end, razorpay_subscription_id, razorpay_status',
-    )
-    .eq('restaurant_id', restaurantId)
-    .single();
-  if (error) throw new Error(`Could not load the subscription: ${error.message}`);
-  return {
-    status: data.status,
-    trialEndsAt: data.trial_ends_at,
-    currentPeriodEnd: data.current_period_end,
-    cancelAtPeriodEnd: data.cancel_at_period_end,
-    razorpaySubscriptionId: data.razorpay_subscription_id,
-    razorpayStatus: data.razorpay_status,
-  };
-}
-
-async function save(
-  owner: Owner,
-  entity: SubscriptionEntity,
-  cancelScheduled = false,
-): Promise<ActionResult<void>> {
-  const { error } = await createAdminClient().rpc('razorpay_save_subscription', {
-    p_restaurant_id: owner.restaurantId,
-    p_entity: entity as Json,
-    p_actor_user_id: owner.userId,
-    p_cancel_scheduled: cancelScheduled,
-  });
-  return error ? fromDbError(error, 'razorpay_save_subscription') : actionOk();
-}
-
-function razorpayFailed(error: unknown, context: string) {
-  console.error(`[subscriptions] ${context}`, error);
-  if (!(error instanceof RazorpayError)) return actionError(GENERIC_ERROR);
-  return actionError(
-    error.kind === 'network' || error.kind === 'timeout' ? RAZORPAY_DOWN : RAZORPAY_REFUSED,
-  );
+function save(owner: Owner, entity: SubscriptionEntity) {
+  return saveSubscription(owner.restaurantId, owner.userId, entity);
 }
 
 /**
@@ -218,33 +178,13 @@ export async function confirmCheckout(input: unknown): Promise<ActionResult<void
 }
 
 /**
- * Stops autopay. A subscription that has charged runs to the end of its paid
- * period; one that hasn't charged yet (set up during a trial) ends now.
- * Razorpay can't undo a cancel; the owner can subscribe again later.
+ * Stops autopay: at the end of the paid period once it has charged, at once
+ * while it hasn't (a trial's mandate).
  */
 export async function cancelAutopay(): Promise<ActionResult<void>> {
   const owner = await ownerWithRazorpay();
   if (!owner) return actionError(NOT_SET_UP);
-  const subscription = await loadSubscription(owner.restaurantId);
-  if (autopayState(subscription) !== 'on' || !subscription.razorpaySubscriptionId) {
-    return actionError('Autopay is not on. Refresh the page.');
-  }
-  const id = subscription.razorpaySubscriptionId;
-  const atCycleEnd = cancelsAtCycleEnd(subscription.razorpayStatus);
-  let entity: SubscriptionEntity;
-  try {
-    entity = await cancelSubscription(owner.config, id, atCycleEnd);
-  } catch (error) {
-    // Razorpay cancels only once: an earlier try may have gone through with
-    // its reply (or the save after it) lost. Then save what Razorpay has.
-    const current = await fetchSubscription(owner.config, id).catch(() => null);
-    const done =
-      current !== null &&
-      (current.status === 'cancelled' || (atCycleEnd && current.has_scheduled_changes === true));
-    if (!done) return razorpayFailed(error, 'could not cancel autopay');
-    entity = current;
-  }
-  const saved = await save(owner, entity, atCycleEnd);
+  const saved = await stopAutopay(owner.config, owner.restaurantId, owner.userId);
   refresh();
   return saved;
 }

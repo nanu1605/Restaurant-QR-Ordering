@@ -3,6 +3,8 @@
 import { refresh } from 'next/cache';
 
 import { parsePriceInput } from '@/features/menu/schemas';
+import { autopayState } from '@/features/subscriptions/autopay';
+import { stopAutopay, syncSubscription } from '@/features/subscriptions/razorpay-sync';
 import {
   actionError,
   actionOk,
@@ -14,17 +16,24 @@ import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { getServerEnv } from '@/lib/env.server';
-import { createPlan, RazorpayError, razorpayConfig } from '@/lib/razorpay/razorpay';
+import {
+  createPaymentLink,
+  createPlan,
+  RazorpayError,
+  razorpayConfig,
+} from '@/lib/razorpay/razorpay';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { onboardRestaurant, OnboardError } from './onboard';
+import { getRestaurantDetail } from './queries';
 import {
   changePlanSchema,
   extendTrialSchema,
   manualPaymentSchema,
   onboardSchema,
   ownerPasswordSchema,
+  paymentLinkSchema,
   planFormSchema,
   restaurantIdSchema,
   suspendSchema,
@@ -33,6 +42,7 @@ import {
   type ManualPaymentInput,
   type OnboardFormInput,
   type OwnerPasswordInput,
+  type PaymentLinkInput,
   type PlanFormInput,
   type SuspendInput,
 } from './schemas';
@@ -341,4 +351,118 @@ export async function updatePlan(planId: string, input: PlanFormInput): Promise<
   if (error) return fromDbError(error, 'platform_update_plan');
   refresh();
   return actionOk();
+}
+
+const NO_RAZORPAY = 'Add the Razorpay keys to the environment first.';
+
+/**
+ * Sends a Razorpay Payment Link for a subscription period or the setup fee
+ * (spec §14.5, docs/DECISIONS.md P8-5, P8-11). Razorpay emails or texts it to
+ * the restaurant; its payment arrives as payment_link.paid. A subscription
+ * link is refused while autopay is on, so nobody pays twice.
+ */
+export async function sendPaymentLink(
+  restaurantId: string,
+  input: PaymentLinkInput,
+): Promise<ActionResult<{ shortUrl: string }>> {
+  const user = await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  const parsed = paymentLinkSchema.safeParse(input);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const config = razorpayConfig();
+  if (!config) return actionError(NO_RAZORPAY);
+
+  const detail = await getRestaurantDetail(id.data);
+  const subscription = detail?.subscription;
+  if (!detail || !subscription) return actionError('This restaurant has no subscription yet.');
+  const { purpose, months, description } = parsed.data;
+  const autopay = autopayState({
+    razorpayStatus: subscription.razorpay_status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+  });
+  if (purpose === 'subscription' && autopay === 'on') {
+    return actionError(
+      'Autopay is on, so a subscription link would charge twice. Cancel autopay first, or send a setup fee link.',
+    );
+  }
+
+  const amountPaise = parsePriceInput(parsed.data.amount) as number;
+  const owner = detail.owners.find((o) => o.is_active && o.email_is_real && o.email);
+  let link: { id: string; short_url: string };
+  try {
+    link = await createPaymentLink(config, {
+      amountPaise,
+      description,
+      notes:
+        purpose === 'subscription'
+          ? { restaurant_id: id.data, purpose, months: String(months) }
+          : { restaurant_id: id.data, purpose },
+      customer: {
+        name: detail.restaurant.name,
+        email: detail.restaurant.email ?? owner?.email ?? undefined,
+        contact: detail.restaurant.phone ?? undefined,
+      },
+    });
+  } catch (error) {
+    console.error('[payment links] could not create a payment link', error);
+    return actionError(
+      error instanceof RazorpayError ? `Razorpay refused: ${error.message}` : GENERIC_ERROR,
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_audit_payment_link', {
+    p_restaurant_id: id.data,
+    p_link: {
+      id: link.id,
+      short_url: link.short_url,
+      amount_paise: amountPaise,
+      purpose,
+      months: purpose === 'subscription' ? months : null,
+    },
+  });
+  // The link is already sent; its payment is recorded either way.
+  if (error) console.error('[payment links] not audited', link.id, user.id, error.message);
+  refresh();
+  return actionOk({ shortUrl: link.short_url });
+}
+
+/** Saves what Razorpay says about the restaurant's subscription now. */
+export async function syncRazorpay(restaurantId: string): Promise<ActionResult> {
+  const user = await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  const config = razorpayConfig();
+  if (!config) return actionError(NO_RAZORPAY);
+  const saved = await syncSubscription(config, id.data, user.id);
+  refresh();
+  return saved;
+}
+
+/** Stops the restaurant's autopay, as the owner can (at period end once it has charged). */
+export async function cancelRestaurantAutopay(restaurantId: string): Promise<ActionResult> {
+  const user = await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  const config = razorpayConfig();
+  if (!config) return actionError(NO_RAZORPAY);
+  const saved = await stopAutopay(config, id.data, user.id);
+  refresh();
+  return saved;
+}
+
+/** Runs a failed webhook again; returns what happened. */
+export async function reprocessWebhook(
+  eventId: string,
+): Promise<ActionResult<{ result: string; error: string | null }>> {
+  await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(eventId);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_reprocess_webhook', { p_event_id: id.data });
+  if (error) return fromDbError(error, 'platform_reprocess_webhook');
+  refresh();
+  const outcome = data as { result: string; error: string | null };
+  return actionOk({ result: outcome.result, error: outcome.error });
 }

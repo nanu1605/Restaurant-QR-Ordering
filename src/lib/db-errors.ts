@@ -60,6 +60,7 @@ const MESSAGES: Record<string, Message> = {
     'This restaurant pays by Razorpay autopay. Cancel autopay at period end first; the owner then subscribes to the new plan.',
   RAZORPAY_SUBSCRIPTION_LIVE: 'Autopay is already set up. Refresh the page to see it.',
   RESTAURANT_SUSPENDED: 'This restaurant is suspended. Contact support to restore it first.',
+  WEBHOOK_NOT_FAILED: 'This event has already been processed. Refresh the page.',
 
   // Menu
   INVALID_CATEGORY_NAME: 'Enter a category name of up to 60 characters.',

@@ -33,8 +33,10 @@ import {
   type RestaurantDetail,
 } from '@/features/platform/platform';
 import { listMenuImports } from '@/features/menu-import/queries';
-import { getRestaurantDetail, listPlans } from '@/features/platform/queries';
+import { getRestaurantDetail, getSetupFeePaise, listPlans } from '@/features/platform/queries';
+import { autopayState } from '@/features/subscriptions/autopay';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
 export const metadata: Metadata = {
   title: 'Restaurant',
@@ -64,10 +66,21 @@ export default async function SuperRestaurantPage({
 }: PageProps<'/super/restaurants/[restaurantId]'>) {
   await requirePlatformAdmin();
   const { restaurantId } = await params;
-  const [detail, plans] = await Promise.all([getRestaurantDetail(restaurantId), listPlans()]);
+  const [detail, plans, setupFeePaise] = await Promise.all([
+    getRestaurantDetail(restaurantId),
+    listPlans(),
+    getSetupFeePaise(),
+  ]);
   if (!detail) notFound();
   const imports = await listMenuImports(restaurantId, 5);
   const { restaurant, subscription, access, usage } = detail;
+  const autopay = subscription
+    ? autopayState({
+        razorpayStatus: subscription.razorpay_status,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      })
+    : 'off';
+  const plan = plans.find((p) => p.code === subscription?.plan_code);
 
   return (
     <>
@@ -92,6 +105,20 @@ export default async function SuperRestaurantPage({
             }
             plans={plans.filter((plan) => plan.is_active).map(({ code, name }) => ({ code, name }))}
             paymentStart={firstUnpaidDay(detail)}
+            razorpay={
+              razorpayConfig()
+                ? {
+                    subscriptionId: subscription?.razorpay_subscription_id ?? null,
+                    autopay,
+                    linkDefaults: {
+                      planName: plan?.name ?? '',
+                      monthlyPaise: plan?.price_monthly_paise ?? 0,
+                      yearlyPaise: plan?.price_yearly_paise ?? 0,
+                      setupFeePaise,
+                    },
+                  }
+                : null
+            }
           />
         }
       />
@@ -162,6 +189,22 @@ export default async function SuperRestaurantPage({
                     ],
                 ['Grace until', formatDateTime(subscription.grace_until)],
                 ['Cancels at period end', subscription.cancel_at_period_end ? 'Yes' : 'No'],
+                [
+                  'Razorpay',
+                  subscription.razorpay_subscription_id
+                    ? `${subscription.razorpay_subscription_id}, ${subscription.razorpay_status ?? 'not set up'}`
+                    : '—',
+                ],
+                [
+                  'Autopay',
+                  autopay === 'off'
+                    ? 'Off'
+                    : `${autopay === 'on' ? 'On' : 'Ends with the paid period'}${
+                        subscription.next_plan_name && subscription.next_billing_cycle
+                          ? ` (first payment for ${subscription.next_plan_name}, ${subscription.next_billing_cycle})`
+                          : ''
+                      }`,
+                ],
               ]}
             />
           ) : (

@@ -195,6 +195,9 @@ const restaurantDetailSchema = z.object({
       grace_until: isoOrNull,
       cancel_at_period_end: z.boolean(),
       razorpay_subscription_id: z.string().nullable(),
+      razorpay_status: z.string().nullable(),
+      next_plan_name: z.string().nullable(),
+      next_billing_cycle: billingCycle.nullable(),
     })
     .nullable(),
   payments: z.array(

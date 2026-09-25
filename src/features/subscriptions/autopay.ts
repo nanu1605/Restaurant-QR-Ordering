@@ -34,7 +34,9 @@ export type AutopayInput = {
  * 'on': a mandate is set up and will keep charging. 'ending': it is set to
  * end with the paid period. 'off': nothing will charge.
  */
-export function autopayState(subscription: AutopayInput): 'on' | 'ending' | 'off' {
+export function autopayState(
+  subscription: Pick<AutopayInput, 'razorpayStatus' | 'cancelAtPeriodEnd'>,
+): 'on' | 'ending' | 'off' {
   const live =
     subscription.razorpayStatus === 'authenticated' || subscription.razorpayStatus === 'active';
   if (!live) return 'off';
