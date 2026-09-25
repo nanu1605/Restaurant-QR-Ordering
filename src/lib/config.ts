@@ -1,9 +1,12 @@
 /**
  * Product name used across the UI, bills ("Powered by …") and metadata.
- * Renaming the product should only require changing this value and the
- * package name in package.json.
+ * Renaming the product should only require changing this value, APP_DOMAIN
+ * and the package name in package.json.
  */
 export const APP_NAME = 'MenuMesh';
+
+/** The public domain, printed after "Powered by …" on bills. */
+export const APP_DOMAIN = 'menumesh.in';
 
 /** Default timezone for new restaurants; each restaurant stores its own. */
 export const DEFAULT_TIMEZONE = 'Asia/Kolkata';

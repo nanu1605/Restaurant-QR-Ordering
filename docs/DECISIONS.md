@@ -577,7 +577,8 @@ bottom of each section.
   setting, the plan feature and a UPI ID, so a reprint pays today's UPI ID. The tax settings stored
   on the bill come from the same read the totals were worked out with. Known limit: the logo is
   frozen as a path, and uploading a new logo replaces that file, so old bills reprint with the new
-  logo (or none after the logo is removed).
+  logo (or none after the logo is removed). Accepted by the user (2026-09-25): everything that
+  matters legally is frozen, and logos rarely change.
 - **UPI QR payload (§11.3):** `upi://pay?pa=<vpa>&pn=…&am=…&cu=INR&tn=…` with the UPI ID as it is
   (its pattern allows only URL-safe characters and `@`); the payee name and note are URL-encoded.
 - **P5-17 · Discounts:** percent up to 100% with two decimals (stored as basis points), flat in
@@ -865,6 +866,12 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   internal). It reads through the existing owner RLS on subscriptions and payments, so no new
   function was needed. Plan cards, Razorpay checkout and cancelling stay in Phase 8; until then
   the page says to contact support.
+- **P7-22 · The bill's branding line carries the domain:** "Powered by MenuMesh · menumesh.in"
+  (user, 2026-09-25) instead of a MenuMesh logo, which would print as grey dots on thermal paper
+  and add paper to every bill. It stays one small line, still hidden with `remove_branding`
+  (Pro). The domain is `APP_DOMAIN` next to `APP_NAME`, not `NEXT_PUBLIC_APP_URL`, so local and
+  staging bills print the real domain too. It fits one line on 58 mm paper with a few pixels to
+  spare; non-breaking spaces keep "Powered by MenuMesh ·" together if a font wraps it.
 
 ### Review fixes (Stop A)
 
