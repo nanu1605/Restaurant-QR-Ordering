@@ -126,8 +126,14 @@ select public.razorpay_save_subscription(:'rest', pg_temp.entity(:'rest', 'sub_S
 select is(
   (select (s.razorpay_subscription_id, s.cancel_at_period_end)::text
    from public.restaurant_subscriptions s where s.restaurant_id = :'rest'),
-  '(sub_Save4,f)',
-  'a new subscription replaces the one set to end, and renews'
+  '(sub_Save4,t)',
+  'a new subscription replaces the one set to end, which still ends until checkout is done'
+);
+select public.razorpay_save_subscription(:'rest', pg_temp.entity(:'rest', 'sub_Save4', 'authenticated', 'pro', 'monthly'), :'owner');
+select is(
+  (select cancel_at_period_end from public.restaurant_subscriptions where restaurant_id = :'rest'),
+  false,
+  'once it is authorised, the subscription carries on'
 );
 
 -- ─── Suspended restaurants can't start one ──────────────────────────────────

@@ -39,6 +39,24 @@ begin
 end;
 $$;
 
+-- How far a Razorpay subscription has got. A subscription never goes back
+-- (active is never authenticated again, cancelled is final), so a lower rank
+-- arriving later is out of date even within the same second.
+create or replace function private.razorpay_status_rank(p_status text)
+returns int
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_status is null then -1
+    when p_status = 'created' then 0
+    when p_status = 'authenticated' then 1
+    when p_status in ('cancelled', 'completed', 'expired') then 3
+    else 2
+  end;
+$$;
+
 -- Applies a Razorpay subscription entity to the restaurant's subscription
 -- (P8-3). p_payment is the payment of a subscription.charged event, null
 -- otherwise. p_event_at is the webhook's time; null for a snapshot fetched
@@ -135,7 +153,9 @@ begin
   if v_sub.razorpay_subscription_id is distinct from v_id then
     return 'not_current';
   end if;
-  if p_event_at is not null and p_event_at < v_sub.razorpay_event_at then
+  if (p_event_at is not null and p_event_at < v_sub.razorpay_event_at)
+     or private.razorpay_status_rank(v_status) < private.razorpay_status_rank(v_sub.razorpay_status)
+  then
     return 'stale';
   end if;
 
@@ -163,39 +183,46 @@ begin
             end,
             current_period_end = greatest(s.current_period_end, v_end),
             grace_until = null,
-            -- Only the current subscription charges, so a charge means it renews.
-            cancel_at_period_end = case when p_payment is not null then false else s.cancel_at_period_end end
+            -- A charge means it renews; a new subscription starting replaces
+            -- one that was set to end.
+            cancel_at_period_end = case
+              when p_payment is not null or s.next_plan_id is not null then false
+              else s.cancel_at_period_end
+            end
         where s.id = v_sub.id;
-    when 'pending' then
+    when 'authenticated' then
+      -- A new subscription, just set up, carries on after one that was set to end.
       update public.restaurant_subscriptions s
-        set status = 'past_due',
+        set cancel_at_period_end = false
+        where s.id = v_sub.id and s.next_plan_id is not null
+          and private.razorpay_status_rank(v_sub.razorpay_status) < 1;
+    when 'pending', 'halted' then
+      -- A failed charge never shortens a longer period paid another way.
+      update public.restaurant_subscriptions s
+        set status = case when v_status = 'pending' then 'past_due' else 'halted' end::public.subscription_status,
             grace_until = coalesce(
               s.grace_until,
               coalesce(p_event_at, now()) + make_interval(days => coalesce(v_grace_days, 7))
             )
-        where s.id = v_sub.id;
-    when 'halted' then
-      update public.restaurant_subscriptions s
-        set status = 'halted',
-            grace_until = coalesce(
-              s.grace_until,
-              coalesce(p_event_at, now()) + make_interval(days => coalesce(v_grace_days, 7))
-            )
-        where s.id = v_sub.id;
+        where s.id = v_sub.id
+          and not (s.source = 'manual' and s.current_period_end > coalesce(p_event_at, now()));
     when 'cancelled', 'completed', 'expired' then
-      -- Razorpay only ends what Razorpay started: cancelling a trial's mandate
-      -- or a halted subscription never cuts a trial or grace short.
+      -- Razorpay only ends what Razorpay started and charged for: cancelling a
+      -- trial's mandate, a halted subscription or a replacement that never
+      -- charged doesn't cut a trial, grace or paid period short.
       update public.restaurant_subscriptions s
         set status = case
-              when s.status = 'active' and s.source = 'razorpay' and v_status = 'cancelled' then 'cancelled'
-              when s.status = 'active' and s.source = 'razorpay' and v_status = 'completed' then 'expired'
+              when s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
+                   and v_status = 'cancelled' then 'cancelled'
+              when s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
+                   and v_status = 'completed' then 'expired'
               else s.status
             end,
             next_plan_id = null,
             next_billing_cycle = null
         where s.id = v_sub.id;
     else
-      -- created, authenticated, paused: nothing beyond razorpay_status.
+      -- created, paused: nothing beyond razorpay_status.
       null;
   end case;
 
@@ -565,9 +592,7 @@ begin
           razorpay_status = null,
           razorpay_event_at = null,
           next_plan_id = v_plan.id,
-          next_billing_cycle = v_cycle::public.billing_cycle,
-          -- The new subscription carries on after the current period.
-          cancel_at_period_end = false
+          next_billing_cycle = v_cycle::public.billing_cycle
       where s.id = v_sub.id;
     perform private.write_audit(
       p_restaurant_id, v_actor_type, p_actor_user_id, v_actor_role, v_actor_label,
@@ -705,6 +730,7 @@ end;
 $$;
 
 revoke execute on function private.json_unix(jsonb, text) from public, anon, authenticated;
+revoke execute on function private.razorpay_status_rank(text) from public, anon, authenticated;
 revoke execute on function private.apply_razorpay_subscription(uuid, jsonb, jsonb, timestamptz)
   from public, anon, authenticated;
 revoke execute on function private.apply_razorpay_payment_link(jsonb, jsonb, timestamptz)

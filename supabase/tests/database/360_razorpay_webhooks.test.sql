@@ -91,6 +91,8 @@ select tests.create_restaurant('rzp-trial') as rest3 \gset
 select tests.create_restaurant('rzp-halt') as rest4 \gset
 select tests.create_restaurant('rzp-link') as rest5 \gset
 select tests.create_restaurant('rzp-snap') as rest6 \gset
+select tests.create_restaurant('rzp-manual') as rest7 \gset
+select tests.create_restaurant('rzp-switch') as rest8 \gset
 
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 select ok(
@@ -450,6 +452,48 @@ select is(
   'a webhook older than a saved snapshot still applies'
 );
 select is((pg_temp.sub(:'rest6')).status::text, 'active', 'and the subscription is paid');
+
+-- ─── Same second, older state: never go back ────────────────────────────────
+select is(
+  public.razorpay_record_webhook(
+    'evt_snap_auth', pg_temp.sub_event('subscription.authenticated', 'sub_Snap1', 'authenticated', '2026-01-01 10:00')
+  ),
+  'stale',
+  'an authenticated event after the charge of the same second is out of date'
+);
+select is((pg_temp.sub(:'rest6')).razorpay_status, 'active', 'the subscription stays active on Razorpay');
+
+-- ─── A failed charge never shortens a longer period paid another way ───────
+select pg_temp.attach(:'rest7', 'sub_Manual1', 'active');
+update public.restaurant_subscriptions
+  set source = 'manual', current_period_end = '2027-11-10 04:00+05:30'
+  where restaurant_id = :'rest7';
+select public.razorpay_record_webhook(
+  'evt_manual_pending', pg_temp.sub_event('subscription.pending', 'sub_Manual1', 'pending', '2026-11-10 15:05')
+);
+select is(
+  (select (s.status::text, s.grace_until, s.razorpay_status)::text from public.restaurant_subscriptions s where s.restaurant_id = :'rest7'),
+  '(active,,pending)',
+  'a year paid by bank transfer is not cut short by the old mandate failing'
+);
+
+-- ─── A replacement that never charged doesn't end the paid period ──────────
+select pg_temp.attach(:'rest8', 'sub_PaidA1', 'active');
+update public.restaurant_subscriptions set cancel_at_period_end = true where restaurant_id = :'rest8';
+select pg_temp.attach(:'rest8', 'sub_NewB1');
+select is(
+  (pg_temp.sub(:'rest8')).cancel_at_period_end,
+  true,
+  'an unfinished checkout keeps the scheduled end'
+);
+select public.razorpay_record_webhook(
+  'evt_switch_cancel', pg_temp.sub_event('subscription.cancelled', 'sub_NewB1', 'cancelled', '2026-10-05 10:00')
+);
+select is(
+  (pg_temp.sub(:'rest8')).status::text,
+  'active',
+  'cancelling the replacement that never charged keeps the paid period'
+);
 
 select * from finish();
 rollback;
