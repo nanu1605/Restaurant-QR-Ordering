@@ -297,9 +297,6 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
         : ['Next payment due', formatDay(subscription.currentPeriodEnd, timezone)],
     );
   }
-  if (subscription.graceUntil) {
-    facts.push(['Pay by', formatDay(subscription.graceUntil, timezone)]);
-  }
   return facts;
 }
 

@@ -6,7 +6,7 @@ import { APP_NAME } from '@/lib/config';
 import { sendEmail, type EmailConfig } from '@/lib/email/resend';
 import type { Database } from '@/types/database';
 
-import { formatDay } from './summary';
+import { formatDay, lastDay } from './summary';
 
 /**
  * Subscription reminder emails, sent by the daily cron (spec §14.6,
@@ -37,7 +37,7 @@ function content(reminder: DueReminder): ReminderEmail {
         subject: `Payment failed for ${name}`,
         paragraphs: [
           `The last ${APP_NAME} payment for ${name} failed.`,
-          `Pay by ${day(reminder.restriction_at)} to keep ordering on. Razorpay may try again; you can also pay another way.`,
+          `Pay by ${reminder.restriction_at ? lastDay(reminder.restriction_at, reminder.timezone) : 'soon'} to keep ordering on. Razorpay may try again; you can also pay another way.`,
         ],
       };
     default:

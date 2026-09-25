@@ -62,7 +62,11 @@ export function accessBanner({
 
   if (!access.warning || !access.restrictionAt) return null;
 
-  const day = formatDay(access.restrictionAt, timezone);
+  // The last day ordering stays on: it stops at the start of the next business day.
+  const day = formatDay(
+    new Date(Date.parse(access.restrictionAt) - DAY_MS).toISOString(),
+    timezone,
+  );
   const askOwner = isOwner ? '' : ' Ask the owner to renew.';
 
   switch (access.warning) {
@@ -86,7 +90,7 @@ export function accessBanner({
     case 'subscription_ends_soon':
       return {
         tone: 'warning',
-        text: `Your subscription ends on ${day}. Renew to keep ordering active.${askOwner}`,
+        text: `Your subscription ends after ${day}. Renew to keep ordering active.${askOwner}`,
         action: isOwner ? { href: SUBSCRIPTION_PATH, label: 'Renew' } : undefined,
       };
     default:

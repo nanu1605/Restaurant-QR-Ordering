@@ -150,7 +150,7 @@ describe('access banner (spec §10.6, §14.6)', () => {
       now,
     });
     expect(payment?.text).toMatch(
-      /^Payment failed\. Update payment by 18 Sept? to keep ordering active\. Ask the owner to renew\.$/,
+      /^Payment failed\. Update payment by 17 Sept? to keep ordering active\. Ask the owner to renew\.$/,
     );
   });
 

@@ -81,7 +81,7 @@ describe('reminderEmail', () => {
 
   it('says when to pay after a failed payment, and that ordering paused', () => {
     expect(reminderEmail(reminder({ kind: 'payment_failed' }), 'https://x.test').text).toContain(
-      'Pay by 4 Oct 2026',
+      'Pay by 3 Oct 2026',
     );
     expect(reminderEmail(reminder({ kind: 'access_restricted' }), 'https://x.test').subject).toBe(
       'Ordering is paused at Spice <Route>',

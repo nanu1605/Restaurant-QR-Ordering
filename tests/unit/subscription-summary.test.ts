@@ -24,7 +24,6 @@ function subscription(patch: Partial<OwnerSubscription>): OwnerSubscription {
     trialEndsAt: null,
     currentPeriodStart: null,
     currentPeriodEnd: null,
-    graceUntil: null,
     cancelAtPeriodEnd: false,
     razorpayStatus: null,
     nextPlanName: null,
@@ -83,7 +82,7 @@ describe('subscriptionSummary', () => {
       now,
     });
     expect(summary).toMatchObject({ label: 'Trial ended', tone: 'warning', daysLeft: 0 });
-    expect(summary.text).toContain('Ordering stays on until 20 Sept 2026');
+    expect(summary.text).toContain('Ordering stays on until 19 Sept 2026');
   });
 
   it('shows the paid period of an active subscription', () => {
@@ -132,7 +131,7 @@ describe('subscriptionSummary', () => {
     });
     expect(summary).toMatchObject({ label: 'Payment failed', tone: 'warning', daysLeft: 6 });
     expect(summary.text).toBe(
-      'The last payment for Growth failed. Pay by 25 Sept 2026 to keep ordering on.',
+      'The last payment for Growth failed. Pay by 24 Sept 2026 to keep ordering on.',
     );
   });
 

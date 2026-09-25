@@ -20,7 +20,6 @@ export type OwnerSubscription = {
   currentPeriodStart: string | null;
   /** Start of the business day after the last paid day. */
   currentPeriodEnd: string | null;
-  graceUntil: string | null;
   cancelAtPeriodEnd: boolean;
   /** Razorpay's state for the autopay subscription, if any. */
   razorpayStatus: string | null;
@@ -130,8 +129,9 @@ export function subscriptionSummary({
   }
 
   const plan = subscription.plan.name;
+  // The last day ordering stays on: it stops at the start of the next business day.
   const stopsOn = access.restrictionAt
-    ? formatDay(access.restrictionAt, timezone)
+    ? lastDay(access.restrictionAt, timezone)
     : 'the next business day';
   const autopay = autopayState(subscription);
 
