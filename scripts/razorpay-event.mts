@@ -8,8 +8,8 @@
  *   pnpm razorpay:event --restaurant demo --event charged
  *   pnpm razorpay:event --restaurant demo --event payment-link --months 3
  *
- * A restaurant without a Razorpay subscription gets a made-up one first, as
- * if the owner had started checkout.
+ * A restaurant without a Razorpay subscription, or whose one has ended, gets
+ * a made-up one first, as if the owner had started checkout.
  */
 import { createHmac, randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
@@ -84,7 +84,7 @@ if (!restaurant) fail(`No restaurant with the code "${args.restaurant}".`);
 const { data: sub, error } = await admin
   .from('restaurant_subscriptions')
   .select(
-    'razorpay_subscription_id, billing_cycle, next_billing_cycle, current_period_end, plan:plans!restaurant_subscriptions_plan_id_fkey (code, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (code, price_monthly_paise, price_yearly_paise)',
+    'razorpay_subscription_id, razorpay_status, billing_cycle, next_billing_cycle, current_period_end, plan:plans!restaurant_subscriptions_plan_id_fkey (code, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (code, price_monthly_paise, price_yearly_paise)',
   )
   .eq('restaurant_id', restaurant.id)
   .single();
@@ -122,7 +122,9 @@ if (args.event === 'payment-link' || args.event === 'setup-fee') {
   };
 } else {
   let subscriptionId = sub.razorpay_subscription_id;
-  if (!subscriptionId) {
+  // Razorpay sends nothing more for an ended subscription: the owner subscribes again.
+  const ended = ['cancelled', 'completed', 'expired'].includes(sub.razorpay_status ?? '');
+  if (!subscriptionId || ended) {
     subscriptionId = devId('sub');
     const attached = await admin.rpc('razorpay_save_subscription', {
       p_restaurant_id: restaurant.id,
