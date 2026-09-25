@@ -31,7 +31,11 @@ const SUBSCRIPTION_EVENTS: Record<string, string> = {
 const EVENTS = [...Object.keys(SUBSCRIPTION_EVENTS), 'payment-link', 'setup-fee'];
 
 const USAGE = `Usage: pnpm razorpay:event --restaurant <code> --event <${EVENTS.join('|')}>
-       [--months <1-24>] [--amount <paise>] [--url http://localhost:3000]`;
+       [--months <1-24>] [--amount <paise>] [--url http://localhost:3000]
+
+<code> is the restaurant code staff log in with. For example:
+  pnpm razorpay:event --restaurant demo --event charged
+  pnpm razorpay:event --restaurant demo --event payment-link --months 3`;
 
 function fail(message: string): never {
   console.error(`\n✖ ${message}\n`);
