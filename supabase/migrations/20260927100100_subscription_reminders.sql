@@ -21,8 +21,10 @@ revoke all on public.subscription_reminders from anon, authenticated;
 -- The reminders due at p_at and not sent yet, with who to email: the active
 -- owners' own login emails (not synthetic staff addresses) and the
 -- restaurant's email. Suspended restaurants get none (support talks to them),
--- nor do trials with autopay set up. "Ordering paused" is only sent within 2
--- days of the pause, so a first run never emails about old lapses.
+-- nor do trials with autopay set up. The last-day reminder starts 26 hours
+-- before the trial ends, so a cron run a little late can't miss it.
+-- "Ordering paused" is only sent within 2 days of the pause, so a first run
+-- never emails about old lapses.
 create or replace function public.subscription_reminders_due(p_at timestamptz default now())
 returns table (
   restaurant_id uuid,
@@ -56,14 +58,14 @@ as $$
     select subs.*, 'trial_ends_3d'::text as kind, (subs.trial_ends_at at time zone subs.timezone)::date as due_key
     from subs
     where subs.status = 'trialing' and not subs.autopay
-      and subs.trial_ends_at > p_at + interval '1 day'
+      and subs.trial_ends_at > p_at + interval '26 hours'
       and subs.trial_ends_at <= p_at + interval '3 days'
     union all
     select subs.*, 'trial_ends_1d', (subs.trial_ends_at at time zone subs.timezone)::date
     from subs
     where subs.status = 'trialing' and not subs.autopay
       and subs.trial_ends_at > p_at
-      and subs.trial_ends_at <= p_at + interval '1 day'
+      and subs.trial_ends_at <= p_at + interval '26 hours'
     union all
     select subs.*, 'payment_failed', (p_at at time zone subs.timezone)::date
     from subs

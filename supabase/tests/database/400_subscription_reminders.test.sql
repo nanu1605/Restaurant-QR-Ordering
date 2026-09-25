@@ -67,6 +67,19 @@ as $$
   order by r.slug, d.kind;
 $$;
 
+-- ─── A cron run a little late still sends the last-day reminder ─────────────
+-- The trial ends 25 hours after this run; the next run may come 24h 30m later.
+select tests.create_restaurant('rem-late') as late \gset
+update public.restaurants set email = 'hello@rem-late.test' where id = :'late';
+update public.restaurant_subscriptions set trial_ends_at = :at::timestamptz + interval '25 hours'
+where restaurant_id = :'late';
+select results_eq(
+  format($f$select kind from pg_temp.due(%L) where slug = 'rem-late'$f$, :at),
+  $$ values ('trial_ends_1d') $$,
+  'a trial ending 25 hours after a run is reminded on its last day'
+);
+select tests.suspend(:'late');
+
 -- ─── What is due ────────────────────────────────────────────────────────────
 select results_eq(
   format($f$select slug, kind, due_key from pg_temp.due(%L)$f$, :at),
