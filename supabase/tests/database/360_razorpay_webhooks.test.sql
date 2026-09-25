@@ -90,6 +90,7 @@ select tests.create_restaurant('rzp-other') as rest2 \gset
 select tests.create_restaurant('rzp-trial') as rest3 \gset
 select tests.create_restaurant('rzp-halt') as rest4 \gset
 select tests.create_restaurant('rzp-link') as rest5 \gset
+select tests.create_restaurant('rzp-snap') as rest6 \gset
 
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 select ok(
@@ -434,6 +435,21 @@ select is(
   0,
   'refused links record nothing'
 );
+
+-- ─── A snapshot from the API doesn't make webhooks stale ────────────────────
+-- Checkout confirm saves the fetched subscription; a charge webhook created
+-- before that save (same second, or a slow delivery) must still apply.
+select pg_temp.attach(:'rest6', 'sub_Snap1', 'authenticated');
+select is(
+  public.razorpay_record_webhook(
+    'evt_snap',
+    pg_temp.sub_event('subscription.charged', 'sub_Snap1', 'active', '2026-01-01 10:00', null,
+                      '2026-01-01 10:00', '2026-02-01 10:00', 'pay_Snap1', 39900)
+  ),
+  'applied',
+  'a webhook older than a saved snapshot still applies'
+);
+select is((pg_temp.sub(:'rest6')).status::text, 'active', 'and the subscription is paid');
 
 select * from finish();
 rollback;

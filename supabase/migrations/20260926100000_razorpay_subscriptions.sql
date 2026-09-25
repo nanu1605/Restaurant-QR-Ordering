@@ -41,9 +41,12 @@ $$;
 
 -- Applies a Razorpay subscription entity to the restaurant's subscription
 -- (P8-3). p_payment is the payment of a subscription.charged event, null
--- otherwise. Only the current razorpay_subscription_id changes the status;
--- payments are recorded whichever subscription they came from. Returns
--- 'applied', 'stale' (older than the last event applied) or 'not_current'.
+-- otherwise. p_event_at is the webhook's time; null for a snapshot fetched
+-- from Razorpay's API, which is always current and leaves the event clock
+-- alone (a charge webhook from the same second must still apply). Only the
+-- current razorpay_subscription_id changes the status; payments are recorded
+-- whichever subscription they came from. Returns 'applied', 'stale' (older
+-- than the last event applied) or 'not_current'.
 create or replace function private.apply_razorpay_subscription(
   p_restaurant_id uuid,
   p_entity jsonb,
@@ -132,7 +135,7 @@ begin
   if v_sub.razorpay_subscription_id is distinct from v_id then
     return 'not_current';
   end if;
-  if p_event_at < v_sub.razorpay_event_at then
+  if p_event_at is not null and p_event_at < v_sub.razorpay_event_at then
     return 'stale';
   end if;
 
@@ -166,12 +169,18 @@ begin
     when 'pending' then
       update public.restaurant_subscriptions s
         set status = 'past_due',
-            grace_until = coalesce(s.grace_until, p_event_at + make_interval(days => coalesce(v_grace_days, 7)))
+            grace_until = coalesce(
+              s.grace_until,
+              coalesce(p_event_at, now()) + make_interval(days => coalesce(v_grace_days, 7))
+            )
         where s.id = v_sub.id;
     when 'halted' then
       update public.restaurant_subscriptions s
         set status = 'halted',
-            grace_until = coalesce(s.grace_until, p_event_at + make_interval(days => coalesce(v_grace_days, 7)))
+            grace_until = coalesce(
+              s.grace_until,
+              coalesce(p_event_at, now()) + make_interval(days => coalesce(v_grace_days, 7))
+            )
         where s.id = v_sub.id;
     when 'cancelled', 'completed', 'expired' then
       -- Razorpay only ends what Razorpay started: cancelling a trial's mandate
@@ -580,7 +589,7 @@ begin
     );
   end if;
 
-  v_result := private.apply_razorpay_subscription(p_restaurant_id, p_entity, null, now());
+  v_result := private.apply_razorpay_subscription(p_restaurant_id, p_entity, null, null);
 
   select * into v_sub from public.restaurant_subscriptions s where s.id = v_sub.id;
   return jsonb_build_object(
