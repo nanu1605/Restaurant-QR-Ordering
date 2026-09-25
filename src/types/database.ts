@@ -828,6 +828,7 @@ export type Database = {
           created_at: string
           grace_days: number
           id: number
+          setup_fee_paise: number
           support_email: string | null
           support_phone: string | null
           trial_days: number
@@ -837,6 +838,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_paise?: number
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -846,6 +848,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_paise?: number
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -1226,6 +1229,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "subscription_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_reminders: {
+        Row: {
+          due_key: string
+          id: string
+          kind: string
+          restaurant_id: string
+          sent_at: string
+        }
+        Insert: {
+          due_key: string
+          id?: string
+          kind: string
+          restaurant_id: string
+          sent_at?: string
+        }
+        Update: {
+          due_key?: string
+          id?: string
+          kind?: string
+          restaurant_id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_reminders_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -1647,6 +1682,10 @@ export type Database = {
         Returns: undefined
       }
       platform_admin_status: { Args: never; Returns: string }
+      platform_audit_payment_link: {
+        Args: { p_link: Json; p_restaurant_id: string }
+        Returns: undefined
+      }
       platform_change_plan: {
         Args: { p_plan_code: string; p_restaurant_id: string }
         Returns: Json
@@ -1666,6 +1705,10 @@ export type Database = {
       platform_overview: { Args: never; Returns: Json }
       platform_record_manual_payment: {
         Args: { p_payment: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_reprocess_webhook: {
+        Args: { p_event_id: string }
         Returns: Json
       }
       platform_reset_owner_password: {
@@ -1757,6 +1800,24 @@ export type Database = {
           p_status: Database["public"]["Enums"]["order_item_status"]
         }
         Returns: Json
+      }
+      subscription_reminder_sent: {
+        Args: { p_due_key: string; p_kind: string; p_restaurant_id: string }
+        Returns: boolean
+      }
+      subscription_reminders_due: {
+        Args: { p_at?: string }
+        Returns: {
+          due_key: string
+          kind: string
+          plan_name: string
+          recipients: string[]
+          restaurant_id: string
+          restaurant_name: string
+          restriction_at: string
+          timezone: string
+          trial_ends_at: string
+        }[]
       }
     }
     Enums: {

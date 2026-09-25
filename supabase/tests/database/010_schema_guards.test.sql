@@ -156,6 +156,9 @@ select set_eq(
       ('public.platform_support_view'),
       ('public.platform_update_plan'),
       ('public.platform_list_audit'),
+      -- Phase 8: Razorpay tools
+      ('public.platform_audit_payment_link'),
+      ('public.platform_reprocess_webhook'),
       -- Phase 7: menu import
       ('public.menu_import_create'),
       ('public.menu_import_set_draft'),
@@ -201,7 +204,7 @@ from unnest(array[
   'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
-  'restaurant_subscriptions', 'subscription_payments', 'menu_imports'
+  'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders'
 ]) as t;
 
 select is_empty(
@@ -211,7 +214,7 @@ select is_empty(
       'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
-      'restaurant_subscriptions', 'subscription_payments', 'menu_imports'
+      'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders'
     ]) as t
     where not exists (
       select 1
