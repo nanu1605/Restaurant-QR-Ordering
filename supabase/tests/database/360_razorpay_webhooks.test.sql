@@ -371,7 +371,7 @@ select is(
   (select (s.status::text, s.source::text, s.billing_cycle::text, s.current_period_start, s.current_period_end)::text
    from public.restaurant_subscriptions s where s.restaurant_id = :'rest5'),
   (select ('active', 'manual', 'monthly',
-           '2026-10-10 04:00+05:30'::timestamptz, '2026-11-10 04:00+05:30'::timestamptz)::text),
+           '2026-10-11 04:00+05:30'::timestamptz, '2026-11-11 04:00+05:30'::timestamptz)::text),
   'it pays from the first business day after the trial, for the months in its notes'
 );
 select is(
@@ -388,7 +388,7 @@ select is(
 );
 select is(
   (pg_temp.sub(:'rest5')).current_period_end,
-  '2026-11-10 04:00+05:30'::timestamptz,
+  '2026-11-11 04:00+05:30'::timestamptz,
   'so the period is extended once'
 );
 select public.razorpay_record_webhook(
@@ -396,7 +396,7 @@ select public.razorpay_record_webhook(
 );
 select is(
   (pg_temp.sub(:'rest5')).current_period_end,
-  '2027-02-10 04:00+05:30'::timestamptz,
+  '2027-02-11 04:00+05:30'::timestamptz,
   'a second link carries on from the paid period'
 );
 select public.razorpay_record_webhook(
@@ -407,8 +407,21 @@ select is(
    from public.subscription_payments p
    join public.restaurant_subscriptions s on s.restaurant_id = p.restaurant_id
    where p.razorpay_payment_id = 'pay_Fee1'),
-  (select ('Setup fee', true, '2027-02-10 04:00+05:30'::timestamptz)::text),
+  (select ('Setup fee', true, '2027-02-11 04:00+05:30'::timestamptz)::text),
   'a setup fee is recorded without changing access'
+);
+-- A Razorpay period can end in the small hours, before the business day
+-- starts: that business day is already paid, so the link starts the next one.
+update public.restaurant_subscriptions
+  set current_period_end = '2027-03-01 00:30+05:30'
+  where restaurant_id = :'rest5';
+select public.razorpay_record_webhook(
+  'evt_link3', pg_temp.link_event(:'rest5', '{"purpose": "subscription", "months": "1"}', 'pay_Link3', 89900)
+);
+select is(
+  (select (p.period_start, p.period_end)::text from public.subscription_payments p where p.razorpay_payment_id = 'pay_Link3'),
+  (select ('2027-03-01 04:00+05:30'::timestamptz, '2027-04-01 04:00+05:30'::timestamptz)::text),
+  'a period ending after midnight is followed from that date, with no day paid twice'
 );
 select is(
   public.razorpay_record_webhook(

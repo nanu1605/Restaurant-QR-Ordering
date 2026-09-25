@@ -1069,10 +1069,12 @@ out of order, and can't be delivered to localhost; plans can't be edited once cr
   `RAZORPAY_WEBHOOK_SECRET` the route answers 503.
 - **P8-5 · Payment links:** a paid link carries `notes.restaurant_id`, `notes.purpose`
   (`subscription` or `setup_fee`) and, for a subscription, `notes.months` (1–24). It is recorded as
-  a `payment_link` payment; a subscription link extends access from the first business day not yet
-  paid for (the trial's end, else the paid period's end, else today), by whole months, the same
-  business-day periods as manual payments (P7-4), and makes the subscription active and manual. A
-  setup fee is only recorded. A payment already recorded changes nothing.
+  a `payment_link` payment; a subscription link extends access from the first day not yet paid for
+  (the day after the trial's last business day, else the date the paid period ends on, never before
+  today: the day super-admin's manual payment form suggests), by whole months, the same business-day
+  periods as manual payments (P7-4), and makes the subscription active and manual. A Razorpay period
+  can end at any time of day, and the business day it ends in counts as paid. A setup fee is only
+  recorded. A payment already recorded changes nothing.
 - **P8-6 · Saving what Razorpay says:** `razorpay_save_subscription` is for the server only
   (service role), since owners can call the database directly and must never be able to claim a
   paid subscription. The server checks who is asking (an owner of that restaurant or a platform
@@ -1138,15 +1140,21 @@ way to pay when no plan had a Razorpay plan. Rejected with reasons: widening the
 to failing mandates (P8-9), grace after a failed first charge (spec §14.4), races that need two
 admins saving within one Razorpay call.
 
+A manual check with `pnpm razorpay:event` (charged → pending → halted → grace over → charged →
+cancelled → payment link → setup fee) then found payment links starting a day early: a link paid
+during a trial also paid for the trial's last day, and one after a Razorpay period ending between
+midnight and the business-day start paid for that period's last day again. Fixed in
+`20260926100200_payment_link_first_unpaid_day`.
+
 ### Tests (Stop A)
 
-- **pgTAP 360 (51):** stored once per event id; every event's state change; grace from the event;
+- **pgTAP 360 (52):** stored once per event id; every event's state change; grace from the event;
   payments once per payment id; stale events keep their payment; replaced subscriptions; unknown
   subscriptions stored with the error; ignored events; trial and grace kept when Razorpay cancels;
-  payment links (periods, duplicates, setup fee, bad months, purpose and restaurant); a webhook
-  older than a saved snapshot still applies; no going back within a second; a year paid by bank
-  transfer kept when the old mandate fails; a replacement that never charged neither clears a
-  scheduled end nor ends the paid period; grants.
+  payment links (periods, the day after a trial or a period ending after midnight, duplicates, setup
+  fee, bad months, purpose and restaurant); a webhook older than a saved snapshot still applies; no
+  going back within a second; a year paid by bank transfer kept when the old mandate fails; a
+  replacement that never charged neither clears a scheduled end nor ends the paid period; grants.
 - **pgTAP 370 (10):** access through a subscription's life: trial, autopay set up (no warning, +2
   days), charged, payment failed (warning, full through grace), read-only exactly at the next
   business-day start, paid again, ending and ended.
