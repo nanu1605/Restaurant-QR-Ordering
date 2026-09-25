@@ -2,7 +2,8 @@ import { cn } from 'cn';
 import type { CSSProperties } from 'react';
 
 import { Money } from '@/components/shared/money';
-import { APP_NAME, DEFAULT_LOCALE } from '@/lib/config';
+import { formatBillDate } from '@/features/ordering/format';
+import { APP_NAME } from '@/lib/config';
 import { amountInWords, formatINR } from '@/lib/money';
 
 import { type BillDocument as Bill, DOCUMENT_TITLES, lineName, type PrintSettings } from '../bill';
@@ -19,19 +20,6 @@ type BillDocumentProps = {
   className?: string;
   style?: CSSProperties;
 };
-
-/** "17 Sep 2026, 12:00 pm" in the restaurant's timezone. */
-export function formatBillDate(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-    timeZone,
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(iso));
-}
 
 /**
  * The bill as printed and shown on screen (spec §11.3, §15): black text only,

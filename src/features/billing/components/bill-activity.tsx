@@ -1,10 +1,9 @@
 import { cn } from 'cn';
 
 import { Money } from '@/components/shared/money';
-import { formatClockTime } from '@/features/ordering/format';
+import { formatBillDate, formatClockTime } from '@/features/ordering/format';
 
 import { type AuditEntry, type BillDetail, PAYMENT_MODE_LABELS } from '../bill';
-import { formatBillDate } from './bill-document';
 
 const STATUS_STYLES = {
   unpaid: 'border-attention text-attention',

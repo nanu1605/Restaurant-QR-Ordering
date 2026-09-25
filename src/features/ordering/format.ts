@@ -37,6 +37,19 @@ export function formatClockTime(iso: string, timeZone: string): string {
   }).format(new Date(iso));
 }
 
+/** "17 Sep 2026, 12:00 pm" in the restaurant's timezone. */
+export function formatBillDate(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+    timeZone,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(iso));
+}
+
 /** "1:05" for a countdown in milliseconds (never negative). */
 export function formatCountdown(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));

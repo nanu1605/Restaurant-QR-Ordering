@@ -10,13 +10,13 @@ import {
   BillPayments,
   BillStatusBadge,
 } from '@/features/billing/components/bill-activity';
-import { BillDocument, formatBillDate } from '@/features/billing/components/bill-document';
+import { BillDocument } from '@/features/billing/components/bill-document';
 import { RecordPaymentDialog } from '@/features/billing/components/record-payment-dialog';
 import { VoidBillDialog } from '@/features/billing/components/void-bill-dialog';
 import { getBill } from '@/features/billing/queries';
 import { billUpiQr } from '@/features/billing/upi-qr';
 import { publicImageUrl } from '@/features/menu/images';
-import { tableHeading } from '@/features/ordering/format';
+import { formatBillDate, tableHeading } from '@/features/ordering/format';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 import { getPublicEnv } from '@/lib/env';

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
+import { formatBillDate, formatClockTime } from '@/features/ordering/format';
 import { formatElapsed } from '@/features/orders/board-view';
 import { hrefWithParams } from '@/lib/date-range';
 
@@ -16,7 +17,6 @@ import {
 } from '../bill';
 import { filterParams, type TotalOrdersFilters } from '../schemas';
 import { BillStatusBadge } from './bill-activity';
-import { formatBillDate } from './bill-document';
 
 const PATH = '/admin/total-orders';
 
@@ -155,7 +155,8 @@ function BillsTable({
             <td className="px-3 py-2">{row.tableLabel}</td>
             <td className="px-3 py-2">{row.waiterName ?? '—'}</td>
             <td className="px-3 py-2 tabular-nums">
-              {formatBillDate(row.openedAt, timezone)} → {formatClock(row.generatedAt, timezone)}
+              {formatBillDate(row.openedAt, timezone)} →{' '}
+              {formatClockTime(row.generatedAt, timezone)}
               <span className="block text-ink-muted">{formatElapsed(row.minutes)}</span>
             </td>
             <td className="px-3 py-2 text-right tabular-nums">{row.items}</td>
@@ -272,13 +273,4 @@ function formatDay(date: string): string {
     month: 'short',
     timeZone: 'UTC',
   }).format(new Date(`${date}T00:00:00Z`));
-}
-
-function formatClock(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone,
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(iso));
 }

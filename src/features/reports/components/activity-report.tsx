@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
 import { percentLabel } from '@/features/billing/bill';
-import { formatBillDate } from '@/features/billing/components/bill-document';
-import { tableHeading } from '@/features/ordering/format';
+import { formatBillDate, tableHeading } from '@/features/ordering/format';
 
 import { type ActivityReport, dishLabel } from '../report';
 import { ScrollRegion } from './scroll-region';
