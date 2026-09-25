@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useId } from 'react';
+import { useId, useTransition } from 'react';
 import { useForm, type Path } from 'react-hook-form';
 import { toast } from 'sonner';
 
@@ -12,17 +12,29 @@ import { Input } from '@/components/ui/input';
 import { formatPriceInput } from '@/features/menu/schemas';
 import { FEATURE_KEYS } from '@/features/plans/plan-features';
 
-import { updatePlan } from '../actions';
+import { createRazorpayPlan, updatePlan } from '../actions';
 import { FEATURE_LABELS, type Plan } from '../platform';
 import { planFormSchema, type PlanFormInput } from '../schemas';
 
 /**
  * One plan's prices, limits, features and Razorpay ids (spec §13.4 Plans,
  * docs/DECISIONS.md P7-10). Lower limits never switch off existing tables or
- * staff; they only stop new ones.
+ * staff; they only stop new ones. With Razorpay keys set, a missing
+ * Razorpay plan can be created from the saved price (P8-10).
  */
-export function PlanEditor({ plan }: { plan: Plan }) {
+export function PlanEditor({ plan, razorpayReady }: { plan: Plan; razorpayReady: boolean }) {
   const ids = useId();
+  const [creating, startCreating] = useTransition();
+  const missing = (['monthly', 'yearly'] as const).filter((cycle) =>
+    cycle === 'monthly' ? !plan.razorpay_plan_id_monthly : !plan.razorpay_plan_id_yearly,
+  );
+
+  const create = (cycle: 'monthly' | 'yearly') =>
+    startCreating(async () => {
+      const result = await createRazorpayPlan(plan.id, cycle);
+      if (result.ok) toast.success(`${plan.name} ${cycle} plan created in Razorpay`);
+      else toast.error(result.error);
+    });
   const {
     register,
     handleSubmit,
@@ -113,9 +125,29 @@ export function PlanEditor({ plan }: { plan: Plan }) {
         {input('maxTables', 'Table limit', 'Empty = unlimited.', 'numeric')}
         {input('maxStaff', 'Staff login limit', 'Besides the owner. Empty = unlimited.', 'numeric')}
         {input('sortOrder', 'Order on the plans page', undefined, 'numeric')}
-        {input('razorpayMonthly', 'Razorpay plan id (monthly)', 'Set up with Razorpay in Phase 8.')}
+        {input(
+          'razorpayMonthly',
+          'Razorpay plan id (monthly)',
+          'A new price clears it: Razorpay plans can’t change price.',
+        )}
         {input('razorpayYearly', 'Razorpay plan id (yearly)')}
       </div>
+      {razorpayReady && missing.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {missing.map((cycle) => (
+            <Button
+              key={cycle}
+              type="button"
+              variant="outline"
+              disabled={creating || isDirty}
+              onClick={() => create(cycle)}
+            >
+              Create {cycle} plan in Razorpay
+            </Button>
+          ))}
+          {isDirty && <p className="text-sm text-ink-muted">Save the changes first.</p>}
+        </div>
+      )}
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-ink">Features</legend>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { PlanEditor } from '@/features/platform/components/plan-editor';
 import { listPlans } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
 export const metadata: Metadata = {
   title: 'Plans',
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 export default async function SuperPlansPage() {
   await requirePlatformAdmin();
   const plans = await listPlans();
+  const razorpayReady = razorpayConfig() !== null;
 
   return (
     <>
@@ -21,7 +23,7 @@ export default async function SuperPlansPage() {
         description="Changes apply to every restaurant on the plan straight away. Lower limits never switch off existing tables or staff."
       />
       {plans.map((plan) => (
-        <PlanEditor key={plan.id} plan={plan} />
+        <PlanEditor key={plan.id} plan={plan} razorpayReady={razorpayReady} />
       ))}
     </>
   );

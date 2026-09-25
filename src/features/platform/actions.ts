@@ -11,8 +11,10 @@ import {
   type ActionResult,
 } from '@/lib/action-result';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { getServerEnv } from '@/lib/env.server';
+import { createPlan, RazorpayError, razorpayConfig } from '@/lib/razorpay/razorpay';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -251,6 +253,63 @@ export async function onboardNewRestaurant(
     console.error('Onboarding failed:', error.code, error.message);
     return actionError(GENERIC_ERROR);
   }
+}
+
+/**
+ * Creates the Razorpay plan for one cycle from the saved price and stores its
+ * id (spec §19 Phase 8 task 1, docs/DECISIONS.md P8-10).
+ */
+export async function createRazorpayPlan(
+  planId: string,
+  cycle: 'monthly' | 'yearly',
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  const id = restaurantIdSchema.safeParse(planId);
+  if (!id.success || (cycle !== 'monthly' && cycle !== 'yearly')) {
+    return actionError(GENERIC_ERROR);
+  }
+  const config = razorpayConfig();
+  if (!config) return actionError('Add the Razorpay keys to the environment first.');
+
+  const supabase = await createClient();
+  const { data: plan, error: readError } = await supabase
+    .from('plans')
+    .select(
+      'code, name, price_monthly_paise, price_yearly_paise, razorpay_plan_id_monthly, razorpay_plan_id_yearly',
+    )
+    .eq('id', id.data)
+    .maybeSingle();
+  if (readError || !plan) return actionError('That plan no longer exists.');
+  const existing =
+    cycle === 'monthly' ? plan.razorpay_plan_id_monthly : plan.razorpay_plan_id_yearly;
+  if (existing) return actionError('This plan already has a Razorpay plan for that cycle.');
+  const amountPaise = cycle === 'monthly' ? plan.price_monthly_paise : plan.price_yearly_paise;
+  if (amountPaise < 100) return actionError('Razorpay plans cost at least ₹1.');
+
+  let razorpayId: string;
+  try {
+    razorpayId = (
+      await createPlan(config, {
+        cycle,
+        name: `${APP_NAME} ${plan.name} — ${cycle}`,
+        amountPaise,
+        notes: { plan_code: plan.code },
+      })
+    ).id;
+  } catch (error) {
+    console.error('[plans] could not create a Razorpay plan', error);
+    return actionError(
+      error instanceof RazorpayError ? `Razorpay refused: ${error.message}` : GENERIC_ERROR,
+    );
+  }
+
+  const { error } = await supabase.rpc('platform_update_plan', {
+    p_plan_id: id.data,
+    p_patch: { [`razorpay_plan_id_${cycle}`]: razorpayId },
+  });
+  if (error) return fromDbError(error, 'platform_update_plan');
+  refresh();
+  return actionOk();
 }
 
 /** Saves a plan (spec §13.4 Plans); the database audits what changed. */
