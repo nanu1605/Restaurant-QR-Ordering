@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AccessInput } from '@/features/subscriptions/access-banner';
+import { autopayStartAt, autopayState, cancelsAtCycleEnd } from '@/features/subscriptions/autopay';
 import {
   daysUntil,
   formatPaidPeriod,
@@ -8,7 +9,7 @@ import {
   type OwnerSubscription,
 } from '@/features/subscriptions/summary';
 
-// Owner Subscription page (spec §14.4 step 2, docs/DECISIONS.md P7-21).
+// Owner Subscription page (spec §14.3 step 2, docs/DECISIONS.md P7-21, P8-7).
 
 const TZ = 'Asia/Kolkata';
 const now = new Date('2026-09-19T06:30:00Z'); // 12:00 in India
@@ -25,6 +26,9 @@ function subscription(patch: Partial<OwnerSubscription>): OwnerSubscription {
     currentPeriodEnd: null,
     graceUntil: null,
     cancelAtPeriodEnd: false,
+    razorpayStatus: null,
+    nextPlanName: null,
+    nextBillingCycle: null,
     plan: { name: 'Growth', priceMonthlyPaise: 99900, priceYearlyPaise: 999900 },
     ...patch,
   };
@@ -155,5 +159,69 @@ describe('subscriptionSummary', () => {
       now,
     });
     expect(none.label).toBe('No plan');
+  });
+});
+
+describe('autopay', () => {
+  it('is on for a set-up or charging mandate, ending once cancelled', () => {
+    expect(autopayState(subscription({ razorpayStatus: 'authenticated' }))).toBe('on');
+    expect(autopayState(subscription({ razorpayStatus: 'active', cancelAtPeriodEnd: true }))).toBe(
+      'ending',
+    );
+    for (const razorpayStatus of [null, 'created', 'pending', 'halted', 'cancelled']) {
+      expect(autopayState(subscription({ razorpayStatus }))).toBe('off');
+    }
+  });
+
+  it('starts charging when the trial or paid period ends, else now', () => {
+    const trial = subscription({ trialEndsAt: '2026-09-29T06:30:00Z' });
+    expect(autopayStartAt(trial, now)?.toISOString()).toBe('2026-09-29T06:30:00.000Z');
+    const paid = subscription({ status: 'active', currentPeriodEnd: '2026-10-18T22:30:00Z' });
+    expect(autopayStartAt(paid, now)?.toISOString()).toBe('2026-10-18T22:30:00.000Z');
+    // Minutes away, or over: start now.
+    expect(autopayStartAt(subscription({ trialEndsAt: '2026-09-19T06:35:00Z' }), now)).toBeNull();
+    expect(
+      autopayStartAt(
+        subscription({ status: 'past_due', currentPeriodEnd: '2026-10-18T22:30:00Z' }),
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it('cancels a charging subscription at the cycle end, an unused mandate now', () => {
+    expect(cancelsAtCycleEnd('active')).toBe(true);
+    expect(cancelsAtCycleEnd('authenticated')).toBe(false);
+  });
+
+  it('tells a trial owner autopay is set up, without a warning', () => {
+    const summary = subscriptionSummary({
+      subscription: subscription({
+        trialEndsAt: '2026-09-21T06:30:00Z',
+        razorpayStatus: 'authenticated',
+        nextPlanName: 'Starter',
+        nextBillingCycle: 'monthly',
+      }),
+      access: { ...full, restrictionAt: '2026-09-23T22:30:00Z' },
+      timezone: TZ,
+      now,
+    });
+    expect(summary).toMatchObject({ label: 'Free trial', tone: 'ok', daysLeft: 2 });
+    expect(summary.text).toBe(
+      'Your free trial of Growth ends on 21 Sept 2026. Autopay is set up for Starter, monthly; the first payment is on 21 Sept 2026.',
+    );
+  });
+
+  it('says Razorpay retries a failed payment', () => {
+    const summary = subscriptionSummary({
+      subscription: subscription({
+        status: 'past_due',
+        source: 'razorpay',
+        razorpayStatus: 'pending',
+      }),
+      access: { ...full, restrictionAt: '2026-09-24T22:30:00Z', warning: 'payment_failed' },
+      timezone: TZ,
+      now,
+    });
+    expect(summary.text).toContain('Razorpay will try again');
   });
 });

@@ -2,11 +2,12 @@ import { DEFAULT_LOCALE } from '@/lib/config';
 import type { Database } from '@/types/database';
 
 import type { AccessInput } from './access-banner';
+import { autopayState } from './autopay';
 
 /**
- * What the owner's Subscription page says about the plan (spec §14.4 step 2:
- * current plan, status, trial countdown, payment history). Paying online and
- * choosing a plan come with Razorpay in Phase 8 (docs/DECISIONS.md P7-21).
+ * What the owner's Subscription page says about the plan (spec §14.3 step 2:
+ * current plan, status, trial countdown, payment history; docs/DECISIONS.md
+ * P7-21, P8-7).
  */
 
 type Enums = Database['public']['Enums'];
@@ -21,6 +22,11 @@ export type OwnerSubscription = {
   currentPeriodEnd: string | null;
   graceUntil: string | null;
   cancelAtPeriodEnd: boolean;
+  /** Razorpay's state for the autopay subscription, if any. */
+  razorpayStatus: string | null;
+  /** What autopay will charge for, until its first payment. */
+  nextPlanName: string | null;
+  nextBillingCycle: Enums['billing_cycle'] | null;
   plan: {
     name: string;
     priceMonthlyPaise: number;
@@ -49,6 +55,11 @@ export type SubscriptionSummary = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const CYCLE_LABELS: Record<Enums['billing_cycle'], string> = {
+  monthly: 'monthly',
+  yearly: 'yearly',
+};
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: 'Bank transfer',
@@ -162,10 +173,19 @@ export function subscriptionSummary({
           daysLeft: 0,
         };
       }
+      const ends = formatDay(subscription.trialEndsAt!, timezone);
+      if (autopayState(subscription) === 'on') {
+        return {
+          label: 'Free trial',
+          tone: 'ok',
+          text: `Your free trial of ${plan} ends on ${ends}. Autopay is set up${autopayPlan(subscription)}; the first payment is on ${ends}.`,
+          daysLeft: left,
+        };
+      }
       return {
         label: 'Free trial',
         tone: left <= 3 ? 'warning' : 'ok',
-        text: `Your free trial of ${plan} ends on ${formatDay(subscription.trialEndsAt!, timezone)}.`,
+        text: `Your free trial of ${plan} ends on ${ends}.`,
         daysLeft: left,
       };
     }
@@ -187,7 +207,9 @@ export function subscriptionSummary({
         ? ' It will not renew after that.'
         : subscription.source === 'razorpay'
           ? ' It renews automatically.'
-          : '';
+          : autopayState(subscription) === 'on'
+            ? ` Autopay takes over after that${autopayPlan(subscription)}.`
+            : '';
       return {
         label: 'Paid',
         tone: subscription.cancelAtPeriodEnd && left <= 3 ? 'warning' : 'ok',
@@ -200,7 +222,10 @@ export function subscriptionSummary({
       return {
         label: 'Payment failed',
         tone: 'warning',
-        text: `The last payment for ${plan} failed. Pay by ${stopsOn} to keep ordering on.`,
+        text:
+          subscription.razorpayStatus === 'pending'
+            ? `The last payment for ${plan} failed. Razorpay will try again; you can also pay another way by ${stopsOn} to keep ordering on.`
+            : `The last payment for ${plan} failed. Pay by ${stopsOn} to keep ordering on.`,
         daysLeft: access.restrictionAt ? daysUntil(access.restrictionAt, now) : null,
       };
     default:
@@ -211,4 +236,10 @@ export function subscriptionSummary({
         daysLeft: access.restrictionAt ? daysUntil(access.restrictionAt, now) : null,
       };
   }
+}
+
+/** " for Starter, monthly": what autopay will charge for, before its first payment. */
+function autopayPlan(subscription: OwnerSubscription): string {
+  if (!subscription.nextPlanName || !subscription.nextBillingCycle) return '';
+  return ` for ${subscription.nextPlanName}, ${CYCLE_LABELS[subscription.nextBillingCycle]}`;
 }

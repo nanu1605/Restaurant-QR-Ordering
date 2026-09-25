@@ -15,7 +15,10 @@ import {
 } from '@/components/ui/table';
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
+import { autopayStartAt, autopayState, cancelsAtCycleEnd } from '@/features/subscriptions/autopay';
+import { AutopayPanel } from '@/features/subscriptions/components/autopay-panel';
 import {
+  getCheckoutPlans,
   getOwnerSubscription,
   getPlanUsage,
   getSubscriptionPayments,
@@ -31,6 +34,7 @@ import {
 } from '@/features/subscriptions/summary';
 import { getRestaurantAccess } from '@/lib/auth/access';
 import { requireMember } from '@/lib/auth/guards';
+import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
 export const metadata: Metadata = {
   title: 'Subscription',
@@ -47,14 +51,24 @@ export default async function SubscriptionPage() {
   const membership = await requireMember(['owner']);
   const restaurantId = membership.restaurant.id;
   const timezone = membership.restaurant.timezone;
-  const [subscription, payments, plan, usage, access] = await Promise.all([
+  // Paying online needs Razorpay keys (docs/DECISIONS.md P8-1).
+  const online = razorpayConfig() !== null;
+  const [subscription, payments, plan, usage, access, checkoutPlans] = await Promise.all([
     getOwnerSubscription(restaurantId),
     getSubscriptionPayments(restaurantId),
     getPlanFeatures(restaurantId),
     getPlanUsage(restaurantId),
     getRestaurantAccess(restaurantId),
+    online ? getCheckoutPlans() : Promise.resolve([]),
   ]);
   const summary = subscriptionSummary({ subscription, access, timezone });
+  const autopay = subscription ? autopayState(subscription) : 'off';
+  const canSubscribe =
+    online && subscription !== null && access.reason !== 'suspended' && autopay !== 'on';
+  const cancel =
+    online && subscription && autopay === 'on'
+      ? cancelOptions(subscription.razorpayStatus, subscription, timezone)
+      : null;
 
   return (
     <>
@@ -163,12 +177,46 @@ export default async function SubscriptionPage() {
         )}
       </Section>
 
-      <p className="text-sm text-ink-muted">
-        Paying online is coming soon. Until then, contact support to pay by bank transfer or UPI, or
-        to change your plan.
-      </p>
+      {(canSubscribe && checkoutPlans.length > 0) || cancel ? (
+        <Section title={autopay === 'on' ? 'Autopay' : 'Choose a plan'}>
+          <AutopayPanel
+            plans={checkoutPlans}
+            canSubscribe={canSubscribe}
+            cancel={cancel}
+            firstPayment={subscription ? firstPayment(subscription, timezone) : ''}
+          />
+        </Section>
+      ) : (
+        !online && (
+          <p className="text-sm text-ink-muted">
+            Paying online is coming soon. Until then, contact support to pay by bank transfer or
+            UPI, or to change your plan.
+          </p>
+        )
+      )}
     </>
   );
+}
+
+/** When the first payment of a new subscription is taken. */
+function firstPayment(subscription: OwnerSubscription, timezone: string): string {
+  const start = autopayStartAt(subscription, new Date());
+  if (!start) return 'You pay for the first period now.';
+  const what = subscription.status === 'trialing' ? 'your free trial' : 'your paid period';
+  return `The first payment is on ${formatDay(start.toISOString(), timezone)}, when ${what} ends.`;
+}
+
+function cancelOptions(
+  razorpayStatus: string | null,
+  subscription: OwnerSubscription,
+  timezone: string,
+) {
+  const atCycleEnd = cancelsAtCycleEnd(razorpayStatus);
+  const end = atCycleEnd ? subscription.currentPeriodEnd : subscription.trialEndsAt;
+  return {
+    atCycleEnd,
+    until: end ? (atCycleEnd ? lastDay(end, timezone) : formatDay(end, timezone)) : null,
+  };
 }
 
 function details(subscription: OwnerSubscription, timezone: string): [string, ReactNode][] {

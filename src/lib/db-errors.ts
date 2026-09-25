@@ -55,6 +55,12 @@ const MESSAGES: Record<string, Message> = {
   SLUG_TAKEN: 'That restaurant code is taken. Choose another.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
+  // Subscriptions (spec §14)
+  RAZORPAY_MANAGED:
+    'This restaurant pays by Razorpay autopay. Cancel autopay at period end first; the owner then subscribes to the new plan.',
+  RAZORPAY_SUBSCRIPTION_LIVE: 'Autopay is already set up. Refresh the page to see it.',
+  RESTAURANT_SUSPENDED: 'This restaurant is suspended. Contact support to restore it first.',
+
   // Menu
   INVALID_CATEGORY_NAME: 'Enter a category name of up to 60 characters.',
   CATEGORY_NAME_TAKEN: (name) =>
