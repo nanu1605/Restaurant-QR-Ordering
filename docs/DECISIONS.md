@@ -1212,6 +1212,14 @@ rows written in the same transaction. Rejected with reasons: validating the rest
 Razorpay does (its refusal is shown), a duplicate email when a sent reminder can't be logged
 (send, then log, is the chosen order), and the payment-failed email's wording (the owner page's).
 
+A manual check of the whole loop (charged → pending → reminder email → halted → cancelled →
+charged on a new subscription → cancelled → payment link → setup fee) found the owner's deadline a
+day late: ordering stops at a business-day start (4 am), but the page, banner and payment-failed
+email named that day ("Pay by 4 Oct" when ordering stopped at 4 am on 4 Oct), while a "Pay by" fact
+from `grace_until` said 3 Oct. They now name the last day ordering stays on, as "paid until" does,
+and the duplicate fact is gone. The simulator also attaches a new made-up subscription once the
+current one has ended, as an owner subscribing again would.
+
 ### Tests (Stop B)
 
 - **pgTAP 390:** the setup fee setting; logging a payment link (second factor, owners refused,
