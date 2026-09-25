@@ -39,6 +39,8 @@ describe('parseServerEnv', () => {
     expect(env.MENU_IMPORT_BASE_URL).toBe('https://api.commandcode.ai/provider/v1');
     expect(env.MENU_IMPORT_FALLBACK_BASE_URL).toBe('https://openrouter.ai/api/v1');
     expect(env.MENU_IMPORT_API_KEY).toBeUndefined();
+    expect(env.RAZORPAY_API_BASE_URL).toBe('https://api.razorpay.com/v1');
+    expect(env.RAZORPAY_KEY_ID).toBeUndefined();
   });
 
   it('coerces numeric settings and rejects a short cookie secret', () => {

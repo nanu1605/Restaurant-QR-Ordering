@@ -34,6 +34,8 @@ const serverSchema = z.object({
   RAZORPAY_KEY_ID: optionalString,
   RAZORPAY_KEY_SECRET: optionalString,
   RAZORPAY_WEBHOOK_SECRET: optionalString,
+  // Razorpay's REST API; tests point it at a local mock (docs/DECISIONS.md P8-1).
+  RAZORPAY_API_BASE_URL: urlWithDefault('https://api.razorpay.com/v1'),
   CRON_SECRET: optionalString,
   // Menu photo import (docs/DECISIONS.md P7-12): any OpenAI-compatible
   // /chat/completions API; the fallback takes a page when the first fails.
