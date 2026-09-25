@@ -20,6 +20,8 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 const DAY = 24 * 60 * 60 * 1000;
+const MOCK_RAZORPAY = 'http://127.0.0.1:3190/razorpay/v1';
+const MOCK_RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
 let savedPlanIds: { code: string; monthly: string | null; yearly: string | null }[] = [];
 
 test.beforeAll(async () => {
@@ -151,7 +153,13 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
   await expect(page.getByTestId('subscription-status')).toHaveText('Paid');
   await expect(page.getByRole('status').filter({ hasText: 'Payment failed' })).toHaveCount(0);
 
-  // Cancel at the end of the paid period.
+  // Cancel at the end of the paid period. An earlier try reached Razorpay but
+  // its reply was lost, so Razorpay refuses a second cancel: the app still
+  // saves what Razorpay has.
+  await request.post(`${MOCK_RAZORPAY}/subscriptions/${subscriptionId}/cancel`, {
+    headers: { Authorization: MOCK_RAZORPAY_AUTH },
+    data: { cancel_at_cycle_end: true },
+  });
   await page.getByRole('button', { name: 'Cancel at period end' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Cancel autopay?' });
   await expect(dialog).toContainText('Nothing more will be charged.');

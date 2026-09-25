@@ -151,6 +151,13 @@ function razorpay(request, response, path) {
     if (cancel) {
       const subscription = subscriptions.get(cancel[1]);
       if (!subscription) return notFound();
+      // Like Razorpay: a subscription can be cancelled once.
+      if (subscription.status === 'cancelled' || subscription.has_scheduled_changes) {
+        send(response, 400, {
+          error: { code: 'BAD_REQUEST_ERROR', description: 'Subscription is already cancelled' },
+        });
+        return;
+      }
       if (body.cancel_at_cycle_end) subscription.has_scheduled_changes = true;
       else subscription.status = 'cancelled';
       send(response, 200, subscription);
