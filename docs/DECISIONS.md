@@ -53,8 +53,10 @@ bottom of each section.
   to `package.json`.
 - **Product name: MenuMesh** (user, 2026-09-25; replaces the provisional DineFlow of 2026-09-13).
   `APP_NAME` is `MenuMesh`, the package is `menumesh`. The user owns `menumesh.app`,
-  `menumesh.co` and `menumesh.in`; the one domain the app is served from (`NEXT_PUBLIC_APP_URL`,
-  printed into every QR code) is still to be picked, with the other two redirecting to it.
+  `menumesh.co` and `menumesh.in`. The app is served from **`https://menumesh.in`** (user,
+  2026-09-25): it is production's `NEXT_PUBLIC_APP_URL`, so the address printed into every QR
+  code, and production's `STAFF_EMAIL_DOMAIN`. `www.menumesh.in`, `menumesh.app` and
+  `menumesh.co` redirect to it (301); QR codes use the bare domain because it is shortest.
   Identifiers nobody outside development sees keep
   `tableorder`: Supabase `project_id` (renaming recreates the containers and volumes), the local
   `STAFF_EMAIL_DOMAIN` default `tableorder.test` (staging/production set the real domain) and the
