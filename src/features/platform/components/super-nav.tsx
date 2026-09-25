@@ -8,6 +8,7 @@ import {
   Menu,
   ScrollText,
   Tags,
+  Webhook,
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/super/restaurants', label: 'Restaurants', icon: Building2 },
   { href: '/super/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/super/plans', label: 'Plans', icon: Tags },
+  { href: '/super/webhooks', label: 'Webhooks', icon: Webhook },
   { href: '/super/audit', label: 'Audit log', icon: ScrollText },
 ];
 
