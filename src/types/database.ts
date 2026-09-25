@@ -906,8 +906,14 @@ export type Database = {
           current_period_start: string | null
           grace_until: string | null
           id: string
+          next_billing_cycle:
+            | Database["public"]["Enums"]["billing_cycle"]
+            | null
+          next_plan_id: string | null
           plan_id: string
           razorpay_customer_id: string | null
+          razorpay_event_at: string | null
+          razorpay_status: string | null
           razorpay_subscription_id: string | null
           restaurant_id: string
           source: Database["public"]["Enums"]["subscription_source"] | null
@@ -923,8 +929,14 @@ export type Database = {
           current_period_start?: string | null
           grace_until?: string | null
           id?: string
+          next_billing_cycle?:
+            | Database["public"]["Enums"]["billing_cycle"]
+            | null
+          next_plan_id?: string | null
           plan_id: string
           razorpay_customer_id?: string | null
+          razorpay_event_at?: string | null
+          razorpay_status?: string | null
           razorpay_subscription_id?: string | null
           restaurant_id: string
           source?: Database["public"]["Enums"]["subscription_source"] | null
@@ -940,8 +952,14 @@ export type Database = {
           current_period_start?: string | null
           grace_until?: string | null
           id?: string
+          next_billing_cycle?:
+            | Database["public"]["Enums"]["billing_cycle"]
+            | null
+          next_plan_id?: string | null
           plan_id?: string
           razorpay_customer_id?: string | null
+          razorpay_event_at?: string | null
+          razorpay_status?: string | null
           razorpay_subscription_id?: string | null
           restaurant_id?: string
           source?: Database["public"]["Enums"]["subscription_source"] | null
@@ -950,6 +968,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "restaurant_subscriptions_next_plan_id_fkey"
+            columns: ["next_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "restaurant_subscriptions_plan_id_fkey"
             columns: ["plan_id"]
@@ -1657,6 +1682,19 @@ export type Database = {
       }
       platform_update_plan: {
         Args: { p_patch: Json; p_plan_id: string }
+        Returns: Json
+      }
+      razorpay_record_webhook: {
+        Args: { p_event_id: string; p_payload: Json }
+        Returns: string
+      }
+      razorpay_save_subscription: {
+        Args: {
+          p_actor_user_id?: string
+          p_cancel_scheduled?: boolean
+          p_entity: Json
+          p_restaurant_id: string
+        }
         Returns: Json
       }
       restaurant_access: {
