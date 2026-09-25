@@ -36,8 +36,11 @@ day goes.
 
 Before the first pilot:
 
-- [ ] Choose the product name and buy the domain. **QR codes carry `NEXT_PUBLIC_APP_URL`, so decide
-      this before printing anything.**
+- [x] Choose the product name and buy the domains: MenuMesh, on `menumesh.app`, `menumesh.co` and
+      `menumesh.in`.
+- [ ] Pick the one domain the app is served from and redirect the other two to it. **QR codes
+      carry `NEXT_PUBLIC_APP_URL`, so decide this before printing anything.** Staging and
+      production also set `STAFF_EMAIL_DOMAIN` to it.
 - [ ] Create the Supabase projects (staging and production, Mumbai region, paid plan for
       production) and a Vercel project, with separate keys everywhere.
 - [ ] Set up Sentry, PostHog and Resend (verified sending domain) for the deployed app.

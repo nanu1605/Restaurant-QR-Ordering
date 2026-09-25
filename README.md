@@ -1,4 +1,4 @@
-# DineFlow
+# MenuMesh
 
 QR-code dine-in ordering for restaurants: customers order from their table, staff track every
 dish live, managers bill and review sales. Multi-tenant SaaS built with Next.js and Supabase.

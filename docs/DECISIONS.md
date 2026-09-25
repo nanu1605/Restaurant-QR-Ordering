@@ -51,8 +51,11 @@ bottom of each section.
   are named after the product.
 - **Vitest config is `vitest.config.mts`** so Vite loads it as ESM without adding `"type": "module"`
   to `package.json`.
-- **Product name: DineFlow** (user, 2026-09-13; may still change; domain still open). `APP_NAME` is
-  `DineFlow`, the package is `dineflow`. Identifiers nobody outside development sees keep
+- **Product name: MenuMesh** (user, 2026-09-25; replaces the provisional DineFlow of 2026-09-13).
+  `APP_NAME` is `MenuMesh`, the package is `menumesh`. The user owns `menumesh.app`,
+  `menumesh.co` and `menumesh.in`; the one domain the app is served from (`NEXT_PUBLIC_APP_URL`,
+  printed into every QR code) is still to be picked, with the other two redirecting to it.
+  Identifiers nobody outside development sees keep
   `tableorder`: Supabase `project_id` (renaming recreates the containers and volumes), the local
   `STAFF_EMAIL_DOMAIN` default `tableorder.test` (staging/production set the real domain) and the
   cart's storage key `tableorder:cart:<token>`. A later rename stays one constant plus the package
