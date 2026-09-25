@@ -173,7 +173,7 @@ select is(
   (select (a.restaurant_id::text, a.before ->> 'event_type', a.after ->> 'result')::text
    from public.audit_logs a
    where a.action = 'webhook.reprocessed' and a.entity_id = :'failed_event'
-   order by a.created_at desc, a.id desc limit 1),
+     and a.after ->> 'result' = 'applied'),
   format('(%s,subscription.charged,applied)', :'rest'),
   'reprocessing is audited against the restaurant'
 );
@@ -183,7 +183,48 @@ select throws_ok(
   'P0001', 'WEBHOOK_NOT_FAILED', 'and it cannot be applied again'
 );
 
+-- ─── Paying another way while autopay is set to end ─────────────────────────
+-- Razorpay still ends the mandate, so the app keeps saying it ends.
+select tests.clear_auth();
+update public.restaurant_subscriptions set cancel_at_period_end = true where restaurant_id = :'rest';
+select tests.as_service_role();
+select is(
+  public.razorpay_record_webhook('evt_Tools3', jsonb_build_object(
+    'event', 'payment_link.paid',
+    'created_at', extract(epoch from now())::bigint,
+    'payload', jsonb_build_object(
+      'payment_link', jsonb_build_object('entity', jsonb_build_object(
+        'id', 'plink_Tools3', 'amount', 89900,
+        'notes', jsonb_build_object('restaurant_id', :'rest', 'purpose', 'subscription', 'months', '1')
+      )),
+      'payment', jsonb_build_object('entity', jsonb_build_object('id', 'pay_Tools3', 'amount', 89900))
+    )
+  )),
+  'applied',
+  'a subscription link is paid while autopay is set to end'
+);
+select tests.clear_auth();
+select is(
+  (select (s.cancel_at_period_end, private.razorpay_managed(s))::text
+   from public.restaurant_subscriptions s where s.restaurant_id = :'rest'),
+  '(t,f)',
+  'autopay still ends; it is not reported as renewing'
+);
+select tests.authenticate_as_platform_admin(:'admin');
+select public.platform_record_manual_payment(:'rest', jsonb_build_object(
+  'amount_paise', 89900, 'mode', 'upi', 'billing_cycle', 'monthly',
+  'period_start', (now() + interval '60 days')::date, 'period_end', (now() + interval '89 days')::date,
+  'notes', null
+));
+select tests.clear_auth();
+select is(
+  (select cancel_at_period_end from public.restaurant_subscriptions where restaurant_id = :'rest'),
+  true,
+  'nor after a manual payment'
+);
+
 -- ─── The restaurant page shows Razorpay's state ─────────────────────────────
+select tests.authenticate_as_platform_admin(:'admin');
 select is(
   (select (d #>> '{subscription,razorpay_status}', d #>> '{subscription,razorpay_subscription_id}')::text
    from public.platform_get_restaurant(:'rest') as d),
