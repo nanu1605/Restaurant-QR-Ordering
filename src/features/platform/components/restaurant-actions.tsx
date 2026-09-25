@@ -212,7 +212,7 @@ export function RestaurantActions({
           open={open === 'link'}
           onClose={close}
           title="Send payment link"
-          description="Razorpay emails or texts the link to the restaurant. A paid subscription link extends access from the first day not yet paid for; a setup fee is only recorded."
+          description="Razorpay emails or texts the link to the restaurant's email and phone, when it has them. A paid subscription link extends access from the first day not yet paid for; a setup fee is only recorded."
         >
           <PaymentLinkForm
             restaurantId={restaurantId}
@@ -576,7 +576,7 @@ function PaymentLinkForm({
   onDone: () => void;
 }) {
   const ids = useId();
-  const [sentUrl, setSentUrl] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ shortUrl: string; sentTo: string[] } | null>(null);
   const {
     register,
     handleSubmit,
@@ -608,11 +608,11 @@ function PaymentLinkForm({
   const onSubmit = handleSubmit(async (values) => {
     const result = await sendPaymentLink(restaurantId, values);
     if (!applyResult(result, setError) || !result.ok) return;
-    toast.success('Payment link sent');
-    setSentUrl(result.data.shortUrl);
+    toast.success('Payment link created');
+    setSent(result.data);
   });
 
-  if (sentUrl) return <SentLink url={sentUrl} onDone={onDone} />;
+  if (sent) return <SentLink url={sent.shortUrl} sentTo={sent.sentTo} onDone={onDone} />;
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
@@ -660,7 +660,7 @@ function PaymentLinkForm({
   );
 }
 
-function SentLink({ url, onDone }: { url: string; onDone: () => void }) {
+function SentLink({ url, sentTo, onDone }: { url: string; sentTo: string[]; onDone: () => void }) {
   const ids = useId();
   async function copy() {
     try {
@@ -681,7 +681,10 @@ function SentLink({ url, onDone }: { url: string; onDone: () => void }) {
           </Button>
         </div>
         <FieldDescription>
-          Razorpay has sent it to the restaurant too. The payment shows here once it is paid.
+          {sentTo.length > 0
+            ? `Razorpay has sent it to ${sentTo.join(' and ')} too.`
+            : 'The restaurant has no email or phone here, so nobody has it yet: copy the link and send it yourself.'}{' '}
+          The payment shows here once it is paid.
         </FieldDescription>
       </Field>
       <DialogFooter>

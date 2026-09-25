@@ -114,18 +114,26 @@ export async function listWebhookEvents({
   page: number;
 }) {
   const supabase = await createClient();
-  const from = (page - 1) * WEBHOOK_PAGE_SIZE;
-  let query = supabase
-    .from('webhook_events')
-    .select('id, event_id, event_type, payload, received_at, processed_at, processing_error', {
-      count: 'exact',
-    })
-    .order('received_at', { ascending: false })
-    .range(from, from + WEBHOOK_PAGE_SIZE - 1);
-  if (failedOnly) query = query.not('processing_error', 'is', null);
-  const { data, error, count } = await query;
+  const load = (at: number) => {
+    const from = (at - 1) * WEBHOOK_PAGE_SIZE;
+    const query = supabase
+      .from('webhook_events')
+      .select('id, event_id, event_type, payload, received_at, processed_at, processing_error', {
+        count: 'exact',
+      })
+      .order('received_at', { ascending: false })
+      .range(from, from + WEBHOOK_PAGE_SIZE - 1);
+    return failedOnly ? query.not('processing_error', 'is', null) : query;
+  };
+  let current = page;
+  let { data, error, count } = await load(current);
+  // PostgREST refuses a page past the end (say, once reprocessing emptied it): show the first.
+  if (error?.code === 'PGRST103' && current > 1) {
+    current = 1;
+    ({ data, error, count } = await load(current));
+  }
   if (error) throw new Error(`Could not load webhooks: ${error.message}`);
-  return { rows: data, total: count ?? 0 };
+  return { rows: data ?? [], total: count ?? 0, page: current };
 }
 
 /** The setup fee a payment link suggests (paise). */

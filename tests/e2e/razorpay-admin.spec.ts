@@ -68,6 +68,8 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   await expect(dialog.getByRole('textbox', { name: 'Payment link' })).toHaveValue(
     /^https:\/\/rzp\.io\/l\/plink_E2E/,
   );
+  // The test restaurant has no email or phone: nobody was sent the link.
+  await expect(dialog).toContainText('copy the link and send it yourself');
   await dialog.getByRole('button', { name: 'Done' }).click();
 
   const [link] = await linksFor(request, restaurant.restaurantId);

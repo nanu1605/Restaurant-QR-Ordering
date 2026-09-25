@@ -364,7 +364,7 @@ const NO_RAZORPAY = 'Add the Razorpay keys to the environment first.';
 export async function sendPaymentLink(
   restaurantId: string,
   input: PaymentLinkInput,
-): Promise<ActionResult<{ shortUrl: string }>> {
+): Promise<ActionResult<{ shortUrl: string; sentTo: string[] }>> {
   const user = await requirePlatformAdmin();
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = paymentLinkSchema.safeParse(input);
@@ -389,6 +389,8 @@ export async function sendPaymentLink(
 
   const amountPaise = parsePriceInput(parsed.data.amount) as number;
   const owner = detail.owners.find((o) => o.is_active && o.email_is_real && o.email);
+  const email = detail.restaurant.email ?? owner?.email ?? undefined;
+  const contact = detail.restaurant.phone ?? undefined;
   let link: { id: string; short_url: string };
   try {
     link = await createPaymentLink(config, {
@@ -398,11 +400,7 @@ export async function sendPaymentLink(
         purpose === 'subscription'
           ? { restaurant_id: id.data, purpose, months: String(months) }
           : { restaurant_id: id.data, purpose },
-      customer: {
-        name: detail.restaurant.name,
-        email: detail.restaurant.email ?? owner?.email ?? undefined,
-        contact: detail.restaurant.phone ?? undefined,
-      },
+      customer: { name: detail.restaurant.name, email, contact },
     });
   } catch (error) {
     console.error('[payment links] could not create a payment link', error);
@@ -422,10 +420,14 @@ export async function sendPaymentLink(
       months: purpose === 'subscription' ? months : null,
     },
   });
-  // The link is already sent; its payment is recorded either way.
+  // The link exists now; its payment is recorded either way.
   if (error) console.error('[payment links] not audited', link.id, user.id, error.message);
   refresh();
-  return actionOk({ shortUrl: link.short_url });
+  // Razorpay notifies only the email and phone it was given.
+  return actionOk({
+    shortUrl: link.short_url,
+    sentTo: [email, contact].filter((to) => !!to) as string[],
+  });
 }
 
 /** Saves what Razorpay says about the restaurant's subscription now. */

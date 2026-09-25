@@ -57,26 +57,29 @@ export const manualPaymentSchema = z
 export type ManualPaymentInput = z.input<typeof manualPaymentSchema>;
 
 // A Razorpay Payment Link MenuMesh sends (spec §14.5, docs/DECISIONS.md P8-5, P8-11).
-export const paymentLinkSchema = z.object({
-  purpose: z.enum(['subscription', 'setup_fee'], { message: 'Choose what it is for.' }),
-  amount: z
-    .string()
-    .trim()
-    .refine((text) => {
-      const paise = parsePriceInput(text) ?? 0;
-      return paise >= 100 && paise <= 100_000_000;
-    }, 'Enter ₹1 to ₹10,00,000 in rupees, e.g. 1499.'),
-  months: z.coerce
-    .number({ message: 'Enter a number of months.' })
-    .int('Enter whole months.')
-    .min(1, 'At least 1 month.')
-    .max(24, 'At most 24 months.'),
-  description: z
-    .string()
-    .trim()
-    .min(1, 'Say what the payment is for.')
-    .max(200, 'Use 200 characters or fewer.'),
-});
+export const paymentLinkSchema = z
+  .object({
+    purpose: z.enum(['subscription', 'setup_fee'], { message: 'Choose what it is for.' }),
+    amount: z
+      .string()
+      .trim()
+      .refine((text) => {
+        const paise = parsePriceInput(text) ?? 0;
+        return paise >= 100 && paise <= 100_000_000;
+      }, 'Enter ₹1 to ₹10,00,000 in rupees, e.g. 1499.'),
+    // Only a subscription link has months; the field is hidden for a setup fee.
+    months: z.unknown().transform(Number),
+    description: z
+      .string()
+      .trim()
+      .min(1, 'Say what the payment is for.')
+      .max(200, 'Use 200 characters or fewer.'),
+  })
+  .superRefine(({ purpose, months }, ctx) => {
+    if (purpose === 'subscription' && !(Number.isInteger(months) && months >= 1 && months <= 24)) {
+      ctx.addIssue({ code: 'custom', path: ['months'], message: 'Enter 1 to 24 whole months.' });
+    }
+  });
 export type PaymentLinkInput = z.input<typeof paymentLinkSchema>;
 
 /**

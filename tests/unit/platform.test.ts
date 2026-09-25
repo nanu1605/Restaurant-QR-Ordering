@@ -6,6 +6,7 @@ import {
   generatePassword,
   manualPaymentSchema,
   onboardSchema,
+  paymentLinkSchema,
   periodEnd,
   planFormSchema,
   suggestRestaurantCode,
@@ -77,6 +78,31 @@ describe('generatePassword', () => {
     expect(password).toHaveLength(12);
     expect(password).not.toMatch(/[0O1lI]/);
     expect(generatePassword()).not.toBe(password);
+  });
+});
+
+describe('paymentLinkSchema', () => {
+  const link = { purpose: 'subscription', amount: '2697', months: '3', description: 'Growth' };
+
+  it('needs 1 to 24 whole months for a subscription link', () => {
+    expect(paymentLinkSchema.safeParse(link).success).toBe(true);
+    for (const months of ['', '0', '25', '1.5', 'x']) {
+      const result = paymentLinkSchema.safeParse({ ...link, months });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.path).toEqual(['months']);
+    }
+  });
+
+  it('ignores months for a setup fee, whose field is hidden', () => {
+    expect(
+      paymentLinkSchema.safeParse({ ...link, purpose: 'setup_fee', amount: '1499', months: '' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('keeps amounts between ₹1 and ₹10,00,000', () => {
+    expect(paymentLinkSchema.safeParse({ ...link, amount: '0.5' }).success).toBe(false);
+    expect(paymentLinkSchema.safeParse({ ...link, amount: '1000001' }).success).toBe(false);
   });
 });
 

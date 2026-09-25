@@ -26,8 +26,8 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
   await requirePlatformAdmin();
   const params = await searchParams;
   const failedOnly = params.status === 'failed';
-  const page = Math.max(1, Number.parseInt(String(params.page ?? '1'), 10) || 1);
-  const list = await listWebhookEvents({ failedOnly, page });
+  const requested = Math.max(1, Number.parseInt(String(params.page ?? '1'), 10) || 1);
+  const list = await listWebhookEvents({ failedOnly, page: requested });
   const href = (next: { failed: boolean; page?: number }) =>
     hrefWithParams(PATH, {
       status: next.failed ? 'failed' : undefined,
@@ -118,7 +118,7 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
         </div>
       )}
       <Pager
-        page={page}
+        page={list.page}
         pageSize={WEBHOOK_PAGE_SIZE}
         total={list.total}
         hrefFor={(next) => href({ failed: failedOnly, page: next })}
