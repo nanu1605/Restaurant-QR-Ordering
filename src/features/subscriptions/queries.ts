@@ -17,7 +17,7 @@ export async function getOwnerSubscription(
   const { data, error } = await supabase
     .from('restaurant_subscriptions')
     .select(
-      'status, source, billing_cycle, trial_ends_at, current_period_start, current_period_end, grace_until, cancel_at_period_end, razorpay_status, next_billing_cycle, plan:plans!restaurant_subscriptions_plan_id_fkey!inner (name, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (name)',
+      'status, source, billing_cycle, trial_ends_at, current_period_start, current_period_end, grace_until, cancel_at_period_end, razorpay_status, next_billing_cycle, plan:plans!restaurant_subscriptions_plan_id_fkey!inner (name, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (name, price_monthly_paise, price_yearly_paise)',
     )
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
@@ -36,6 +36,11 @@ export async function getOwnerSubscription(
     razorpayStatus: data.razorpay_status,
     nextPlanName: data.next_plan?.name ?? null,
     nextBillingCycle: data.next_billing_cycle,
+    nextPricePaise: data.next_plan
+      ? data.next_billing_cycle === 'yearly'
+        ? data.next_plan.price_yearly_paise
+        : data.next_plan.price_monthly_paise
+      : null,
     plan: {
       name: data.plan.name,
       priceMonthlyPaise: data.plan.price_monthly_paise,

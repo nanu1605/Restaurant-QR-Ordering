@@ -16,7 +16,10 @@ import {
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { autopayStartAt, autopayState, cancelsAtCycleEnd } from '@/features/subscriptions/autopay';
-import { AutopayPanel } from '@/features/subscriptions/components/autopay-panel';
+import {
+  AutopayPanel,
+  type CancelOptions,
+} from '@/features/subscriptions/components/autopay-panel';
 import {
   getCheckoutPlans,
   getOwnerSubscription,
@@ -187,12 +190,11 @@ export default async function SubscriptionPage() {
           />
         </Section>
       ) : (
-        !online && (
-          <p className="text-sm text-ink-muted">
-            Paying online is coming soon. Until then, contact support to pay by bank transfer or
-            UPI, or to change your plan.
-          </p>
-        )
+        <p className="text-sm text-ink-muted">
+          {online
+            ? 'To pay or change your plan, contact support.'
+            : 'Paying online is coming soon. Until then, contact support to pay by bank transfer or UPI, or to change your plan.'}
+        </p>
       )}
     </>
   );
@@ -210,13 +212,39 @@ function cancelOptions(
   razorpayStatus: string | null,
   subscription: OwnerSubscription,
   timezone: string,
-) {
+): CancelOptions {
   const atCycleEnd = cancelsAtCycleEnd(razorpayStatus);
-  const end = atCycleEnd ? subscription.currentPeriodEnd : subscription.trialEndsAt;
+  // A mandate that hasn't charged was set up during a trial or a paid period.
+  if (!atCycleEnd && subscription.status === 'trialing') {
+    return {
+      atCycleEnd,
+      running: 'trial',
+      until: subscription.trialEndsAt ? formatDay(subscription.trialEndsAt, timezone) : null,
+    };
+  }
   return {
     atCycleEnd,
-    until: end ? (atCycleEnd ? lastDay(end, timezone) : formatDay(end, timezone)) : null,
+    running: 'paid',
+    until: subscription.currentPeriodEnd ? lastDay(subscription.currentPeriodEnd, timezone) : null,
   };
+}
+
+/** "Starter, monthly: ₹399.00 a month" while autopay waits for its first payment. */
+function autopayFact(subscription: OwnerSubscription): [string, ReactNode] | null {
+  const { nextPlanName, nextBillingCycle, nextPricePaise } = subscription;
+  if (autopayState(subscription) !== 'on' || !nextPlanName || !nextBillingCycle) return null;
+  const yearly = nextBillingCycle === 'yearly';
+  return [
+    'Autopay',
+    <>
+      {nextPlanName}, {yearly ? 'yearly' : 'monthly'}
+      {nextPricePaise !== null && (
+        <>
+          : <Money paise={nextPricePaise} /> {yearly ? 'a year' : 'a month'}
+        </>
+      )}
+    </>,
+  ];
 }
 
 function details(subscription: OwnerSubscription, timezone: string): [string, ReactNode][] {
@@ -228,13 +256,15 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
       'Trial ends',
       subscription.trialEndsAt ? formatDay(subscription.trialEndsAt, timezone) : '—',
     ]);
-    facts.push([
-      'Price after the trial',
-      <>
-        <Money paise={plan.priceMonthlyPaise} /> a month or <Money paise={plan.priceYearlyPaise} />{' '}
-        a year
-      </>,
-    ]);
+    facts.push(
+      autopayFact(subscription) ?? [
+        'Price after the trial',
+        <>
+          <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
+          <Money paise={plan.priceYearlyPaise} /> a year
+        </>,
+      ],
+    );
     return facts;
   }
 
@@ -258,6 +288,8 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
     'Paid period',
     formatPaidPeriod(subscription.currentPeriodStart, subscription.currentPeriodEnd, timezone),
   ]);
+  const autopay = autopayFact(subscription);
+  if (autopay) facts.push(autopay);
   if (subscription.currentPeriodEnd && subscription.status === 'active') {
     facts.push(
       subscription.cancelAtPeriodEnd

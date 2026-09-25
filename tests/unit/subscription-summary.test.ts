@@ -29,6 +29,7 @@ function subscription(patch: Partial<OwnerSubscription>): OwnerSubscription {
     razorpayStatus: null,
     nextPlanName: null,
     nextBillingCycle: null,
+    nextPricePaise: null,
     plan: { name: 'Growth', priceMonthlyPaise: 99900, priceYearlyPaise: 999900 },
     ...patch,
   };
@@ -223,5 +224,45 @@ describe('autopay', () => {
       now,
     });
     expect(summary.text).toContain('Razorpay will try again');
+  });
+
+  it('never promises a renewal that nothing will charge', () => {
+    const paid = {
+      status: 'active' as const,
+      source: 'razorpay' as const,
+      currentPeriodEnd: '2026-10-18T22:30:00Z',
+    };
+    const text = (patch: Partial<OwnerSubscription>) =>
+      subscriptionSummary({
+        subscription: subscription({ ...paid, ...patch }),
+        access: { ...full, restrictionAt: '2026-10-20T22:30:00Z' },
+        timezone: TZ,
+        now,
+      }).text;
+    expect(text({ razorpayStatus: 'active' })).toContain('It renews automatically.');
+    // A replacement checkout was left unfinished: nothing charges.
+    expect(text({ razorpayStatus: 'created' })).not.toContain('renews');
+    expect(
+      text({
+        source: 'manual',
+        razorpayStatus: 'authenticated',
+        nextPlanName: 'Pro',
+        nextBillingCycle: 'yearly',
+      }),
+    ).toContain('Autopay takes over after that for Pro, yearly.');
+  });
+
+  it('says the first autopay payment is on its way when the trial ends', () => {
+    const summary = subscriptionSummary({
+      subscription: subscription({
+        trialEndsAt: '2026-09-19T05:00:00Z',
+        razorpayStatus: 'authenticated',
+      }),
+      access: { ...full, restrictionAt: '2026-09-21T22:30:00Z' },
+      timezone: TZ,
+      now,
+    });
+    expect(summary).toMatchObject({ label: 'Trial ended', tone: 'ok' });
+    expect(summary.text).toContain('The first autopay payment is on its way');
   });
 });

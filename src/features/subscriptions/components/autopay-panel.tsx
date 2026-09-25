@@ -72,7 +72,7 @@ type AutopayPanelProps = {
   /** Plan cards are shown while nothing will charge (or autopay is ending). */
   canSubscribe: boolean;
   /** Autopay is on and can be cancelled. */
-  cancel: { atCycleEnd: boolean; until: string | null } | null;
+  cancel: CancelOptions | null;
   /** Text about when the first payment happens, for the cards. */
   firstPayment: string;
 };
@@ -85,20 +85,46 @@ export function AutopayPanel({ plans, canSubscribe, cancel, firstPayment }: Auto
 
   async function subscribe(plan: CheckoutPlan) {
     setBusy(plan.code);
-    const result = await startSubscription({ planCode: plan.code, cycle });
-    if (!result.ok) {
-      toast.error(result.error);
-      setBusy(null);
-      return;
-    }
+    let opened = false;
     try {
-      await loadCheckout();
+      const result = await startSubscription({ planCode: plan.code, cycle });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      try {
+        await loadCheckout();
+      } catch {
+        toast.error('Razorpay Checkout could not load. Check the connection and try again.');
+        return;
+      }
+      openCheckout(result.data);
+      opened = true;
     } catch {
-      toast.error('Razorpay Checkout could not load. Check the connection and try again.');
-      setBusy(null);
-      return;
+      toast.error('Something went wrong. Try again.');
+    } finally {
+      // Once Checkout is open, closing it or paying clears the busy state.
+      if (!opened) setBusy(null);
     }
-    openCheckout(result.data);
+  }
+
+  async function confirm(reply: CheckoutReply) {
+    setActivating(true);
+    try {
+      const confirmed = await confirmCheckout({
+        paymentId: reply.razorpay_payment_id,
+        subscriptionId: reply.razorpay_subscription_id,
+        signature: reply.razorpay_signature,
+      });
+      if (confirmed.ok) toast.success('Autopay is set up');
+      else toast.error(confirmed.error);
+    } catch {
+      toast.error('Autopay is being confirmed. Refresh the page in a minute.');
+    } finally {
+      setActivating(false);
+      setBusy(null);
+      router.refresh();
+    }
   }
 
   function openCheckout(start: CheckoutStart) {
@@ -109,19 +135,7 @@ export function AutopayPanel({ plans, canSubscribe, cancel, firstPayment }: Auto
       name: start.name,
       description: start.description,
       prefill: start.prefill,
-      handler: async (reply: CheckoutReply) => {
-        setActivating(true);
-        const confirmed = await confirmCheckout({
-          paymentId: reply.razorpay_payment_id,
-          subscriptionId: reply.razorpay_subscription_id,
-          signature: reply.razorpay_signature,
-        });
-        setActivating(false);
-        setBusy(null);
-        if (confirmed.ok) toast.success('Autopay is set up');
-        else toast.error(confirmed.error);
-        router.refresh();
-      },
+      handler: (reply: CheckoutReply) => void confirm(reply),
       modal: { ondismiss: () => setBusy(null) },
     });
     checkout.on('payment.failed', (reply) => {
@@ -226,7 +240,15 @@ export function AutopayPanel({ plans, canSubscribe, cancel, firstPayment }: Auto
   );
 }
 
-function CancelAutopay({ atCycleEnd, until }: { atCycleEnd: boolean; until: string | null }) {
+export type CancelOptions = {
+  /** Charged already, so it stops at the end of the paid cycle; otherwise now. */
+  atCycleEnd: boolean;
+  /** The last day of the trial or paid period still running. */
+  until: string | null;
+  running: 'trial' | 'paid';
+};
+
+function CancelAutopay({ atCycleEnd, until, running }: CancelOptions) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -257,7 +279,7 @@ function CancelAutopay({ atCycleEnd, until }: { atCycleEnd: boolean; until: stri
             <AlertDialogDescription>
               {atCycleEnd
                 ? `Nothing more will be charged. Ordering stays on until ${until ?? 'the paid period ends'}.`
-                : `Nothing will be charged.${until ? ` Your free trial still runs until ${until}.` : ''}`}{' '}
+                : `Nothing will be charged.${until ? ` Your ${running === 'trial' ? 'free trial' : 'paid period'} still runs until ${until}.` : ''}`}{' '}
               This can&apos;t be undone, but you can subscribe again at any time.
             </AlertDialogDescription>
           </AlertDialogHeader>

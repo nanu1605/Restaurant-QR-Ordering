@@ -27,6 +27,8 @@ export type OwnerSubscription = {
   /** What autopay will charge for, until its first payment. */
   nextPlanName: string | null;
   nextBillingCycle: Enums['billing_cycle'] | null;
+  /** The next plan's price for that cycle. */
+  nextPricePaise: number | null;
   plan: {
     name: string;
     priceMonthlyPaise: number;
@@ -131,8 +133,17 @@ export function subscriptionSummary({
   const stopsOn = access.restrictionAt
     ? formatDay(access.restrictionAt, timezone)
     : 'the next business day';
+  const autopay = autopayState(subscription);
 
   if (access.state === 'read_only') {
+    if (autopay === 'on') {
+      return {
+        label: 'Payment due',
+        tone: 'blocked',
+        text: 'The autopay payment hasn’t arrived, so ordering is paused. Cancel autopay and subscribe again, or contact support.',
+        daysLeft: 0,
+      };
+    }
     switch (subscription.status) {
       case 'trialing':
         return {
@@ -165,6 +176,14 @@ export function subscriptionSummary({
       if (left === null) {
         return { label: 'Free trial', tone: 'ok', text: `Free trial of ${plan}.`, daysLeft: null };
       }
+      if (left === 0 && autopay === 'on') {
+        return {
+          label: 'Trial ended',
+          tone: 'ok',
+          text: `Your free trial of ${plan} has ended. The first autopay payment${autopayPlan(subscription)} is on its way; ordering stays on while it goes through.`,
+          daysLeft: 0,
+        };
+      }
       if (left === 0) {
         return {
           label: 'Trial ended',
@@ -174,7 +193,7 @@ export function subscriptionSummary({
         };
       }
       const ends = formatDay(subscription.trialEndsAt!, timezone);
-      if (autopayState(subscription) === 'on') {
+      if (autopay === 'on') {
         return {
           label: 'Free trial',
           tone: 'ok',
@@ -195,6 +214,14 @@ export function subscriptionSummary({
       }
       const left = daysUntil(subscription.currentPeriodEnd, now);
       const until = lastDay(subscription.currentPeriodEnd, timezone);
+      if (left === 0 && autopay === 'on') {
+        return {
+          label: 'Renewal due',
+          tone: 'ok',
+          text: `Your paid period ended on ${until}. The autopay payment is on its way; ordering stays on while it goes through.`,
+          daysLeft: 0,
+        };
+      }
       if (left === 0) {
         return {
           label: 'Renewal due',
@@ -203,12 +230,14 @@ export function subscriptionSummary({
           daysLeft: 0,
         };
       }
-      const next = subscription.cancelAtPeriodEnd
-        ? ' It will not renew after that.'
-        : subscription.source === 'razorpay'
-          ? ' It renews automatically.'
-          : autopayState(subscription) === 'on'
+      // Only what will actually charge: a mandate that is on.
+      const next =
+        autopay === 'on'
+          ? subscription.nextPlanName
             ? ` Autopay takes over after that${autopayPlan(subscription)}.`
+            : ' It renews automatically.'
+          : subscription.cancelAtPeriodEnd
+            ? ' It will not renew after that.'
             : '';
       return {
         label: 'Paid',
