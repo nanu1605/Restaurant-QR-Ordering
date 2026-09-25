@@ -7,12 +7,15 @@
 // - Razorpay under /razorpay/v1 (P8-1): plans, subscriptions and payment
 //   links, kept in memory. Fetching a subscription that was just created
 //   answers "authenticated", as if Checkout had been completed.
+// - Resend under /resend (P8-12): POST /emails keeps each email (once per
+//   Idempotency-Key, as Resend does); GET /inbox?to=<address> lists them.
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
 const PORT = Number(process.env.MOCK_APIS_PORT ?? 3190);
 const API_KEY = 'e2e-menu-reader-key';
 const RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
+const RESEND_AUTH = 'Bearer re_e2e_resend_key';
 /** Base64 characters below which a photo counts as blank. */
 const BLANK_BELOW = 60_000;
 
@@ -92,6 +95,8 @@ function readJson(request, callback) {
 
 const newId = (prefix) => `${prefix}_E2E${randomUUID().replaceAll('-', '').slice(0, 14)}`;
 const subscriptions = new Map();
+const paymentLinks = [];
+const emails = new Map(); // Idempotency-Key → email
 
 function razorpay(request, response, path) {
   if (request.headers.authorization !== RAZORPAY_AUTH) {
@@ -105,6 +110,10 @@ function razorpay(request, response, path) {
       error: { code: 'BAD_REQUEST_ERROR', description: 'The id provided does not exist' },
     });
 
+  if (request.method === 'GET' && path === '/payment_links') {
+    send(response, 200, { payment_links: paymentLinks });
+    return;
+  }
   if (request.method === 'GET') {
     const match = path.match(/^\/subscriptions\/(sub_\w+)$/);
     const subscription = match && subscriptions.get(match[1]);
@@ -165,16 +174,50 @@ function razorpay(request, response, path) {
     }
     if (path === '/payment_links') {
       const id = newId('plink');
-      send(response, 200, {
+      const link = {
         id,
         amount: body.amount,
+        description: body.description,
+        customer: body.customer ?? {},
         notes: body.notes ?? {},
         status: 'created',
         short_url: `https://rzp.io/l/${id}`,
-      });
+      };
+      paymentLinks.push(link);
+      send(response, 200, link);
       return;
     }
     send(response, 404, { error: { code: 'BAD_REQUEST_ERROR', description: 'Not found' } });
+  });
+}
+
+function resend(request, response, path) {
+  if (request.method === 'GET' && path === '/inbox') {
+    const to = new URL(request.url ?? '/', 'http://mock').searchParams.get('to');
+    send(response, 200, {
+      emails: [...emails.values()].filter((email) => !to || email.to.includes(to)),
+    });
+    return;
+  }
+  if (request.headers.authorization !== RESEND_AUTH) {
+    send(response, 401, { name: 'missing_api_key', message: 'API key is invalid' });
+    return;
+  }
+  if (request.method !== 'POST' || path !== '/emails') {
+    send(response, 404, { name: 'not_found', message: 'Not found' });
+    return;
+  }
+  readJson(request, (body) => {
+    if (!body?.from || !Array.isArray(body.to) || !body.subject) {
+      send(response, 422, {
+        name: 'validation_error',
+        message: 'from, to and subject are required',
+      });
+      return;
+    }
+    const key = request.headers['idempotency-key'] ?? randomUUID();
+    if (!emails.has(key)) emails.set(key, { id: randomUUID(), idempotencyKey: key, ...body });
+    send(response, 200, { id: emails.get(key).id });
   });
 }
 
@@ -186,6 +229,10 @@ const server = createServer((request, response) => {
   }
   if (path.startsWith('/razorpay/v1/')) {
     razorpay(request, response, path.slice('/razorpay/v1'.length));
+    return;
+  }
+  if (path.startsWith('/resend/')) {
+    resend(request, response, path.slice('/resend'.length));
     return;
   }
   if (request.method !== 'POST' || !path.endsWith('/chat/completions')) {

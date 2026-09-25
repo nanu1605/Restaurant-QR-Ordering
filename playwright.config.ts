@@ -35,12 +35,12 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|staff-board|billing|reports|super-admin|menu-import|subscription)\.spec\.ts/,
+        /(live-orders|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin)\.spec\.ts/,
       ],
     },
   ],
   webServer: [
-    // Stand-ins for the menu reader and Razorpay (tests/e2e/mock-apis.mjs).
+    // Stand-ins for the menu reader, Razorpay and Resend (tests/e2e/mock-apis.mjs).
     {
       command: `node tests/e2e/mock-apis.mjs`,
       url: `http://127.0.0.1:${MOCK_APIS_PORT}/health`,
@@ -53,7 +53,7 @@ export default defineConfig({
       reuseExistingServer: !isCI,
       timeout: 180_000,
       // The server reads these at run time, so the build doesn't need them. A
-      // reused dev server lacks them: the photo import and payment tests then skip.
+      // reused dev server lacks them: the photo import, payment and email tests then skip.
       env: {
         MENU_IMPORT_API_KEY: 'e2e-menu-reader-key',
         MENU_IMPORT_BASE_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/v1`,
@@ -63,6 +63,9 @@ export default defineConfig({
         RAZORPAY_KEY_SECRET: 'e2e-razorpay-secret',
         RAZORPAY_WEBHOOK_SECRET: 'e2e-webhook-secret',
         RAZORPAY_API_BASE_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/razorpay/v1`,
+        RESEND_API_KEY: 're_e2e_resend_key',
+        RESEND_API_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/resend`,
+        EMAIL_FROM: 'MenuMesh <billing@menumesh.test>',
       },
     },
   ],
