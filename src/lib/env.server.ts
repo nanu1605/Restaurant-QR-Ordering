@@ -49,6 +49,8 @@ const serverSchema = z.object({
   MENU_IMPORT_USD_INR: z.preprocess(emptyToUndefined, z.coerce.number().positive().default(96)),
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
+  // Resend's REST API; tests point it at a local mock (docs/DECISIONS.md P8-12).
+  RESEND_API_URL: urlWithDefault('https://api.resend.com'),
   SENTRY_DSN: optionalString,
   PLATFORM_TRIAL_DAYS: positiveInt(14),
   PLATFORM_GRACE_DAYS: positiveInt(7),

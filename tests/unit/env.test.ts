@@ -41,6 +41,7 @@ describe('parseServerEnv', () => {
     expect(env.MENU_IMPORT_API_KEY).toBeUndefined();
     expect(env.RAZORPAY_API_BASE_URL).toBe('https://api.razorpay.com/v1');
     expect(env.RAZORPAY_KEY_ID).toBeUndefined();
+    expect(env.RESEND_API_URL).toBe('https://api.resend.com');
   });
 
   it('coerces numeric settings and rejects a short cookie secret', () => {
