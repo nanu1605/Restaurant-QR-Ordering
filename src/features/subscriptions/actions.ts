@@ -32,6 +32,7 @@ import { autopayStartAt, autopayState, cancelsAtCycleEnd, TOTAL_COUNT } from './
 
 const NOT_SET_UP = 'Paying online is not set up yet. Contact support to pay.';
 const RAZORPAY_DOWN = 'Razorpay could not be reached. Try again in a minute.';
+const RAZORPAY_REFUSED = 'Razorpay refused this. Contact support if it keeps happening.';
 
 export type CheckoutStart = {
   keyId: string;
@@ -97,7 +98,10 @@ async function save(
 
 function razorpayFailed(error: unknown, context: string) {
   console.error(`[subscriptions] ${context}`, error);
-  return actionError(error instanceof RazorpayError ? RAZORPAY_DOWN : GENERIC_ERROR);
+  if (!(error instanceof RazorpayError)) return actionError(GENERIC_ERROR);
+  return actionError(
+    error.kind === 'network' || error.kind === 'timeout' ? RAZORPAY_DOWN : RAZORPAY_REFUSED,
+  );
 }
 
 /**
@@ -225,17 +229,22 @@ export async function cancelAutopay(): Promise<ActionResult<void>> {
   if (autopayState(subscription) !== 'on' || !subscription.razorpaySubscriptionId) {
     return actionError('Autopay is not on. Refresh the page.');
   }
+  const id = subscription.razorpaySubscriptionId;
   const atCycleEnd = cancelsAtCycleEnd(subscription.razorpayStatus);
+  let entity: SubscriptionEntity;
   try {
-    const entity = await cancelSubscription(
-      owner.config,
-      subscription.razorpaySubscriptionId,
-      atCycleEnd,
-    );
-    const saved = await save(owner, entity, atCycleEnd);
-    refresh();
-    return saved;
+    entity = await cancelSubscription(owner.config, id, atCycleEnd);
   } catch (error) {
-    return razorpayFailed(error, 'could not cancel autopay');
+    // Razorpay cancels only once: an earlier try may have gone through with
+    // its reply (or the save after it) lost. Then save what Razorpay has.
+    const current = await fetchSubscription(owner.config, id).catch(() => null);
+    const done =
+      current !== null &&
+      (current.status === 'cancelled' || (atCycleEnd && current.has_scheduled_changes === true));
+    if (!done) return razorpayFailed(error, 'could not cancel autopay');
+    entity = current;
   }
+  const saved = await save(owner, entity, atCycleEnd);
+  refresh();
+  return saved;
 }

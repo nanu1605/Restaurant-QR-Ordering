@@ -50,6 +50,8 @@ export const subscriptionEntitySchema = z.looseObject({
   id: z.string().regex(/^sub_[A-Za-z0-9]{1,40}$/),
   status: z.string(),
   short_url: z.string().nullish(),
+  // True once a cancel at the end of the cycle is scheduled.
+  has_scheduled_changes: z.boolean().nullish(),
 });
 export type SubscriptionEntity = z.infer<typeof subscriptionEntitySchema>;
 
