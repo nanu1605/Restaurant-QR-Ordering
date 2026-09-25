@@ -161,6 +161,42 @@ CSV columns (first row, any order): `category, name, description, food_type, pri
 variant_price`. Rows with the same category and name and a `variant_name` are the options of one
 dish (Half, Full). The Import menu page has a sample file to download.
 
+### Subscriptions (Razorpay)
+
+Owners pay for MenuMesh on **Subscription** (owners only): pick a plan and Monthly or Yearly, then
+authorise autopay by UPI or card in Razorpay Checkout. The first payment waits until a running
+trial or paid period ends. Owners can cancel autopay; it stops at the end of the paid period.
+Razorpay's webhooks keep the subscription up to date: paid, payment failed (7 days' grace, then
+ordering pauses at the next business-day start), paid again, ended.
+
+Set in `.env.local` (test-mode keys from the Razorpay dashboard):
+
+| Variable                  | What it is                                                   |
+| ------------------------- | ------------------------------------------------------------ |
+| `RAZORPAY_KEY_ID`         | Key id (`rzp_test_…`); online payment is off without it      |
+| `RAZORPAY_KEY_SECRET`     | Key secret                                                   |
+| `RAZORPAY_WEBHOOK_SECRET` | The secret set on the webhook in the Razorpay dashboard      |
+| `RAZORPAY_API_BASE_URL`   | Defaults to `https://api.razorpay.com/v1` (tests use a mock) |
+
+Then, in `/super` → **Plans**, press **Create … plan in Razorpay** for each plan and cycle to sell.
+A new price clears a plan's Razorpay id (Razorpay plans can't change price); create it again.
+
+Razorpay can't send webhooks to `localhost`. To try the states locally, send signed events
+yourself (with the same `RAZORPAY_WEBHOOK_SECRET`, any string, in `.env.local` and the running
+app):
+
+```bash
+pnpm razorpay:event --restaurant demo --event charged
+pnpm razorpay:event --restaurant demo --event pending
+pnpm razorpay:event --restaurant demo --event payment-link --months 3
+```
+
+Events: `authenticated`, `activated`, `charged`, `pending`, `halted`, `cancelled`, `completed`,
+`payment-link`, `setup-fee`. A restaurant without a Razorpay subscription gets a made-up one first.
+For real test-mode webhooks, expose the app through a tunnel Razorpay accepts (zrok) or use
+staging, and register `…/api/webhooks/razorpay` with the `subscription.*` and
+`payment_link.paid` events.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:
@@ -191,3 +227,4 @@ Owners and managers set the restaurant up at `/admin`:
 | `pnpm db:test`           | Database tests (pgTAP via `supabase test db`) |
 | `pnpm db:types`          | Regenerate `src/types/database.ts`            |
 | `pnpm create-restaurant` | Onboard a restaurant + owner login            |
+| `pnpm razorpay:event`    | Send a signed Razorpay webhook to the app     |

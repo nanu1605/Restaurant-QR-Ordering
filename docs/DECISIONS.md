@@ -1005,9 +1005,159 @@ variant_name, variant_price`. Rows in a row with the same category and name are 
   chain against a fake `fetch` (retry, fallback, refusal of structured output, cut-off replies,
   timeouts, the page deadline) and the cost rules; the provider settings.
 - **E2E (`menu-import.spec.ts`)** against a local stand-in reader started with the test server
-  (`tests/e2e/mock-vision-server.mjs`; a reused dev server has no reader, so the photo test skips
+  (`tests/e2e/mock-apis.mjs`; a reused dev server has no reader, so the photo test skips
   there): a CSV with bad rows refused, then imported after fixing flagged rows, then imported again
   with everything already on the menu and one price updated; a two-page PDF rendered into two
   pages; a tiny photo refused; a photo read, a missing price filled, unmarked dishes confirmed,
   and the cost recorded; a blank photo failing with its message; a platform admin importing a CSV
   (audited as platform admin); the cleanup route refusing a wrong secret and deleting old photos.
+
+## Phase 8 — subscriptions with Razorpay (2026-09-25)
+
+Plan: two review stops. Stop A = owners pay by Razorpay autopay and webhooks drive the
+subscription; Stop B = MenuMesh's tools (payment links and the setup fee, webhook events page,
+sync) and reminder emails. User choices: the setup fee goes out as a Razorpay Payment Link from
+super-admin; owner invite emails wait for a later phase. Razorpay and Resend keys come from the
+user; everything is built and tested against local stand-ins, so CI needs no secrets.
+
+Checked against Razorpay's documentation (2026-09-25): subscriptions take `plan_id`,
+`total_count`, `start_at`, `customer_notify` and up to 15 `notes`; a cancel works once and can't be
+undone; `PATCH` updates work for cards only, not UPI; Checkout's reply is signed as
+HMAC-SHA256(`payment_id|subscription_id`, key secret); webhooks are signed as HMAC-SHA256(raw
+body, webhook secret) in `X-Razorpay-Signature`, carry `x-razorpay-event-id`, can arrive twice or
+out of order, and can't be delivered to localhost; plans can't be edited once created.
+
+### Razorpay
+
+- **P8-1 · A small client, no SDK:** `src/lib/razorpay/razorpay.ts` calls the five endpoints
+  MenuMesh uses (plans, subscriptions create/fetch/cancel, payment links) with plain `fetch`, basic
+  auth and a 15 s timeout, and checks both signatures in constant time. `RAZORPAY_API_BASE_URL`
+  (default `https://api.razorpay.com/v1`) lets the tests use a stand-in. Paying online is on only
+  when `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are both set; otherwise the owner's page keeps
+  saying to contact support.
+- **P8-2 · What the subscription row remembers:** `razorpay_status` (Razorpay's own state, as last
+  seen), `razorpay_event_at` (the newest webhook applied) and `next_plan_id` / `next_billing_cycle`
+  (what autopay will charge for). The plan and cycle change only when a payment arrives, so an owner
+  who sets up Starter during a Growth trial keeps Growth until the trial ends, and nobody gets a
+  bigger plan before paying for it.
+- **P8-3 · Events → state**, applied in one database function with the row locked, and only for
+  the restaurant's current Razorpay subscription:
+
+  | Razorpay says                        | Subscription                                                                                                                                                    |
+  | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | authenticated                        | `razorpay_status`; a new subscription just set up also clears a scheduled end                                                                                   |
+  | active (activated, resumed, charged) | `active`, source `razorpay`, plan and cycle from `next_*`, period from `current_start`/`current_end` (the end never moves back), grace cleared                  |
+  | charged                              | also a payment row (once per Razorpay payment id) and `cancel_at_period_end` cleared                                                                            |
+  | pending / halted                     | `past_due` / `halted`; grace of `platform_settings.grace_days` counted from the event, if not already running; nothing when a longer period is paid another way |
+  | cancelled / completed                | `cancelled` / `expired`, but only when the row is `active` on Razorpay and this subscription has charged                                                        |
+  | created, expired, paused, updated    | nothing but `razorpay_status` (MenuMesh never pauses or edits one)                                                                                              |
+
+  Razorpay only ends what Razorpay started and charged for: cancelling a trial's mandate, a halted
+  subscription (to pay another way) or a replacement that never charged doesn't cut a trial, grace
+  or paid period short, and a failed charge doesn't shorten a period paid by bank transfer. A
+  webhook older than the last one applied no longer changes the status, and a subscription never
+  goes back to an earlier Razorpay state (active is never authenticated again; cancelled is final),
+  even within the same second; the payment of an out-of-date event is still recorded, and so is a
+  payment for a subscription the restaurant has since replaced (money is never dropped, even if it
+  needs a refund). Every change is audited as "Razorpay".
+
+- **P8-4 · Webhook route:** `/api/webhooks/razorpay` reads the raw body (over 1 MB is refused),
+  checks the signature (400 when wrong), uses `x-razorpay-event-id` or else a SHA-256 of the body,
+  and hands the event to `razorpay_record_webhook`, which stores it once and processes it in a
+  sub-transaction: a failure is kept on the stored event and the route still answers 200, so
+  Razorpay doesn't retry forever; only failing to store it answers 500. Without
+  `RAZORPAY_WEBHOOK_SECRET` the route answers 503.
+- **P8-5 · Payment links:** a paid link carries `notes.restaurant_id`, `notes.purpose`
+  (`subscription` or `setup_fee`) and, for a subscription, `notes.months` (1–24). It is recorded as
+  a `payment_link` payment; a subscription link extends access from the first business day not yet
+  paid for (the trial's end, else the paid period's end, else today), by whole months, the same
+  business-day periods as manual payments (P7-4), and makes the subscription active and manual. A
+  setup fee is only recorded. A payment already recorded changes nothing.
+- **P8-6 · Saving what Razorpay says:** `razorpay_save_subscription` is for the server only
+  (service role), since owners can call the database directly and must never be able to claim a
+  paid subscription. The server checks who is asking (an owner of that restaurant or a platform
+  admin, who is also who the audit row names), talks to Razorpay, then saves: a new subscription
+  (its notes must name the restaurant, an active plan and a cycle; refused while autopay is on and
+  not ending, or while the restaurant is suspended), a scheduled cancel, and any fetched state
+  (after Checkout, and from super-admin's Sync). Attaching a new subscription keeps a scheduled
+  end until the new one is authorised, so an abandoned checkout doesn't make an ending subscription
+  look like it renews. A fetched state is always current, so it applies
+  without moving the webhook clock; otherwise a charge webhook from the same second as the checkout
+  confirmation was skipped as stale (found by the E2E test).
+
+### Owner and super-admin
+
+- **P8-7 · Subscribing:** the owner's Subscription page shows the active plans that have a
+  Razorpay plan, with a Monthly/Yearly choice. Subscribing cancels an unfinished checkout, or a
+  subscription whose payments are failing (so the owner can pay with another card or UPI app),
+  creates a subscription with notes `{restaurant_id, plan_code, billing_cycle}`, `customer_notify`
+  on (Razorpay sends its own receipts and failure notices) and 120 monthly or 10 yearly charges, and
+  opens Checkout. The first charge waits until a running trial or paid period ends
+  (`start_at`); otherwise it is taken now. Checkout loads only when the owner clicks (a script tag,
+  no `next/script`, so the page never waits for Razorpay). Checkout's reply is verified, the
+  subscription fetched and saved, and the page says "Activating your subscription…" then shows
+  autopay at once, without waiting for the webhook. Plans show while nothing will charge (none, an
+  unfinished checkout, failing payments, cancelled or ending autopay).
+- **P8-8 · Autopay during a trial:** while trialing with a mandate set up, the first charge is due
+  at the trial's end, so access lapses 2 days later (the same buffer as a paid period) and there is
+  no "trial ends soon" warning. Without it, the restaurant could be restricted at the next
+  business-day start before Razorpay's charge arrived.
+- **P8-9 · Plan changes while paying by autopay** (spec §14.3.8): `platform_change_plan` and
+  `platform_extend_trial` refuse (`RAZORPAY_MANAGED`) while autopay is on and not ending, because
+  Razorpay keeps charging the plan and start date it was set up with, and `PATCH` can't change UPI
+  mandates. To change plan, autopay is cancelled at the period end (by the owner, or MenuMesh in
+  Stop B), then the owner subscribes to the new plan, which starts when the paid period ends.
+  Cancelling ends autopay at the end of the paid cycle once it has charged; a mandate that hasn't
+  charged yet (set up during a trial) is cancelled at once. Razorpay can't undo either, and a
+  subscription can be cancelled only once: when a cancel fails, the app asks Razorpay whether an
+  earlier try went through (status cancelled, or `has_scheduled_changes`) and saves that.
+- **P8-10 · Razorpay plans:** the Plans page creates a missing Razorpay plan for a cycle from the
+  saved price ("MenuMesh Growth — monthly") and stores its id. Razorpay plans can't change price,
+  so a new price clears that cycle's id unless a different id comes with it; restaurants already
+  subscribed keep paying the old price.
+- **P8-13 · Simulator:** `pnpm razorpay:event --restaurant <code> --event <…>` sends a signed
+  subscription or payment link event to the local app (attaching a made-up subscription first if
+  the restaurant has none), since Razorpay can't deliver webhooks to localhost. It needs only
+  `RAZORPAY_WEBHOOK_SECRET`, any string locally.
+- **P8-14 · Left out:** no content security policy exists yet; Phase 9's hardening adds one and
+  must allow `checkout.razorpay.com` and `api.razorpay.com`. No owner invite emails (user). No
+  custom subscription invoices (§14.7). Yearly Pro (₹17,990) is above the ₹15,000 e-mandate limit,
+  so its renewals may ask the owner to approve each year: to confirm in Razorpay test mode.
+
+### Review fixes (Stop A)
+
+Four reviewers (database, server, screens, then a verifier) confirmed 17 findings, fixed in
+`5212d64`, `05e9164` and `2b00d7f`: a failed charge from an old mandate cut short a year paid by
+bank transfer; cancelling a replacement that never charged ended the paid period; attaching a new
+subscription cleared a scheduled end even when its checkout was abandoned; a same-second
+`authenticated` could follow `active` (and then "Cancel autopay" would have cancelled a charging
+subscription at once); a cancel whose reply was lost could never be retried; the owner page
+promised renewals nothing would charge, named a past trial in the cancel dialog, showed the trial
+plan's price when autopay was set for another, could stay stuck on "Activating…", and offered no
+way to pay when no plan had a Razorpay plan. Rejected with reasons: widening the plan-change guard
+to failing mandates (P8-9), grace after a failed first charge (spec §14.4), races that need two
+admins saving within one Razorpay call.
+
+### Tests (Stop A)
+
+- **pgTAP 360 (51):** stored once per event id; every event's state change; grace from the event;
+  payments once per payment id; stale events keep their payment; replaced subscriptions; unknown
+  subscriptions stored with the error; ignored events; trial and grace kept when Razorpay cancels;
+  payment links (periods, duplicates, setup fee, bad months, purpose and restaurant); a webhook
+  older than a saved snapshot still applies; no going back within a second; a year paid by bank
+  transfer kept when the old mandate fails; a replacement that never charged neither clears a
+  scheduled end nor ends the paid period; grants.
+- **pgTAP 370 (10):** access through a subscription's life: trial, autopay set up (no warning, +2
+  days), charged, payment failed (warning, full through grace), read-only exactly at the next
+  business-day start, paid again, ending and ended.
+- **pgTAP 380 (22):** saving checks (notes, ids, plans, owners only, suspended, live mandates, a
+  new subscription after a cancel, which carries on once authorised), `RAZORPAY_MANAGED` for plan changes and trial extensions, a
+  price change clearing the Razorpay plan id.
+- **Unit:** signatures (valid, changed body, other secret, missing, short), request bodies and
+  errors of the client; autopay rules and the owner page's texts.
+- **E2E (`subscription.spec.ts`)** against the stand-in Razorpay in `tests/e2e/mock-apis.mjs` (the
+  menu reader's stand-in, renamed) and a Checkout script replaced by one that replies with a
+  correct signature: an owner sets up autopay during a trial; signed webhooks make it paid (a
+  repeated event and a repeated payment count once), failed (banner), paid again and cancelled at
+  the period end (after an earlier cancel already reached Razorpay); a trial's autopay cancelled at
+  once; a bad signature refused and not stored; a platform admin creating a Razorpay plan. A reused dev server without the test keys skips them.

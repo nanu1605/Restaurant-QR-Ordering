@@ -28,7 +28,7 @@ day goes.
 
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
-| Razorpay subscriptions and invoices                      | 8     | Pilots are free; no payment details are collected |
+| Charging for MenuMesh (built; needs your Razorpay setup) | 8     | Pilots are free; no payment details are collected |
 | Hindi customer screens, service requests, offline polish | 9     | English only for now                              |
 | Staging and production deployment, Sentry, backups       | 10    | Deploy before the first guest scans a code        |
 
@@ -62,7 +62,15 @@ Before the first pilot:
 Before charging anyone (Phase 8):
 
 - [ ] Razorpay account, KYC with a registered business, bank account, GST details in the Razorpay
-      dashboard, test and live keys, and the webhook URL and secret.
+      dashboard (Razorpay's receipts carry them), test and live keys, and the webhook URL and secret.
+- [ ] With the test keys in `.env.local`: create the Razorpay plans from `/super` → Plans, then
+      subscribe as a test restaurant's owner with a test card and try "Charge this now" (success
+      and failure) in the Razorpay dashboard.
+- [ ] Register the webhook `https://menumesh.in/api/webhooks/razorpay` for the `subscription.*`
+      and `payment_link.paid` events, and set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and
+      `RAZORPAY_WEBHOOK_SECRET` in Vercel (test keys on staging, live keys on production).
+- [ ] Check in test mode whether yearly Pro (₹17,990, above the ₹15,000 e-mandate limit) renews
+      without asking the owner to approve it each year.
 
 ## Setting a restaurant up
 
