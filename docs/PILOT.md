@@ -71,6 +71,11 @@ Before charging anyone (Phase 8):
       `RAZORPAY_WEBHOOK_SECRET` in Vercel (test keys on staging, live keys on production).
 - [ ] Check in test mode whether yearly Pro (₹17,990, above the ₹15,000 e-mandate limit) renews
       without asking the owner to approve it each year.
+- [ ] Decide the setup fee (₹1,499 by default: `platform_settings.setup_fee_paise`, in the SQL
+      editor).
+- [ ] Verify `menumesh.in` as a Resend sending domain and set `RESEND_API_KEY` and `EMAIL_FROM`
+      (e.g. `MenuMesh <billing@menumesh.in>`) in Vercel, with `CRON_SECRET`, so reminder emails go
+      out from the daily cron.
 
 ## Setting a restaurant up
 

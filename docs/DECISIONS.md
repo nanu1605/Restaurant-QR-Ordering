@@ -1117,6 +1117,34 @@ out of order, and can't be delivered to localhost; plans can't be edited once cr
   saved price ("MenuMesh Growth — monthly") and stores its id. Razorpay plans can't change price,
   so a new price clears that cycle's id unless a different id comes with it; restaurants already
   subscribed keep paying the old price.
+- **P8-11 · MenuMesh's Razorpay tools** (spec §13.4, §14.5): a restaurant's page can **Send
+  payment link**: a subscription for 1–24 months (the amount follows the plan's price, the yearly
+  price for whole years) or the setup fee (`platform_settings.setup_fee_paise`, ₹1,499 by default;
+  no settings page yet). Razorpay sends the link to the restaurant's email and phone, and the page
+  shows it with a Copy button. There is no links table: Razorpay keeps the links, the payment
+  arrives as `payment_link.paid` (P8-5), and each link sent is audited
+  (`platform_audit_payment_link`). A subscription link is refused while autopay is on, so nobody
+  pays twice; the server checks before creating the link, since Razorpay sends it at once. A setup
+  fee link is always allowed. **Sync with Razorpay** fetches the subscription and saves it;
+  **Cancel autopay** does what the owner's button does (the same code), audited as the platform
+  admin. The **Webhooks** page lists what Razorpay sent (50 a page, a Failed filter, the payload),
+  and **Reprocess** runs a failed event again (`platform_reprocess_webhook`): failed events only,
+  so nothing is applied twice; a second failure keeps the new error; audited.
+- **P8-12 · Reminder emails** (spec §14.6): the daily cron sends them through Resend (plain
+  `fetch`; `RESEND_API_URL` points tests at a mock). The database lists what is due
+  (`subscription_reminders_due(p_at)`, service role): the trial ends within 3 days, and within 1
+  day (not when autopay is set up); a payment failed (every day of grace); ordering paused (once,
+  and only within 2 days of the pause, so a first run never emails about old lapses). Suspended
+  restaurants get none. It goes to the active owners' own login emails (not synthetic staff
+  addresses) and the restaurant's email, once each. Each reminder has a key (restaurant, kind,
+  day: the trial's end, today, or the pause day), sent as Resend's `Idempotency-Key` and logged in
+  `subscription_reminders` after sending, so it goes out once and a missed run catches up; an
+  extended trial is reminded again for its new end. A failed send is logged and tried again on
+  the next run, and the others still go. One at a time, 0.6 s apart (Resend allows 2 requests a
+  second). The emails are plain HTML and text built in TypeScript: **react-email is not used**
+  (a deviation from the stack table; four short emails don't need it). Without `RESEND_API_KEY`
+  and `EMAIL_FROM` the step is skipped and logged. Each cron step runs on its own: a failed step
+  makes the response a 500, but the others still run.
 - **P8-13 · Simulator:** `pnpm razorpay:event --restaurant <code> --event <…>` sends a signed
   subscription or payment link event to the local app (attaching a made-up subscription first if
   the restaurant has none), since Razorpay can't deliver webhooks to localhost. It needs only
@@ -1169,3 +1197,25 @@ midnight and the business-day start paid for that period's last day again. Fixed
   repeated event and a repeated payment count once), failed (banner), paid again and cancelled at
   the period end (after an earlier cancel already reached Razorpay); a trial's autopay cancelled at
   once; a bad signature refused and not stored; a platform admin creating a Razorpay plan. A reused dev server without the test keys skips them.
+
+### Tests (Stop B)
+
+- **pgTAP 390:** the setup fee setting; logging a payment link (second factor, owners refused,
+  months only for subscriptions, amount, https links, restaurant); reprocessing (second factor,
+  owners refused, never an event that went through, a second failure keeps its error, applied
+  once the subscription is attached, with its payment, audited against the restaurant); the
+  Razorpay status on the restaurant page; grants.
+- **pgTAP 400:** reminders by time (trial in 3 days and 1 day, a failed payment each day, the pause
+  once, none for autopay trials, suspended restaurants, old pauses or no email), recipients (real
+  owner logins and the restaurant email, once; no synthetic or inactive logins), each once, an
+  extended trial reminded again, grants and the hidden log. **010:** the two new platform
+  functions and the new tenant table.
+- **Unit:** the Resend client (key, idempotency key, body, errors); reminder texts (day in the
+  restaurant's time zone, link, escaped names); the send loop (logged only after Resend took it,
+  carries on after a failure, sent but not logged counts as failed).
+- **E2E (`razorpay-admin.spec.ts`)** against the mock Razorpay and a mock Resend inbox in
+  `tests/e2e/mock-apis.mjs`: a 3-month link (amount and description follow the months, notes sent
+  to Razorpay) and a setup fee link (from the setting, no months), the paid link extending access,
+  both audited; Sync with Razorpay, a subscription link refused while autopay is on, Cancel
+  autopay; a failed webhook reprocessed from the Webhooks page; the daily cron emailing a trial
+  reminder once over two runs.

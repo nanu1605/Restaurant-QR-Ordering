@@ -114,12 +114,14 @@ platform admin nothing.
 - **Overview**: restaurants by state, MRR, orders in the last 24 hours, trials ending this week.
 - **Restaurants**: search and filters; each restaurant's profile, owner login, subscription,
   payments, usage and access, with actions to extend the trial, change the plan, record a payment
-  received outside Razorpay, suspend or unsuspend, and set a new owner password.
+  received outside Razorpay, send a Razorpay payment link (months of the plan, or the setup fee),
+  sync with Razorpay, cancel autopay, suspend or unsuspend, and set a new owner password.
 - **Onboard restaurant**: details → owner login → tax → plan and trial, then the login details to
   hand over.
 - **Support view**: the restaurant's menu, tables, live board and Total orders, read-only. Each
   look is recorded in that restaurant's audit log.
-- **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids) and the **Audit log**.
+- **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids), **Webhooks** (what
+  Razorpay sent; a failed one can be reprocessed) and the **Audit log**.
 
 A platform admin who loses their phone can't pass the second factor. Remove their authenticator in
 the Supabase SQL editor, and they enrol again on the next login:
@@ -196,6 +198,24 @@ Events: `authenticated`, `activated`, `charged`, `pending`, `halted`, `cancelled
 For real test-mode webhooks, expose the app through a tunnel Razorpay accepts (zrok) or use
 staging, and register `…/api/webhooks/razorpay` with the `subscription.*` and
 `payment_link.paid` events.
+
+The setup fee a payment link suggests is `platform_settings.setup_fee_paise` (₹1,499 by default;
+change it in the SQL editor).
+
+#### Reminder emails
+
+The daily cron (`/api/cron/daily`, `CRON_SECRET`) emails owners when the trial ends in 3 days and
+in 1 day, every day of grace after a failed payment, and once when ordering pauses. It sends
+through Resend; without these the step is skipped:
+
+| Variable         | What it is                                                         |
+| ---------------- | ------------------------------------------------------------------ |
+| `RESEND_API_KEY` | Resend API key                                                     |
+| `EMAIL_FROM`     | Sender on a verified domain, e.g. `MenuMesh <billing@menumesh.in>` |
+| `RESEND_API_URL` | Defaults to `https://api.resend.com` (tests use a mock)            |
+
+Run it by hand with `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/daily`.
+With a real key it emails the addresses in your local database.
 
 ### Admin panel
 
