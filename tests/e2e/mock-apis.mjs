@@ -1,11 +1,18 @@
-// A stand-in for the menu reader (an OpenAI-compatible /chat/completions API)
-// so E2E can import from photos without a real key (docs/DECISIONS.md P7-12).
-// A detailed photo returns the fixture menu; a nearly blank one (a tiny JPEG)
-// returns no dishes, like a real reader given a blurry or empty photo.
+// Stand-ins for the outside APIs the app calls, so E2E needs no real keys:
+//
+// - The menu reader, an OpenAI-compatible /v1/chat/completions API
+//   (docs/DECISIONS.md P7-12). A detailed photo returns the fixture menu; a
+//   nearly blank one (a tiny JPEG) returns no dishes, like a real reader given
+//   a blurry or empty photo.
+// - Razorpay under /razorpay/v1 (P8-1): plans, subscriptions and payment
+//   links, kept in memory. Fetching a subscription that was just created
+//   answers "authenticated", as if Checkout had been completed.
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
-const PORT = Number(process.env.MOCK_VISION_PORT ?? 3190);
+const PORT = Number(process.env.MOCK_APIS_PORT ?? 3190);
 const API_KEY = 'e2e-menu-reader-key';
+const RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
 /** Base64 characters below which a photo counts as blank. */
 const BLANK_BELOW = 60_000;
 
@@ -71,12 +78,110 @@ function send(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+function readJson(request, callback) {
+  let raw = '';
+  request.on('data', (chunk) => (raw += chunk));
+  request.on('end', () => {
+    try {
+      callback(raw ? JSON.parse(raw) : {});
+    } catch {
+      callback(null);
+    }
+  });
+}
+
+const newId = (prefix) => `${prefix}_E2E${randomUUID().replaceAll('-', '').slice(0, 14)}`;
+const subscriptions = new Map();
+
+function razorpay(request, response, path) {
+  if (request.headers.authorization !== RAZORPAY_AUTH) {
+    send(response, 401, {
+      error: { code: 'BAD_REQUEST_ERROR', description: 'Authentication failed' },
+    });
+    return;
+  }
+  const notFound = () =>
+    send(response, 400, {
+      error: { code: 'BAD_REQUEST_ERROR', description: 'The id provided does not exist' },
+    });
+
+  if (request.method === 'GET') {
+    const match = path.match(/^\/subscriptions\/(sub_\w+)$/);
+    const subscription = match && subscriptions.get(match[1]);
+    if (!subscription) return notFound();
+    if (subscription.status === 'created') subscription.status = 'authenticated';
+    send(response, 200, subscription);
+    return;
+  }
+
+  readJson(request, (body) => {
+    if (body === null) {
+      send(response, 400, {
+        error: { code: 'BAD_REQUEST_ERROR', description: 'Body is not JSON' },
+      });
+      return;
+    }
+    if (path === '/plans') {
+      send(response, 200, {
+        id: newId('plan'),
+        entity: 'plan',
+        period: body.period,
+        item: body.item,
+      });
+      return;
+    }
+    if (path === '/subscriptions') {
+      const subscription = {
+        id: newId('sub'),
+        entity: 'subscription',
+        plan_id: body.plan_id,
+        status: 'created',
+        total_count: body.total_count,
+        start_at: body.start_at ?? null,
+        current_start: null,
+        current_end: null,
+        notes: body.notes ?? {},
+        short_url: 'https://rzp.io/i/e2e',
+      };
+      subscriptions.set(subscription.id, subscription);
+      send(response, 200, subscription);
+      return;
+    }
+    const cancel = path.match(/^\/subscriptions\/(sub_\w+)\/cancel$/);
+    if (cancel) {
+      const subscription = subscriptions.get(cancel[1]);
+      if (!subscription) return notFound();
+      if (body.cancel_at_cycle_end) subscription.has_scheduled_changes = true;
+      else subscription.status = 'cancelled';
+      send(response, 200, subscription);
+      return;
+    }
+    if (path === '/payment_links') {
+      const id = newId('plink');
+      send(response, 200, {
+        id,
+        amount: body.amount,
+        notes: body.notes ?? {},
+        status: 'created',
+        short_url: `https://rzp.io/l/${id}`,
+      });
+      return;
+    }
+    send(response, 404, { error: { code: 'BAD_REQUEST_ERROR', description: 'Not found' } });
+  });
+}
+
 const server = createServer((request, response) => {
-  if (request.method === 'GET' && request.url === '/health') {
+  const path = new URL(request.url ?? '/', 'http://mock').pathname;
+  if (request.method === 'GET' && path === '/health') {
     send(response, 200, { ok: true });
     return;
   }
-  if (request.method !== 'POST' || !request.url?.endsWith('/chat/completions')) {
+  if (path.startsWith('/razorpay/v1/')) {
+    razorpay(request, response, path.slice('/razorpay/v1'.length));
+    return;
+  }
+  if (request.method !== 'POST' || !path.endsWith('/chat/completions')) {
     send(response, 404, { error: { message: 'Not found' } });
     return;
   }
@@ -124,5 +229,5 @@ const server = createServer((request, response) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Mock menu reader on http://127.0.0.1:${PORT}`);
+  console.log(`Mock APIs on http://127.0.0.1:${PORT}`);
 });

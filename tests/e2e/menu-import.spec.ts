@@ -7,7 +7,7 @@ import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
  * Menu import (spec §20A, §19 Phase 7 "a phone photo of a menu gives a review
  * draft; importing creates the categories and dishes; a bad photo fails with a
  * clear message"). Photos go to a local stand-in reader
- * (tests/e2e/mock-vision-server.mjs).
+ * (tests/e2e/mock-apis.mjs).
  */
 
 async function logInAsOwner(page: Page) {
