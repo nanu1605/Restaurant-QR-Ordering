@@ -11,6 +11,10 @@ function makeQueryClient() {
         // Realtime events invalidate; this only stops a refetch right after hydrating.
         staleTime: 10_000,
       },
+      mutations: {
+        // Offline, a change fails at once rather than firing minutes later.
+        networkMode: 'always',
+      },
     },
   });
 }
