@@ -306,6 +306,8 @@ describe('bill parsers', () => {
     expect(draft.lines[0]).toEqual({
       name: 'Butter Chicken',
       variant: 'Half',
+      // Lines from before add-ons have none.
+      addons: [],
       quantity: 2,
       unitPricePaise: 28000,
       lineTotalPaise: 56000,

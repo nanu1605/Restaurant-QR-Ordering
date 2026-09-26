@@ -14,22 +14,55 @@ import { Switch } from '@/components/ui/switch';
 import { useLive } from '@/features/live/live-provider';
 import { MENU_MUTATION_KEY, menuKey } from '@/features/live/query-client';
 import { filterMenu } from '@/features/ordering/menu-filter';
-import type { CustomerCategory, CustomerMenuItem } from '@/features/ordering/types';
+import type { CustomerAddonGroup, CustomerCategory } from '@/features/ordering/types';
 import { createClient } from '@/lib/supabase/browser';
 
-import { setDishAvailability } from '../actions';
+import { setAddonAvailability, setDishAvailability } from '../actions';
 import { fetchStaffMenu } from '../staff-menu';
 
-function withAvailability(menu: CustomerCategory[], id: string, available: boolean) {
+/** What a switch changes: a dish, or one add-on option (shared by every dish in its group). */
+type StockTarget = { kind: 'dish' | 'addon'; id: string; name: string };
+
+function withAvailability(menu: CustomerCategory[], target: StockTarget, available: boolean) {
   return menu.map((category) => ({
     ...category,
     items: category.items.map((item) =>
-      item.id === id ? { ...item, isAvailable: available } : item,
+      target.kind === 'dish'
+        ? item.id === target.id
+          ? { ...item, isAvailable: available }
+          : item
+        : {
+            ...item,
+            addonGroups: item.addonGroups.map((group) => ({
+              ...group,
+              addons: group.addons.map((addon) =>
+                addon.id === target.id ? { ...addon, isAvailable: available } : addon,
+              ),
+            })),
+          },
     ),
   }));
 }
 
-/** Availability (spec §13.2): every dish with an in-stock switch, searchable. */
+/** The add-on groups the menu's dishes use, once each, matching the search. */
+function addonGroupsOf(menu: CustomerCategory[], search: string): CustomerAddonGroup[] {
+  const q = search.trim().toLowerCase().replace(/\s+/g, ' ');
+  const groups = new Map<string, CustomerAddonGroup>();
+  for (const category of menu) {
+    for (const item of category.items) {
+      for (const group of item.addonGroups) groups.set(group.id, group);
+    }
+  }
+  return [...groups.values()]
+    .map((group) =>
+      !q || group.name.toLowerCase().includes(q)
+        ? group
+        : { ...group, addons: group.addons.filter((a) => a.name.toLowerCase().includes(q)) },
+    )
+    .filter((group) => group.addons.length > 0);
+}
+
+/** Availability (spec §13.2): every dish and add-on with an in-stock switch, searchable. */
 export function AvailabilityList() {
   const ids = useId();
   const queryClient = useQueryClient();
@@ -48,23 +81,28 @@ export function AvailabilityList() {
   const lastChange = () => queryClient.isMutating({ mutationKey: MENU_MUTATION_KEY }) === 1;
   const toggle = useMutation({
     mutationKey: MENU_MUTATION_KEY,
-    mutationFn: async ({ item, available }: { item: CustomerMenuItem; available: boolean }) => {
-      const result = await setDishAvailability(item.id, available);
+    mutationFn: async ({ target, available }: { target: StockTarget; available: boolean }) => {
+      const result = await (target.kind === 'dish' ? setDishAvailability : setAddonAvailability)(
+        target.id,
+        available,
+      );
       if (!result.ok) throw new Error(result.error);
     },
-    onMutate: async ({ item, available }) => {
+    onMutate: async ({ target, available }) => {
       await queryClient.cancelQueries({ queryKey: key });
       queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
-        current ? withAvailability(current, item.id, available) : current,
+        current ? withAvailability(current, target, available) : current,
       );
     },
-    onSuccess: (_result, { item, available }) => {
-      toast.success(available ? `${item.name} is back in stock` : `${item.name} is out of stock`);
+    onSuccess: (_result, { target, available }) => {
+      toast.success(
+        available ? `${target.name} is back in stock` : `${target.name} is out of stock`,
+      );
     },
-    onError: (error, { item, available }) => {
-      // Put this dish back; other switches keep their own pending changes.
+    onError: (error, { target, available }) => {
+      // Put this one back; other switches keep their own pending changes.
       queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
-        current ? withAvailability(current, item.id, !available) : current,
+        current ? withAvailability(current, target, !available) : current,
       );
       toast.error(error instanceof Error ? error.message : 'Something went wrong. Try again.');
     },
@@ -105,13 +143,15 @@ export function AvailabilityList() {
   }
 
   const shown = filterMenu(menu.data, search, false);
+  const addonGroups = addonGroupsOf(menu.data, search);
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-ink">Availability</h1>
         <p className="text-sm text-ink-muted">
-          Switch a dish off when it runs out. Customers see it as not available straight away.
+          Switch a dish or add-on off when it runs out. Customers see it as not available straight
+          away.
         </p>
       </div>
       <div className="relative">
@@ -129,7 +169,7 @@ export function AvailabilityList() {
         />
       </div>
 
-      {shown.length === 0 ? (
+      {shown.length === 0 && addonGroups.length === 0 ? (
         <p className="py-6 text-center text-sm text-ink-muted">
           No dishes match “{search.trim()}”.
         </p>
@@ -163,23 +203,75 @@ export function AvailabilityList() {
                       </span>
                     )}
                   </span>
-                  {/* Not a <label>: it would rename the switch after its status text. */}
-                  <div className="flex min-h-11 items-center gap-3 text-sm font-medium">
-                    <span aria-hidden className={item.isAvailable ? 'text-ink' : 'text-ink-muted'}>
-                      {item.isAvailable ? 'In stock' : 'Out of stock'}
-                    </span>
-                    <Switch
-                      checked={item.isAvailable}
-                      onCheckedChange={(available) => toggle.mutate({ item, available })}
-                      aria-label={`${item.name} in stock`}
-                    />
-                  </div>
+                  <StockSwitch
+                    name={item.name}
+                    available={item.isAvailable}
+                    onChange={(available) =>
+                      toggle.mutate({
+                        target: { kind: 'dish', id: item.id, name: item.name },
+                        available,
+                      })
+                    }
+                  />
                 </li>
               ))}
             </ul>
           </section>
         ))
       )}
+
+      {addonGroups.map((group) => (
+        <section
+          key={group.id}
+          aria-labelledby={`${ids}-${group.id}`}
+          className="rounded-lg border border-line bg-surface"
+        >
+          <h2
+            id={`${ids}-${group.id}`}
+            className="border-b border-line px-4 py-2 text-sm font-semibold text-ink-muted"
+          >
+            Add-ons · {group.name}
+          </h2>
+          <ul>
+            {group.addons.map((addon) => (
+              <li
+                key={addon.id}
+                className="flex min-h-14 items-center justify-between gap-3 border-b border-line px-4 py-2 last:border-b-0"
+              >
+                <span className="text-base text-ink">{addon.name}</span>
+                <StockSwitch
+                  name={addon.name}
+                  available={addon.isAvailable}
+                  onChange={(available) =>
+                    toggle.mutate({
+                      target: { kind: 'addon', id: addon.id, name: addon.name },
+                      available,
+                    })
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+type StockSwitchProps = {
+  name: string;
+  available: boolean;
+  onChange: (available: boolean) => void;
+};
+
+function StockSwitch({ name, available, onChange }: StockSwitchProps) {
+  return (
+    // Not a <label>: it would rename the switch after its status text.
+    <div className="flex min-h-11 items-center gap-3 text-sm font-medium">
+      <span aria-hidden className={available ? 'text-ink' : 'text-ink-muted'}>
+        {available ? 'In stock' : 'Out of stock'}
+      </span>
+      <Switch checked={available} onCheckedChange={onChange} aria-label={`${name} in stock`} />
     </div>
   );
 }

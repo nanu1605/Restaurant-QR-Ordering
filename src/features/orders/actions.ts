@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 
+import { refusedLines } from '@/features/ordering/addons';
 import { toOrderItemsPayload } from '@/features/ordering/schemas';
 import {
   actionError,
@@ -26,6 +27,7 @@ import {
   type RemoveItemInput,
   type StaffOrderInput,
 } from './schemas';
+import { fetchStaffMenu } from './staff-menu';
 
 /**
  * Live board actions (spec §9.3, §13.2, §13.3). Every one re-checks the caller
@@ -137,6 +139,20 @@ export async function setDishAvailability(id: string, available: boolean): Promi
   return actionOk();
 }
 
+/** The in-stock switch for one add-on option (docs/DECISIONS.md P9-4), like dishes. */
+export async function setAddonAvailability(id: string, available: boolean): Promise<ActionResult> {
+  await requireMember(STAFF_PANEL_ROLES);
+  const parsed = z.object({ id: idSchema, available: z.boolean() }).safeParse({ id, available });
+  if (!parsed.success) return invalid();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('staff_set_addon_availability', {
+    p_addon_id: parsed.data.id,
+    p_available: parsed.data.available,
+  });
+  if (error) return fromDbError(error, 'staff_set_addon_availability');
+  return actionOk();
+}
+
 export async function removeItem(input: RemoveItemInput): Promise<ActionResult> {
   await requireMember(STAFF_PANEL_ROLES);
   const parsed = removeItemSchema.safeParse(input);
@@ -176,7 +192,8 @@ const placedJson = z.object({
 
 export type StaffOrderResult =
   | { ok: true; data: { orderId: string; roundNumber: number; assignedWaiterId: string | null } }
-  | { ok: false; error: string; unavailableItemIds?: string[] };
+  /** unavailableLines: indexes of the sent lines to take out of the round. */
+  | { ok: false; error: string; unavailableLines?: number[] };
 
 /** "Add dishes" / "Add order" (spec §10.8): a new round, or a full order for a free table. */
 export async function placeStaffOrder(input: StaffOrderInput): Promise<StaffOrderResult> {
@@ -193,10 +210,15 @@ export async function placeStaffOrder(input: StaffOrderInput): Promise<StaffOrde
   });
   if (error) {
     if (dbErrorCode(error) === 'ITEM_UNAVAILABLE') {
+      const menu = await fetchStaffMenu(supabase).catch(() => []);
       return {
         ok: false,
         error: dbErrorMessage(error)!,
-        unavailableItemIds: (error.details ?? '').split(',').filter(Boolean),
+        unavailableLines: refusedLines(
+          menu,
+          parsed.data.lines,
+          (error.details ?? '').split(',').filter(Boolean),
+        ),
       };
     }
     return fromDbError(error, 'staff_place_order');

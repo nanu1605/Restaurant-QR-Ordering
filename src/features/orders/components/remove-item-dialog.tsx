@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { QuantityStepper } from '@/features/ordering/components/quantity-stepper';
+import { dishName } from '@/features/ordering/format';
 
 import { removeItem } from '../actions';
 import type { BoardItem } from '../board';
@@ -27,7 +28,7 @@ export function RemoveItemDialog({ item, onClose }: RemoveItemDialogProps) {
 function ReasonDialogForItem({ item, onClose }: RemoveItemDialogProps) {
   const [quantity, setQuantity] = useState(item?.quantity ?? 1);
   const remove = useBoardAction({ action: removeItem });
-  const name = item ? (item.variant ? `${item.name} (${item.variant})` : item.name) : '';
+  const name = item ? dishName(item) : '';
 
   return (
     <ReasonDialog

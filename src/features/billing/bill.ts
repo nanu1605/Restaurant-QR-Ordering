@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import type { FoodType } from '@/components/shared/food-type-mark';
+import { dishName } from '@/features/ordering/format';
 import { ORDER_ITEM_STATUSES, type OrderItemStatus } from '@/lib/order-status';
 import { Constants, type Database } from '@/types/database';
 
@@ -26,6 +27,7 @@ const paise = z.number().int();
 export type BillLine = {
   name: string;
   variant: string | null;
+  addons: string[];
   quantity: number;
   unitPricePaise: number;
   lineTotalPaise: number;
@@ -36,6 +38,8 @@ const lineJson = z
   .object({
     name: z.string(),
     variant: z.string().nullable(),
+    // Bills made before add-ons have none.
+    addons: z.array(z.string()).default([]),
     qty: z.number().int(),
     unit_price_paise: paise,
     line_total_paise: paise,
@@ -44,6 +48,7 @@ const lineJson = z
   .transform((l): BillLine => ({
     name: l.name,
     variant: l.variant,
+    addons: l.addons,
     quantity: l.qty,
     unitPricePaise: l.unit_price_paise,
     lineTotalPaise: l.line_total_paise,
@@ -706,7 +711,7 @@ export function halfRateLabel(bps: number): string {
   return percentLabel(bps / 2);
 }
 
-/** "Butter Chicken (Half)". */
-export function lineName(line: Pick<BillLine, 'name' | 'variant'>): string {
-  return line.variant ? `${line.name} (${line.variant})` : line.name;
+/** "Butter Chicken (Half)", "Pizza (Large) + Olives". */
+export function lineName(line: Pick<BillLine, 'name' | 'variant'> & { addons?: string[] }): string {
+  return dishName(line);
 }

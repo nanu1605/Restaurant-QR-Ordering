@@ -23,17 +23,22 @@ import { BOARD_MUTATION_KEY, menuKey } from '@/features/live/query-client';
 import {
   addToCart,
   cartCount,
+  cartLineFor,
   cartTotalPaise,
   EMPTY_CART,
   lineKey,
+  lineLabel,
   randomUuid,
-  removeItems,
+  refusedKeys,
+  removeLines,
   setLineNote,
   setLineQuantity,
   setOrderNote,
   toOrderLines,
   type Cart,
+  type NewCartLine,
 } from '@/features/ordering/cart';
+import { OptionsSheet } from '@/features/ordering/components/options-sheet';
 import { QuantityStepper } from '@/features/ordering/components/quantity-stepper';
 import { listNames, tableHeading } from '@/features/ordering/format';
 import { MAX_LINE_NOTE, MAX_ORDER_NOTE } from '@/features/ordering/limits';
@@ -87,6 +92,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
   const [idempotencyKey, setIdempotencyKey] = useState(randomUuid);
   const [sessionAtOpen] = useState(table.session?.id ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [sheetItem, setSheetItem] = useState<CustomerMenuItem | null>(null);
 
   const menu = useQuery({
     queryKey: menuKey(restaurantId),
@@ -117,15 +123,9 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
   const sessionChanged = (table.session?.id ?? null) !== sessionAtOpen;
   const shown = filterMenu(menu.data ?? [], search, false);
 
-  function add(item: CustomerMenuItem, variant: CustomerMenuItem['variants'][number] | null) {
-    const next = addToCart(cart, {
-      menuItemId: item.id,
-      variantId: variant?.id ?? null,
-      name: item.name,
-      variantName: variant?.name ?? null,
-      foodType: item.foodType,
-      unitPricePaise: variant?.pricePaise ?? item.pricePaise,
-    });
+  function add(line: NewCartLine, quantity = 1, note = '') {
+    setSheetItem(null);
+    const next = addToCart(cart, line, quantity, note);
     if (!next) {
       setError('One round can have up to 30 different dishes. Place this one, then add the rest.');
       return;
@@ -149,8 +149,11 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
       return;
     }
     if (!result.ok) {
-      if (result.unavailableItemIds?.length) {
-        const { cart: next, removed } = removeItems(cart, result.unavailableItemIds);
+      if (result.unavailableLines?.length) {
+        const { cart: next, removed } = removeLines(
+          cart,
+          refusedKeys(cart.lines, result.unavailableLines),
+        );
         setCart(next);
         const one = removed.length === 1;
         setError(
@@ -248,7 +251,14 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
               </h3>
               <ul className="flex flex-col">
                 {category.items.map((item) => (
-                  <MenuRow key={item.id} item={item} cart={cart} onAdd={add} onSetCart={setCart} />
+                  <MenuRow
+                    key={item.id}
+                    item={item}
+                    cart={cart}
+                    onAdd={add}
+                    onChoose={() => setSheetItem(item)}
+                    onSetCart={setCart}
+                  />
                 ))}
               </ul>
             </section>
@@ -261,7 +271,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
           <ul aria-label="This round" className="flex flex-col gap-2">
             {cart.lines.map((line) => {
               const key = lineKey(line);
-              const name = line.variantName ? `${line.name} (${line.variantName})` : line.name;
+              const name = lineLabel(line);
               return (
                 <li key={key} className="flex flex-col gap-1.5 rounded-lg border border-line p-2">
                   <div className="flex items-center justify-between gap-2">
@@ -326,6 +336,12 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
           </Button>
         </div>
       </div>
+      <OptionsSheet
+        item={sheetItem}
+        onClose={() => setSheetItem(null)}
+        onAdd={add}
+        addLabel="Add to round"
+      />
     </div>
   );
 }
@@ -333,11 +349,13 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
 type MenuRowProps = {
   item: CustomerMenuItem;
   cart: Cart;
-  onAdd: (item: CustomerMenuItem, variant: CustomerMenuItem['variants'][number] | null) => void;
+  onAdd: (line: NewCartLine) => void;
+  /** Dishes with add-ons are chosen in the options sheet. */
+  onChoose: () => void;
   onSetCart: (cart: Cart) => void;
 };
 
-function MenuRow({ item, cart, onAdd, onSetCart }: MenuRowProps) {
+function MenuRow({ item, cart, onAdd, onChoose, onSetCart }: MenuRowProps) {
   const simpleKey = lineKey({ menuItemId: item.id, variantId: null });
   const simpleLine = cart.lines.find((line) => lineKey(line) === simpleKey);
 
@@ -355,6 +373,10 @@ function MenuRow({ item, cart, onAdd, onSetCart }: MenuRowProps) {
 
       {!item.isAvailable ? (
         <span className="text-sm font-medium text-ink-muted">Out of stock</span>
+      ) : item.addonGroups.length > 0 ? (
+        <Button variant="outline" size="touch" aria-haspopup="dialog" onClick={onChoose}>
+          Choose<span className="sr-only"> {item.name}</span>
+        </Button>
       ) : item.variants.length > 0 ? (
         <span className="flex flex-wrap gap-2">
           {item.variants.map((variant) => (
@@ -362,7 +384,7 @@ function MenuRow({ item, cart, onAdd, onSetCart }: MenuRowProps) {
               key={variant.id}
               variant="outline"
               size="touch"
-              onClick={() => onAdd(item, variant)}
+              onClick={() => onAdd(cartLineFor(item, variant.id))}
             >
               {/* The name starts with the visible text (WCAG 2.5.3). */}
               {variant.name} · <span className="tabular-nums">{price(variant.pricePaise)}</span>
@@ -377,7 +399,7 @@ function MenuRow({ item, cart, onAdd, onSetCart }: MenuRowProps) {
           itemName={item.name}
         />
       ) : (
-        <Button variant="outline" size="touch" onClick={() => onAdd(item, null)}>
+        <Button variant="outline" size="touch" onClick={() => onAdd(cartLineFor(item, null))}>
           Add<span className="sr-only"> {item.name}</span>
         </Button>
       )}

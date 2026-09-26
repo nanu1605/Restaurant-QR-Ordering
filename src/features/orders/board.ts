@@ -19,6 +19,8 @@ export type BoardItem = {
   id: string;
   name: string;
   variant: string | null;
+  /** Add-on names in order (docs/DECISIONS.md P9-4). */
+  addons: string[];
   foodType: FoodType;
   quantity: number;
   note: string | null;
@@ -99,6 +101,7 @@ const itemJson = z.object({
   id: z.string(),
   name: z.string(),
   variant: z.string().nullable(),
+  addons: z.array(z.string()).default([]),
   food_type: z.enum(Constants.public.Enums.food_type),
   quantity: z.number().int(),
   note: z.string().nullable(),
@@ -213,6 +216,7 @@ export function parseBoard(json: unknown, fetchedAt: number = Date.now()): Board
             id: item.id,
             name: item.name,
             variant: item.variant,
+            addons: item.addons,
             foodType: item.food_type,
             quantity: item.quantity,
             note: item.note,

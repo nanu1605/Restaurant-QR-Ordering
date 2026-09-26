@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { listNames, tableHeading } from '@/features/ordering/format';
+import { dishName, listNames, tableHeading } from '@/features/ordering/format';
 
 import { setItemsStatus } from '../actions';
 import { formatElapsed, minutesSince, nextStatus } from '../board-view';
@@ -183,7 +183,7 @@ function Ticket({
       {ticket.note && <p className="text-sm text-ink">Note: {ticket.note}</p>}
       <ul className="flex flex-col gap-1.5">
         {ticket.items.map((item) => {
-          const name = item.variant ? `${item.name} (${item.variant})` : item.name;
+          const name = dishName(item);
           return (
             <li key={item.id}>
               <button
@@ -203,8 +203,12 @@ function Ticket({
                 <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
                 <span className="flex min-w-0 flex-col">
                   <span className="text-base font-medium text-ink">
-                    <span className="tabular-nums">{item.quantity} ×</span> {name}
+                    <span className="tabular-nums">{item.quantity} ×</span>{' '}
+                    {dishName({ name: item.name, variant: item.variant })}
                   </span>
+                  {item.addons.length > 0 && (
+                    <span className="text-base text-ink">+ {item.addons.join(', ')}</span>
+                  )}
                   {item.note && <span className="text-sm text-ink-muted">Note: {item.note}</span>}
                 </span>
                 <span className="sr-only">
@@ -227,9 +231,7 @@ function Ticket({
         onClick={(event) =>
           onMove({
             ids: ticket.items.map((item) => item.id),
-            names: ticket.items.map((item) =>
-              item.variant ? `${item.name} (${item.variant})` : item.name,
-            ),
+            names: ticket.items.map((item) => dishName(item)),
             from: ticket.status,
             to: next,
             control: event.currentTarget,

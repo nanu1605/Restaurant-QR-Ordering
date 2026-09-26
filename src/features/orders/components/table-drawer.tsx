@@ -17,7 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { formatClockTime, tableHeading } from '@/features/ordering/format';
+import { dishName, formatClockTime, tableHeading } from '@/features/ordering/format';
 import { WaiterAssignment } from '@/features/sessions/components/waiter-assignment';
 import { closeSessionUnbilled } from '@/features/sessions/actions';
 import { ORDER_ITEM_STATUS_LABELS, isVoidStatus } from '@/lib/order-status';
@@ -483,6 +483,11 @@ function ItemName({ item }: { item: BoardItem }) {
           {item.variant && <span className="text-ink-muted"> ({item.variant})</span>}
         </span>
       </p>
+      {item.addons.length > 0 && (
+        <p className={cn('pl-6 text-sm text-ink', voided && 'text-ink-muted line-through')}>
+          + {item.addons.join(', ')}
+        </p>
+      )}
       {item.note && <p className="text-sm text-ink-muted">Note: {item.note}</p>}
       {item.status === 'removed' && (
         <p className="text-sm text-status-void">
@@ -523,7 +528,7 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
   const previous = status ? PREVIOUS[status] : undefined;
   const canRemove =
     item.status !== 'served' || isManager || board.settings.staffCanRemoveServedItems;
-  const name = item.variant ? `${item.name} (${item.variant})` : item.name;
+  const name = dishName(item);
 
   return (
     <li className="flex flex-col gap-2 border-t border-line py-2 first:border-t-0">

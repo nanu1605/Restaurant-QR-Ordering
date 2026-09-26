@@ -185,13 +185,13 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
                     <th scope="col" className="py-1 font-medium">
                       Dish
                     </th>
-                    <th scope="col" className="py-1 text-right font-medium">
+                    <th scope="col" className="py-1 pl-3 text-right font-medium">
                       Qty
                     </th>
-                    <th scope="col" className="py-1 text-right font-medium">
+                    <th scope="col" className="py-1 pl-3 text-right font-medium">
                       Rate
                     </th>
-                    <th scope="col" className="py-1 text-right font-medium">
+                    <th scope="col" className="py-1 pl-3 text-right font-medium">
                       Amount
                     </th>
                   </tr>
@@ -205,11 +205,11 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
                           {lineName(line)}
                         </span>
                       </td>
-                      <td className="py-2 text-right tabular-nums">{line.quantity}</td>
-                      <td className="py-2 text-right">
+                      <td className="py-2 pl-3 text-right tabular-nums">{line.quantity}</td>
+                      <td className="py-2 pl-3 text-right whitespace-nowrap">
                         <Money paise={line.unitPricePaise} />
                       </td>
-                      <td className="py-2 text-right">
+                      <td className="py-2 pl-3 text-right whitespace-nowrap">
                         <Money paise={line.lineTotalPaise} />
                       </td>
                     </tr>
