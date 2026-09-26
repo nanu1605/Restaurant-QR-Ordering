@@ -27,6 +27,7 @@ export const orderLineSchema = z.object({
   variantId: z.uuid().nullable(),
   quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
   note: optionalNote(MAX_LINE_NOTE),
+  addonIds: z.array(z.uuid()).max(20).optional(),
 });
 
 export const placeOrderSchema = z.object({
@@ -44,5 +45,6 @@ export function toOrderItemsPayload(lines: z.output<typeof orderLineSchema>[]) {
     variant_id: line.variantId,
     quantity: line.quantity,
     note: line.note ?? null,
+    ...(line.addonIds?.length ? { addon_ids: line.addonIds } : {}),
   }));
 }

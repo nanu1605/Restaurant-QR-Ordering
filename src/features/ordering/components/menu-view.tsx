@@ -14,25 +14,29 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatINR } from '@/lib/money';
 
+import { hasChoices } from '../addons';
 import {
   addToCart,
   cartCount,
+  cartLineFor,
   cartTotalPaise,
   itemQuantity,
   lineKey,
+  lineLabel,
   setLineQuantity,
   type Cart,
+  type NewCartLine,
 } from '../cart';
 import { categorySectionId, countItems, filterMenu } from '../menu-filter';
-import type { CustomerCategory, CustomerMenuItem, CustomerTable, CustomerVariant } from '../types';
+import type { CustomerCategory, CustomerMenuItem, CustomerTable } from '../types';
 import { CartBar } from './cart-bar';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
 import { useReconciledCart } from './use-reconciled-cart';
 
-// The options sheet (Base UI dialog + radio group) is the heaviest part of the
-// menu's JavaScript and only needed on a tap, so it loads after the page.
-const VariantSheet = dynamic(() => import('./variant-sheet').then((m) => m.VariantSheet), {
+// The options sheet (Base UI dialog, radios and checkboxes) is the heaviest
+// part of the menu's JavaScript and only needed on a tap, so it loads after the page.
+const OptionsSheet = dynamic(() => import('./options-sheet').then((m) => m.OptionsSheet), {
   ssr: false,
 });
 
@@ -63,7 +67,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
   const [activeSection, selectSection] = useActiveSection(
     categories.map((c) => categorySectionId(c.id)),
   );
-  const hasOptionDishes = table.menu.some((c) => c.items.some((i) => i.variants.length > 0));
+  const hasOptionDishes = table.menu.some((c) => c.items.some(hasChoices));
 
   const base = `/t/${qrToken}`;
   const count = cartCount(cart);
@@ -80,14 +84,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
   }
 
   function addSimple(item: CustomerMenuItem) {
-    const next = addToCart(cart, {
-      menuItemId: item.id,
-      variantId: null,
-      name: item.name,
-      variantName: null,
-      foodType: item.foodType,
-      unitPricePaise: item.pricePaise,
-    });
+    const next = addToCart(cart, cartLineFor(item, null));
     if (!next) {
       toast(CART_FULL);
       return;
@@ -105,25 +102,8 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
     );
   }
 
-  function addVariant(
-    item: CustomerMenuItem,
-    variant: CustomerVariant,
-    quantity: number,
-    note: string,
-  ) {
-    const next = addToCart(
-      cart,
-      {
-        menuItemId: item.id,
-        variantId: variant.id,
-        name: item.name,
-        variantName: variant.name,
-        foodType: item.foodType,
-        unitPricePaise: variant.pricePaise,
-      },
-      quantity,
-      note,
-    );
+  function addChoice(line: NewCartLine, quantity: number, note: string) {
+    const next = addToCart(cart, line, quantity, note);
     if (!next) {
       toast(CART_FULL);
       return;
@@ -131,7 +111,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
     update(() => next);
     setSheetItem(null);
     setAnnouncement(
-      `${item.name} (${variant.name}) added. ${itemQuantity(next, item.id)} in cart.`,
+      `${lineLabel({ ...line, quantity, note })} added. ${itemQuantity(next, line.menuItemId)} in cart.`,
     );
   }
 
@@ -234,9 +214,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
                       item={item}
                       canOrder={table.canOrder}
                       cart={cart}
-                      onAdd={() =>
-                        item.variants.length > 0 ? setSheetItem(item) : addSimple(item)
-                      }
+                      onAdd={() => (hasChoices(item) ? setSheetItem(item) : addSimple(item))}
                       onQuantity={(quantity) => changeQuantity(item, quantity)}
                     />
                   ))}
@@ -251,7 +229,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
         <CartBar href={`${base}/cart`} count={count} totalPaise={cartTotalPaise(cart)} />
       )}
       {table.canOrder && hasOptionDishes && (
-        <VariantSheet item={sheetItem} onClose={() => setSheetItem(null)} onAdd={addVariant} />
+        <OptionsSheet item={sheetItem} onClose={() => setSheetItem(null)} onAdd={addChoice} />
       )}
     </main>
   );
@@ -283,7 +261,7 @@ type MenuItemRowProps = {
 };
 
 function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowProps) {
-  const hasOptions = item.variants.length > 0;
+  const hasOptions = hasChoices(item);
   const inCart = itemQuantity(cart, item.id);
   const price = formatINR(item.pricePaise, { fraction: 'auto' });
   const showStepper = !hasOptions && inCart > 0;
@@ -314,7 +292,7 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
           </h3>
         </div>
         <p className="text-sm font-medium text-ink tabular-nums">
-          {hasOptions ? `from ${price}` : price}
+          {item.variants.length > 0 ? `from ${price}` : price}
         </p>
         {item.description && (
           <p className="line-clamp-2 text-sm text-ink-muted">{item.description}</p>

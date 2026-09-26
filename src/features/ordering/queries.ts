@@ -10,8 +10,9 @@ import { ORDER_ITEM_STATUSES } from '@/lib/order-status';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { Constants } from '@/types/database';
 
+import { canChoose } from './addons';
 import { QR_TOKEN_PATTERN } from './limits';
-import type { CustomerSessionView, CustomerTable } from './types';
+import type { CustomerAddonGroup, CustomerSessionView, CustomerTable } from './types';
 
 /**
  * Customer reads (spec §9.2): the server calls the customer_* functions with the
@@ -52,6 +53,23 @@ const tableJson = z.object({
           variants: z.array(
             z.object({ id: z.string(), name: z.string(), price_paise: z.number().int() }),
           ),
+          addon_group_ids: z.array(z.string()),
+        }),
+      ),
+    }),
+  ),
+  addon_groups: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      min_select: z.number().int(),
+      max_select: z.number().int(),
+      addons: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          price_paise: z.number().int(),
+          is_available: z.boolean(),
         }),
       ),
     }),
@@ -83,6 +101,7 @@ const sessionJson = z.object({
               id: z.string(),
               name: z.string(),
               variant: z.string().nullable(),
+              addons: z.array(z.string()),
               food_type: foodType,
               quantity: z.number().int(),
               unit_price_paise: z.number().int(),
@@ -101,6 +120,23 @@ const sessionJson = z.object({
 export function toCustomerTable(json: unknown): CustomerTable {
   const data = tableJson.parse(json);
   const supabaseUrl = getPublicEnv().NEXT_PUBLIC_SUPABASE_URL;
+  const groups = new Map<string, CustomerAddonGroup>(
+    data.addon_groups.map((group) => [
+      group.id,
+      {
+        id: group.id,
+        name: group.name,
+        minSelect: group.min_select,
+        maxSelect: group.max_select,
+        addons: group.addons.map((addon) => ({
+          id: addon.id,
+          name: addon.name,
+          pricePaise: addon.price_paise,
+          isAvailable: addon.is_available,
+        })),
+      },
+    ]),
+  );
   return {
     restaurant: {
       name: data.restaurant.name,
@@ -122,22 +158,26 @@ export function toCustomerTable(json: unknown): CustomerTable {
     menu: data.menu.map((category) => ({
       id: category.id,
       name: category.name,
-      items: category.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description,
-        foodType: item.food_type,
-        pricePaise: item.price_paise,
-        imageUrl: item.image_path
-          ? publicImageUrl(supabaseUrl, 'menu-images', item.image_path, item.image_version)
-          : null,
-        isAvailable: item.is_available,
-        variants: item.variants.map((variant) => ({
-          id: variant.id,
-          name: variant.name,
-          pricePaise: variant.price_paise,
-        })),
-      })),
+      items: category.items.map((item) => {
+        const addonGroups = item.addon_group_ids.flatMap((id) => groups.get(id) ?? []);
+        return {
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          foodType: item.food_type,
+          pricePaise: item.price_paise,
+          imageUrl: item.image_path
+            ? publicImageUrl(supabaseUrl, 'menu-images', item.image_path, item.image_version)
+            : null,
+          isAvailable: item.is_available && addonGroups.every(canChoose),
+          variants: item.variants.map((variant) => ({
+            id: variant.id,
+            name: variant.name,
+            pricePaise: variant.price_paise,
+          })),
+          addonGroups,
+        };
+      }),
     })),
     sessionOrderCount: data.session?.order_count ?? null,
   };
@@ -165,6 +205,7 @@ export function toCustomerSession(json: unknown): CustomerSessionView {
           id: item.id,
           name: item.name,
           variant: item.variant,
+          addons: item.addons,
           foodType: item.food_type,
           quantity: item.quantity,
           unitPricePaise: item.unit_price_paise,

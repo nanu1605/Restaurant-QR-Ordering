@@ -4,6 +4,8 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 import type { FoodType } from '@/components/shared/food-type-mark';
 
+import { chosenAddons, lineFits } from './addons';
+import { dishName } from './format';
 import { MAX_LINE_NOTE, MAX_LINE_QUANTITY, MAX_ORDER_LINES, MAX_ORDER_NOTE } from './limits';
 import type { CustomerCategory, CustomerMenuItem } from './types';
 
@@ -19,7 +21,11 @@ export type CartLine = {
   variantId: string | null;
   name: string;
   variantName: string | null;
+  /** Chosen add-ons, sorted; left out when there are none (and in carts saved before add-ons). */
+  addonIds?: string[];
+  addonNames?: string[];
   foodType: FoodType;
+  /** Option (or dish) price plus the add-ons. */
   unitPricePaise: number;
   quantity: number;
   note: string;
@@ -31,8 +37,35 @@ export const EMPTY_CART: Cart = { lines: [], note: '' };
 
 export type NewCartLine = Omit<CartLine, 'quantity' | 'note'>;
 
-export function lineKey(line: { menuItemId: string; variantId: string | null }): string {
-  return `${line.menuItemId}:${line.variantId ?? ''}`;
+export function lineKey(line: {
+  menuItemId: string;
+  variantId: string | null;
+  addonIds?: readonly string[];
+}): string {
+  const key = `${line.menuItemId}:${line.variantId ?? ''}`;
+  return line.addonIds?.length ? `${key}:${line.addonIds.join(',')}` : key;
+}
+
+/** A cart line for the dish with this option and add-ons, priced from the menu. */
+export function cartLineFor(
+  item: CustomerMenuItem,
+  variantId: string | null,
+  addonIds: readonly string[] = [],
+): NewCartLine {
+  const variant = item.variants.find((v) => v.id === variantId);
+  const addons = chosenAddons(item.addonGroups, addonIds);
+  return {
+    menuItemId: item.id,
+    variantId: variant?.id ?? null,
+    name: item.name,
+    variantName: variant?.name ?? null,
+    ...(addons.length > 0
+      ? { addonIds: addons.map((a) => a.id).sort(), addonNames: addons.map((a) => a.name) }
+      : {}),
+    foodType: item.foodType,
+    unitPricePaise:
+      (variant?.pricePaise ?? item.pricePaise) + addons.reduce((sum, a) => sum + a.pricePaise, 0),
+  };
 }
 
 const clampQuantity = (quantity: number) =>
@@ -112,14 +145,14 @@ export function itemQuantity(cart: Cart, menuItemId: string): number {
 
 export type CartUpdate = { cart: Cart; removed: string[] };
 
-function lineLabel(line: CartLine): string {
-  return line.variantName ? `${line.name} (${line.variantName})` : line.name;
+export function lineLabel(line: CartLine): string {
+  return dishName({ name: line.name, variant: line.variantName, addons: line.addonNames });
 }
 
 /**
  * Brings the cart in line with the current menu: dishes that are gone, out of
- * stock, or whose option no longer exists are dropped (and named), and names
- * and prices are refreshed.
+ * stock, or whose option or add-ons no longer fit are dropped (and named), and
+ * names and prices are refreshed.
  */
 export function reconcileCart(cart: Cart, menu: CustomerCategory[]): CartUpdate {
   const items = new Map<string, CustomerMenuItem>();
@@ -129,32 +162,31 @@ export function reconcileCart(cart: Cart, menu: CustomerCategory[]): CartUpdate 
   const lines: CartLine[] = [];
   for (const line of cart.lines) {
     const item = items.get(line.menuItemId);
-    const variant = line.variantId
-      ? item?.variants.find((v) => v.id === line.variantId)
-      : undefined;
-    const optionOk = line.variantId ? Boolean(variant) : item?.variants.length === 0;
-    if (!item || !item.isAvailable || !optionOk) {
+    if (!item || !lineFits(item, line.variantId, line.addonIds)) {
       removed.push(lineLabel(line));
       continue;
     }
     lines.push({
-      ...line,
-      name: item.name,
-      variantName: variant?.name ?? null,
-      foodType: item.foodType,
-      unitPricePaise: variant?.pricePaise ?? item.pricePaise,
+      quantity: line.quantity,
+      note: line.note,
+      ...cartLineFor(item, line.variantId, line.addonIds),
     });
   }
   return { cart: { ...cart, lines }, removed };
 }
 
-/** Drops the dishes the database refused (ITEM_UNAVAILABLE) and names them. */
-export function removeItems(cart: Cart, menuItemIds: string[]): CartUpdate {
-  const ids = new Set(menuItemIds);
+/** Drops the lines the database refused (by lineKey) and names them. */
+export function removeLines(cart: Cart, keys: string[]): CartUpdate {
+  const drop = new Set(keys);
   return {
-    cart: { ...cart, lines: cart.lines.filter((l) => !ids.has(l.menuItemId)) },
-    removed: cart.lines.filter((l) => ids.has(l.menuItemId)).map(lineLabel),
+    cart: { ...cart, lines: cart.lines.filter((l) => !drop.has(lineKey(l))) },
+    removed: cart.lines.filter((l) => drop.has(lineKey(l))).map(lineLabel),
   };
+}
+
+/** The keys of the submitted lines the server refused (indexes into what was sent). */
+export function refusedKeys(submitted: CartLine[], indexes: number[]): string[] {
+  return indexes.flatMap((index) => (submitted[index] ? [lineKey(submitted[index])] : []));
 }
 
 /** The order lines customer_place_order expects. */
@@ -164,12 +196,17 @@ export function toOrderLines(cart: Cart) {
     variantId: l.variantId,
     quantity: l.quantity,
     note: l.note.trim() || null,
+    ...(l.addonIds?.length ? { addonIds: l.addonIds } : {}),
   }));
 }
 
 // ─── Stored cart ────────────────────────────────────────────────────────────
 
 const FOOD_TYPES: readonly string[] = ['veg', 'non_veg', 'egg'];
+
+const isStringList = (value: unknown) =>
+  value === undefined ||
+  (Array.isArray(value) && value.length <= 20 && value.every((v) => typeof v === 'string'));
 
 function isCartLine(value: unknown): value is CartLine {
   if (typeof value !== 'object' || value === null) return false;
@@ -179,6 +216,8 @@ function isCartLine(value: unknown): value is CartLine {
     (l.variantId === null || typeof l.variantId === 'string') &&
     typeof l.name === 'string' &&
     (l.variantName === null || typeof l.variantName === 'string') &&
+    isStringList(l.addonIds) &&
+    isStringList(l.addonNames) &&
     typeof l.foodType === 'string' &&
     FOOD_TYPES.includes(l.foodType) &&
     Number.isInteger(l.unitPricePaise) &&

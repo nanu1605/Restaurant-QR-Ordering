@@ -12,7 +12,9 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 import { Constants } from '@/types/database';
 
+import { refusedLines } from './addons';
 import { ensureDeviceId, readDeviceId } from './device';
+import { getCustomerTable } from './queries';
 import {
   placeOrderSchema,
   qrTokenSchema,
@@ -42,7 +44,8 @@ const placedOrderJson = z.object({
 
 export type PlaceOrderResult =
   | { ok: true; data: { roundNumber: number; status: OrderStatus } }
-  | { ok: false; error: string; unavailableItemIds?: string[] };
+  /** unavailableLines: indexes of the sent lines to take out of the cart. */
+  | { ok: false; error: string; unavailableLines?: number[] };
 
 export async function placeOrder(
   qrToken: string,
@@ -63,10 +66,15 @@ export async function placeOrder(
 
   if (error) {
     if (dbErrorCode(error) === 'ITEM_UNAVAILABLE') {
+      const table = await getCustomerTable(qrToken).catch(() => null);
       return {
         ok: false,
         error: message('ITEM_UNAVAILABLE'),
-        unavailableItemIds: (error.details ?? '').split(',').filter(Boolean),
+        unavailableLines: refusedLines(
+          table?.menu ?? [],
+          parsed.data.lines,
+          (error.details ?? '').split(',').filter(Boolean),
+        ),
       };
     }
     return customerError(error, 'customer_place_order');

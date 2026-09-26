@@ -56,6 +56,16 @@ export function formatCountdown(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** "Pizza (Large) + Cheese burst, Olives": a dish with its option and add-ons. */
+export function dishName(dish: {
+  name: string;
+  variant: string | null;
+  addons?: readonly string[];
+}): string {
+  const base = dish.variant ? `${dish.name} (${dish.variant})` : dish.name;
+  return dish.addons?.length ? `${base} + ${dish.addons.join(', ')}` : base;
+}
+
 /** "Paneer Tikka and Butter Chicken (Full)", "A, B and C". */
 export function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? '';

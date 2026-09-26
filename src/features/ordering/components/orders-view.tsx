@@ -23,7 +23,13 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { isVoidStatus } from '@/lib/order-status';
 
 import { cancelOrderItem } from '../actions';
-import { CUSTOMER_STATUS_LABELS, formatClockTime, formatCountdown, NETWORK_ERROR } from '../format';
+import {
+  CUSTOMER_STATUS_LABELS,
+  dishName,
+  formatClockTime,
+  formatCountdown,
+  NETWORK_ERROR,
+} from '../format';
 import { SESSION_POLL_MS } from '../limits';
 import type { CustomerOrderItem, CustomerRound, CustomerSessionView } from '../types';
 import { ServiceRequestButton } from './service-request-button';
@@ -247,7 +253,7 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
           {round.items.map((item) => {
             const left = round.isMine ? cancelMs(item) : null;
             const struck = isVoidStatus(item.status);
-            const label = item.variant ? `${item.name} (${item.variant})` : item.name;
+            const label = dishName(item);
             return (
               <li key={item.id} className="flex items-start gap-3 px-4 py-3">
                 <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />

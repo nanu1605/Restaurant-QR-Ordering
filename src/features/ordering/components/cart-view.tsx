@@ -19,8 +19,10 @@ import {
   cartTotalPaise,
   EMPTY_CART,
   lineKey,
+  lineLabel,
   randomUuid,
-  removeItems,
+  refusedKeys,
+  removeLines,
   setLineNote,
   setLineQuantity,
   setOrderNote,
@@ -61,6 +63,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
     submitting.current = true;
     setError(null);
 
+    const submitted = cart.lines;
     startTransition(async () => {
       try {
         const result = await placeOrder(qrToken, {
@@ -81,10 +84,11 @@ export function CartView({ qrToken, table }: CartViewProps) {
           router.push(`/t/${qrToken}/orders`);
           return;
         }
-        if (result.unavailableItemIds) {
+        if (result.unavailableLines) {
+          const keys = refusedKeys(submitted, result.unavailableLines);
           let removed: string[] = [];
           update((current) => {
-            const next = removeItems(current, result.unavailableItemIds ?? []);
+            const next = removeLines(current, keys);
             removed = next.removed;
             return next.cart;
           });
@@ -227,7 +231,7 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
   // Once shown (or when the dish already has a note), the note field stays put,
   // even when it is cleared to type a new one.
   const [editingNote, setEditingNote] = useState(line.note !== '');
-  const label = line.variantName ? `${line.name} (${line.variantName})` : line.name;
+  const label = lineLabel(line);
 
   return (
     <li className="flex flex-col gap-2 py-4">
@@ -237,6 +241,9 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
           <p className="text-base font-medium text-ink">
             {line.name}
             {line.variantName && <span className="text-ink-muted"> · {line.variantName}</span>}
+            {line.addonNames?.length ? (
+              <span className="block text-sm text-ink-muted">+ {line.addonNames.join(', ')}</span>
+            ) : null}
           </p>
           <p className="text-sm text-ink-muted tabular-nums">
             {formatINR(line.unitPricePaise, { fraction: 'auto' })} each

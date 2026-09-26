@@ -6,6 +6,18 @@ import type { Database } from '@/types/database';
 
 export type CustomerVariant = { id: string; name: string; pricePaise: number };
 
+export type CustomerAddon = { id: string; name: string; pricePaise: number; isAvailable: boolean };
+
+/** A shared add-on group, e.g. "Toppings: up to 3" (docs/DECISIONS.md P9-4). */
+export type CustomerAddonGroup = {
+  id: string;
+  name: string;
+  /** 0 = optional. */
+  minSelect: number;
+  maxSelect: number;
+  addons: CustomerAddon[];
+};
+
 export type CustomerMenuItem = {
   id: string;
   name: string;
@@ -14,8 +26,11 @@ export type CustomerMenuItem = {
   /** With options, the cheapest option ("from ₹X"). */
   pricePaise: number;
   imageUrl: string | null;
+  /** Out of stock; on the customer menu also when a required add-on group has too little in stock. */
   isAvailable: boolean;
   variants: CustomerVariant[];
+  /** The dish's add-on groups in order (shared objects: one group serves many dishes). */
+  addonGroups: CustomerAddonGroup[];
 };
 
 export type CustomerCategory = { id: string; name: string; items: CustomerMenuItem[] };
@@ -45,6 +60,7 @@ export type CustomerOrderItem = {
   id: string;
   name: string;
   variant: string | null;
+  addons: string[];
   foodType: FoodType;
   quantity: number;
   unitPricePaise: number;

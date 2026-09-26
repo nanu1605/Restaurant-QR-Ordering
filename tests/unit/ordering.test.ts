@@ -17,7 +17,8 @@ import {
   parseStoredCart,
   randomUuid,
   reconcileCart,
-  removeItems,
+  refusedKeys,
+  removeLines,
   serializeCart,
   setLineNote,
   setLineQuantity,
@@ -79,6 +80,7 @@ function menuItem(
     imageUrl: null,
     isAvailable: true,
     variants: [],
+    addonGroups: [],
     ...item,
   };
 }
@@ -478,17 +480,22 @@ describe('cart against the current menu', () => {
     });
   });
 
-  it('removes the dishes the database refused, every option of them', () => {
+  it('removes the lines the database refused, found by what was sent', () => {
     const cart = cartOf(
       [cartLine(paneer), cartLine(chickenFull), cartLine(chickenHalf, 2)],
       'No onions',
     );
-    expect(removeItems(cart, [BUTTER_CHICKEN])).toEqual({
+    const keys = refusedKeys(cart.lines, [1, 2, 7]);
+    expect(removeLines(cart, keys)).toEqual({
       cart: cartOf([cartLine(paneer)], 'No onions'),
       removed: ['Butter Chicken (Full)', 'Butter Chicken (Half)'],
     });
-    expect(removeItems(cart, [DAL])).toEqual({ cart, removed: [] });
-    expect(removeItems(cart, [])).toEqual({ cart, removed: [] });
+    expect(removeLines(cart, [])).toEqual({ cart, removed: [] });
+    // The cart changed meanwhile (another tab): only lines still there go.
+    expect(removeLines(cartOf([cartLine(paneer)]), keys)).toEqual({
+      cart: cartOf([cartLine(paneer)]),
+      removed: [],
+    });
   });
 });
 
