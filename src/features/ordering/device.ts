@@ -25,7 +25,8 @@ function secret(): string {
  */
 export async function withDeviceCookie(request: NextRequest): Promise<NextResponse> {
   if (await verifyDeviceToken(request.cookies.get(DEVICE_COOKIE)?.value, secret())) {
-    return NextResponse.next();
+    // With the request, so the page sees the proxy's headers (the CSP nonce).
+    return NextResponse.next({ request });
   }
 
   const token = await createDeviceToken(newDeviceId(), secret());

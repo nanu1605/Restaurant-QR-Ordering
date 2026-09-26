@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { adminClient, createTestRestaurant, logInAsOwner } from './helpers';
+import { adminClient, createTestRestaurant, logInAsOwner, watchCspViolations } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 import {
   razorpayId,
@@ -76,6 +76,8 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
 }) => {
   const restaurant = await createTestRestaurant({ prefix: 'e2e-pay' });
   await stubCheckout(page);
+  // Checkout's script is added by the page, so the nonce policy must let it run.
+  const violations = await watchCspViolations(page.context());
   await logInAsOwner(page, restaurant);
   await page.goto('/admin/subscription');
 
@@ -95,6 +97,7 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
     page.getByText(/Autopay is set up for Growth, monthly; the first payment is on/),
   ).toBeVisible();
   await expect(page.getByTestId('subscription-status')).toHaveText('Free trial');
+  expect(violations).toEqual([]);
   const row = await subscriptionRow(restaurant.restaurantId);
   expect(row).toMatchObject({ status: 'trialing', razorpay_status: 'authenticated' });
   const subscriptionId = row.razorpay_subscription_id!;

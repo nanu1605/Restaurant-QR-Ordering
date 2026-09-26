@@ -35,7 +35,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers)\.spec\.ts/,
       ],
     },
   ],

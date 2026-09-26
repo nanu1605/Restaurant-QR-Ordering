@@ -29,7 +29,22 @@ function storageImages(): { patterns: RemotePattern[]; local: boolean } {
 
 const images = storageImages();
 
+/** Static security headers; the per-request Content-Security-Policy is set in src/proxy.ts. */
+const SECURITY_HEADERS = [
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  // Screen wake lock (the board tablets) stays allowed.
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  // No includeSubDomains: other subdomains of the domain are not ours to promise.
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: '/:path*', headers: SECURITY_HEADERS }];
+  },
   images: {
     remotePatterns: images.patterns,
     // Next.js 16 refuses to optimise images from local addresses. Only the

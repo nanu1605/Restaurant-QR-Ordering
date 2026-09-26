@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-import { expect, type Page } from '@playwright/test';
+import { type BrowserContext, expect, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
 import type { CuisineSet } from '../../src/features/menu/default-categories';
@@ -15,6 +15,25 @@ if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 export const DEMO_PASSWORD = 'Password123!';
 /** Password for owners and staff the tests create. */
 export const TEST_PASSWORD = 'e2e-Password-1';
+
+/**
+ * Records every Content-Security-Policy violation in the context's pages, from
+ * their next load on (docs/DECISIONS.md P9-9).
+ */
+export async function watchCspViolations(context: BrowserContext) {
+  const violations: string[] = [];
+  await context.exposeBinding('e2eCspViolation', ({ page }, violation: string) => {
+    violations.push(`${new URL(page.url()).pathname}: ${violation}`);
+  });
+  await context.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (event) => {
+      const report = (window as unknown as { e2eCspViolation: (v: string) => void })
+        .e2eCspViolation;
+      void report(`${event.effectiveDirective} blocked ${event.blockedURI || 'inline'}`);
+    });
+  });
+  return violations;
+}
 
 export function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
