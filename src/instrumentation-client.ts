@@ -12,7 +12,14 @@ const holder = globalThis as { __zod_globalConfig?: Record<string, unknown> };
 // so the customer menu doesn't wait for it (docs/DECISIONS.md P10-3). Errors
 // before then only reach Sentry from the server.
 if (SENTRY_OPTIONS.enabled) {
-  const load = () => void import('@sentry/nextjs').then((Sentry) => Sentry.init(SENTRY_OPTIONS));
+  const load = () =>
+    void import('@sentry/nextjs').then((Sentry) =>
+      Sentry.init({
+        ...SENTRY_OPTIONS,
+        // Errors only: no session ping on every page load.
+        integrations: (defaults) => defaults.filter((i) => i.name !== 'BrowserSession'),
+      }),
+    );
   if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 3000 });
   else setTimeout(load, 1000);
 }
