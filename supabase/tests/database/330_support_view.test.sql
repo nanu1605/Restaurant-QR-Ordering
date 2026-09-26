@@ -38,8 +38,8 @@ select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_support_view(:'rest_a', 'board') as board \gset
 select is(
   (:'board'::jsonb -> 'data') - 'role',
-  :'owner_board'::jsonb - 'role',
-  'the board matches the owner''s, apart from the viewer''s role'
+  :'owner_board'::jsonb - 'role' - 'requests',
+  'the board matches the owner''s, apart from the viewer''s role and table requests'
 );
 select is(:'board'::jsonb #>> '{data,role}', 'manager', 'seen as a manager would');
 select is(

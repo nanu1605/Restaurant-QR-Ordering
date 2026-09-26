@@ -159,6 +159,9 @@ select set_eq(
       -- Phase 8: Razorpay tools
       ('public.platform_audit_payment_link'),
       ('public.platform_reprocess_webhook'),
+      -- Phase 9: table service
+      ('public.staff_update_service_request'),
+      ('public.staff_move_session'),
       -- Phase 7: menu import
       ('public.menu_import_create'),
       ('public.menu_import_set_draft'),
@@ -179,7 +182,7 @@ select set_eq(
   $$,
   $$
     values ('customer_get_table'), ('customer_place_order'), ('customer_get_session'),
-           ('customer_cancel_item')
+           ('customer_cancel_item'), ('customer_create_service_request')
   $$,
   'the customer functions are executable by the server (service role)'
 );
@@ -204,7 +207,8 @@ from unnest(array[
   'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
-  'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders'
+  'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
+  'service_requests'
 ]) as t;
 
 select is_empty(
@@ -214,7 +218,8 @@ select is_empty(
       'restaurant_members', 'waiters', 'dining_tables', 'menu_categories', 'menu_items',
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
-      'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders'
+      'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
+      'service_requests'
     ]) as t
     where not exists (
       select 1
@@ -233,7 +238,8 @@ select set_eq(
     where pubname = 'supabase_realtime' and schemaname = 'public'
   $$,
   $$
-    values ('orders'), ('order_items'), ('table_sessions'), ('bills'), ('menu_items'), ('waiters')
+    values ('orders'), ('order_items'), ('table_sessions'), ('bills'), ('menu_items'), ('waiters'),
+           ('service_requests')
   $$,
   'realtime publishes exactly the live-board tables (spec §8.11)'
 );

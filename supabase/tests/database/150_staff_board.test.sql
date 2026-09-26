@@ -293,8 +293,8 @@ select tests.clear_auth();
 -- ─── Shape ──────────────────────────────────────────────────────────────────
 select is(
   pg_temp.keys_of(pg_temp.board('waiter')),
-  'access_state,my_waiter_id,now,role,settings,tables,timezone,waiters',
-  'the board has now, timezone, role, my_waiter_id, access_state, settings, tables and waiters'
+  'access_state,my_waiter_id,now,requests,role,settings,tables,timezone,waiters',
+  'the board has now, timezone, role, my_waiter_id, access_state, settings, tables, waiters and requests'
 );
 select is(
   (pg_temp.board('waiter') ->> 'now')::timestamptz, now(),

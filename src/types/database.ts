@@ -1114,6 +1114,76 @@ export type Database = {
         }
         Relationships: []
       }
+      service_requests: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          client_device_id: string | null
+          created_at: string
+          dining_table_id: string
+          id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          restaurant_id: string
+          session_id: string | null
+          status: Database["public"]["Enums"]["service_request_status"]
+          type: Database["public"]["Enums"]["service_request_type"]
+          updated_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          client_device_id?: string | null
+          created_at?: string
+          dining_table_id: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          restaurant_id: string
+          session_id?: string | null
+          status?: Database["public"]["Enums"]["service_request_status"]
+          type: Database["public"]["Enums"]["service_request_type"]
+          updated_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          client_device_id?: string | null
+          created_at?: string
+          dining_table_id?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          restaurant_id?: string
+          session_id?: string | null
+          status?: Database["public"]["Enums"]["service_request_status"]
+          type?: Database["public"]["Enums"]["service_request_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_requests_restaurant_id_dining_table_id_fkey"
+            columns: ["restaurant_id", "dining_table_id"]
+            isOneToOne: false
+            referencedRelation: "dining_tables"
+            referencedColumns: ["restaurant_id", "id"]
+          },
+          {
+            foreignKeyName: "service_requests_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_restaurant_id_session_id_fkey"
+            columns: ["restaurant_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "table_sessions"
+            referencedColumns: ["restaurant_id", "id"]
+          },
+        ]
+      }
       session_waiter_assignments: {
         Row: {
           assigned_at: string
@@ -1608,6 +1678,10 @@ export type Database = {
         }
         Returns: Json
       }
+      customer_create_service_request: {
+        Args: { p_device_id: string; p_qr_token: string; p_type: string }
+        Returns: Json
+      }
       customer_get_session: {
         Args: { p_device_id?: string; p_qr_token: string }
         Returns: Json
@@ -1766,6 +1840,10 @@ export type Database = {
       }
       staff_get_board: { Args: never; Returns: Json }
       staff_mark_order_served: { Args: { p_order_id: string }; Returns: Json }
+      staff_move_session: {
+        Args: { p_session_id: string; p_target_table_id: string }
+        Returns: Json
+      }
       staff_place_order: {
         Args: {
           p_dining_table_id: string
@@ -1799,6 +1877,10 @@ export type Database = {
           p_order_item_id: string
           p_status: Database["public"]["Enums"]["order_item_status"]
         }
+        Returns: Json
+      }
+      staff_update_service_request: {
+        Args: { p_request_id: string; p_status: string }
         Returns: Json
       }
       subscription_reminder_sent: {
@@ -1852,6 +1934,8 @@ export type Database = {
       payment_mode: "cash" | "upi" | "card" | "other"
       payment_status: "unpaid" | "paid"
       restaurant_status: "active" | "suspended"
+      service_request_status: "open" | "acknowledged" | "resolved"
+      service_request_type: "call_waiter" | "request_bill"
       session_status: "open" | "billed" | "closed_unbilled"
       subscription_payment_source: "razorpay" | "manual" | "payment_link"
       subscription_source: "razorpay" | "manual"
@@ -2023,6 +2107,8 @@ export const Constants = {
       payment_mode: ["cash", "upi", "card", "other"],
       payment_status: ["unpaid", "paid"],
       restaurant_status: ["active", "suspended"],
+      service_request_status: ["open", "acknowledged", "resolved"],
+      service_request_type: ["call_waiter", "request_bill"],
       session_status: ["open", "billed", "closed_unbilled"],
       subscription_payment_source: ["razorpay", "manual", "payment_link"],
       subscription_source: ["razorpay", "manual"],

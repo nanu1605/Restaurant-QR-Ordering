@@ -248,6 +248,15 @@ begin
 
   insert into public.subscription_payments (restaurant_id, source, amount_paise, manual_mode)
   values (p_restaurant_id, 'manual', 89900, 'upi');
+
+  insert into public.menu_imports (restaurant_id, source, status, page_count)
+  values (p_restaurant_id, 'csv', 'discarded', 0);
+
+  insert into public.subscription_reminders (restaurant_id, kind, due_key)
+  values (p_restaurant_id, 'payment_failed', current_date);
+
+  insert into public.service_requests (restaurant_id, dining_table_id, session_id, type)
+  values (p_restaurant_id, v_table, v_session, 'call_waiter');
 end;
 $$;
 

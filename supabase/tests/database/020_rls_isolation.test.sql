@@ -32,7 +32,8 @@ from unnest(array[
   'public.menu_categories', 'public.menu_items', 'public.menu_item_variants',
   'public.table_sessions', 'public.session_waiter_assignments', 'public.orders',
   'public.order_items', 'public.invoice_counters', 'public.bills', 'public.bill_payments',
-  'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments'
+  'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments',
+  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests'
 ]) as t;
 
 select tests.authenticate_as(:'a_manager');
@@ -42,7 +43,8 @@ from unnest(array[
   'public.menu_categories', 'public.menu_items', 'public.menu_item_variants',
   'public.table_sessions', 'public.session_waiter_assignments', 'public.orders',
   'public.order_items', 'public.invoice_counters', 'public.bills', 'public.bill_payments',
-  'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments'
+  'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments',
+  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests'
 ]) as t;
 
 select tests.authenticate_as(:'a_waiter');
@@ -50,7 +52,8 @@ select tests.rls_isolation(t::regclass, :'rest_b')
 from unnest(array[
   'public.restaurants', 'public.restaurant_members', 'public.waiters', 'public.dining_tables',
   'public.menu_categories', 'public.menu_items', 'public.menu_item_variants',
-  'public.table_sessions', 'public.orders', 'public.order_items', 'public.bills'
+  'public.table_sessions', 'public.orders', 'public.order_items', 'public.bills',
+  'public.service_requests'
 ]) as t;
 
 -- ─── Manager of A ───────────────────────────────────────────────────────────
@@ -237,7 +240,8 @@ from unnest(array[
   'public.menu_categories', 'public.menu_items', 'public.menu_item_variants',
   'public.table_sessions', 'public.orders', 'public.order_items', 'public.bills',
   'public.bill_payments', 'public.audit_logs', 'public.plans', 'public.restaurant_subscriptions',
-  'public.platform_admins', 'public.webhook_events'
+  'public.platform_admins', 'public.webhook_events', 'public.menu_imports',
+  'public.subscription_reminders', 'public.service_requests'
 ]) as t;
 select throws_ok(
   format($f$select * from public.restaurant_access(%L)$f$, :'rest_a'),
