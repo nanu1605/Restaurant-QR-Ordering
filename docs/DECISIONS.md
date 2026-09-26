@@ -1483,3 +1483,85 @@ banner's live region was hidden while empty, so screen readers could miss its fi
   links the manifest, its icons are PNGs, Chrome reports it installable, the service worker is
   active, a reload without a network shows the offline page and Try again returns to
   the board; the customer menu has no manifest.
+
+### Hindi, audit and security (Stop D)
+
+- **P9-7 · Hindi customer screens:** every word on the customer screens lives in
+  `src/features/ordering/strings.ts`, an English and a Hindi dictionary. Hindi is typed as the
+  English one, so a missing or extra key doesn't compile. Dish, category and restaurant names,
+  reasons typed by staff, money and times stay as they are (en-IN, Western digits). English comes
+  first; the header's हिन्दी / English switch is a server-action form, so it works before the page's
+  JavaScript has loaded, and sets a `lang` cookie with the device cookie's options (path `/t`, one
+  year, httpOnly). The root layout reads it for `<html lang>`, so screen readers use the right voice
+  for toasts and titles too (the plan put `lang` on a wrapper; the page is more correct). The
+  cookie only reaches `/t`, so the staff and admin pages stay English on the same phone. A client
+  `LangProvider` hands the dictionary to the customer components; without it the default is
+  English, so the staff panel's reuse of the options sheet and quantity stepper is unchanged.
+  Server actions answer in the phone's language: the customer refusal messages moved from
+  `db-errors.ts` into the dictionaries. The add-on rules (`groupRule`, `selectionError`) and
+  `listNames` take their words as a parameter. Both dictionaries ship, a few KB. No new font: Noto
+  Sans's Devanagari subset loads only when Hindi text appears. The Hindi is written here; the
+  owner reviews it before the pilot.
+- **P9-8 · Lighthouse:** mobile, production build, the demo menu (`/t/DEMO0000TABLE001`),
+  Lighthouse 12.8 with its default simulated throttling. English and Hindi alike: performance
+  92–93, accessibility 100, best practices 100 (with the policy below: no console errors, the CSP
+  counts as effective against XSS). SEO is 60 by design: customer pages are `noindex`. Lighthouse
+  estimates LCP at 3.2–3.3 s under throttling; the observed LCP was 139 ms, and the `PERF=1` spec
+  stays. Nothing needed fixing.
+- **P9-9 · Security headers:** a Content-Security-Policy with a fresh nonce per request, set in
+  `src/proxy.ts` on the request (Next.js reads the nonce there and puts it on its scripts) and on
+  the response; the policy is `src/lib/csp.ts`. Scripts run only by nonce, with `'strict-dynamic'`
+  so Razorpay Checkout's script, added by a nonced one, loads; `'unsafe-eval'` only in
+  development. Styles stay `'unsafe-inline'`: the UI kit, toasts and the customer accent `<style>`
+  need it, and a style nonce would switch it off. Images and connections go to the app, Supabase
+  (https, and wss for Realtime) and `https://*.razorpay.com` (Razorpay's own docs allow the whole
+  domain); frames only Razorpay; workers only the app (service worker, pdf.js); `object-src
+'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and
+  `upgrade-insecure-requests` only when the app itself is on https. One policy for every page.
+  Every page now renders per request (the root layout reads the language cookie, and nonces need
+  it anyway), so the home page needs no `connection()`; partial prerendering would need another
+  approach later. Static headers in `next.config.ts`: `X-Frame-Options: DENY`, `nosniff`,
+  `strict-origin-when-cross-origin`, a `Permissions-Policy` that turns off camera, microphone and
+  geolocation (wake lock stays; photo capture uses the file picker, not the camera API), HSTS for
+  two years without `includeSubDomains`, and no `X-Powered-By`. Zod 4 tries `new Function` for
+  its fast parsers, which the policy reports as a violation even though Zod catches it:
+  `src/instrumentation-client.ts` turns on Zod's `jitless` through its global settings object,
+  without importing Zod. pdf.js 6 no longer uses eval on the page. Vercel's preview toolbar
+  (`vercel.live`) is blocked by the policy; revisit in Phase 10 if it is wanted.
+  `pnpm audit --prod --audit-level=high` found nothing (nor did the full tree), and CI now runs
+  it right after installing. The RLS isolation test already lists every tenant table (Stops A
+  and B).
+
+### Review fixes (Phase 9 Stop D)
+
+Three reviewers (security, language, regressions) and a verifier: 5 confirmed, 1 rejected.
+
+- `upgrade-insecure-requests` followed the Supabase URL's scheme, so an http app on the LAN
+  (which the device cookie supports) against a hosted Supabase would have had its own requests
+  upgraded to https and failed. The app's URL decides now.
+- Importing Zod in `instrumentation-client.ts` put all of Zod (about 89 KB gzipped) in every
+  page's first load, the customer menu included. It now sets Zod's global settings object, the
+  same one whether Zod loads before or after.
+- Sonner's own labels ("Close toast", "Notifications") stayed English on Hindi screens; they
+  come from the dictionary now.
+- A cart error stayed in the old language after a switch. It is kept with the dictionary it was
+  written in and hidden after a switch.
+- The header test refused `'unsafe-eval'` even against a reused local dev server; CI only now.
+- Rejected: the Hindi cancel button reads "रद्द करें Paneer Tikka · 1:42" to screen readers,
+  verb first; it is complete and understandable.
+
+### Tests (Phase 9 Stop D)
+
+- **Unit:** the English wording through the dictionary (cancel notice, dishes taken out,
+  "Placed"); Hindi table names, counts, cancel notice and "और"; every customer refusal has its own
+  Hindi message; unknown codes, `toString` included, stay unmapped; the CSP builder (https and
+  wss, local http with development eval, an http app on the LAN with a hosted Supabase).
+- **E2E (`customer-hindi.spec.ts`, phone):** switching to Hindi sets `<html lang="hi">` and
+  Hindi labels, and survives a reload; the titles, the cart notice, a dish that ran out, the
+  server's "ordering unavailable" refusal, the orders page, a dish status and the Request bill
+  toast (with a Hindi close label) are in Hindi; switching back gives English. A bad QR code says
+  so in Hindi; `/login` stays English on the same phone.
+- **E2E (`security-headers.spec.ts`):** a phone ordering, the waiter's board and drawer, stock
+  switches, the kitchen, 14 admin pages and 6 super-admin pages run with no CSP violation; `/login`
+  and the customer menu carry the headers and a new nonce on every request, and Next.js's scripts
+  carry it. `subscription.spec.ts` checks that Razorpay Checkout loads with no violation.

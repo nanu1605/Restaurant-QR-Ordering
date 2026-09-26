@@ -6,8 +6,9 @@ day goes.
 
 ## What the product does today
 
-- **Guests** scan the table QR, browse the menu, order round after round, see each dish move from
-  placed to served, cancel within the window, and get the bill message when the table is billed.
+- **Guests** scan the table QR, browse the menu in English or Hindi, order round after round,
+  see each dish move from placed to served, cancel within the window, call a waiter, ask for the
+  bill, and get the bill message when the table is billed.
   The first order of a session waits for approval when that setting is on.
 - **Waiters and kitchen** work from `/staff`: the table board, the kitchen view (Growth), marking
   dishes served (also through a Wi-Fi drop), adding or removing dishes, guests' calls and bill
@@ -30,7 +31,6 @@ day goes.
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
 | Charging for MenuMesh (built; needs your Razorpay setup) | 8     | Pilots are free; no payment details are collected |
-| Hindi customer screens                                   | 9     | English only for now                              |
 | Staging and production deployment, Sentry, backups       | 10    | Deploy before the first guest scans a code        |
 
 ## Human tasks (only you can do these)
@@ -53,6 +53,8 @@ Before the first pilot:
       restaurants.
 - [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act).
 - [ ] Recruit 2–3 pilot restaurants.
+- [ ] Read the Hindi customer screens (tap हिन्दी on a menu, add a dish with options, order,
+      cancel) and send corrections for anything that reads oddly.
 - [ ] For menu import from photos: create a Command Code API key (Command Code Studio) and,
       as the fallback, an OpenRouter key, each with a monthly spend limit, and set them in Vercel
       (`MENU_IMPORT_API_KEY`, `MENU_IMPORT_FALLBACK_API_KEY`). Set `CRON_SECRET` (a long random

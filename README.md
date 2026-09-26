@@ -50,7 +50,9 @@ Each table's QR code opens `/t/<qr token>`. The demo tables use fixed tokens, so
 http://localhost:3000/t/DEMO0000TABLE001 is table 1 (…002 to …006 for tables 2–6). Customers
 browse the menu, add dishes (with options, add-ons and notes), place the order and follow it on "Your
 table's orders", where they can cancel their own dishes for a short time. **Call waiter** in the
-header works any time; **Request bill** appears on "Your table's orders" once an order is accepted. The demo restaurant asks
+header works any time; **Request bill** appears on "Your table's orders" once an order is accepted.
+**हिन्दी** in the header switches the customer screens to Hindi (and **English** back); the phone
+remembers the choice. The demo restaurant asks
 staff to confirm a table's first order, so new orders wait until a waiter approves them on the
 worker panel (or a manager assigns the table a waiter). Each phone gets a signed device cookie,
 which is why `CUSTOMER_COOKIE_SECRET` is required.
@@ -241,6 +243,14 @@ Owners and managers set the restaurant up at `/admin`:
 - **Waiters**: waiter profiles (no login needed), on/off duty, optional linked login.
 - **Staff logins**: logins for managers, waiters and kitchen staff; password resets.
 - **Settings**: restaurant details and logo, tax and charges, bill options, ordering rules.
+
+### Security headers
+
+Every page gets a Content-Security-Policy with a new script nonce per request (`src/proxy.ts`,
+policy in `src/lib/csp.ts`) and the static headers in `next.config.ts` (no framing, `nosniff`,
+referrer policy, permissions policy, HSTS). A new third-party script, image host or frame needs
+an entry in the policy; `tests/e2e/security-headers.spec.ts` fails on any violation. CI also runs
+`pnpm audit --prod --audit-level=high`.
 
 ## Scripts
 
