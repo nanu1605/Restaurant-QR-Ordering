@@ -22,9 +22,11 @@ never reaches a database that lacks its migrations.
 
 - **Staging:** every push to `main` that passes CI deploys staging (the `staging` job in
   `ci.yml`). It is off until the repository variable `DEPLOY_STAGING` is `true`.
-- **Production:** GitHub → Actions → **Release** → Run workflow (optionally a commit; the default
-  is the latest `main`). It refuses a commit whose CI on `main` failed, then waits for the
-  owner's approval on the `production` environment.
+- **Production:** GitHub → Actions → **Release** → Run workflow, type `production` in the
+  confirm box (optionally a commit; the default is the latest `main`). Only the repository owner
+  can run it, and it refuses a commit whose CI on `main` failed.
+- After a deploy, the smoke tests check that the live site reports the commit just deployed
+  (`/api/health` → `version`).
 
 ### One-time setup per environment
 
@@ -35,10 +37,12 @@ never reaches a database that lacks its migrations.
 2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, Git deploys left to
    `vercel.json`, the domain attached, and the environment variables below under "Production"
    (a staging project's production is staging).
-3. **GitHub:** an environment named `staging` or `production` with these secrets:
-   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `VERCEL_TOKEN`,
-   `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, and the variable `APP_URL`. For `production`, add the
-   owner as a required reviewer.
+3. **GitHub** → Settings → Secrets and variables → Actions (repository level: a free plan's
+   private repository has no environment secrets). Once: the secrets `SUPABASE_ACCESS_TOKEN`
+   (Supabase account → Access tokens), `VERCEL_TOKEN` and `VERCEL_ORG_ID`. Per target, with the
+   prefix `STAGING_` or `PRODUCTION_`: the secrets `…SUPABASE_PROJECT_REF`,
+   `…SUPABASE_DB_PASSWORD` and `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the
+   variable `DEPLOY_STAGING` = `true` turns on staging deploys.
 4. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
    It answers 200 with `"db":"ok"`, or 503 when the database can't be reached.
 
@@ -74,8 +78,11 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 
 ## Rolling back
 
-- **App:** Vercel → the project → Deployments → the last good one → **Promote to Production**.
-  It is instant and keeps the database as it is (fine, since migrations are backward-compatible).
+- **App:** Vercel → the project → Deployments → the last good one → **Instant Rollback**. It is
+  instant and keeps the database as it is (fine, since migrations are backward-compatible). It
+  also stops new production deploys from going live: after the fix is released, press **Undo
+  Rollback** on the project page (or run `vercel promote <new deployment URL>`). Until then the
+  deploy's smoke tests fail, because the live site still reports the old commit.
 - **Database:** a forward-fix migration through the normal pipeline. Restoring a backup is for
   lost data, not bad code (see Backups).
 
@@ -119,7 +126,7 @@ app on each tablet.
 | `RAZORPAY_WEBHOOK_SECRET`     | Razorpay webhook settings and Vercel | Change both together; events in between fail and are retried by Razorpay.   |
 | `CRON_SECRET`                 | Vercel                               | Vercel Cron sends the new one after the next deploy.                        |
 | `RESEND_API_KEY`, import keys | the provider, then Vercel            | Create the new key, set, deploy, delete the old key.                        |
-| GitHub deploy secrets         | GitHub environment settings          | Replace; the next deploy uses them.                                         |
+| GitHub deploy secrets         | GitHub repository secrets            | Replace; the next deploy uses them.                                         |
 
 After changing any Vercel variable, deploy again (a Release for production).
 

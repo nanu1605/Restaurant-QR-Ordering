@@ -257,13 +257,14 @@ an entry in the policy; `tests/e2e/security-headers.spec.ts` fails on any violat
 Staging and production each have their own Supabase project (Mumbai) and Vercel project.
 GitHub Actions migrates, then deploys, then runs the read-only smoke tests
 (`tests/smoke`): staging after every green CI run on `main`, production through the
-**Release** workflow, which the owner approves. `docs/RUNBOOK.md` covers the setup, the
+**Release** workflow, which only the repository owner can run. `docs/RUNBOOK.md` covers the setup, the
 environment variables, rollbacks, incidents, backups, secret rotation and the Razorpay live
 switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site.
 
-Errors go to Sentry (errors only; the browser SDK loads once the page is idle) through
-`/monitoring` on the app's own origin; staff and admin usage goes to PostHog through `/ingest`.
-Both are off while their keys are empty, as locally and in CI. `/terms` and `/privacy` are
+Errors go to Sentry (errors only, no cookies, headers or request bodies; the browser SDK loads
+once the page is idle); staff and admin usage goes to PostHog, never from diners' phones. Both
+are off while their keys are empty, as locally and in CI, and the Content-Security-Policy only
+lets the browser reach them when they are on. `/terms` and `/privacy` are
 placeholders to replace before launch.
 
 ## Scripts
