@@ -114,7 +114,8 @@ test('pages carry the security headers and a new script nonce on every request',
     expect(csp, path).toContain("frame-ancestors 'none'");
     expect(csp, path).toContain("object-src 'none'");
     expect(csp, path).toContain("'strict-dynamic'");
-    expect(csp, path).not.toContain('unsafe-eval');
+    // A reused local `next dev` server allows eval for React's overlays; CI runs `next start`.
+    if (process.env.CI) expect(csp, path).not.toContain('unsafe-eval');
     const nonce = /'nonce-([^']+)'/.exec(csp)![1]!;
     nonces.add(nonce);
     // Next.js puts the nonce on its scripts.

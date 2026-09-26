@@ -9,9 +9,11 @@ export async function proxy(request: NextRequest) {
   // A fresh nonce per request: Next.js reads it from the request's policy and
   // puts it on its scripts (docs/DECISIONS.md P9-9). Both steps below forward
   // the request's headers.
+  const env = getPublicEnv();
   const csp = contentSecurityPolicy({
     nonce: btoa(crypto.randomUUID()),
-    supabaseUrl: getPublicEnv().NEXT_PUBLIC_SUPABASE_URL,
+    appUrl: env.NEXT_PUBLIC_APP_URL,
+    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
     dev: process.env.NODE_ENV === 'development',
   });
   request.headers.set('Content-Security-Policy', csp);

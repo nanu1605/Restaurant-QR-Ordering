@@ -8,7 +8,12 @@ const directives = (policy: string) =>
 describe('content security policy (docs/DECISIONS.md P9-9)', () => {
   it('allows scripts by nonce only, and Supabase over https and wss', () => {
     const policy = directives(
-      contentSecurityPolicy({ nonce: 'abc', supabaseUrl: 'https://x.supabase.co', dev: false }),
+      contentSecurityPolicy({
+        nonce: 'abc',
+        appUrl: 'https://menumesh.in',
+        supabaseUrl: 'https://x.supabase.co',
+        dev: false,
+      }),
     );
     expect(policy['script-src']).toEqual([
       "'self'",
@@ -29,11 +34,30 @@ describe('content security policy (docs/DECISIONS.md P9-9)', () => {
 
   it('keeps local http working and adds eval only in development', () => {
     const local = directives(
-      contentSecurityPolicy({ nonce: 'n', supabaseUrl: 'http://127.0.0.1:54321', dev: true }),
+      contentSecurityPolicy({
+        nonce: 'n',
+        appUrl: 'http://localhost:3000',
+        supabaseUrl: 'http://127.0.0.1:54321',
+        dev: true,
+      }),
     );
     expect(local['connect-src']).toContain('ws://127.0.0.1:54321');
     expect(local['img-src']).toContain('http://127.0.0.1:54321');
     expect(local['script-src']).toContain("'unsafe-eval'");
     expect(local).not.toHaveProperty('upgrade-insecure-requests');
+  });
+
+  it('upgrades requests only when the app itself is on https', () => {
+    // A phone on the LAN testing an http build against a hosted Supabase.
+    const lan = directives(
+      contentSecurityPolicy({
+        nonce: 'n',
+        appUrl: 'http://192.168.1.20:3000',
+        supabaseUrl: 'https://x.supabase.co',
+        dev: false,
+      }),
+    );
+    expect(lan['connect-src']).toContain('wss://x.supabase.co');
+    expect(lan).not.toHaveProperty('upgrade-insecure-requests');
   });
 });

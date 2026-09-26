@@ -6,18 +6,19 @@
  */
 export function contentSecurityPolicy({
   nonce,
+  appUrl,
   supabaseUrl,
   dev,
 }: {
   nonce: string;
+  appUrl: string;
   supabaseUrl: string;
   /** React needs eval in development for its error overlays. */
   dev: boolean;
 }): string {
   const supabase = new URL(supabaseUrl);
-  const secure = supabase.protocol === 'https:';
   // Realtime is a WebSocket on the Supabase host.
-  const realtime = `${secure ? 'wss' : 'ws'}://${supabase.host}`;
+  const realtime = `${supabase.protocol === 'https:' ? 'wss' : 'ws'}://${supabase.host}`;
   const razorpay = 'https://*.razorpay.com';
   return [
     "default-src 'self'",
@@ -33,7 +34,7 @@ export function contentSecurityPolicy({
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    // Local and CI runs serve over http.
-    ...(secure ? ['upgrade-insecure-requests'] : []),
+    // Local, LAN and CI runs serve the app over http (as the device cookie allows).
+    ...(new URL(appUrl).protocol === 'https:' ? ['upgrade-insecure-requests'] : []),
   ].join('; ');
 }
