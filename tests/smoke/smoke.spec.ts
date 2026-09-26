@@ -1,0 +1,51 @@
+import { expect, test } from '@playwright/test';
+
+// Read-only checks for a deployed site (docs/DECISIONS.md P10-7): run after
+// every staging and production deploy, and in CI against `next start`. They
+// create nothing, so no test data or known passwords land in a real database.
+
+test('the health check reaches the database', async ({ request }) => {
+  const response = await request.get('/api/health');
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toMatchObject({ status: 'ok', db: 'ok' });
+});
+
+test('the login page loads under the security headers', async ({ page }) => {
+  const response = await page.goto('/login');
+  expect(response?.status()).toBe(200);
+  const headers = response!.headers();
+  const nonce = /'nonce-([^']+)'/.exec(headers['content-security-policy'] ?? '')?.[1];
+  expect(nonce).toBeTruthy();
+  expect(await response!.text()).toContain(`nonce="${nonce}"`);
+  expect(headers['x-frame-options']).toBe('DENY');
+  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible();
+});
+
+test('a QR code that does not work gets the friendly page', async ({ page }) => {
+  const response = await page.goto('/t/ZZZZZZZZZZZZZZZZ');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'This QR code isn’t working' })).toBeVisible();
+});
+
+test('the staff app can be installed', async ({ request }) => {
+  const manifest = await request.get('/app.webmanifest');
+  expect(await manifest.json()).toMatchObject({ start_url: '/login', display: 'standalone' });
+  const icon = await request.get('/icon/192');
+  expect(icon.headers()['content-type']).toBe('image/png');
+});
+
+test('the terms and privacy pages are up', async ({ request }) => {
+  for (const path of ['/terms', '/privacy']) {
+    expect((await request.get(path)).status(), path).toBe(200);
+  }
+});
+
+test('the cron and the payment webhook refuse strangers', async ({ request }) => {
+  expect((await request.get('/api/cron/daily')).status()).toBe(401);
+  const webhook = await request.post('/api/webhooks/razorpay', {
+    headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': 'wrong' },
+    data: '{}',
+  });
+  // 400: a bad signature; 503: Razorpay isn't set up here yet.
+  expect([400, 503]).toContain(webhook.status());
+});

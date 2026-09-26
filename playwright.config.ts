@@ -21,6 +21,9 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
+    // The read-only checks run after each deploy (playwright.smoke.config.ts); here they
+    // check the local build.
+    { name: 'smoke', testDir: './tests/smoke', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'desktop',
       use: { ...devices['Desktop Chrome'] },
