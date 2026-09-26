@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogClose,
@@ -34,7 +35,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { saveMenuItem } from '../actions';
 import { compressMenuImage } from '../compress-image';
 import { publicImageUrl } from '../images';
-import type { AdminCategory, AdminMenuItem } from '../queries';
+import { groupRule } from '@/features/ordering/addons';
+
+import type { AdminAddonGroup, AdminCategory, AdminMenuItem } from '../queries';
 import {
   FOOD_TYPES,
   formatPriceInput,
@@ -57,6 +60,7 @@ type ItemFormDialogProps = {
   /** Category preselected for a new dish. */
   categoryId: string | null;
   categories: AdminCategory[];
+  addonGroups: AdminAddonGroup[];
   supabaseUrl: string;
 };
 
@@ -93,6 +97,7 @@ function defaultsFor(item: AdminMenuItem | null, categoryId: string | null): Men
         name: variant.name,
         price: formatPriceInput(variant.pricePaise),
       })),
+      addonGroupIds: item.addonGroupIds,
       isAvailable: item.isAvailable,
     };
   }
@@ -105,6 +110,7 @@ function defaultsFor(item: AdminMenuItem | null, categoryId: string | null): Men
     hasVariants: false,
     price: '',
     variants: [],
+    addonGroupIds: [],
     isAvailable: true,
   };
 }
@@ -126,6 +132,7 @@ function ItemForm({
   item,
   categoryId,
   categories,
+  addonGroups,
   supabaseUrl,
   onOpenChange,
 }: ItemFormDialogProps) {
@@ -416,6 +423,40 @@ function ItemForm({
             </div>
             <FieldError errors={[errors.price]} />
           </Field>
+        )}
+
+        {addonGroups.length > 0 && (
+          <Controller
+            control={control}
+            name="addonGroupIds"
+            render={({ field }) => (
+              <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
+                <legend className="px-1 text-sm font-medium text-ink">Add-ons (optional)</legend>
+                {addonGroups.map((group) => (
+                  <label key={group.id} className="flex items-start gap-2 text-sm text-ink">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={field.value.includes(group.id)}
+                      onCheckedChange={(checked) =>
+                        field.onChange(
+                          checked
+                            ? [...field.value, group.id]
+                            : field.value.filter((id) => id !== group.id),
+                        )
+                      }
+                    />
+                    <span>
+                      {group.name}{' '}
+                      <span className="text-ink-muted">
+                        · {groupRule(group)} · {group.addons.map((addon) => addon.name).join(', ')}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+                <FieldError errors={[errors.addonGroupIds]} />
+              </fieldset>
+            )}
+          />
         )}
 
         <Field>

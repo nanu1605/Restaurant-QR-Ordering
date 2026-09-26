@@ -72,6 +72,11 @@ const MESSAGES: Record<string, Message> = {
   INVALID_VARIANT_NAME: 'Give each option a name of up to 40 characters.',
   VARIANT_NAME_DUPLICATE: (name) => `Two options are called “${name}”. Give each its own name.`,
   ITEM_HAS_VARIANTS: 'This dish has options. Change the option prices instead.',
+  INVALID_ADDON_GROUP_NAME: 'Enter a group name of up to 60 characters.',
+  ADDON_GROUP_NAME_DUPLICATE: (name) =>
+    name ? `There is already an add-on group called “${name}”.` : 'That group already exists.',
+  INVALID_ADDON_NAME: 'Give each add-on a name of up to 40 characters.',
+  ADDON_NAME_DUPLICATE: (name) => `Two add-ons are called “${name}”. Give each its own name.`,
   INVALID_IMAGE_PATH: 'The image could not be saved. Upload it again.',
 
   // Tables

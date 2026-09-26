@@ -100,6 +100,7 @@ describe('menu item form', () => {
     hasVariants: false,
     price: '280',
     variants: [],
+    addonGroupIds: [],
     isAvailable: true,
   };
 
@@ -151,6 +152,7 @@ describe('menu item form', () => {
         { id: '33333333-3333-4333-8333-333333333333', name: 'Full', price_paise: 38000 },
         { name: 'Half', price_paise: 22050 },
       ],
+      addon_group_ids: [],
     });
 
     expect(toMenuItemPayload(menuItemFormSchema.parse(base))).toMatchObject({

@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 
-import type { AdminCategory, AdminMenuItem } from '../queries';
+import type { AdminAddonGroup, AdminCategory, AdminMenuItem } from '../queries';
 
+import { AddonGroupsPanel } from './addon-groups-panel';
 import { DeleteCategoryDialog, SuggestedCategoriesDialog } from './category-dialogs';
 import { CategoryPanel } from './category-panel';
 import { ItemFormDialog } from './item-form-dialog';
@@ -12,13 +13,20 @@ import { ItemsPanel } from './items-panel';
 type MenuEditorProps = {
   categories: AdminCategory[];
   items: AdminMenuItem[];
+  addonGroups: AdminAddonGroup[];
   supabaseUrl: string;
   /** Read-only restaurants can still switch dishes in and out of stock. */
   readOnly: boolean;
 };
 
 /** Menu page (spec §13.3): categories on the left, the selected category's dishes on the right. */
-export function MenuEditor({ categories, items, supabaseUrl, readOnly }: MenuEditorProps) {
+export function MenuEditor({
+  categories,
+  items,
+  addonGroups,
+  supabaseUrl,
+  readOnly,
+}: MenuEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ item: AdminMenuItem | null } | null>(null);
   const [deleting, setDeleting] = useState<AdminCategory | null>(null);
@@ -33,6 +41,11 @@ export function MenuEditor({ categories, items, supabaseUrl, readOnly }: MenuEdi
 
   const itemCounts: Record<string, number> = {};
   for (const item of items) itemCounts[item.categoryId] = (itemCounts[item.categoryId] ?? 0) + 1;
+  const groupDishCounts: Record<string, number> = {};
+  for (const item of items) {
+    if (!item.isActive) continue;
+    for (const id of item.addonGroupIds) groupDishCounts[id] = (groupDishCounts[id] ?? 0) + 1;
+  }
   const categoryNames = Object.fromEntries(
     categories.map((category) => [category.id, category.name]),
   );
@@ -59,6 +72,7 @@ export function MenuEditor({ categories, items, supabaseUrl, readOnly }: MenuEdi
           onEdit={(item) => setEditing({ item })}
         />
       </div>
+      <AddonGroupsPanel groups={addonGroups} dishCounts={groupDishCounts} readOnly={readOnly} />
 
       <ItemFormDialog
         open={editing !== null}
@@ -66,6 +80,7 @@ export function MenuEditor({ categories, items, supabaseUrl, readOnly }: MenuEdi
         item={editing?.item ?? null}
         categoryId={selected?.id ?? null}
         categories={categories}
+        addonGroups={addonGroups}
         supabaseUrl={supabaseUrl}
       />
       <DeleteCategoryDialog

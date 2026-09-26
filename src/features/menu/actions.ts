@@ -18,6 +18,7 @@ import { createClient } from '@/lib/supabase/server';
 
 import { CUISINE_SETS, DEFAULT_CATEGORY_SETS } from './default-categories';
 import {
+  addonGroupPayloadSchema,
   categoryNameSchema,
   imageExtension,
   MAX_IMAGE_BYTES,
@@ -193,6 +194,34 @@ export async function setItemAvailability(id: string, available: boolean): Promi
     p_available: parsed.data.available,
   });
   if (error) return fromDbError(error, 'staff_set_item_availability');
+  refresh();
+  return actionOk();
+}
+
+// ─── Add-on groups (docs/DECISIONS.md P9-4) ──────────────────────────────────
+
+/** Creates or updates a group with its add-ons (payload in paise). */
+export async function saveAddonGroup(payload: unknown): Promise<ActionResult<{ id: string }>> {
+  await requireMember(ADMIN_PANEL_ROLES);
+  const parsed = addonGroupPayloadSchema.safeParse(payload);
+  if (!parsed.success) return fromZodError(parsed.error);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('admin_save_addon_group', { p_group: parsed.data });
+  if (error) return fromDbError(error, 'admin_save_addon_group');
+  refresh();
+  return actionOk({ id: data });
+}
+
+/** Deletes a group and takes it off every dish; past orders keep their add-ons. */
+export async function deleteAddonGroup(id: string): Promise<ActionResult> {
+  await requireMember(ADMIN_PANEL_ROLES);
+  const parsed = idSchema.safeParse(id);
+  if (!parsed.success) return firstIssue(parsed.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('admin_delete_addon_group', { p_group_id: parsed.data });
+  if (error) return fromDbError(error, 'admin_delete_addon_group');
   refresh();
   return actionOk();
 }

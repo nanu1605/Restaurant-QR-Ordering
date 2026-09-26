@@ -39,6 +39,7 @@ export default async function MenuPage() {
       <MenuEditor
         categories={menu.categories}
         items={menu.items}
+        addonGroups={menu.addonGroups}
         supabaseUrl={getPublicEnv().NEXT_PUBLIC_SUPABASE_URL}
         readOnly={access.state !== 'full'}
       />

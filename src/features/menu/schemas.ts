@@ -66,6 +66,7 @@ export const menuItemFormSchema = z
         }),
       )
       .max(20, 'Use 20 options or fewer.'),
+    addonGroupIds: z.array(z.uuid()).max(10, 'Choose up to 10 add-on groups.'),
     isAvailable: z.boolean(),
   })
   .superRefine((item, ctx) => {
@@ -118,6 +119,7 @@ export const menuItemPayloadSchema = z.object({
       }),
     )
     .max(20),
+  addon_group_ids: z.array(z.uuid()).max(10),
 });
 
 export type MenuItemPayload = z.infer<typeof menuItemPayloadSchema>;
@@ -142,6 +144,104 @@ export function toMenuItemPayload(form: z.output<typeof menuItemFormSchema>): Me
       : (parsePriceInput(form.price) ?? 0),
     is_available: form.isAvailable,
     variants,
+    addon_group_ids: form.addonGroupIds,
+  };
+}
+
+// ─── Add-on groups (docs/DECISIONS.md P9-4) ─────────────────────────────────
+
+const choiceCount = (label: string) =>
+  z
+    .number({ message: `Enter the ${label} number of choices.` })
+    .int()
+    .min(0)
+    .max(20);
+
+export const addonGroupFormSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Enter a group name.').max(60, 'Use 60 characters or fewer.'),
+    minSelect: choiceCount('smallest'),
+    maxSelect: choiceCount('largest').min(1, 'Allow at least 1 choice.'),
+    // addonId, not id: react-hook-form's field arrays use `id` for their own keys.
+    addons: z
+      .array(
+        z.object({
+          addonId: z.uuid().optional(),
+          name: z
+            .string()
+            .trim()
+            .min(1, 'Name this add-on.')
+            .max(40, 'Use 40 characters or fewer.'),
+          price: priceField,
+        }),
+      )
+      .min(1, 'Add at least one add-on.')
+      .max(30, 'Use 30 add-ons or fewer.'),
+  })
+  .superRefine((group, ctx) => {
+    if (group.minSelect > group.maxSelect) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['minSelect'],
+        message: 'The smallest number can’t be more than the largest.',
+      });
+    } else if (group.minSelect > group.addons.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['minSelect'],
+        message: 'Customers can’t choose more add-ons than the group has.',
+      });
+    }
+    const seen = new Set<string>();
+    group.addons.forEach((addon, index) => {
+      const key = normalizeCategoryName(addon.name);
+      if (key && seen.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['addons', index, 'name'],
+          message: 'Each add-on needs its own name.',
+        });
+      }
+      seen.add(key);
+    });
+  });
+
+export type AddonGroupForm = z.input<typeof addonGroupFormSchema>;
+
+/** What admin_save_addon_group receives (money in paise). */
+export const addonGroupPayloadSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().trim().min(1).max(60),
+  min_select: z.number().int().min(0).max(20),
+  max_select: z.number().int().min(1).max(20),
+  addons: z
+    .array(
+      z.object({
+        id: z.uuid().optional(),
+        name: z.string().trim().min(1).max(40),
+        price_paise: z.number().int().min(0).max(MAX_PRICE_PAISE),
+      }),
+    )
+    .min(1)
+    .max(30),
+});
+
+export type AddonGroupPayload = z.infer<typeof addonGroupPayloadSchema>;
+
+export function toAddonGroupPayload(
+  id: string | null,
+  form: z.output<typeof addonGroupFormSchema>,
+): AddonGroupPayload {
+  return {
+    ...(id ? { id } : {}),
+    name: form.name,
+    min_select: form.minSelect,
+    max_select: form.maxSelect,
+    addons: form.addons.map((addon) => ({
+      ...(addon.addonId ? { id: addon.addonId } : {}),
+      name: addon.name,
+      price_paise: parsePriceInput(addon.price) ?? 0,
+    })),
   };
 }
 

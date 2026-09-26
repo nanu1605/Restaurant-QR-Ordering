@@ -1,5 +1,6 @@
 import 'server-only';
 
+import type { CustomerAddonGroup } from '@/features/ordering/types';
 import { createClient } from '@/lib/supabase/server';
 
 import type { FoodType } from './schemas';
@@ -32,17 +33,22 @@ export type AdminMenuItem = {
   sortOrder: number;
   /** Active variants in display order (removed ones are kept only for history). */
   variants: AdminVariant[];
+  addonGroupIds: string[];
 };
+
+/** A shared add-on group with its options, oldest first (docs/DECISIONS.md P9-4). */
+export type AdminAddonGroup = CustomerAddonGroup;
 
 export type AdminMenu = {
   categories: AdminCategory[];
   items: AdminMenuItem[];
+  addonGroups: AdminAddonGroup[];
 };
 
 /** Every category and dish of the signed-in member's restaurant (RLS-scoped). */
 export async function getAdminMenu(): Promise<AdminMenu> {
   const supabase = await createClient();
-  const [categories, items] = await Promise.all([
+  const [categories, items, groups] = await Promise.all([
     supabase
       .from('menu_categories')
       .select('id, name, is_active, sort_order')
@@ -51,13 +57,21 @@ export async function getAdminMenu(): Promise<AdminMenu> {
     supabase
       .from('menu_items')
       .select(
-        'id, category_id, name, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active)',
+        'id, category_id, name, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
       )
       .order('sort_order')
       .order('created_at'),
+    supabase
+      .from('menu_addon_groups')
+      .select(
+        'id, name, min_select, max_select, addons:menu_addons (id, name, price_paise, is_available, sort_order)',
+      )
+      .order('created_at')
+      .order('id'),
   ]);
   if (categories.error) throw new Error(`Could not load categories: ${categories.error.message}`);
   if (items.error) throw new Error(`Could not load menu items: ${items.error.message}`);
+  if (groups.error) throw new Error(`Could not load add-ons: ${groups.error.message}`);
 
   return {
     categories: categories.data.map((category) => ({
@@ -85,6 +99,21 @@ export async function getAdminMenu(): Promise<AdminMenu> {
           id: variant.id,
           name: variant.name,
           pricePaise: variant.price_paise,
+        })),
+      addonGroupIds: item.addon_links.map((link) => link.group_id),
+    })),
+    addonGroups: groups.data.map((group) => ({
+      id: group.id,
+      name: group.name,
+      minSelect: group.min_select,
+      maxSelect: group.max_select,
+      addons: group.addons
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((addon) => ({
+          id: addon.id,
+          name: addon.name,
+          pricePaise: addon.price_paise,
+          isAvailable: addon.is_available,
         })),
     })),
   };
