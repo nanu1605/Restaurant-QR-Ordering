@@ -14,6 +14,10 @@ export async function proxy(request: NextRequest) {
     nonce: btoa(crypto.randomUUID()),
     appUrl: env.NEXT_PUBLIC_APP_URL,
     supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+    sentryDsn: env.NEXT_PUBLIC_SENTRY_DSN,
+    posthogHost: env.NEXT_PUBLIC_POSTHOG_KEY
+      ? (env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com')
+      : undefined,
     dev: process.env.NODE_ENV === 'development',
   });
   request.headers.set('Content-Security-Policy', csp);
@@ -29,9 +33,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except static assets, the install files, API routes (they
-    // authenticate themselves) and the Sentry and PostHog relays.
+    // Everything except static assets, the install files and API routes (they
+    // authenticate themselves).
     // Server actions post to their page's path, so /t/* actions pass through here too.
-    '/((?!_next/static|_next/image|favicon.ico|icon/|apple-icon|sw\\.js|app\\.webmanifest|api/|monitoring|ingest/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon/|apple-icon|sw\\.js|app\\.webmanifest|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

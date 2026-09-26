@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-import { posthogHosts } from './posthog-hosts';
+import { posthogHosts } from '@/lib/posthog-hosts';
 
 type PanelAnalyticsProps = {
   /** The member (or platform admin) using the panel: an id, never a name or email. */
@@ -14,7 +14,8 @@ type PanelAnalyticsProps = {
 /**
  * Product analytics for the staff, admin and super-admin panels (spec §17,
  * docs/DECISIONS.md P10-4). Diners' phones never load it. Off without a key;
- * PostHog's script loads after the page, and on-screen text is never sent.
+ * PostHog's script loads after the page, and no on-screen text or attribute
+ * (waiters' names are in button labels) is sent.
  */
 export function PanelAnalytics({ userId, role, restaurantId }: PanelAnalyticsProps) {
   useEffect(() => {
@@ -23,11 +24,12 @@ export function PanelAnalytics({ userId, role, restaurantId }: PanelAnalyticsPro
     void import('posthog-js').then(({ default: posthog }) => {
       if (!posthog.__loaded) {
         posthog.init(key, {
-          api_host: '/ingest',
-          ui_host: posthogHosts(process.env.NEXT_PUBLIC_POSTHOG_HOST).ui,
+          // Straight to PostHog: a relay on our origin would forward staff session cookies.
+          api_host: posthogHosts(process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined).api,
           person_profiles: 'identified_only',
           capture_pageview: 'history_change',
           mask_all_text: true,
+          mask_all_element_attributes: true,
           disable_session_recording: true,
           disable_surveys: true,
         });

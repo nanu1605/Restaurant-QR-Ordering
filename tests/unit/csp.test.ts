@@ -47,6 +47,35 @@ describe('content security policy (docs/DECISIONS.md P9-9)', () => {
     expect(local).not.toHaveProperty('upgrade-insecure-requests');
   });
 
+  it('lets the browser reach Sentry and PostHog only when they are on', () => {
+    const on = directives(
+      contentSecurityPolicy({
+        nonce: 'n',
+        appUrl: 'https://menumesh.in',
+        supabaseUrl: 'https://x.supabase.co',
+        sentryDsn: 'https://abc@o12.ingest.de.sentry.io/34',
+        posthogHost: 'https://eu.i.posthog.com',
+        dev: false,
+      }),
+    );
+    expect(on['connect-src']).toEqual(
+      expect.arrayContaining([
+        'https://o12.ingest.de.sentry.io',
+        'https://eu.i.posthog.com',
+        'https://eu-assets.i.posthog.com',
+      ]),
+    );
+    const off = directives(
+      contentSecurityPolicy({
+        nonce: 'n',
+        appUrl: 'https://menumesh.in',
+        supabaseUrl: 'https://x.supabase.co',
+        dev: false,
+      }),
+    );
+    expect(off['connect-src']!.join(' ')).not.toMatch(/sentry|posthog/);
+  });
+
   it('upgrades requests only when the app itself is on https', () => {
     // A phone on the LAN testing an http build against a hosted Supabase.
     const lan = directives(

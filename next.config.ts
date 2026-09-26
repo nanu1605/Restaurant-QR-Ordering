@@ -1,8 +1,6 @@
 import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 
-import { posthogHosts } from './src/features/analytics/posthog-hosts';
-
 type RemotePattern = Exclude<
   NonNullable<NextConfig['images']>['remotePatterns'],
   undefined
@@ -43,23 +41,11 @@ const SECURITY_HEADERS = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
 ];
 
-const posthog = posthogHosts(process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined);
-
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }];
   },
-  // PostHog through our own origin (its documented reverse proxy), so the
-  // Content-Security-Policy stays 'self' (docs/DECISIONS.md P10-4).
-  async rewrites() {
-    return [
-      { source: '/ingest/static/:path*', destination: `${posthog.assets}/static/:path*` },
-      { source: '/ingest/:path*', destination: `${posthog.api}/:path*` },
-    ];
-  },
-  // PostHog's API paths end in a slash; a redirect would drop the event.
-  skipTrailingSlashRedirect: true,
   images: {
     remotePatterns: images.patterns,
     // Next.js 16 refuses to optimise images from local addresses. Only the
@@ -74,9 +60,9 @@ const nextConfig: NextConfig = {
 
 /**
  * Sentry (docs/DECISIONS.md P10-3): errors only, so tracing, replay and debug
- * code are left out of the bundle. Events go through /monitoring on our own
- * origin, so the Content-Security-Policy needs no Sentry host. Source maps are
- * uploaded only where the Sentry build token is set (Vercel).
+ * code are left out of the bundle. Browsers send to Sentry directly: a relay on
+ * our origin would forward our cookies too. Source maps are uploaded only where
+ * the Sentry build token is set (Vercel).
  */
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
@@ -85,7 +71,6 @@ export default withSentryConfig(nextConfig, {
   sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
   silent: !process.env.SENTRY_AUTH_TOKEN,
   telemetry: false,
-  tunnelRoute: '/monitoring',
   suppressOnRouterTransitionStartWarning: true,
   bundleSizeOptimizations: {
     excludeDebugStatements: true,
