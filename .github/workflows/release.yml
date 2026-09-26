@@ -1,0 +1,46 @@
+name: Release
+
+# Production: migrate, deploy and smoke-test a commit that already passed CI on
+# main (and so already runs on staging). The production environment requires
+# the owner's approval before the job starts (docs/DECISIONS.md P10-1).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit on main to release (empty for the latest)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    name: Check the commit passed CI on main
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || 'main' }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --event push --commit "$sha" --json conclusion --jq '.[0].conclusion')
+          if [ "$result" != "success" ]; then
+            echo "::error::CI on main has not passed for $sha (${result:-no run})."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  production:
+    needs: check
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      ref: ${{ needs.check.outputs.sha }}
+    secrets: inherit

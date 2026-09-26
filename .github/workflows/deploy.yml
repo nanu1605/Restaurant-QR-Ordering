@@ -1,0 +1,76 @@
+name: Deploy
+
+# Migrate, then deploy, then smoke-test one environment (docs/DECISIONS.md
+# P10-1). Called by CI for staging and by Release for production. Each GitHub
+# environment holds its own secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF,
+# SUPABASE_DB_PASSWORD, VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, and the
+# variable APP_URL.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      ref:
+        description: Commit to deploy (defaults to the calling run's commit)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Migrate and deploy ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.APP_URL }}
+    # Never two deploys of one environment at once, and never cancel one halfway.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Migrations go first: they must keep the running app working
+      # (docs/RUNBOOK.md). The seed never leaves local and CI databases.
+      - name: Apply database migrations
+        run: |
+          pnpm exec supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          pnpm exec supabase db push --yes
+
+      - name: Build and deploy on Vercel
+        run: |
+          pnpm dlx vercel@60.1.3 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          pnpm dlx vercel@60.1.3 build --prod --token="$VERCEL_TOKEN"
+          pnpm dlx vercel@60.1.3 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke-test the live site
+        run: pnpm smoke
+        env:
+          CI: true
+          SMOKE_URL: ${{ vars.APP_URL }}
