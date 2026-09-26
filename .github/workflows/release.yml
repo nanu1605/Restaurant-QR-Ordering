@@ -1,8 +1,8 @@
 name: Release
 
 # Production: migrate, deploy and smoke-test a commit that already passed CI on
-# main (and so already runs on staging). The production environment requires
-# the owner's approval before the job starts (docs/DECISIONS.md P10-1).
+# main (and so already runs on staging). Only the repository owner can release,
+# and only by typing "production" (docs/DECISIONS.md P10-1).
 
 on:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
         description: Commit on main to release (empty for the latest)
         required: false
         type: string
+      confirm:
+        description: Type "production" to release
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +22,7 @@ permissions:
 
 jobs:
   check:
-    name: Check the commit passed CI on main
+    name: Check who releases what
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
@@ -27,7 +31,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ inputs.ref || 'main' }}
+          CONFIRM: ${{ inputs.confirm }}
         run: |
+          if [ "$GITHUB_ACTOR" != "$GITHUB_REPOSITORY_OWNER" ]; then
+            echo "::error::Only $GITHUB_REPOSITORY_OWNER can release to production."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "production" ]; then
+            echo "::error::Type production in the confirm box to release."
+            exit 1
+          fi
           sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
           result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
             --event push --commit "$sha" --json conclusion --jq '.[0].conclusion')
@@ -41,6 +54,6 @@ jobs:
     needs: check
     uses: ./.github/workflows/deploy.yml
     with:
-      environment: production
+      target: PRODUCTION
       ref: ${{ needs.check.outputs.sha }}
     secrets: inherit
