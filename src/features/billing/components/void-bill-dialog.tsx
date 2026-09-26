@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useOffline } from '@/features/live/live-provider';
 import { formatClockTime, tableHeading } from '@/features/ordering/format';
 import { ReasonDialog } from '@/features/orders/components/reason-dialog';
 
@@ -37,12 +38,14 @@ export function VoidBillDialog({
   const [open, setOpen] = useState(false);
   const [reopen, setReopen] = useState(false);
   const heading = tableHeading(tableLabel);
+  const offline = useOffline();
 
   return (
     <>
       <Button
         variant="destructive"
         size="touch"
+        disabled={offline}
         onClick={() => {
           setReopen(false);
           setOpen(true);

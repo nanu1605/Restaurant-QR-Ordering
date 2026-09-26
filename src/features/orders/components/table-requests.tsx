@@ -3,6 +3,7 @@
 import { BellRing, ReceiptText, type LucideIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useOffline } from '@/features/live/live-provider';
 import { updateServiceRequest } from '@/features/sessions/actions';
 
 import type { Board, BoardRequest, BoardTable, ServiceRequestType } from '../board';
@@ -52,6 +53,7 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
       updateServiceRequest(id, status),
     optimistic: (board, { id, status }) => withRequest(board, id, status),
   });
+  const offline = useOffline();
   if (table.requests.length === 0) return null;
 
   return (
@@ -79,6 +81,7 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
                 <Button
                   size="touch"
                   variant="outline"
+                  disabled={offline}
                   onClick={() => update.mutate({ id: request.id, status: 'acknowledged' })}
                 >
                   Acknowledge<span className="sr-only">: {line.toLowerCase()}</span>
@@ -86,6 +89,7 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
               )}
               <Button
                 size="touch"
+                disabled={offline}
                 onClick={() => update.mutate({ id: request.id, status: 'resolved' })}
               >
                 Done<span className="sr-only">: {line.toLowerCase()}</span>

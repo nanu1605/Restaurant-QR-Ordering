@@ -7,9 +7,9 @@ import { useState } from 'react';
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { randomUuid } from '@/features/ordering/cart';
 import { dishName, listNames, tableHeading } from '@/features/ordering/format';
 
-import { setItemsStatus } from '../actions';
 import { formatElapsed, minutesSince, nextStatus } from '../board-view';
 import {
   isLate,
@@ -18,9 +18,8 @@ import {
   type KitchenTicket,
   kitchenTickets,
 } from '../kitchen';
-import { withItemStatus } from '../optimistic';
 import type { ForwardStatus } from '../schemas';
-import { useBoard, useBoardAction } from '../use-board';
+import { useBoard, useStatusChange } from '../use-board';
 import { useServerNow } from '../use-server-now';
 
 const COLUMN_EMPTY: Record<KitchenColumn, string> = {
@@ -55,11 +54,7 @@ export function KitchenBoard() {
   const { data: board } = useBoard();
   const nowMs = useServerNow(board);
   const [announcement, setAnnouncement] = useState('');
-  const advance = useBoardAction({
-    action: ({ ids, status }: { ids: string[]; status: ForwardStatus }) =>
-      setItemsStatus(ids, status),
-    optimistic: (current, vars) => withItemStatus(current, vars.ids, vars.status),
-  });
+  const advance = useStatusChange();
 
   if (!board) {
     return (
@@ -86,7 +81,7 @@ export function KitchenBoard() {
           (button) => !request.ids.includes(button.dataset.item ?? ''),
         )?.dataset.item
       : undefined;
-    advance.mutate({ ids: request.ids, status: request.to });
+    advance.mutate({ key: randomUuid(), ids: request.ids, status: request.to });
     setAnnouncement(
       `${listNames(request.names)} ${request.to === 'served' ? 'served' : `moved to ${MOVED_TO[request.to]}`}`,
     );

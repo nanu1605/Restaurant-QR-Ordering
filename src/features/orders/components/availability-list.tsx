@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { useLive } from '@/features/live/live-provider';
+import { useLive, useOffline } from '@/features/live/live-provider';
 import { MENU_MUTATION_KEY, menuKey } from '@/features/live/query-client';
 import { filterMenu } from '@/features/ordering/menu-filter';
 import type { CustomerAddonGroup, CustomerCategory } from '@/features/ordering/types';
@@ -265,13 +265,19 @@ type StockSwitchProps = {
 };
 
 function StockSwitch({ name, available, onChange }: StockSwitchProps) {
+  const offline = useOffline();
   return (
     // Not a <label>: it would rename the switch after its status text.
     <div className="flex min-h-11 items-center gap-3 text-sm font-medium">
       <span aria-hidden className={available ? 'text-ink' : 'text-ink-muted'}>
         {available ? 'In stock' : 'Out of stock'}
       </span>
-      <Switch checked={available} onCheckedChange={onChange} aria-label={`${name} in stock`} />
+      <Switch
+        checked={available}
+        onCheckedChange={onChange}
+        disabled={offline}
+        aria-label={`${name} in stock`}
+      />
     </div>
   );
 }

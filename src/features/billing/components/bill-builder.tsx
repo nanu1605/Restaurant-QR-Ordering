@@ -1,5 +1,6 @@
 'use client';
 
+import { useIsMutating } from '@tanstack/react-query';
 import { AlertTriangle, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,6 +25,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useOffline } from '@/features/live/live-provider';
+import { QUEUED_MUTATION_KEY } from '@/features/live/query-client';
 import { upgradeHint } from '@/features/plans/plan-features';
 import { tableHeading } from '@/features/ordering/format';
 import { useBoard } from '@/features/orders/use-board';
@@ -60,6 +63,9 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
   const [applyServiceCharge, setApplyServiceCharge] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [generating, setGenerating] = useState(false);
+  // Billing needs the server, and dish moves still waiting go first (spec §19 Phase 9).
+  const offline = useOffline();
+  const movesWaiting = useIsMutating({ mutationKey: QUEUED_MUTATION_KEY }) > 0;
 
   const typedValue = discountValue(discountType, amount);
   // A plain string, so the debounce only restarts when the choice changes.
@@ -131,7 +137,14 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
   // refetches keep the button usable (and focused).
   const previewStale = choiceKey !== settledKey || draftQuery.isPlaceholderData;
   const blocked = draft.waitingCount > 0 || draft.lines.length === 0 || draft.waiterRequired;
-  const canGenerate = !blocked && !amountInvalid && !needsReason && !previewStale && !generating;
+  const canGenerate =
+    !blocked &&
+    !amountInvalid &&
+    !needsReason &&
+    !previewStale &&
+    !generating &&
+    !offline &&
+    !movesWaiting;
   // The total the confirmation shows; if the bill now differs, nothing is saved.
   const shownTotal = draft.totals.grandTotalPaise;
 
@@ -380,6 +393,7 @@ function GenerateConfirmation({ draft, heading }: { draft: BillDraft; heading: s
 function WaiterRow({ draft }: { draft: BillDraft }) {
   const { data: board } = useBoard();
   const [open, setOpen] = useState(false);
+  const offline = useOffline();
   const table = board?.tables.find((t) => t.session?.id === draft.session.id);
 
   return (
@@ -394,7 +408,7 @@ function WaiterRow({ draft }: { draft: BillDraft }) {
       <Button
         variant={draft.waiterRequired ? 'default' : 'outline'}
         size="touch"
-        disabled={!board || !table}
+        disabled={!board || !table || offline}
         onClick={() => setOpen(true)}
       >
         {draft.waiter ? 'Reassign waiter' : 'Assign waiter'}

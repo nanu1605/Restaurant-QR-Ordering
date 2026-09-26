@@ -32,6 +32,11 @@ export function useLive(): LiveContextValue {
   return value;
 }
 
+/** No network: buttons that need the server are disabled (docs/DECISIONS.md P9-5). */
+export function useOffline(): boolean {
+  return useLive().connection === 'offline';
+}
+
 type LiveProviderProps = {
   restaurantId: string;
   memberId: string;

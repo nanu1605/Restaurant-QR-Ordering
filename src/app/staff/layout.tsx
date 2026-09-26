@@ -5,6 +5,7 @@ import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
 import { boardKey, getQueryClient } from '@/features/live/query-client';
 import { BoardAlerts } from '@/features/orders/components/board-alerts';
+import { OfflineBanner } from '@/features/orders/components/offline-banner';
 import { getBoard } from '@/features/orders/queries';
 import { hasFeature } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
@@ -37,6 +38,7 @@ export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
           </PanelHeader>
           <StaffNav kitchenView={hasFeature(plan, 'kds')} />
           <BoardAlerts />
+          <OfflineBanner className="mx-4 mt-4" />
           <main className="flex flex-1 flex-col p-4">{children}</main>
         </div>
       </HydrationBoundary>

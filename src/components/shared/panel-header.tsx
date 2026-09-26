@@ -3,7 +3,6 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { signOut } from '@/lib/auth/actions';
 
 type PanelHeaderProps = {
   /** Panel name, e.g. "Worker panel". */
@@ -53,7 +52,7 @@ export function PanelHeader({
           <p className="text-sm font-medium text-ink">{userName}</p>
           <p className="text-xs text-ink-muted">{roleLabel}</p>
         </div>
-        <form action={signOut}>
+        <form action="/logout" method="post">
           <Button type="submit" variant="outline" size="lg">
             <LogOut aria-hidden />
             Log out

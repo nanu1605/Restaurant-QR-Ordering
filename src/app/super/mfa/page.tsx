@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { MfaEnrolment, MfaVerifyForm } from '@/features/platform/components/mfa-forms';
-import { signOut } from '@/lib/auth/actions';
 import { requirePlatformAdminLogin } from '@/lib/auth/guards';
 import { getPlatformAdminStatus } from '@/lib/auth/session';
 import { APP_NAME } from '@/lib/config';
@@ -35,7 +34,11 @@ export default async function SuperMfaPage() {
           </p>
         </div>
         {enrolled ? <MfaVerifyForm /> : <MfaEnrolment />}
-        <form action={signOut} className="mt-4 flex items-center justify-between gap-2">
+        <form
+          action="/logout"
+          method="post"
+          className="mt-4 flex items-center justify-between gap-2"
+        >
           <p className="min-w-0 truncate text-xs text-ink-muted">{user.email}</p>
           <Button type="submit" variant="ghost" size="sm">
             Log out

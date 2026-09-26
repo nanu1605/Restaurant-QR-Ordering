@@ -67,8 +67,9 @@ export async function rejectOrder(orderId: string, reason: string): Promise<Acti
 
 /**
  * Moves dishes forward — one tap on a dish, or a whole kitchen ticket at once.
- * For a ticket, dishes that already moved on or were cancelled meanwhile are
- * simply skipped.
+ * A dish already past the target is done, not an error: a move replayed after
+ * a network loss must not complain (docs/DECISIONS.md P9-5). For a ticket,
+ * dishes cancelled meanwhile are simply skipped.
  */
 export async function setItemsStatus(
   itemIds: string[],
@@ -85,7 +86,7 @@ export async function setItemsStatus(
       supabase.rpc('staff_update_item_status', { p_order_item_id: id, p_status: target.data }),
     ),
   );
-  const skippable = ids.data.length > 1 ? ['INVALID_STATUS_CHANGE', 'ITEM_NOT_ACTIVE'] : [];
+  const skippable = ['INVALID_STATUS_CHANGE', ...(ids.data.length > 1 ? ['ITEM_NOT_ACTIVE'] : [])];
   const failure = results.find(
     ({ error }) => error && !skippable.includes(dbErrorCode(error) ?? ''),
   );

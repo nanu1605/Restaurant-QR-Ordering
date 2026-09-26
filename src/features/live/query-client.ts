@@ -13,6 +13,7 @@ function makeQueryClient() {
       },
       mutations: {
         // Offline, a change fails at once rather than firing minutes later.
+        // Only dish status moves wait for the network (docs/DECISIONS.md P9-5).
         networkMode: 'always',
       },
     },
@@ -39,6 +40,8 @@ export const billingKey = (memberId: string) => ['billing', memberId] as const;
 
 /** Every change to the board runs under this key (see useBoardAction). */
 export const BOARD_MUTATION_KEY = ['board-change'] as const;
+/** Dish status moves, which wait for the network and go in order (docs/DECISIONS.md P9-5). */
+export const QUEUED_MUTATION_KEY = [...BOARD_MUTATION_KEY, 'queued'] as const;
 /** In-stock switches on the Availability page. */
 export const MENU_MUTATION_KEY = ['menu-change'] as const;
 

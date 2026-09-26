@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useOffline } from '@/features/live/live-provider';
 import { tableHeading } from '@/features/ordering/format';
 import type { BoardTable } from '@/features/orders/board';
 import { formatElapsed, minutesSince, tableState } from '@/features/orders/board-view';
@@ -17,6 +18,7 @@ export function UnassignedQueue() {
   const { data: board } = useBoard();
   const nowMs = useServerNow(board);
   const [target, setTarget] = useState<BoardTable | null>(null);
+  const offline = useOffline();
 
   if (!board) return null;
   const tables = board.tables
@@ -50,7 +52,7 @@ export function UnassignedQueue() {
                   Seated {formatElapsed(minutesSince(table.session!.openedAt, nowMs))} ago
                 </span>
               </span>
-              <Button size="touch" onClick={() => setTarget(table)}>
+              <Button size="touch" disabled={offline} onClick={() => setTarget(table)}>
                 Assign waiter<span className="sr-only"> to {heading}</span>
               </Button>
             </li>

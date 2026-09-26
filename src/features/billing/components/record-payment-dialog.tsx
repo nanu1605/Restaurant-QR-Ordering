@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useOffline } from '@/features/live/live-provider';
 import { upgradeHint } from '@/features/plans/plan-features';
 import { paiseToDecimalString } from '@/lib/money';
 
@@ -55,9 +56,10 @@ type RecordPaymentDialogProps = {
  */
 export function RecordPaymentDialog(props: RecordPaymentDialogProps) {
   const [open, setOpen] = useState(false);
+  const offline = useOffline();
   return (
     <>
-      <Button size="touch" onClick={() => setOpen(true)}>
+      <Button size="touch" disabled={offline} onClick={() => setOpen(true)}>
         Record payment
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

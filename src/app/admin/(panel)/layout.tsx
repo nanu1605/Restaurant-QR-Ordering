@@ -1,6 +1,7 @@
 import { PanelHeader } from '@/components/shared/panel-header';
 import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
+import { OfflineBanner } from '@/features/orders/components/offline-banner';
 import { accessBanner } from '@/features/subscriptions/access-banner';
 import { getRestaurantAccess } from '@/lib/auth/access';
 import { requireMember } from '@/lib/auth/guards';
@@ -41,6 +42,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
                 <AccessBanner banner={banner} />
               </div>
             )}
+            <OfflineBanner className="print:hidden" />
             {children}
           </main>
         </div>

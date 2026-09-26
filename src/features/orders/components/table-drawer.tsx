@@ -17,19 +17,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { useOffline } from '@/features/live/live-provider';
+import { randomUuid } from '@/features/ordering/cart';
 import { dishName, formatClockTime, tableHeading } from '@/features/ordering/format';
 import { WaiterAssignment } from '@/features/sessions/components/waiter-assignment';
 import { closeSessionUnbilled } from '@/features/sessions/actions';
 import { ORDER_ITEM_STATUS_LABELS, isVoidStatus } from '@/lib/order-status';
 
-import {
-  approveOrder,
-  markOrderServed,
-  rejectOrder,
-  removeOrder,
-  revertItemStatus,
-  setItemsStatus,
-} from '../actions';
+import { approveOrder, rejectOrder, removeOrder, revertItemStatus } from '../actions';
 import type { Board, BoardItem, BoardRound, BoardTable } from '../board';
 import {
   type ActiveStatus,
@@ -41,12 +36,13 @@ import {
   tableState,
   waiterName,
 } from '../board-view';
-import { withItemStatus, withRoundServed } from '../optimistic';
+import { withItemStatus } from '../optimistic';
 import { REJECT_REASONS, type ForwardStatus } from '../schemas';
-import { useBoardAction } from '../use-board';
+import { useBoardAction, useStatusChange } from '../use-board';
 import { AddDishesSheet } from './add-dishes-sheet';
 import type { BoardMode } from './live-board';
 import { MoveTableDialog } from './move-table-dialog';
+import { OfflineBanner } from './offline-banner';
 import { ReasonDialog } from './reason-dialog';
 import { RemoveItemDialog } from './remove-item-dialog';
 import { RequestBadges, RequestsSection } from './table-requests';
@@ -125,6 +121,8 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
   const [closing, setClosing] = useState(false);
   // The session the Move dialog was opened for.
   const [moving, setMoving] = useState<string | null>(null);
+  // Only dish status moves wait for the network (docs/DECISIONS.md P9-5).
+  const offline = useOffline();
 
   const approve = useBoardAction({
     action: (orderId: string) => approveOrder(orderId),
@@ -185,6 +183,8 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       </SheetHeader>
 
       <div className="flex flex-col gap-4 p-4">
+        {/* The modal drawer hides the page's banner. */}
+        <OfflineBanner />
         <RequestsSection table={table} nowMs={nowMs} />
 
         {session && session.waitingCount > 0 && waiting.length === 0 && (
@@ -212,10 +212,15 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
             </ul>
             {role !== 'kitchen' && (
               <div className="flex flex-wrap gap-2">
-                <Button size="touch" onClick={() => approve.mutate(round.id)}>
+                <Button size="touch" disabled={offline} onClick={() => approve.mutate(round.id)}>
                   Approve<span className="sr-only"> round {round.roundNumber}</span>
                 </Button>
-                <Button size="touch" variant="outline" onClick={() => setRejecting(round)}>
+                <Button
+                  size="touch"
+                  variant="outline"
+                  disabled={offline}
+                  onClick={() => setRejecting(round)}
+                >
                   Reject<span className="sr-only"> round {round.roundNumber}</span>
                 </Button>
                 {mode === 'admin' && isManager && (
@@ -223,6 +228,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
                     size="touch"
                     variant="ghost"
                     className="text-status-void"
+                    disabled={offline}
                     onClick={() => setDeleting(round)}
                   >
                     <Trash2 aria-hidden />
@@ -255,7 +261,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       </div>
 
       <SheetFooter className="sticky bottom-0 border-t border-line bg-surface">
-        <Button size="touch" onClick={() => setAdding(true)} disabled={!board.canOrder}>
+        <Button size="touch" onClick={() => setAdding(true)} disabled={!board.canOrder || offline}>
           <Plus aria-hidden />
           {session ? 'Add dishes' : 'Add order'}
         </Button>
@@ -266,13 +272,23 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
           </p>
         )}
         {session && role !== 'kitchen' && (
-          <Button size="touch" variant="outline" onClick={() => setMoving(session.id)}>
+          <Button
+            size="touch"
+            variant="outline"
+            disabled={offline}
+            onClick={() => setMoving(session.id)}
+          >
             <ArrowRightLeft aria-hidden />
             Move table
           </Button>
         )}
         {canClose && (
-          <Button size="touch" variant="outline" onClick={() => setClosing(true)}>
+          <Button
+            size="touch"
+            variant="outline"
+            disabled={offline}
+            onClick={() => setClosing(true)}
+          >
             Close without bill
           </Button>
         )}
@@ -402,10 +418,8 @@ type RoundSectionProps = {
 };
 
 function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSectionProps) {
-  const serveRound = useBoardAction({
-    action: (orderId: string) => markOrderServed(orderId),
-    optimistic: withRoundServed,
-  });
+  const serveRound = useStatusChange();
+  const offline = useOffline();
   const isManager = board.role === 'owner' || board.role === 'manager';
   const accepted = round.status === 'accepted';
   const onTheWay = activeItems(round).filter((item) => item.status !== 'served');
@@ -450,12 +464,22 @@ function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSecti
       {(canServeAll || canDelete) && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-2">
           {canServeAll && (
-            <Button size="touch" variant="outline" onClick={() => serveRound.mutate(round.id)}>
+            <Button
+              size="touch"
+              variant="outline"
+              onClick={() => serveRound.mutate({ key: randomUuid(), orderId: round.id })}
+            >
               Mark all served<span className="sr-only"> in round {round.roundNumber}</span>
             </Button>
           )}
           {canDelete && (
-            <Button size="touch" variant="ghost" className="text-status-void" onClick={onDelete}>
+            <Button
+              size="touch"
+              variant="ghost"
+              className="text-status-void"
+              disabled={offline}
+              onClick={onDelete}
+            >
               <Trash2 aria-hidden />
               Delete order<span className="sr-only"> round {round.roundNumber}</span>
             </Button>
@@ -508,11 +532,8 @@ type ItemRowProps = {
 };
 
 function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
-  const advance = useBoardAction({
-    action: ({ ids, status }: { ids: string[]; status: ForwardStatus }) =>
-      setItemsStatus(ids, status),
-    optimistic: (current, vars) => withItemStatus(current, vars.ids, vars.status),
-  });
+  const advance = useStatusChange();
+  const offline = useOffline();
   const revert = useBoardAction({
     action: ({ from }: { from: ForwardStatus; to: ActiveStatus }) =>
       revertItemStatus(item.id, from),
@@ -540,7 +561,10 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
       {active && (
         <div className="flex flex-wrap gap-2">
           {next && (
-            <Button size="touch" onClick={() => advance.mutate({ ids: [item.id], status: next })}>
+            <Button
+              size="touch"
+              onClick={() => advance.mutate({ key: randomUuid(), ids: [item.id], status: next })}
+            >
               {NEXT_LABELS[next]}
               <span className="sr-only"> {name}</span>
             </Button>
@@ -549,7 +573,9 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
             <Button
               size="touch"
               variant="outline"
-              onClick={() => advance.mutate({ ids: [item.id], status: 'served' })}
+              onClick={() =>
+                advance.mutate({ key: randomUuid(), ids: [item.id], status: 'served' })
+              }
             >
               Mark served<span className="sr-only"> {name}</span>
             </Button>
@@ -558,6 +584,7 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
             <Button
               size="touch"
               variant="ghost"
+              disabled={offline}
               onClick={() => revert.mutate({ from: status, to: previous })}
             >
               <Undo2 aria-hidden />
@@ -569,7 +596,13 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
             </Button>
           )}
           {canRemove ? (
-            <Button size="touch" variant="ghost" className="text-status-void" onClick={onRemove}>
+            <Button
+              size="touch"
+              variant="ghost"
+              className="text-status-void"
+              disabled={offline}
+              onClick={onRemove}
+            >
               <Trash2 aria-hidden />
               Remove<span className="sr-only"> {name}</span>
             </Button>

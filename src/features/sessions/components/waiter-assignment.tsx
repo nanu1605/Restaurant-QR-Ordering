@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { useOffline } from '@/features/live/live-provider';
 import { tableHeading } from '@/features/ordering/format';
 import type { Board, BoardTable } from '@/features/orders/board';
 import { waiterName } from '@/features/orders/board-view';
@@ -29,6 +30,7 @@ export function WaiterAssignment({ board, table }: { board: Board; table: BoardT
     action: (sessionId: string) => unassignWaiter(sessionId),
     successMessage: () => `${heading} is unassigned`,
   });
+  const offline = useOffline();
 
   const session = table.session;
   if (!session) return null;
@@ -47,12 +49,18 @@ export function WaiterAssignment({ board, table }: { board: Board; table: BoardT
       <Button
         size="touch"
         variant={name ? 'outline' : 'default'}
+        disabled={offline}
         onClick={() => setAssigning(true)}
       >
         {name ? 'Reassign' : 'Assign waiter'}
       </Button>
       {name && (
-        <Button size="touch" variant="ghost" onClick={() => setUnassigning(true)}>
+        <Button
+          size="touch"
+          variant="ghost"
+          disabled={offline}
+          onClick={() => setUnassigning(true)}
+        >
           Unassign
         </Button>
       )}
