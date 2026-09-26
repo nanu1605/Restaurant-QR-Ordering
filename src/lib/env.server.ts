@@ -51,7 +51,6 @@ const serverSchema = z.object({
   EMAIL_FROM: optionalString,
   // Resend's REST API; tests point it at a local mock (docs/DECISIONS.md P8-12).
   RESEND_API_URL: urlWithDefault('https://api.resend.com'),
-  SENTRY_DSN: optionalString,
   PLATFORM_TRIAL_DAYS: positiveInt(14),
   PLATFORM_GRACE_DAYS: positiveInt(7),
 });

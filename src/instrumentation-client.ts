@@ -1,3 +1,5 @@
+import { SENTRY_OPTIONS } from '@/lib/sentry-options';
+
 // Zod compiles fast parsers with `new Function`. The pages' policy forbids
 // eval, and even Zod's caught probe for it reports a violation
 // (docs/DECISIONS.md P9-9), so parse without it in the browser. Zod keeps its
@@ -5,3 +7,12 @@
 // this file); importing Zod here would put it on every page.
 const holder = globalThis as { __zod_globalConfig?: Record<string, unknown> };
 (holder.__zod_globalConfig ??= {}).jitless = true;
+
+// Sentry's browser SDK is about 50 KB gzipped: it loads once the page is idle,
+// so the customer menu doesn't wait for it (docs/DECISIONS.md P10-3). Errors
+// before then only reach Sentry from the server.
+if (SENTRY_OPTIONS.enabled) {
+  const load = () => void import('@sentry/nextjs').then((Sentry) => Sentry.init(SENTRY_OPTIONS));
+  if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 3000 });
+  else setTimeout(load, 1000);
+}

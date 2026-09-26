@@ -1,3 +1,4 @@
+import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 
 type RemotePattern = Exclude<
@@ -57,4 +58,26 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry (docs/DECISIONS.md P10-3): errors only, so tracing, replay and debug
+ * code are left out of the bundle. Events go through /monitoring on our own
+ * origin, so the Content-Security-Policy needs no Sentry host. Source maps are
+ * uploaded only where the Sentry build token is set (Vercel).
+ */
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+  telemetry: false,
+  tunnelRoute: '/monitoring',
+  suppressOnRouterTransitionStartWarning: true,
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeTracing: true,
+    excludeReplayIframe: true,
+    excludeReplayShadowDom: true,
+    excludeReplayWorker: true,
+  },
+});
