@@ -29,6 +29,9 @@ test('owner updates settings across tabs with validation', async ({ page }) => {
   const restaurant = await createTestRestaurant({ prefix: 'settings' });
   await logInAsOwner(page, restaurant);
   await page.goto('/admin/settings');
+  // The header's sound button appears once the page has hydrated. Typing into
+  // a filled field before that can land after its old value.
+  await expect(page.getByRole('button', { name: 'Enable sound' })).toBeVisible();
 
   // Restaurant details.
   await page.getByLabel('Restaurant name').fill('Spice Route');
