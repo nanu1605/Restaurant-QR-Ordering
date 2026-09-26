@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Noto_Sans } from 'next/font/google';
 
 import { Toaster } from '@/components/ui/sonner';
-import { APP_NAME } from '@/lib/config';
+import { APP_NAME, BRAND_COLOR } from '@/lib/config';
 
 import './globals.css';
 
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#3B4BA8',
+  themeColor: BRAND_COLOR,
 };
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {

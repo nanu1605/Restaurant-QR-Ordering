@@ -1,3 +1,5 @@
+import type { Metadata } from 'next';
+
 import { PanelHeader } from '@/components/shared/panel-header';
 import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
@@ -6,9 +8,12 @@ import { accessBanner } from '@/features/subscriptions/access-banner';
 import { getRestaurantAccess } from '@/lib/auth/access';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES, ROLE_LABELS } from '@/lib/auth/roles';
+import { INSTALLABLE } from '@/lib/config';
 
 import { AccessBanner } from './_components/access-banner';
 import { AdminMobileNav, AdminNav } from './_components/admin-nav';
+
+export const metadata: Metadata = INSTALLABLE;
 
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   const membership = await requireMember(ADMIN_PANEL_ROLES);

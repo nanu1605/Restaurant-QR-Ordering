@@ -1,4 +1,5 @@
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
+import type { Metadata } from 'next';
 
 import { PanelHeader } from '@/components/shared/panel-header';
 import { LiveProvider } from '@/features/live/live-provider';
@@ -11,8 +12,11 @@ import { hasFeature } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES, ROLE_LABELS, STAFF_PANEL_ROLES } from '@/lib/auth/roles';
+import { INSTALLABLE } from '@/lib/config';
 
 import { StaffNav } from './_components/staff-nav';
+
+export const metadata: Metadata = INSTALLABLE;
 
 export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
   const membership = await requireMember(STAFF_PANEL_ROLES);

@@ -49,6 +49,10 @@ type LiveProviderProps = {
  * queries to refetch, 300 ms after the last one.
  */
 export function LiveProvider({ restaurantId, memberId, children }: LiveProviderProps) {
+  useEffect(() => {
+    // Installable staff app with an offline page (docs/DECISIONS.md P9-6).
+    navigator.serviceWorker?.register('/sw.js').catch(() => {});
+  }, []);
   return (
     <QueryClientProvider client={getQueryClient()}>
       <RealtimeChannelBridge restaurantId={restaurantId} memberId={memberId}>
