@@ -340,6 +340,95 @@ export type Database = {
           },
         ]
       }
+      menu_addon_groups: {
+        Row: {
+          created_at: string
+          id: string
+          max_select: number
+          min_select: number
+          name: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_select?: number
+          min_select?: number
+          name: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_select?: number
+          min_select?: number
+          name?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_addon_groups_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_addons: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          is_available: boolean
+          name: string
+          price_paise: number
+          restaurant_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          is_available?: boolean
+          name: string
+          price_paise?: number
+          restaurant_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          is_available?: boolean
+          name?: string
+          price_paise?: number
+          restaurant_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_addons_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_addons_restaurant_id_group_id_fkey"
+            columns: ["restaurant_id", "group_id"]
+            isOneToOne: false
+            referencedRelation: "menu_addon_groups"
+            referencedColumns: ["restaurant_id", "id"]
+          },
+        ]
+      }
       menu_categories: {
         Row: {
           created_at: string
@@ -455,6 +544,46 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_item_addon_groups: {
+        Row: {
+          group_id: string
+          menu_item_id: string
+          restaurant_id: string
+        }
+        Insert: {
+          group_id: string
+          menu_item_id: string
+          restaurant_id: string
+        }
+        Update: {
+          group_id?: string
+          menu_item_id?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_addon_groups_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_addon_groups_restaurant_id_group_id_fkey"
+            columns: ["restaurant_id", "group_id"]
+            isOneToOne: false
+            referencedRelation: "menu_addon_groups"
+            referencedColumns: ["restaurant_id", "id"]
+          },
+          {
+            foreignKeyName: "menu_item_addon_groups_restaurant_id_menu_item_id_fkey"
+            columns: ["restaurant_id", "menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["restaurant_id", "id"]
           },
         ]
       }
@@ -574,6 +703,7 @@ export type Database = {
       }
       order_items: {
         Row: {
+          addons_snapshot: Json
           cancelled_at: string | null
           created_at: string
           food_type_snapshot: Database["public"]["Enums"]["food_type"]
@@ -599,6 +729,7 @@ export type Database = {
           variant_name_snapshot: string | null
         }
         Insert: {
+          addons_snapshot?: Json
           cancelled_at?: string | null
           created_at?: string
           food_type_snapshot: Database["public"]["Enums"]["food_type"]
@@ -624,6 +755,7 @@ export type Database = {
           variant_name_snapshot?: string | null
         }
         Update: {
+          addons_snapshot?: Json
           cancelled_at?: string | null
           created_at?: string
           food_type_snapshot?: Database["public"]["Enums"]["food_type"]
@@ -1549,6 +1681,10 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: undefined
       }
+      admin_delete_addon_group: {
+        Args: { p_group_id: string }
+        Returns: undefined
+      }
       admin_delete_category: {
         Args: { p_category_id: string; p_move_to?: string }
         Returns: number
@@ -1620,6 +1756,7 @@ export type Database = {
         Returns: string
       }
       admin_sample_bill: { Args: never; Returns: Json }
+      admin_save_addon_group: { Args: { p_group: Json }; Returns: string }
       admin_save_menu_item: { Args: { p_item: Json }; Returns: string }
       admin_set_waiter_on_duty: {
         Args: { p_on_duty: boolean; p_waiter_id: string }
@@ -1867,6 +2004,10 @@ export type Database = {
           p_order_item_id: string
         }
         Returns: Json
+      }
+      staff_set_addon_availability: {
+        Args: { p_addon_id: string; p_available: boolean }
+        Returns: undefined
       }
       staff_set_item_availability: {
         Args: { p_available: boolean; p_item_id: string }

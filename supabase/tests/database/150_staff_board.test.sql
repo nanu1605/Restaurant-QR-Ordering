@@ -339,7 +339,7 @@ select is(
 );
 select is(
   pg_temp.keys_of(pg_temp.board_round(pg_temp.board('waiter'), 'A2', 2) -> 'items' -> 0),
-  'food_type,id,name,note,quantity,removed_by_name,removed_reason,status,variant',
+  'addons,food_type,id,name,note,quantity,removed_by_name,removed_reason,status,variant',
   'a dish has its name, option, food type, quantity, note, status and removal details'
 );
 select is(

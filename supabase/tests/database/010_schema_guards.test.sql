@@ -162,6 +162,10 @@ select set_eq(
       -- Phase 9: table service
       ('public.staff_update_service_request'),
       ('public.staff_move_session'),
+      -- Phase 9: menu add-ons
+      ('public.admin_save_addon_group'),
+      ('public.admin_delete_addon_group'),
+      ('public.staff_set_addon_availability'),
       -- Phase 7: menu import
       ('public.menu_import_create'),
       ('public.menu_import_set_draft'),
@@ -208,7 +212,7 @@ from unnest(array[
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-  'service_requests'
+  'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
 ]) as t;
 
 select is_empty(
@@ -219,7 +223,7 @@ select is_empty(
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-      'service_requests'
+      'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
     ]) as t
     where not exists (
       select 1

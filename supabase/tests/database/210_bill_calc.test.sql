@@ -213,10 +213,10 @@ values
 select is(
   private.bill_lines(:'rest_a', :'session'),
   jsonb_build_array(
-    jsonb_build_object('name', 'Butter Chicken', 'variant', 'Full', 'qty', 1, 'unit_price_paise', 48000, 'line_total_paise', 48000, 'food_type', 'non_veg'),
-    jsonb_build_object('name', 'Paneer Tikka', 'variant', null, 'qty', 3, 'unit_price_paise', 28000, 'line_total_paise', 84000, 'food_type', 'veg'),
-    jsonb_build_object('name', 'Paneer Tikka', 'variant', null, 'qty', 1, 'unit_price_paise', 26000, 'line_total_paise', 26000, 'food_type', 'veg'),
-    jsonb_build_object('name', 'Butter Chicken', 'variant', 'Half', 'qty', 1, 'unit_price_paise', 28000, 'line_total_paise', 28000, 'food_type', 'non_veg')
+    jsonb_build_object('name', 'Butter Chicken', 'variant', 'Full', 'addons', '[]'::jsonb, 'qty', 1, 'unit_price_paise', 48000, 'line_total_paise', 48000, 'food_type', 'non_veg'),
+    jsonb_build_object('name', 'Paneer Tikka', 'variant', null, 'addons', '[]'::jsonb, 'qty', 3, 'unit_price_paise', 28000, 'line_total_paise', 84000, 'food_type', 'veg'),
+    jsonb_build_object('name', 'Paneer Tikka', 'variant', null, 'addons', '[]'::jsonb, 'qty', 1, 'unit_price_paise', 26000, 'line_total_paise', 26000, 'food_type', 'veg'),
+    jsonb_build_object('name', 'Butter Chicken', 'variant', 'Half', 'addons', '[]'::jsonb, 'qty', 1, 'unit_price_paise', 28000, 'line_total_paise', 28000, 'food_type', 'non_veg')
   ),
   'lines merge the same dish and price, in the order first ordered, and leave out void dishes and rounds'
 );

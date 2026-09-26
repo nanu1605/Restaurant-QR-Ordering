@@ -185,6 +185,7 @@ declare
   v_session uuid;
   v_order uuid;
   v_bill uuid;
+  v_group uuid;
 begin
   insert into public.dining_tables (restaurant_id, label, qr_token)
   values (p_restaurant_id, 'T1', private.random_base62(16))
@@ -257,6 +258,14 @@ begin
 
   insert into public.service_requests (restaurant_id, dining_table_id, session_id, type)
   values (p_restaurant_id, v_table, v_session, 'call_waiter');
+
+  insert into public.menu_addon_groups (restaurant_id, name, min_select, max_select)
+  values (p_restaurant_id, 'Extras', 0, 2)
+  returning id into v_group;
+  insert into public.menu_addons (restaurant_id, group_id, name, price_paise)
+  values (p_restaurant_id, v_group, 'Extra cheese', 3000);
+  insert into public.menu_item_addon_groups (restaurant_id, menu_item_id, group_id)
+  values (p_restaurant_id, v_item, v_group);
 end;
 $$;
 

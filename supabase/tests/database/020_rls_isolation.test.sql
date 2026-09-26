@@ -33,7 +33,8 @@ from unnest(array[
   'public.table_sessions', 'public.session_waiter_assignments', 'public.orders',
   'public.order_items', 'public.invoice_counters', 'public.bills', 'public.bill_payments',
   'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments',
-  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests'
+  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests',
+  'public.menu_addon_groups', 'public.menu_addons', 'public.menu_item_addon_groups'
 ]) as t;
 
 select tests.authenticate_as(:'a_manager');
@@ -44,7 +45,8 @@ from unnest(array[
   'public.table_sessions', 'public.session_waiter_assignments', 'public.orders',
   'public.order_items', 'public.invoice_counters', 'public.bills', 'public.bill_payments',
   'public.audit_logs', 'public.restaurant_subscriptions', 'public.subscription_payments',
-  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests'
+  'public.menu_imports', 'public.subscription_reminders', 'public.service_requests',
+  'public.menu_addon_groups', 'public.menu_addons', 'public.menu_item_addon_groups'
 ]) as t;
 
 select tests.authenticate_as(:'a_waiter');
@@ -53,7 +55,8 @@ from unnest(array[
   'public.restaurants', 'public.restaurant_members', 'public.waiters', 'public.dining_tables',
   'public.menu_categories', 'public.menu_items', 'public.menu_item_variants',
   'public.table_sessions', 'public.orders', 'public.order_items', 'public.bills',
-  'public.service_requests'
+  'public.service_requests', 'public.menu_addon_groups', 'public.menu_addons',
+  'public.menu_item_addon_groups'
 ]) as t;
 
 -- ─── Manager of A ───────────────────────────────────────────────────────────
@@ -241,7 +244,8 @@ from unnest(array[
   'public.table_sessions', 'public.orders', 'public.order_items', 'public.bills',
   'public.bill_payments', 'public.audit_logs', 'public.plans', 'public.restaurant_subscriptions',
   'public.platform_admins', 'public.webhook_events', 'public.menu_imports',
-  'public.subscription_reminders', 'public.service_requests'
+  'public.subscription_reminders', 'public.service_requests', 'public.menu_addon_groups',
+  'public.menu_addons', 'public.menu_item_addon_groups'
 ]) as t;
 select throws_ok(
   format($f$select * from public.restaurant_access(%L)$f$, :'rest_a'),
