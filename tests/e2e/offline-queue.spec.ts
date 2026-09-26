@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page, type Route, test } from '@playwright/test';
 
 import { adminClient } from './helpers';
 import {
@@ -158,6 +158,41 @@ test('another open tab sends a closed tab’s offline move when the network is b
   await context.close();
 });
 
+test('a dish move is retried while the server can’t be reached, then sent', async ({
+  browser,
+  baseURL,
+}) => {
+  const r = await createLiveRestaurant({ approval: false });
+  const { order_id: orderId } = await placeCustomerOrder(r.tables['3']!.token, [
+    { menu_item_id: r.item.paneer, quantity: 1 },
+  ]);
+  const { context, page } = await openLiveScreen(browser, r, 'ravi', '/staff', baseURL!);
+  await page.getByRole('button', { name: /^All \d/ }).click();
+  await tableCard(page, '3').click();
+
+  // Wi-Fi up but the server unreachable: server action requests fail.
+  const unreachable = (route: Route) =>
+    route.request().headers()['next-action'] ? route.abort() : route.continue();
+  await page.route('**/*', unreachable);
+  await page
+    .getByRole('dialog', { name: /^Table 3/ })
+    .getByRole('button', { name: 'Mark served Paneer Tikka' })
+    .click();
+  await expect(offlineBanner(page)).toContainText(
+    '1 change kept on this device, sent as soon as it answers',
+  );
+  expect(await statuses(orderId)).toEqual({ 'Paneer Tikka': 'placed' });
+
+  await page.unroute('**/*', unreachable);
+  await expect
+    .poll(() => statuses(orderId), { timeout: 40_000 })
+    .toEqual({ 'Paneer Tikka': 'served' });
+  await expect(offlineBanner(page)).toHaveCount(0);
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0);
+
+  await context.close();
+});
+
 test('the staff panel is installable and shows an offline page; customer pages are not', async ({
   browser,
   baseURL,
@@ -176,6 +211,9 @@ test('the staff panel is installable and shows an offline page; customer pages a
   expect(
     await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL),
   ).toMatch(/\/sw\.js$/);
+  // Chrome's own check, the one behind its Install app button.
+  const cdp = await context.newCDPSession(page);
+  expect((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors).toEqual([]);
 
   // A reload without a network shows the offline page, not the browser's error.
   await context.setOffline(true);

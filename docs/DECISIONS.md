@@ -1478,6 +1478,8 @@ banner's live region was hidden while empty, so screen readers could miss its fi
   header returns to Live, no error shows and the journal is empty (`OFFLINE_MS=60000` keeps the
   tablet offline for the full minute of the Phase 9 acceptance check). A move made offline in a
   tab that is then closed is sent when the board is opened again, and by another open tab when
-  the network comes back. The staff panel links the manifest, its icons are PNGs, the service
-  worker is active, a reload without a network shows the offline page and Try again returns to
+  the network comes back. With the network up but the server unreachable, a move waits with
+  the banner saying so, then is sent once the server answers, with no error. The staff panel
+  links the manifest, its icons are PNGs, Chrome reports it installable, the service worker is
+  active, a reload without a network shows the offline page and Try again returns to
   the board; the customer menu has no manifest.
