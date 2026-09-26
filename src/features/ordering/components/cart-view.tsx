@@ -30,6 +30,7 @@ import {
   type CartLine,
 } from '../cart';
 import { MAX_LINE_NOTE, MAX_ORDER_NOTE } from '../limits';
+import type { Strings } from '../strings';
 import type { CustomerTable } from '../types';
 import { CustomerSkeleton } from './customer-skeleton';
 import { useStrings } from './lang-provider';
@@ -52,7 +53,9 @@ export function CartView({ qrToken, table }: CartViewProps) {
   // Made when the page loads and kept across retries, so a resend after a
   // network error can never create a second order (spec §9.3).
   const [idempotencyKey, setIdempotencyKey] = useState(randomUuid);
-  const [error, setError] = useState<string | null>(null);
+  // With the words it was written in: switching language hides it.
+  const [error, setError] = useState<{ text: string; in: Strings } | null>(null);
+  const fail = (text: string) => setError({ text, in: t });
   const [placed, setPlaced] = useState(false);
   const [pending, startTransition] = useTransition();
   const submitting = useRef(false);
@@ -91,27 +94,27 @@ export function CartView({ qrToken, table }: CartViewProps) {
             removed = next.removed;
             return next.cart;
           });
-          setError(
+          fail(
             removed.length > 0
               ? `${t.unavailable(removed)} ${t.cart.checkAndPlaceAgain}`
               : result.error,
           );
           return;
         }
-        setError(result.error);
+        fail(result.error);
       } catch {
         // Nothing may have reached the restaurant, or the order did but the
         // reply was lost: retrying with the same key is safe either way.
-        setError(t.networkError);
+        fail(t.networkError);
       } finally {
         submitting.current = false;
       }
     });
   }
 
-  const errorAlert = error && (
+  const errorAlert = error?.in === t && (
     <p role="alert" className="text-sm font-medium text-status-void">
-      {error}
+      {error.text}
     </p>
   );
 

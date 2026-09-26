@@ -3,6 +3,7 @@ import { Noto_Sans } from 'next/font/google';
 
 import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
+import { STRINGS } from '@/features/ordering/strings';
 import { APP_NAME, BRAND_COLOR } from '@/lib/config';
 
 import './globals.css';
@@ -28,11 +29,18 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
   // The customer panel may be in Hindi; its cookie is only sent to /t pages.
   const lang = await getLang();
+  const { toasts } = STRINGS[lang];
   return (
     <html lang={lang} className={`${notoSans.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         {children}
-        <Toaster position="top-center" richColors={false} closeButton />
+        <Toaster
+          position="top-center"
+          richColors={false}
+          closeButton
+          containerAriaLabel={toasts.region}
+          toastOptions={{ closeButtonAriaLabel: toasts.close }}
+        />
       </body>
     </html>
   );

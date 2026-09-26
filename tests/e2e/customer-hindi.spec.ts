@@ -66,6 +66,7 @@ test('a customer switches to Hindi, orders in Hindi and switches back', async ({
   await expect(page.getByText('ऑर्डर हुआ', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'बिल मँगाएँ' }).click();
   await expect(page.getByText('स्टाफ़ आपका बिल ले आएगा।')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'सूचना बंद करें' }).first()).toBeVisible();
   expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
 
   await page.getByRole('button', { name: 'English' }).click();

@@ -35,6 +35,8 @@ const en = {
     body: 'Please ask the staff for help, or scan the code on your table again.',
   },
   loading: 'Loading…',
+  /** Sonner's own labels (these English ones are its defaults). */
+  toasts: { region: 'Notifications', close: 'Close toast' },
   networkError: 'We couldn’t reach the restaurant. Check your connection and try again.',
   genericError: 'Something went wrong. Please try again.',
   /** Refusals from the database, by code (spec §13.1: plain words, what to do next). */
@@ -194,6 +196,7 @@ const hi: Strings = {
     body: 'कृपया स्टाफ़ से मदद लें, या अपनी टेबल पर लगा कोड फिर से स्कैन करें।',
   },
   loading: 'लोड हो रहा है…',
+  toasts: { region: 'सूचनाएँ', close: 'सूचना बंद करें' },
   networkError:
     'रेस्टोरेंट से संपर्क नहीं हो पाया। अपना इंटरनेट कनेक्शन जाँचें और फिर से कोशिश करें।',
   genericError: 'कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।',
