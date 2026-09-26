@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
 import { accentColors, customerThemeCss } from '@/features/ordering/accent';
+import { ServiceRequestButton } from '@/features/ordering/components/service-request-button';
 import { tableHeading } from '@/features/ordering/format';
 import { getCustomerTable } from '@/features/ordering/queries';
 
@@ -31,7 +32,8 @@ export async function generateViewport({ params }: Params): Promise<Viewport> {
  * (unknown, switched off or regenerated) gets the not-found page.
  */
 export default async function CustomerLayout({ children, params }: LayoutProps<'/t/[qrToken]'>) {
-  const table = await getCustomerTable((await params).qrToken);
+  const { qrToken } = await params;
+  const table = await getCustomerTable(qrToken);
   if (!table) notFound();
 
   return (
@@ -61,6 +63,7 @@ export default async function CustomerLayout({ children, params }: LayoutProps<'
             <p className="truncate text-base font-semibold text-ink">{table.restaurant.name}</p>
             <p className="text-sm text-ink-muted">{tableHeading(table.tableLabel)}</p>
           </div>
+          <ServiceRequestButton qrToken={qrToken} type="call_waiter" className="ml-auto shrink-0" />
         </header>
         {children}
       </div>

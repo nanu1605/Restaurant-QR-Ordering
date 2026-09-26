@@ -92,3 +92,32 @@ export async function cancelOrderItem(qrToken: string, orderItemId: string): Pro
   if (error) return customerError(error, 'customer_cancel_item');
   return actionOk();
 }
+
+// Wording for service requests; the ordering messages talk about orders.
+const REQUEST_MESSAGES: Record<string, string> = {
+  NOTHING_TO_BILL: 'Order something first, then you can ask for the bill.',
+  RATE_LIMITED: 'The staff have been called several times. Please wave to them instead.',
+};
+
+/** Call a waiter or ask for the bill (spec §8.7, P9-1). Tapping again is harmless. */
+export async function requestService(
+  qrToken: string,
+  type: 'call_waiter' | 'request_bill',
+): Promise<ActionResult> {
+  if (!qrTokenSchema.safeParse(qrToken).success) return actionError(message('TABLE_NOT_FOUND'));
+  if (type !== 'call_waiter' && type !== 'request_bill')
+    return actionError(message('INVALID_INPUT'));
+
+  const deviceId = await ensureDeviceId();
+  const { error } = await createAdminClient().rpc('customer_create_service_request', {
+    p_qr_token: qrToken,
+    p_device_id: deviceId,
+    p_type: type,
+  });
+  if (error) {
+    const code = dbErrorCode(error);
+    if (code && REQUEST_MESSAGES[code]) return actionError(REQUEST_MESSAGES[code]);
+    return customerError(error, 'customer_create_service_request');
+  }
+  return actionOk();
+}
