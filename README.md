@@ -73,6 +73,13 @@ only play sound after a tap, so each device shows **Enable sound** once. To try 
 demo table on a phone-sized window and `/staff` as `demo` / `waiter1` side by side, then place an
 order.
 
+Without a network, dish moves still work: the board shows them at once, a banner counts them, and
+they reach the server in order once the tablet is back, even after a reload or a closed tab.
+Everything else (approving, adding dishes, billing) waits for the connection and its buttons are
+disabled meanwhile. The staff and admin panels install as an app from Chrome (**Install app** or
+**Add to Home screen**); a page opened without a network shows an offline page that retries, and
+the board, the kitchen view and Live orders keep the screen on.
+
 ### Billing and Total orders
 
 Managers and owners bill tables at `/admin/billing`: open tables with their running totals, then a

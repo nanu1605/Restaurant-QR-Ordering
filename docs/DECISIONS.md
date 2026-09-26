@@ -1415,3 +1415,69 @@ names.
   reason) and the round is priced by the database; with two crusts in a customer's cart, the
   kitchen switching one off takes only that line out, and the menu then shows it as not
   available.
+
+### Offline, install and wake lock (Stop C)
+
+- **P9-5 · Offline status queue:** TanStack Query already holds mutations while offline, so no
+  new sync engine. Mutations now default to `networkMode: 'always'`: Approve, Remove, Add dishes
+  and the rest fail at once offline ("Couldn't reach the server") instead of pausing and firing
+  minutes later, which could surprise the table. Only dish status moves queue
+  (`useStatusChange`: one dish or a ticket forward, or Mark all served): `networkMode: 'online'`
+  pauses them offline and a `TypeError` (Wi-Fi up but the server unreachable) retries until the
+  server answers. Every board change shares one `scope`, so they reach the server in tap order and
+  a Revert or Remove never overtakes a move still waiting; Generate bill waits for them too. The board shows them at once and doesn't
+  refetch while any wait, so it doesn't flicker back. Each move is also kept in a small journal in
+  localStorage, per member, for a day: saved when tapped, dropped once the server answered, and
+  resent (the ones this tab isn't already sending) when a live screen loads and when the network
+  comes back, so a reload or another closed tab loses nothing. The spec named
+  IndexedDB; the data is a few ids and nothing but the page reads it, so localStorage is simpler.
+  Resending is safe because a move is by target status: the database does nothing when a dish is
+  already there, and a dish already past it (`INVALID_STATUS_CHANGE`) now counts as done for one
+  dish too, not only for a ticket. A dish removed meanwhile or a table billed meanwhile still
+  shows its error. An offline banner (on every staff and admin page, and in the table drawer,
+  which hides the page) says how many changes wait; "Can't reach the server" shows while they retry online. Offline, the
+  buttons that need the server are disabled: approve, reject, add, remove, revert, move, close,
+  requests, waiter assignment, stock switches, billing, payments and voids. Known limits: a dish
+  served offline records the sync time as `served_at`; a change resent after a deploy that renamed
+  its server action fails with an error instead of retrying.
+- **P9-6 · Installable panels:** the manifest is a route (`/app.webmanifest`, from `APP_NAME`)
+  linked only from the staff and admin layouts, so customer pages are never offered for install.
+  It opens on `/login`, which sends a signed-in user to their panel. Icons come from `next/og`
+  (`/icon/192`, `/icon/512`, also maskable, and the Apple touch icon): a white "M" on the brand
+  colour, no image files. The service worker is hand-written (about 30 lines, no Serwist): for
+  page loads under `/login`, `/staff` and `/admin` it goes to the network and, only when that
+  fails, shows a small offline page that retries every 15 seconds. It caches nothing: the spec's
+  "app-shell caching" would keep signed-in pages that change by the second and belong to one
+  user. `LiveProvider` registers it; the proxy skips the install files.
+  - **Screen wake lock:** the board, the kitchen view and Live orders keep the screen on while
+    visible and take the lock again when the tab comes back; nothing happens where the browser
+    doesn't support it.
+
+### Review fixes (Phase 9 Stop C)
+
+Three reviewers (queue logic, install and platform, screens) and a verifier confirmed 6 findings.
+A Revert, Remove or bill tapped just after the network came back could reach the server before a
+dish move still waiting, so the move then undid the revert: every board change now shares the
+queue's scope and Generate bill waits for waiting moves (P9-5). Log out was a server action whose
+redirect kept the page, and a move still retrying could then run under the next person to sign in
+on the tablet: Log out is now a plain form post to `/logout` and a full page load, which ends the
+page and its queue (the moves stay in the journal for that member's next sign-in). Moves left by a
+closed tab weren't resent while another tab of the same member stayed open, and managers' moves
+were resent only on Live orders: the banner now resends on load and when the network comes back,
+and sits in the admin layout. The bill page's Assign waiter button stayed enabled offline. The
+banner's live region was hidden while empty, so screen readers could miss its first message.
+
+### Tests (Phase 9 Stop C)
+
+- **Unit (`offline-queue.test.ts`):** the journal keeps changes in tap order and drops them one
+  by one, keeps a resent change once in its first place, is per member, forgets changes after a
+  day and ignores damaged data.
+- **E2E (`offline-queue.spec.ts`):** offline, a waiter marks a dish served, starts another and
+  marks the round served: the banner counts 3, the drawer shows them served, the database has
+  none, and add, move and remove are disabled; back online, all three reach the database, the
+  header returns to Live, no error shows and the journal is empty (`OFFLINE_MS=60000` keeps the
+  tablet offline for the full minute of the Phase 9 acceptance check). A move made offline in a
+  tab that is then closed is sent when the board is opened again, and by another open tab when
+  the network comes back. The staff panel links the manifest, its icons are PNGs, the service
+  worker is active, a reload without a network shows the offline page and Try again returns to
+  the board; the customer menu has no manifest.

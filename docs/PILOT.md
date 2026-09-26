@@ -10,7 +10,8 @@ day goes.
   placed to served, cancel within the window, and get the bill message when the table is billed.
   The first order of a session waits for approval when that setting is on.
 - **Waiters and kitchen** work from `/staff`: the table board, the kitchen view (Growth), marking
-  dishes served, adding or removing dishes, and the in-stock switch.
+  dishes served (also through a Wi-Fi drop), adding or removing dishes, guests' calls and bill
+  requests, moving guests to another table, and the in-stock switches for dishes and add-ons.
 - **Managers and owners** work from `/admin`: live orders with waiter assignment and approvals,
   billing with discounts and service charge, printing on 80 mm or 58 mm, payments (split on
   Growth), voids with an optional table reopen, Total orders, the dashboard and the reports.
@@ -29,7 +30,7 @@ day goes.
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
 | Charging for MenuMesh (built; needs your Razorpay setup) | 8     | Pilots are free; no payment details are collected |
-| Hindi customer screens, service requests, offline polish | 9     | English only for now                              |
+| Hindi customer screens                                   | 9     | English only for now                              |
 | Staging and production deployment, Sentry, backups       | 10    | Deploy before the first guest scans a code        |
 
 ## Human tasks (only you can do these)
@@ -84,9 +85,11 @@ Before charging anyone (Phase 8):
    plan and trial length. Copy the login details from the last step and give them to the owner.
 3. As the owner: add the tables, print their QR codes, enter the menu, add the waiter profiles and
    the staff logins, then set the tax, charges, bill options and business-day start.
-4. Print a test bill from Settings → Bill on the restaurant's own printer, with the paper size set
+4. Install the staff app on each tablet: open the site in Chrome, choose **Install app** (or Add
+   to Home screen) and sign in. It opens on the right panel and keeps the screen on.
+5. Print a test bill from Settings → Bill on the restaurant's own printer, with the paper size set
    in the printer driver and headers and footers turned off.
-5. Walk one table through the whole flow before service: scan, order, approve, serve, bill, print,
+6. Walk one table through the whole flow before service: scan, order, approve, serve, bill, print,
    record payment.
 
 ## A pilot day
