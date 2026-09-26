@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useWakeLock } from '@/hooks/use-wake-lock';
 
 import {
   type BoardFilter,
@@ -31,6 +32,7 @@ export function LiveBoard({ mode }: { mode: BoardMode }) {
   const nowMs = useServerNow(board);
   const [chosenFilter, setChosenFilter] = useState<BoardFilter | null>(null);
   const [openTableId, setOpenTableId] = useState<string | null>(null);
+  useWakeLock();
 
   if (!board) return <BoardSkeleton />;
 

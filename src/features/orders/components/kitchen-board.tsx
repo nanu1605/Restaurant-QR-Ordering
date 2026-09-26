@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { randomUuid } from '@/features/ordering/cart';
 import { dishName, listNames, tableHeading } from '@/features/ordering/format';
+import { useWakeLock } from '@/hooks/use-wake-lock';
 
 import { formatElapsed, minutesSince, nextStatus } from '../board-view';
 import {
@@ -55,6 +56,7 @@ export function KitchenBoard() {
   const nowMs = useServerNow(board);
   const [announcement, setAnnouncement] = useState('');
   const advance = useStatusChange();
+  useWakeLock();
 
   if (!board) {
     return (
