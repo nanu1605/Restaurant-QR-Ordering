@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { LegalLinks } from '@/features/ordering/components/legal-links';
 import { allowedPanelsFor, homePathFor, safeNextPath } from '@/lib/auth/redirects';
 import { getAccessSummary, getCurrentUser } from '@/lib/auth/session';
 import { APP_NAME } from '@/lib/config';
@@ -29,7 +30,7 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-12">
+    <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-sm">
         <div className="mb-6 flex flex-col gap-1">
           <p className="text-sm font-semibold text-brand">{APP_NAME}</p>
@@ -40,6 +41,7 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
         </div>
         <LoginForm next={next} notice={error ? NOTICES[error] : undefined} />
       </div>
+      <LegalLinks />
     </main>
   );
 }

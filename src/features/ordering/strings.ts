@@ -37,6 +37,7 @@ const en = {
   loading: 'Loading…',
   /** Sonner's own labels (these English ones are its defaults). */
   toasts: { region: 'Notifications', close: 'Close toast' },
+  legal: { terms: 'Terms', privacy: 'Privacy' },
   networkError: 'We couldn’t reach the restaurant. Check your connection and try again.',
   genericError: 'Something went wrong. Please try again.',
   /** Refusals from the database, by code (spec §13.1: plain words, what to do next). */
@@ -197,6 +198,7 @@ const hi: Strings = {
   },
   loading: 'लोड हो रहा है…',
   toasts: { region: 'सूचनाएँ', close: 'सूचना बंद करें' },
+  legal: { terms: 'नियम और शर्तें', privacy: 'गोपनीयता नीति' },
   networkError:
     'रेस्टोरेंट से संपर्क नहीं हो पाया। अपना इंटरनेट कनेक्शन जाँचें और फिर से कोशिश करें।',
   genericError: 'कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।',

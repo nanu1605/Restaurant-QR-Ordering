@@ -31,6 +31,7 @@ import { categorySectionId, countItems, filterMenu } from '../menu-filter';
 import type { CustomerCategory, CustomerMenuItem, CustomerTable } from '../types';
 import { CartBar } from './cart-bar';
 import { useStrings } from './lang-provider';
+import { LegalLinks } from './legal-links';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
 import { useReconciledCart } from './use-reconciled-cart';
@@ -219,6 +220,8 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
           )}
         </>
       )}
+
+      <LegalLinks className="mt-auto px-4 pt-8 pb-6" />
 
       {table.canOrder && count > 0 && (
         <CartBar href={`${base}/cart`} count={count} totalPaise={cartTotalPaise(cart)} />
