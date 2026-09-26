@@ -1323,3 +1323,95 @@ screens' rule).
   badges table 3 → Acknowledge → Done; after an order the phone requests the bill → the board
   shows it; a waiter moves table 3 to table 5 → the board and database follow, table 5's QR code
   shows the order and table 3's doesn't.
+
+### Menu add-ons (Stop B)
+
+- **P9-4 · Add-ons:** three tables. `menu_addon_groups` (a unique name, `min_select` 0–20 where 0
+  makes the group optional, `max_select` 1–20), `menu_addons` (name, price in paise, in-stock
+  switch, order) and `menu_item_addon_groups` (which dishes offer which groups). Groups are
+  shared: "Toppings" is built once and ticked on many dishes. A dish shows its groups oldest
+  first; the options keep the order the owner gave them. Groups and options are deleted for real
+  (with their links): orders keep their own copy.
+  - **Orders keep a snapshot, not rows:** `order_items.addons_snapshot` holds
+    `[{id, group, name, price_paise}]` in the dish's order, and the add-ons' total is added to
+    `unit_price_paise`. Bills, totals, discounts, taxes and reports work unchanged, and add-on
+    revenue counts towards the dish in reports. The spec named an `order_item_addons` table; one
+    jsonb column avoids an insert-and-map step and a join in every read, and a dish's add-ons are
+    never queried on their own.
+  - **Ordering:** a line takes `addon_ids` (up to 20 distinct uuids, sorted by the database).
+    `assert_orderable` checks every chosen option is in stock and in one of the dish's groups, and
+    that each group has between `min_select` and `max_select` choices; anything else reads as the
+    dish being unavailable (`ITEM_UNAVAILABLE` with its id). The server action then checks the
+    lines it sent against a fresh menu and tells the phone or picker which lines to take out, so
+    "Pizza" stays when only "Pizza + Olives" ran out (every line of the dish only when the menu
+    can't tell). Prices come from the database, never the phone. Customer and staff orders share
+    the same helpers. The chosen add-ons are locked (`FOR KEY SHARE`) while the order is saved,
+    and one deleted since the check refuses the dish rather than saving it without.
+  - **Bills:** `bill_lines` groups by the add-on names too, so the same dish with different
+    add-ons is two lines and ones that read the same merge (also after a group was renamed); the
+    price, which includes the add-ons, still separates changed prices. Lines carry the add-on
+    names ("Pizza (Large) + Olives, Jalapeño"). Bills stored before add-ons read as having none.
+  - **Menu data:** `customer_get_table` sends the groups once and each dish lists its group ids;
+    the page gives every dish its group objects. A dish whose required group has too little in
+    stock shows as not available on the customer menu. There are no Realtime events for add-ons:
+    a stale menu is caught when the order is placed.
+  - **Managing:** `admin_save_addon_group` (owners and managers, full access) saves a group with
+    its options in one call, like dishes and their options; options left out are deleted, new
+    ones start in stock. A group must allow its required choices (`min_select` no more than the
+    number of options). `admin_save_menu_item` takes `addon_group_ids` and changes the dish's
+    groups only when the key is sent, so quick edits and the menu import leave them alone.
+    `staff_set_addon_availability` works like the dish switch: any staff role, also while
+    read-only.
+  - **Screens:** the options sheet (was the variant sheet) shows the dish's options, then each
+    group with its rule ("Choose 1", "Optional, up to 3"): radios for exactly one, checkboxes
+    otherwise (full groups disable the rest; a group of at most one swaps its choice), with the
+    price as chosen and the reason when Add is disabled. Staff "Add dishes" opens the same sheet
+    for dishes with add-ons ("Add to round"); dishes with options only keep their quick buttons.
+    Waiters, the kitchen, the removal dialog, the bill builder and the printed bill show add-ons
+    after the dish. The Availability page lists each group's options with in-stock switches. The
+    admin Menu page has an Add-ons section (new, edit, delete with how many dishes use it), and the
+    dish form ticks the groups.
+  - **Cart:** still version 1. A line may carry `addonIds` and `addonNames`; its key adds the ids
+    only when there are some, so carts saved before add-ons keep working. The cart re-prices lines
+    from the menu and drops those whose choices no longer fit, with the same rules as the
+    database (`selectionError`).
+
+### Review fixes (Phase 9 Stop B)
+
+Three reviewers (database, app logic, screens) and a verifier confirmed 4 findings.
+`admin_save_addon_group` accepted the same option id twice, which saved fewer options than
+`min_select` counted and made every dish using the group unorderable: a repeated id is now
+refused. Options are deleted for real, so one deleted between the order's check and its insert
+was silently left out (a lower price, a wrong kitchen ticket): the chosen add-ons are now locked
+and re-checked before the insert (P9-4). A refused add-on took out every cart line of the dish,
+valid ones too: the server now works out which sent lines no longer fit (P9-4). Bill lines split
+dishes that read the same when a group was renamed between rounds: they now merge by add-on
+names.
+
+### Tests (Phase 9 Stop B)
+
+- **pgTAP 420:** groups saved with tidy names, rules and options in order; duplicate group and
+  option names, impossible rules, no options, bad prices and names refused; editing renames,
+  reorders, adds and deletes options, keeping ids; a repeated option id refused; dishes get,
+  keep (key absent) and lose (empty list) their groups; another restaurant's group or option
+  can't be attached, edited, deleted or moved in; waiters can't manage groups; the customer menu
+  sends the groups once in order and each dish's ids; prices add up and the snapshot keeps names,
+  groups and prices in the dish's order; a missing required choice, too many choices, an option
+  from another group, dish or restaurant, add-ons on a plain dish, repeated or malformed ids and
+  more than 20 refused; optional groups skipped and old payloads accepted; stock switched by the
+  kitchen (not another restaurant's) and refused when ordering, flagged on the menu; staff orders
+  follow the same rules; the board and the orders page show names; bill lines merge the same
+  add-ons (also after a group rename) and split different ones; an add-on gone before the insert
+  refuses the dish; deleting a group keeps orders and bills intact; read-only blocks managing but
+  not stock. **010 / 020 / fixture:** the new tables and functions. **150 / 210:** the new
+  `addons` keys.
+- **Unit:** group rules and texts, `selectionError` parity, stock for required groups, cart lines
+  priced and named with add-ons, merging, keys unchanged for old lines, re-pricing and dropping,
+  `addon_ids` in the payload only when present, stored carts old and new, refused lines per line
+  with the per-dish fallback.
+- **E2E (`menu-addons.spec.ts`):** the owner creates a group and ticks it on a dish, a phone
+  picks two add-ons (₹350), and the orders page, the waiter's drawer, the kitchen ticket and the
+  bill builder show them; a waiter must choose the required crust (Add stays disabled with the
+  reason) and the round is priced by the database; with two crusts in a customer's cart, the
+  kitchen switching one off takes only that line out, and the menu then shows it as not
+  available.
