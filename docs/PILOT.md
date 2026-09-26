@@ -45,13 +45,17 @@ Before the first pilot:
       `menumesh.app` and `menumesh.co` to it. **QR codes carry this URL, so print them only
       once it is live.**
 - [ ] Create the Supabase projects (staging and production, Mumbai region, paid plan for
-      production) and a Vercel project, with separate keys everywhere.
-- [ ] Set up Sentry, PostHog and Resend (verified sending domain) for the deployed app.
+      production), the Vercel Pro team with a staging and a production project, and the GitHub
+      `staging` and `production` environments, with separate keys everywhere
+      (`docs/RUNBOOK.md` → One-time setup).
+- [ ] Set up Sentry, PostHog and Resend (verified sending domain) for the deployed app, and an
+      uptime monitor on `/api/health` for staging and production.
 - [ ] Buy or borrow an 80 mm and a 58 mm thermal printer and print a test bill from the browser.
 - [ ] Design and print the QR standees for each table.
 - [ ] Ask a CA about GST registration for the SaaS business, and about the tax defaults shown to
       restaurants.
-- [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act).
+- [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act) and put them in place of
+      the `/terms` and `/privacy` placeholders.
 - [ ] Recruit 2–3 pilot restaurants.
 - [ ] Read the Hindi customer screens (tap हिन्दी on a menu, add a dish with options, order,
       cancel) and send corrections for anything that reads oddly.

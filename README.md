@@ -252,11 +252,26 @@ referrer policy, permissions policy, HSTS). A new third-party script, image host
 an entry in the policy; `tests/e2e/security-headers.spec.ts` fails on any violation. CI also runs
 `pnpm audit --prod --audit-level=high`.
 
+### Deployment
+
+Staging and production each have their own Supabase project (Mumbai) and Vercel project.
+GitHub Actions migrates, then deploys, then runs the read-only smoke tests
+(`tests/smoke`): staging after every green CI run on `main`, production through the
+**Release** workflow, which the owner approves. `docs/RUNBOOK.md` covers the setup, the
+environment variables, rollbacks, incidents, backups, secret rotation and the Razorpay live
+switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site.
+
+Errors go to Sentry (errors only; the browser SDK loads once the page is idle) through
+`/monitoring` on the app's own origin; staff and admin usage goes to PostHog through `/ingest`.
+Both are off while their keys are empty, as locally and in CI. `/terms` and `/privacy` are
+placeholders to replace before launch.
+
 ## Scripts
 
 | Script                   | What it does                                  |
 | ------------------------ | --------------------------------------------- |
 | `pnpm dev`               | Next.js dev server on http://localhost:3000   |
+| `pnpm smoke`             | Read-only checks of the site at `SMOKE_URL`   |
 | `pnpm build`             | Production build                              |
 | `pnpm lint`              | ESLint                                        |
 | `pnpm typecheck`         | Route type generation + `tsc --noEmit`        |

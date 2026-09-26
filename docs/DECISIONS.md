@@ -1565,3 +1565,81 @@ Three reviewers (security, language, regressions) and a verifier: 5 confirmed, 1
   switches, the kitchen, 14 admin pages and 6 super-admin pages run with no CSP violation; `/login`
   and the customer menu carry the headers and a new nonce on every request, and Next.js's scripts
   carry it. `subscription.spec.ts` checks that Razorpay Checkout loads with no violation.
+
+## Phase 10 — deployment and launch readiness (2026-09-26)
+
+Plan: three review stops. Stop A = everything that needs no accounts (monitoring, analytics,
+legal pages, the deploy pipeline, smoke tests, the runbook); Stop B = staging on the owner's
+accounts and the real-device run; Stop C = production and the launch checklist. User choices:
+GitHub Actions migrates and then deploys, with a separate Vercel project per environment and an
+approved Release for production; PostHog on the staff, admin and super-admin panels only;
+"the full test run against staging" = read-only smoke tests plus the owner's full flow on real
+devices; Sentry on every page, errors only.
+
+### Pipeline and monitoring (Stop A)
+
+- **P10-1 · Migrate, then deploy:** `.github/workflows/deploy.yml` links the Supabase project,
+  runs `supabase db push --yes` (never `--include-seed`, so the demo restaurant and its known
+  passwords never leave local and CI), then `vercel pull`, `vercel build --prod` and
+  `vercel deploy --prebuilt --prod`, then `pnpm smoke` against the live URL. Vercel's Git deploys
+  are off (`vercel.json`) so code never runs ahead of its migrations; functions run in `bom1`
+  (Mumbai), next to the database. Staging deploys from the `staging` job in `ci.yml` after the
+  tests pass on `main`, gated by the repository variable `DEPLOY_STAGING` so CI stays green
+  before the accounts exist. Production is `release.yml`: it checks that CI passed on `main` for
+  the chosen commit, and the `production` environment waits for the owner's approval. A deploy
+  of one environment never runs twice at once or gets cancelled halfway; CI on `main` is no
+  longer cancelled by a newer push (only pull requests are). Migrations must stay
+  backward-compatible because the old app runs on the new schema for about a minute; rollback is
+  Vercel's Promote plus a forward-fix migration (`docs/RUNBOOK.md`). Two Vercel projects rather
+  than Vercel's custom environments: each has its own variables, domain and cron, and staging's
+  cron exercises the reminders with test keys.
+- **P10-2 · Supabase settings:** the hosted Auth settings (sign-ups off, password length 8, TOTP,
+  site URL, a higher sign-in rate limit because staff sign in from the app server's IP) are set
+  once per project, listed in the runbook. The plan put them in `config.toml` `[remotes.*]`
+  blocks for `supabase config push`; that waits for Stop B, because a block without a real
+  project ref could break `supabase start` and CI's config parsing.
+- **P10-3 · Sentry, errors only:** `@sentry/nextjs` 11 (`withSentryConfig` now comes from
+  `@sentry/nextjs/config`). Server: `src/instrumentation.ts` with `onRequestError` and
+  `captureConsoleIntegration` for `console.error`, so the existing logs of unexpected database
+  errors reach Sentry without touching their call sites. Browser: the SDK was about 50 KB
+  gzipped in the customer menu's first load (628 → 795 KB uncompressed), so
+  `instrumentation-client.ts` imports it once the page is idle and only when a DSN is set; the
+  first load is back to 636 KB, and an error before it loads reaches Sentry only from the server.
+  No tracing, replay or session pings (`BrowserSession` is dropped: a request per page view on
+  diners' phones), no personal data. Events go through `/monitoring` on the app's origin, so the
+  CSP names no Sentry host and ad blockers don't drop them; the proxy skips that path. Source
+  maps upload only where `SENTRY_AUTH_TOKEN` is set. One public DSN (`NEXT_PUBLIC_SENTRY_DSN`)
+  serves both sides; the unused `SENTRY_DSN` is gone. `NEXT_PUBLIC_SENTRY_ENVIRONMENT` names
+  staging and production, which are both Vercel "production" deployments.
+- **P10-4 · PostHog, panels only:** `PanelAnalytics` in the staff, admin and super layouts
+  imports `posthog-js` after the page, only with a key: pageviews and autocapture with all text
+  masked, no session recording or surveys, and people identified by member (or admin) id with
+  their role and restaurant id, never names or emails; a different login on the same device
+  starts a new person. The customer panel never mounts it. `/ingest` is PostHog's documented
+  reverse proxy (rewrites to the region's API and assets hosts, derived from
+  `NEXT_PUBLIC_POSTHOG_HOST`), so the CSP stays `'self'`; `skipTrailingSlashRedirect` keeps its
+  slash-ended API paths working, and pages with a trailing slash still render.
+- **P10-5 · Legal pages:** `/terms` and `/privacy` are placeholder outlines, marked as such, for
+  the owner's real text. They are linked in small print from the login page and the foot of the
+  customer menu (labels in Hindi too; the pages stay English).
+- **P10-6 · Runbook:** `docs/RUNBOOK.md`: environments, one-time setup, variables per
+  environment, migrations, rollback, incidents (Realtime, a tablet offline, database or Vercel
+  down with the paper fallback, failed webhooks, errors), onboarding, failed subscription
+  payments, rotating each secret, backups and restore with a drill, the Razorpay live switch and
+  the first platform admin.
+- **P10-7 · Smoke tests:** `tests/smoke` is read-only (health with the database, the login page
+  under the security headers and its nonce, the bad-QR page, the install files, the legal
+  pages, the cron and the webhook refusing strangers), so it can run against production. It runs
+  in CI as a Playwright project against `next start`, and after every deploy through
+  `playwright.smoke.config.ts` (`SMOKE_URL`).
+- **P10-8 · Lighthouse with Sentry:** mobile, production build with a DSN: English performance
+  99 and Hindi 95, accessibility and best practices 100.
+
+### Tests (Phase 10 Stop A)
+
+- **Unit:** PostHog's API, assets and app hosts for both regions.
+- **E2E (`legal.spec.ts`):** the login page links to both pages, which render as placeholders;
+  the customer menu links to them, with Hindi labels after switching.
+- **Smoke (`tests/smoke`):** as P10-7, in CI against the local build.
+- **By hand, with a dummy DSN build:** no Sentry request on a page load, one event through
+  `/monitoring` when a page throws; `/login/` and `/t/<token>/` still render.
