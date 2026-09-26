@@ -1244,3 +1244,82 @@ current one has ended, as an owner subscribing again would.
   both audited; Sync with Razorpay, a subscription link refused while autopay is on, Cancel
   autopay; a failed webhook reprocessed from the Webhooks page; the daily cron emailing a trial
   reminder once over two runs.
+
+## Phase 9 — reliability and polish (2026-09-26)
+
+Plan: four review stops. Stop A = table service (call a waiter, ask for the bill, move a table);
+Stop B = menu add-ons; Stop C = the offline status queue, installable staff and admin panels, and
+keeping the board screen awake; Stop D = Hindi customer screens, the accessibility and performance
+audit, and security hardening. User choices: add-ons are shared groups attached to many dishes
+(each group with its pick rules, each option with a price and an in-stock switch); "Call waiter"
+works any time, even before ordering, and "Request bill" once the table has an accepted order; the
+Hindi text is written here and reviewed by the user; customers see English first and a toggle
+remembered on the phone.
+
+### Table service (Stop A)
+
+- **P9-1 · Service requests:** `service_requests` (table, optional session, `call_waiter` or
+  `request_bill`, open → acknowledged → resolved, the customer's device, who acknowledged and
+  finished it). One active request per table and type (a partial unique index): a second tap, from
+  any phone, returns the same request. At most 10 requests per table per hour, so a photo of the QR
+  code can't keep every tablet chiming. `customer_create_service_request` (server only) takes a
+  call any time, links the open session if there is one, and takes a bill request only once an
+  order at the table was accepted (`NOTHING_TO_BILL`); both work while the restaurant is read-only,
+  so a customer is never stuck. `staff_update_service_request` is for owners, managers and waiters
+  (the kitchen neither sees nor handles requests), moves forward only, and a second tap from
+  another tablet changes nothing; it isn't audited (a notification, not a business change).
+  Billing a table or closing it without a bill finishes all its requests, including a call made
+  before the first order: `private.end_assignment`, which both already call, does it, so the rule
+  stays in the functions instead of a trigger.
+- **P9-2 · Requests on the board:** `staff_get_board` (the wrapper, not `board_json`) adds the
+  active requests; the kitchen gets none. Cards and the drawer show "Calling" and "Bill requested"
+  badges in the attention colour, not as a new table state, so the filters and card colours stay as
+  they were. The drawer lists them with Acknowledge and Done. A new request toasts ("Table 5 is
+  calling a waiter", "Table 5 asked for the bill"), rings the table and chimes, from the same
+  board comparison as new orders; one already acknowledged elsewhere stays quiet.
+  `service_requests` joins the Realtime publication. The customer's button says "Waiter called" /
+  "Bill requested" after a tap; it doesn't follow the request afterwards (a second tap is
+  harmless). The support view shows the board without requests.
+- **P9-3 · Move table:** `staff_move_session` (owners, managers, waiters) reads the session's
+  table, locks both tables in id order, then the session, and checks it is still open at that
+  table (`SESSION_NOT_OPEN` if it was billed, closed or moved meanwhile). The new table must be
+  active, in the same restaurant (`NOT_FOUND`) and free (`TABLE_BUSY`; the one-open-session index
+  backs this up). The session's table and label change; orders keep their session, so the bill
+  shows the new table. The guests' requests follow them, except one the new table already has,
+  which is finished instead. Audited as `session.moved` with both tables. Allowed while read-only
+  (no new session starts). Guests' phones still show the old table's QR code, so the toast asks
+  staff to have them scan the new one; the old table starts afresh.
+
+### Review fixes (Phase 9 Stop A)
+
+Three reviewers (database, app logic, screens) and a verifier confirmed 5 findings. A call at a
+table that was then switched off stayed open but off the board, and chimed again when the table
+came back: switching a table off now finishes its requests (`admin_update_table`). The move's
+two-table lock could deadlock with reordering tables, which updated them in any order: reordering
+now locks the restaurant's tables in id order first (`admin_reorder`). The Move dialog stayed open
+after the guests had left the table (billed or moved on another tablet), with buttons that did
+nothing; it now belongs to the session it was opened for and closes when that session is gone, so
+a new party is never moved by mistake. Both Acknowledge buttons had the same name for screen
+readers. Long table names overflowed the Move dialog's buttons; the grid now fits the names and
+lets them wrap. Rejected with reasons: showing "acknowledged" on the card badge (the drawer shows
+it; P9-2) and a 44 px customer header button (32 px meets WCAG 2.2 target size; 44 px is the staff
+screens' rule).
+
+### Tests (Phase 9 Stop A)
+
+- **pgTAP 410:** a call before the first order (no session), a second tap returning it, no bill
+  before an accepted order, unknown or switched-off QR codes, bad type or device; the bill request
+  linked to the session; calls while read-only; the kitchen refused and seeing no requests, the
+  floor board listing them, acknowledge and Done once each, never back, another restaurant's id;
+  a new call after Done; 10 per table per hour; moving (the kitchen refused, busy, same, switched
+  off and other restaurants' tables refused, the session, label and bill request follow, a call
+  the new table has is kept once, audited, the old table starts afresh, a closed session can't
+  move); closing and billing finishing the table's requests; switching a table off finishing its
+  call; grants. **010 / 020 / fixture:** the new table, functions and publication, plus
+  `menu_imports` and `subscription_reminders` in the isolation lists. **150 / 330:** the board's
+  new `requests` key (the support view has none).
+- **Unit:** request alerts (once per new request, at free tables too, none once acknowledged).
+- **E2E (`table-service.spec.ts`):** a phone calls a waiter before ordering → the board toasts and
+  badges table 3 → Acknowledge → Done; after an order the phone requests the bill → the board
+  shows it; a waiter moves table 3 to table 5 → the board and database follow, table 5's QR code
+  shows the order and table 3's doesn't.

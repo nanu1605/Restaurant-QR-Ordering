@@ -49,7 +49,8 @@ pnpm create-restaurant --name "Sharma Dhaba" --slug sharma-dhaba --owner-name "V
 Each table's QR code opens `/t/<qr token>`. The demo tables use fixed tokens, so
 http://localhost:3000/t/DEMO0000TABLE001 is table 1 (…002 to …006 for tables 2–6). Customers
 browse the menu, add dishes (with options and notes), place the order and follow it on "Your
-table's orders", where they can cancel their own dishes for a short time. The demo restaurant asks
+table's orders", where they can cancel their own dishes for a short time. **Call waiter** in the
+header works any time; **Request bill** appears on "Your table's orders" once an order is accepted. The demo restaurant asks
 staff to confirm a table's first order, so new orders wait until a waiter approves them on the
 worker panel (or a manager assigns the table a waiter). Each phone gets a signed device cookie,
 which is why `CUSTOMER_COOKIE_SECRET` is required.
@@ -59,8 +60,10 @@ which is why `CUSTOMER_COOKIE_SECRET` is required.
 Staff open `/staff` (waiters and kitchen land there; managers and owners can switch to it). The
 **Board** shows every table live: state, waiter, time seated and dishes by status. Tap a table to
 approve or reject a waiting order, move dishes on ("Start preparing", "Mark ready", "Mark served"),
-remove a dish with a reason, add dishes (or an order for a free table) and close a table without a
-bill. **Kitchen** (Growth plan) shows New / Preparing / Ready tickets; **Availability** switches
+remove a dish with a reason, add dishes (or an order for a free table), move the guests to a free
+table and close a table without a bill. A customer's call or bill request shows on the card
+("Calling", "Bill requested") with a chime; the drawer has Acknowledge and Done, and billing or
+closing the table finishes them. **Kitchen** (Growth plan) shows New / Preparing / Ready tickets; **Availability** switches
 dishes in and out of stock. Managers use **Live orders** in the admin panel for the same board plus
 the Unassigned tables queue, the waiter strip, assigning waiters, deleting orders and reverting a
 status.
