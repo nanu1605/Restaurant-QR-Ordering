@@ -4,10 +4,13 @@ import { expect, test } from '@playwright/test';
 // every staging and production deploy, and in CI against `next start`. They
 // create nothing, so no test data or known passwords land in a real database.
 
-test('the health check reaches the database', async ({ request }) => {
+test('the health check reaches the database, on the build just deployed', async ({ request }) => {
   const response = await request.get('/api/health');
   expect(response.status()).toBe(200);
-  expect(await response.json()).toMatchObject({ status: 'ok', db: 'ok' });
+  const health = await response.json();
+  expect(health).toMatchObject({ status: 'ok', db: 'ok' });
+  // After a deploy: a rolled-back Vercel project keeps serving the old build.
+  if (process.env.EXPECTED_VERSION) expect(health.version).toBe(process.env.EXPECTED_VERSION);
 });
 
 test('the login page loads under the security headers', async ({ page }) => {
