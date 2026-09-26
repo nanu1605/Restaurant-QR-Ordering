@@ -3,19 +3,20 @@ import { notFound } from 'next/navigation';
 
 import { OrdersView } from '@/features/ordering/components/orders-view';
 import { readDeviceId } from '@/features/ordering/device';
-import { tableHeading } from '@/features/ordering/format';
+import { getStrings } from '@/features/ordering/lang';
 import { getCustomerSession, getCustomerTable } from '@/features/ordering/queries';
 
 export async function generateMetadata({
   params,
 }: Pick<PageProps<'/t/[qrToken]/orders'>, 'params'>): Promise<Metadata> {
   const table = await getCustomerTable((await params).qrToken);
+  const t = await getStrings();
   return {
     // Its own title, so screen readers announce the move from the menu.
     title: {
       absolute: table
-        ? `Your table’s orders · ${table.restaurant.name} · ${tableHeading(table.tableLabel)}`
-        : 'QR code not working',
+        ? `${t.orders.title} · ${table.restaurant.name} · ${t.table(table.tableLabel)}`
+        : t.qrNotWorking,
     },
     robots: { index: false, follow: false },
   };

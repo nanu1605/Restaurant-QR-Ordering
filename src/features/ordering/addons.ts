@@ -12,11 +12,28 @@ export function hasChoices(item: Pick<CustomerMenuItem, 'variants' | 'addonGroup
   return item.variants.length > 0 || item.addonGroups.length > 0;
 }
 
+/** The wording of the rules below; the customer panel has a Hindi set (strings.ts). */
+export const CHOICE_WORDS = {
+  optional: 'Optional',
+  optionalUpTo: (max: number) => `Optional, up to ${max}`,
+  choose: (count: number) => `Choose ${count}`,
+  chooseRange: (min: number, max: number) => `Choose ${min} to ${max}`,
+  unavailable: 'A choice is no longer available.',
+  chooseFrom: (count: number, group: string) => `Choose ${count} from ${group}.`,
+  chooseAtLeast: (count: number, group: string) => `Choose at least ${count} from ${group}.`,
+  chooseUpTo: (count: number, group: string) => `Choose up to ${count} from ${group}.`,
+};
+
+export type ChoiceWords = typeof CHOICE_WORDS;
+
 /** "Choose 1", "Choose 2 to 3", "Optional, up to 3". */
-export function groupRule(group: Pick<CustomerAddonGroup, 'minSelect' | 'maxSelect'>): string {
+export function groupRule(
+  group: Pick<CustomerAddonGroup, 'minSelect' | 'maxSelect'>,
+  words: ChoiceWords = CHOICE_WORDS,
+): string {
   const { minSelect: min, maxSelect: max } = group;
-  if (min === 0) return max === 1 ? 'Optional' : `Optional, up to ${max}`;
-  return min === max ? `Choose ${min}` : `Choose ${min} to ${max}`;
+  if (min === 0) return max === 1 ? words.optional : words.optionalUpTo(max);
+  return min === max ? words.choose(min) : words.chooseRange(min, max);
 }
 
 /** The group's required choices can be made with what is in stock. */
@@ -25,19 +42,23 @@ export function canChoose(group: CustomerAddonGroup): boolean {
 }
 
 /** Why these add-ons can't be ordered with the dish, or null when they can. */
-export function selectionError(groups: CustomerAddonGroup[], addonIds: readonly string[]) {
+export function selectionError(
+  groups: CustomerAddonGroup[],
+  addonIds: readonly string[],
+  words: ChoiceWords = CHOICE_WORDS,
+) {
   const offered = new Set(
     groups.flatMap((group) => group.addons.filter((a) => a.isAvailable).map((a) => a.id)),
   );
-  if (addonIds.some((id) => !offered.has(id))) return 'A choice is no longer available.';
+  if (addonIds.some((id) => !offered.has(id))) return words.unavailable;
   for (const group of groups) {
     const chosen = group.addons.filter((addon) => addonIds.includes(addon.id)).length;
     if (chosen < group.minSelect) {
       return group.minSelect === group.maxSelect
-        ? `Choose ${group.minSelect} from ${group.name}.`
-        : `Choose at least ${group.minSelect} from ${group.name}.`;
+        ? words.chooseFrom(group.minSelect, group.name)
+        : words.chooseAtLeast(group.minSelect, group.name);
     }
-    if (chosen > group.maxSelect) return `Choose up to ${group.maxSelect} from ${group.name}.`;
+    if (chosen > group.maxSelect) return words.chooseUpTo(group.maxSelect, group.name);
   }
   return null;
 }

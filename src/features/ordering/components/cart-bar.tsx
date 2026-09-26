@@ -5,10 +5,13 @@ import Link from 'next/link';
 
 import { formatINR } from '@/lib/money';
 
+import { useStrings } from './lang-provider';
+
 type CartBarProps = { href: string; count: number; totalPaise: number };
 
 /** Sticky "3 items · ₹620 — View cart" bar (spec §13.1). */
 export function CartBar({ href, count, totalPaise }: CartBarProps) {
+  const t = useStrings();
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
       <div className="pointer-events-auto mx-auto max-w-[560px] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -18,10 +21,10 @@ export function CartBar({ href, count, totalPaise }: CartBarProps) {
         >
           <span className="flex items-center gap-2 text-base font-semibold tabular-nums">
             <ShoppingBag aria-hidden className="size-5" />
-            {count} {count === 1 ? 'item' : 'items'} · {formatINR(totalPaise, { fraction: 'auto' })}
+            {t.cartBar.items(count)} · {formatINR(totalPaise, { fraction: 'auto' })}
           </span>
           <span className="flex items-center gap-1 text-base font-semibold">
-            View cart
+            {t.cartBar.view}
             <ChevronRight aria-hidden className="size-5" />
           </span>
         </Link>

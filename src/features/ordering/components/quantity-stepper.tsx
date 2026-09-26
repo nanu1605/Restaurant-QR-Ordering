@@ -6,6 +6,7 @@ import type { Ref } from 'react';
 import { Button } from '@/components/ui/button';
 
 import { MAX_LINE_QUANTITY } from '../limits';
+import { useStrings } from './lang-provider';
 
 type QuantityStepperProps = {
   value: number;
@@ -28,11 +29,12 @@ export function QuantityStepper({
   max = MAX_LINE_QUANTITY,
   incrementRef,
 }: QuantityStepperProps) {
+  const { stepper } = useStrings();
   const removes = min === 0 && value === 1;
   return (
     <div
       role="group"
-      aria-label={`Quantity of ${itemName}`}
+      aria-label={stepper.group(itemName)}
       className="inline-flex items-center rounded-lg border border-line bg-surface"
     >
       <Button
@@ -41,7 +43,7 @@ export function QuantityStepper({
         size="icon-touch"
         onClick={() => onChange(value - 1)}
         disabled={value <= min}
-        aria-label={removes ? `Remove ${itemName}` : `One less ${itemName}`}
+        aria-label={removes ? stepper.remove(itemName) : stepper.less(itemName)}
       >
         <Minus aria-hidden />
       </Button>
@@ -55,7 +57,7 @@ export function QuantityStepper({
         size="icon-touch"
         onClick={() => onChange(value + 1)}
         disabled={value >= max}
-        aria-label={`One more ${itemName}`}
+        aria-label={stepper.more(itemName)}
       >
         <Plus aria-hidden />
       </Button>

@@ -36,14 +36,10 @@ import {
   verifyDeviceToken,
 } from '@/features/ordering/device-token';
 import {
-  cancelNotice,
-  cancelWindowText,
-  CUSTOMER_STATUS_LABELS,
   formatClockTime,
   formatCountdown,
   listNames,
   tableHeading,
-  unavailableMessage,
 } from '@/features/ordering/format';
 import {
   IDEMPOTENCY_KEY_PATTERN,
@@ -54,8 +50,11 @@ import {
 } from '@/features/ordering/limits';
 import { countItems, filterMenu } from '@/features/ordering/menu-filter';
 import { placeOrderSchema, qrTokenSchema, toOrderItemsPayload } from '@/features/ordering/schemas';
+import { refusalMessage, STRINGS } from '@/features/ordering/strings';
 import type { CustomerCategory, CustomerMenuItem } from '@/features/ordering/types';
-import { CUSTOMER_GENERIC_ERROR, customerErrorMessage, dbErrorMessage } from '@/lib/db-errors';
+import { dbErrorCode, type DbErrorLike, dbErrorMessage } from '@/lib/db-errors';
+
+const { en, hi } = STRINGS;
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -692,25 +691,18 @@ describe('customer display text (spec §13.1)', () => {
     expect(tableHeading('T5')).toBe('T5');
   });
 
-  it('describes the cancel window', () => {
-    expect(cancelWindowText(0)).toBeNull();
-    expect(cancelWindowText(-5)).toBeNull();
-    expect(cancelWindowText(60)).toBe('1 minute');
-    expect(cancelWindowText(90)).toBe('90 seconds');
-    expect(cancelWindowText(120)).toBe('2 minutes');
-    expect(cancelWindowText(600)).toBe('10 minutes');
-    expect(cancelWindowText(45)).toBe('45 seconds');
-    expect(cancelWindowText(1)).toBe('1 second');
-  });
-
   it('builds the notice above "Place order"', () => {
-    expect(cancelNotice(120)).toBe(
-      'After you place the order, only staff can remove items. You can cancel an item within 2 minutes if the kitchen hasn’t started it.',
+    const within = (period: string) =>
+      `After you place the order, only staff can remove items. You can cancel an item within ${period} if the kitchen hasn’t started it.`;
+    expect(en.cart.cancelNotice(120)).toBe(within('2 minutes'));
+    expect(en.cart.cancelNotice(90)).toBe(within('90 seconds'));
+    expect(en.cart.cancelNotice(60)).toBe(within('1 minute'));
+    expect(en.cart.cancelNotice(600)).toBe(within('10 minutes'));
+    expect(en.cart.cancelNotice(1)).toBe(within('1 second'));
+    expect(en.cart.cancelNotice(0)).toBe('After you place the order, only staff can remove items.');
+    expect(en.cart.cancelNotice(-5)).toBe(
+      'After you place the order, only staff can remove items.',
     );
-    expect(cancelNotice(90)).toBe(
-      'After you place the order, only staff can remove items. You can cancel an item within 90 seconds if the kitchen hasn’t started it.',
-    );
-    expect(cancelNotice(0)).toBe('After you place the order, only staff can remove items.');
   });
 
   it('shows round times in the restaurant timezone', () => {
@@ -740,16 +732,48 @@ describe('customer display text (spec §13.1)', () => {
   });
 
   it('says which dishes left the cart', () => {
-    expect(unavailableMessage(['Paneer Tikka'])).toBe(
+    expect(en.unavailable(['Paneer Tikka'])).toBe(
       'Paneer Tikka is no longer available, so we removed it from your cart.',
     );
-    expect(unavailableMessage(['Paneer Tikka', 'Butter Chicken (Full)', 'Dal Makhani'])).toBe(
+    expect(en.unavailable(['Paneer Tikka', 'Butter Chicken (Full)', 'Dal Makhani'])).toBe(
       'Paneer Tikka, Butter Chicken (Full) and Dal Makhani are no longer available, so we removed them from your cart.',
     );
   });
 
   it('labels new dishes "Placed" for customers', () => {
-    expect(CUSTOMER_STATUS_LABELS.placed).toBe('Placed');
+    expect(en.status.placed).toBe('Placed');
+  });
+});
+
+describe('Hindi customer screens (docs/DECISIONS.md P9-7)', () => {
+  it('names tables, counts and time in Hindi, keeping dish names and digits', () => {
+    expect(hi.table('5')).toBe('टेबल 5');
+    expect(hi.table('Terrace 1')).toBe('Terrace 1');
+    expect(hi.menu.found(0)).toBe('कोई डिश नहीं मिली।');
+    expect(hi.menu.found(1)).toBe('1 डिश मिली।');
+    expect(hi.menu.found(3)).toBe('3 डिश मिलीं।');
+    expect(hi.cart.cancelNotice(120)).toBe(
+      'ऑर्डर करने के बाद सिर्फ़ स्टाफ़ ही आइटम हटा सकता है। अगर किचन ने शुरू नहीं किया है, तो आप 2 मिनट के अंदर कोई आइटम रद्द कर सकते हैं।',
+    );
+    expect(hi.cart.cancelNotice(90)).toContain('90 सेकंड के अंदर');
+    expect(hi.cart.cancelNotice(0)).toBe('ऑर्डर करने के बाद सिर्फ़ स्टाफ़ ही आइटम हटा सकता है।');
+  });
+
+  it('joins dish names with और', () => {
+    expect(hi.unavailable(['Paneer Tikka'])).toBe(
+      'Paneer Tikka अब उपलब्ध नहीं है, इसलिए हमने इसे आपके कार्ट से हटा दिया है।',
+    );
+    expect(hi.unavailable(['A', 'B', 'C'])).toBe(
+      'A, B और C अब उपलब्ध नहीं हैं, इसलिए हमने इन्हें आपके कार्ट से हटा दिया है।',
+    );
+  });
+
+  it('has a Hindi message for every refusal the customer can see', () => {
+    expect(Object.keys(hi.errors)).toEqual(Object.keys(en.errors));
+    expect(Object.keys(hi.requestErrors)).toEqual(Object.keys(en.requestErrors));
+    for (const [code, message] of Object.entries(hi.errors)) {
+      expect(message, code).not.toBe(en.errors[code as keyof typeof en.errors]);
+    }
   });
 });
 
@@ -827,8 +851,8 @@ describe('menu search and Veg only (spec §13.1)', () => {
 // ─── Error messages ─────────────────────────────────────────────────────────
 
 describe('customer error messages (spec §13.1)', () => {
-  const customer = (message: string, details?: string) =>
-    customerErrorMessage({ code: 'P0001', message, details });
+  const refusal = (error: DbErrorLike) => refusalMessage(en.errors, dbErrorCode(error));
+  const customer = (message: string) => refusal({ code: 'P0001', message });
 
   it('explain every customer code in plain words', () => {
     expect(customer('TABLE_NOT_FOUND')).toBe(
@@ -837,11 +861,11 @@ describe('customer error messages (spec §13.1)', () => {
     expect(customer('ORDERING_UNAVAILABLE')).toBe(
       'Online ordering is unavailable right now. Please order with our staff.',
     );
-    expect(customer('ITEM_UNAVAILABLE', `${PANEER},${DAL}`)).toBe(
+    expect(customer('ITEM_UNAVAILABLE')).toBe(
       'Some dishes are no longer available. We took them out of your cart.',
     );
     expect(customer('RATE_LIMITED')).toBe('Please wait a moment before ordering again.');
-    expect(customer('INVALID_INPUT', 'quantity')).toBe(
+    expect(customer('INVALID_INPUT')).toBe(
       'Something in your order needs checking. Look over your cart and try again.',
     );
     expect(customer('NOT_FOUND')).toBe(
@@ -854,12 +878,12 @@ describe('customer error messages (spec §13.1)', () => {
     expect(customer('CANCEL_WINDOW_EXPIRED')).toBe(
       'It’s too late to cancel this dish. Please ask the staff.',
     );
-    expect(CUSTOMER_GENERIC_ERROR).toBe('Something went wrong. Please try again.');
+    expect(en.genericError).toBe('Something went wrong. Please try again.');
   });
 
   it('never use staff wording', () => {
     expect(customer('RESTAURANT_READ_ONLY')).toBeNull();
-    expect(customer('PLAN_LIMIT_TABLES', '8')).toBeNull();
+    expect(customer('PLAN_LIMIT_TABLES')).toBeNull();
     expect(customer('INVALID_INPUT')).not.toBe(
       dbErrorMessage({ code: 'P0001', message: 'INVALID_INPUT' }),
     );
@@ -867,14 +891,12 @@ describe('customer error messages (spec §13.1)', () => {
 
   it('leave unknown and unexpected errors unmapped', () => {
     expect(customer('SOMETHING_NEW')).toBeNull();
-    expect(customerErrorMessage({ code: '23505', message: 'RATE_LIMITED' })).toBeNull();
+    expect(customer('toString')).toBeNull();
+    expect(refusal({ code: '23505', message: 'RATE_LIMITED' })).toBeNull();
     expect(
-      customerErrorMessage({
-        code: '42501',
-        message: 'permission denied for function customer_place_order',
-      }),
+      refusal({ code: '42501', message: 'permission denied for function customer_place_order' }),
     ).toBeNull();
-    expect(customerErrorMessage({ message: 'TypeError: fetch failed' })).toBeNull();
+    expect(refusal({ message: 'TypeError: fetch failed' })).toBeNull();
   });
 
   it('leave the staff messages as they were', () => {

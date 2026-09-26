@@ -29,10 +29,10 @@ import {
   toOrderLines,
   type CartLine,
 } from '../cart';
-import { cancelNotice, NETWORK_ERROR, unavailableMessage } from '../format';
 import { MAX_LINE_NOTE, MAX_ORDER_NOTE } from '../limits';
 import type { CustomerTable } from '../types';
 import { CustomerSkeleton } from './customer-skeleton';
+import { useStrings } from './lang-provider';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
 import { useHydrated } from '@/hooks/use-hydrated';
@@ -44,6 +44,7 @@ type CartViewProps = { qrToken: string; table: CustomerTable };
 export function CartView({ qrToken, table }: CartViewProps) {
   const router = useRouter();
   const ids = useId();
+  const t = useStrings();
   // The cart lives in localStorage: until the browser has read it, show a
   // placeholder rather than claiming the cart is empty.
   const hydrated = useHydrated();
@@ -77,9 +78,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
           update(() => EMPTY_CART);
           setIdempotencyKey(randomUuid());
           toast.success(
-            result.data.status === 'pending_approval'
-              ? 'Order placed. Waiting for staff to confirm it.'
-              : 'Order placed.',
+            result.data.status === 'pending_approval' ? t.cart.placedWaiting : t.cart.placed,
           );
           router.push(`/t/${qrToken}/orders`);
           return;
@@ -94,7 +93,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
           });
           setError(
             removed.length > 0
-              ? `${unavailableMessage(removed)} Check your order and place it again.`
+              ? `${t.unavailable(removed)} ${t.cart.checkAndPlaceAgain}`
               : result.error,
           );
           return;
@@ -103,7 +102,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
       } catch {
         // Nothing may have reached the restaurant, or the order did but the
         // reply was lost: retrying with the same key is safe either way.
-        setError(NETWORK_ERROR);
+        setError(t.networkError);
       } finally {
         submitting.current = false;
       }
@@ -121,12 +120,12 @@ export function CartView({ qrToken, table }: CartViewProps) {
       <div className="flex items-center gap-1">
         <Link
           href={menuHref}
-          aria-label="Back to the menu"
+          aria-label={t.cart.back}
           className={buttonVariants({ variant: 'ghost', size: 'icon-touch', className: '-ml-3' })}
         >
           <ArrowLeft aria-hidden className="size-5" />
         </Link>
-        <h1 className="text-xl font-semibold text-ink">Your order</h1>
+        <h1 className="text-xl font-semibold text-ink">{t.cart.title}</h1>
       </div>
 
       {!table.canOrder && <OrderingUnavailable />}
@@ -134,7 +133,7 @@ export function CartView({ qrToken, table }: CartViewProps) {
       {placed ? (
         <p role="status" className="flex items-center gap-2 py-6 text-base text-ink">
           <CircleCheck aria-hidden className="size-5 text-status-served" />
-          Order placed. Opening your table’s orders…
+          {t.cart.opening}
         </p>
       ) : !hydrated ? (
         <CustomerSkeleton rows={2} />
@@ -144,11 +143,11 @@ export function CartView({ qrToken, table }: CartViewProps) {
           {errorAlert}
           <EmptyState
             icon={ShoppingBag}
-            title="Your cart is empty"
-            description="Add dishes from the menu to place an order."
+            title={t.cart.empty}
+            description={t.cart.emptyHint}
             action={
               <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
-                Browse the menu
+                {t.cart.browse}
               </Link>
             }
           />
@@ -177,13 +176,13 @@ export function CartView({ qrToken, table }: CartViewProps) {
             })}
           >
             <Plus aria-hidden />
-            Add more dishes
+            {t.cart.addMore}
           </Link>
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor={`${ids}-note`} className="text-sm font-semibold text-ink">
-              Note for the whole order{' '}
-              <span className="font-normal text-ink-muted">(optional)</span>
+              {t.cart.orderNote}{' '}
+              <span className="font-normal text-ink-muted">{t.cart.optional}</span>
             </label>
             <Textarea
               id={`${ids}-note`}
@@ -191,27 +190,25 @@ export function CartView({ qrToken, table }: CartViewProps) {
               onChange={(event) => update((current) => setOrderNote(current, event.target.value))}
               maxLength={MAX_ORDER_NOTE}
               rows={2}
-              placeholder="e.g. we’re celebrating a birthday"
+              placeholder={t.cart.orderNoteExample}
               className="text-base"
             />
           </div>
 
           <div className="flex flex-col gap-1 rounded-lg bg-paper px-4 py-3">
             <p className="flex items-baseline justify-between gap-3 text-base font-semibold text-ink">
-              <span>Estimated total</span>
+              <span>{t.cart.estimatedTotal}</span>
               <Money paise={cartTotalPaise(cart)} fraction="auto" />
             </p>
-            <p className="text-sm text-ink-muted">
-              Taxes and charges, if any, are added to the final bill.
-            </p>
+            <p className="text-sm text-ink-muted">{t.cart.taxesLater}</p>
           </div>
 
           {table.canOrder && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm text-ink">{cancelNotice(table.cancelWindowSeconds)}</p>
+              <p className="text-sm text-ink">{t.cart.cancelNotice(table.cancelWindowSeconds)}</p>
               {errorAlert}
               <Button size="touch" className="w-full" onClick={submit} disabled={pending}>
-                {pending ? 'Placing order…' : 'Place order'}
+                {pending ? t.cart.placing : t.cart.place}
               </Button>
             </div>
           )}
@@ -231,12 +228,18 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
   // Once shown (or when the dish already has a note), the note field stays put,
   // even when it is cleared to type a new one.
   const [editingNote, setEditingNote] = useState(line.note !== '');
+  const t = useStrings();
   const label = lineLabel(line);
 
   return (
     <li className="flex flex-col gap-2 py-4">
       <div className="flex items-start gap-2">
-        <FoodTypeMark type={line.foodType} size="sm" className="mt-1" />
+        <FoodTypeMark
+          type={line.foodType}
+          label={t.foodType[line.foodType]}
+          size="sm"
+          className="mt-1"
+        />
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium text-ink">
             {line.name}
@@ -246,7 +249,7 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
             ) : null}
           </p>
           <p className="text-sm text-ink-muted tabular-nums">
-            {formatINR(line.unitPricePaise, { fraction: 'auto' })} each
+            {t.cart.each(formatINR(line.unitPricePaise, { fraction: 'auto' }))}
           </p>
         </div>
         <Money
@@ -261,8 +264,8 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
             value={line.note}
             onChange={(event) => onNote(event.target.value)}
             maxLength={MAX_LINE_NOTE}
-            placeholder="e.g. less spicy"
-            aria-label={`Note for ${label}`}
+            placeholder={t.cart.dishNoteExample}
+            aria-label={t.cart.noteFor(label)}
             className="h-11 flex-1 text-base"
             autoFocus={line.note === ''}
           />
@@ -272,9 +275,9 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
             variant="ghost"
             className="h-11 px-2 text-sm text-ink underline underline-offset-4"
             onClick={() => setEditingNote(true)}
-            aria-label={`Add a note for ${label}`}
+            aria-label={t.cart.addNoteFor(label)}
           >
-            Add a note
+            {t.cart.addNote}
           </Button>
         )}
         <QuantityStepper value={line.quantity} onChange={onQuantity} itemName={label} />

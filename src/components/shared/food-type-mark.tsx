@@ -17,6 +17,8 @@ const COLORS: Record<FoodType, string> = {
 type FoodTypeMarkProps = {
   type: FoodType;
   size?: 'sm' | 'md';
+  /** What the mark says to screen readers; English by default. */
+  label?: string;
   className?: string;
 };
 
@@ -24,11 +26,16 @@ type FoodTypeMarkProps = {
  * The standard Indian square food mark: outlined square with a filled
  * circle (veg), triangle (non-veg) or egg shape.
  */
-export function FoodTypeMark({ type, size = 'md', className }: FoodTypeMarkProps) {
+export function FoodTypeMark({
+  type,
+  size = 'md',
+  label = LABELS[type],
+  className,
+}: FoodTypeMarkProps) {
   return (
     <svg
       role="img"
-      aria-label={LABELS[type]}
+      aria-label={label}
       viewBox="0 0 20 20"
       data-food-type={type}
       className={cn(
@@ -38,7 +45,7 @@ export function FoodTypeMark({ type, size = 'md', className }: FoodTypeMarkProps
         className,
       )}
     >
-      <title>{LABELS[type]}</title>
+      <title>{label}</title>
       <rect
         x="1.25"
         y="1.25"

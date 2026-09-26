@@ -1,12 +1,13 @@
+'use client';
+
 import { cn } from 'cn';
 import { Info } from 'lucide-react';
 
-import { customerErrorMessage } from '@/lib/db-errors';
-
-const MESSAGE = customerErrorMessage({ code: 'P0001', message: 'ORDERING_UNAVAILABLE' });
+import { useStrings } from './lang-provider';
 
 /** Read-only restaurants: the menu is view-only (spec §10.6). */
 export function OrderingUnavailable({ className }: { className?: string }) {
+  const t = useStrings();
   return (
     <p
       role="status"
@@ -16,7 +17,7 @@ export function OrderingUnavailable({ className }: { className?: string }) {
       )}
     >
       <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-ink-muted" />
-      {MESSAGE}
+      {t.errors.ORDERING_UNAVAILABLE}
     </p>
   );
 }

@@ -30,6 +30,7 @@ import {
 import { categorySectionId, countItems, filterMenu } from '../menu-filter';
 import type { CustomerCategory, CustomerMenuItem, CustomerTable } from '../types';
 import { CartBar } from './cart-bar';
+import { useStrings } from './lang-provider';
 import { OrderingUnavailable } from './ordering-unavailable';
 import { QuantityStepper } from './quantity-stepper';
 import { useReconciledCart } from './use-reconciled-cart';
@@ -39,8 +40,6 @@ import { useReconciledCart } from './use-reconciled-cart';
 const OptionsSheet = dynamic(() => import('./options-sheet').then((m) => m.OptionsSheet), {
   ssr: false,
 });
-
-const CART_FULL = 'Your cart is full. Place this order first, then add more.';
 
 /** Height of the sticky search + category bar (content scrolls to just below it). */
 const STICKY_OFFSET_PX = 124;
@@ -53,6 +52,7 @@ type MenuViewProps = { qrToken: string; table: CustomerTable };
 
 /** The customer menu (spec §13.1): search, Veg only, category tabs, add to cart. */
 export function MenuView({ qrToken, table }: MenuViewProps) {
+  const t = useStrings();
   const [cart, update] = useReconciledCart(qrToken, table.menu);
   const [query, setQuery] = useState('');
   const [vegOnly, setVegOnly] = useState(false);
@@ -77,48 +77,43 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
       setAnnouncement('');
       return;
     }
-    const found = countItems(filterMenu(table.menu, nextQuery, nextVegOnly));
-    setAnnouncement(
-      found === 0 ? 'No dishes found.' : `${found} ${found === 1 ? 'dish' : 'dishes'} found.`,
-    );
+    setAnnouncement(t.menu.found(countItems(filterMenu(table.menu, nextQuery, nextVegOnly))));
   }
 
   function addSimple(item: CustomerMenuItem) {
     const next = addToCart(cart, cartLineFor(item, null));
     if (!next) {
-      toast(CART_FULL);
+      toast(t.menu.cartFull);
       return;
     }
     update(() => next);
-    setAnnouncement(`${item.name} added. ${itemQuantity(next, item.id)} in cart.`);
+    setAnnouncement(t.menu.added(item.name, itemQuantity(next, item.id)));
   }
 
   function changeQuantity(item: CustomerMenuItem, quantity: number) {
     const next = setLineQuantity(cart, lineKey({ menuItemId: item.id, variantId: null }), quantity);
     update(() => next);
     const left = itemQuantity(next, item.id);
-    setAnnouncement(
-      left === 0 ? `${item.name} removed from cart.` : `${left} ${item.name} in cart.`,
-    );
+    setAnnouncement(left === 0 ? t.menu.removed(item.name) : t.menu.inCartOf(item.name, left));
   }
 
   function addChoice(line: NewCartLine, quantity: number, note: string) {
     const next = addToCart(cart, line, quantity, note);
     if (!next) {
-      toast(CART_FULL);
+      toast(t.menu.cartFull);
       return;
     }
     update(() => next);
     setSheetItem(null);
     setAnnouncement(
-      `${lineLabel({ ...line, quantity, note })} added. ${itemQuantity(next, line.menuItemId)} in cart.`,
+      t.menu.added(lineLabel({ ...line, quantity, note }), itemQuantity(next, line.menuItemId)),
     );
   }
 
   return (
     <main className={cn('flex flex-1 flex-col', table.canOrder && count > 0 && 'pb-24')}>
       <style>{SCROLL_PADDING}</style>
-      <h1 className="sr-only">Menu</h1>
+      <h1 className="sr-only">{t.menu.heading}</h1>
       <p role="status" className="sr-only">
         {announcement}
       </p>
@@ -130,7 +125,7 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
         >
           <span className="flex items-center gap-2">
             <ReceiptText aria-hidden className="size-4 text-ink-muted" />
-            Your table’s orders ({table.sessionOrderCount})
+            {t.menu.tableOrders(table.sessionOrderCount)}
           </span>
           <ChevronRight aria-hidden className="size-4 text-ink-muted" />
         </Link>
@@ -141,8 +136,8 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
       {table.menu.length === 0 ? (
         <EmptyState
           icon={UtensilsCrossed}
-          title="The menu isn’t ready yet"
-          description="Please order with our staff."
+          title={t.menu.notReady}
+          description={t.menu.orderWithStaff}
           className="m-4"
         />
       ) : (
@@ -161,8 +156,8 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
                     setQuery(event.target.value);
                     announceResults(event.target.value, vegOnly);
                   }}
-                  placeholder="Search dishes"
-                  aria-label="Search dishes"
+                  placeholder={t.menu.search}
+                  aria-label={t.menu.search}
                   className="h-11 pl-9 text-base"
                 />
               </div>
@@ -178,8 +173,8 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
                   vegOnly ? 'border-food-veg bg-food-veg/10' : 'border-line bg-surface',
                 )}
               >
-                <FoodTypeMark type="veg" size="sm" />
-                Veg only
+                <FoodTypeMark type="veg" label={t.foodType.veg} size="sm" />
+                {t.menu.vegOnly}
               </button>
             </div>
             {categories.length > 0 && (
@@ -236,17 +231,12 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
 }
 
 function NoResults({ query, vegOnly }: { query: string; vegOnly: boolean }) {
+  const { menu } = useStrings();
   return (
     <EmptyState
       icon={Search}
-      title={query ? `No dishes match “${query}”` : 'No veg dishes on this menu'}
-      description={
-        !query
-          ? 'Turn off Veg only to see all dishes.'
-          : vegOnly
-            ? 'Try another word, or turn off Veg only.'
-            : 'Try another word.'
-      }
+      title={query ? menu.noMatch(query) : menu.noVeg}
+      description={!query ? menu.turnOffVeg : vegOnly ? menu.tryAnotherOrVeg : menu.tryAnother}
       className="m-4"
     />
   );
@@ -261,6 +251,7 @@ type MenuItemRowProps = {
 };
 
 function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowProps) {
+  const t = useStrings();
   const hasOptions = hasChoices(item);
   const inCart = itemQuantity(cart, item.id);
   const price = formatINR(item.pricePaise, { fraction: 'auto' });
@@ -281,7 +272,12 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
     <li className="flex gap-3 py-4" data-available={item.isAvailable}>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start gap-2">
-          <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
+          <FoodTypeMark
+            type={item.foodType}
+            label={t.foodType[item.foodType]}
+            size="sm"
+            className="mt-1"
+          />
           <h3
             className={cn(
               'text-base font-semibold',
@@ -292,7 +288,7 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
           </h3>
         </div>
         <p className="text-sm font-medium text-ink tabular-nums">
-          {item.variants.length > 0 ? `from ${price}` : price}
+          {item.variants.length > 0 ? t.menu.from(price) : price}
         </p>
         {item.description && (
           <p className="line-clamp-2 text-sm text-ink-muted">{item.description}</p>
@@ -314,7 +310,7 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
           />
         )}
         {!item.isAvailable ? (
-          <p className="text-sm font-semibold text-ink-muted">Not available</p>
+          <p className="text-sm font-semibold text-ink-muted">{t.menu.notAvailable}</p>
         ) : !canOrder ? null : showStepper ? (
           <QuantityStepper
             value={inCart}
@@ -335,13 +331,15 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
                 if (!hasOptions) moveFocus.current = 'stepper';
                 onAdd();
               }}
-              aria-label={`Add ${item.name}`}
+              aria-label={t.menu.addDish(item.name)}
               aria-haspopup={hasOptions ? 'dialog' : undefined}
             >
-              Add
+              {t.menu.add}
             </Button>
             {hasOptions && inCart > 0 && (
-              <p className="text-xs font-medium text-ink-muted tabular-nums">{inCart} in cart</p>
+              <p className="text-xs font-medium text-ink-muted tabular-nums">
+                {t.menu.inCart(inCart)}
+              </p>
             )}
           </>
         )}
@@ -357,6 +355,7 @@ type CategoryTabsProps = {
 };
 
 function CategoryTabs({ categories, activeSection, onSelect }: CategoryTabsProps) {
+  const t = useStrings();
   const navRef = useRef<HTMLElement>(null);
   const current =
     categories.find((c) => categorySectionId(c.id) === activeSection)?.id ?? categories[0]?.id;
@@ -386,7 +385,7 @@ function CategoryTabs({ categories, activeSection, onSelect }: CategoryTabsProps
   return (
     <nav
       ref={navRef}
-      aria-label="Menu categories"
+      aria-label={t.menu.categories}
       className="relative flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-2"
     >
       {categories.map((category) => {

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Noto_Sans } from 'next/font/google';
 
 import { Toaster } from '@/components/ui/sonner';
+import { getLang } from '@/features/ordering/lang';
 import { APP_NAME, BRAND_COLOR } from '@/lib/config';
 
 import './globals.css';
@@ -24,9 +25,11 @@ export const viewport: Viewport = {
   themeColor: BRAND_COLOR,
 };
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // The customer panel may be in Hindi; its cookie is only sent to /t pages.
+  const lang = await getLang();
   return (
-    <html lang="en" className={`${notoSans.variable} h-full`}>
+    <html lang={lang} className={`${notoSans.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         {children}
         <Toaster position="top-center" richColors={false} closeButton />

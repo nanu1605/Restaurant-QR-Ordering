@@ -23,6 +23,7 @@ import { groupRule, selectionError } from '../addons';
 import { cartLineFor, type NewCartLine } from '../cart';
 import { MAX_LINE_NOTE } from '../limits';
 import type { CustomerAddon, CustomerAddonGroup, CustomerMenuItem } from '../types';
+import { useStrings } from './lang-provider';
 import { QuantityStepper } from './quantity-stepper';
 
 type OptionsSheetProps = {
@@ -43,12 +44,8 @@ const CHOICE_CLASS =
  * Bottom sheet for dishes with options or add-ons (spec §13.1, docs/DECISIONS.md
  * P9-4): option, add-ons, quantity and a note, with the price as chosen.
  */
-export function OptionsSheet({
-  item,
-  onClose,
-  onAdd,
-  addLabel = 'Add to cart',
-}: OptionsSheetProps) {
+export function OptionsSheet({ item, onClose, onAdd, addLabel }: OptionsSheetProps) {
+  const t = useStrings();
   return (
     <Sheet open={item !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
@@ -56,12 +53,19 @@ export function OptionsSheet({
         showCloseButton={false}
         className="mx-auto max-h-[90dvh] max-w-[560px] gap-0 overflow-y-auto rounded-t-2xl"
       >
-        {item && <OptionsForm key={item.id} item={item} onAdd={onAdd} addLabel={addLabel} />}
+        {item && (
+          <OptionsForm
+            key={item.id}
+            item={item}
+            onAdd={onAdd}
+            addLabel={addLabel ?? t.options.addToCart}
+          />
+        )}
         <SheetClose
           render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
         >
           <XIcon aria-hidden />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t.options.close}</span>
         </SheetClose>
       </SheetContent>
     </Sheet>
@@ -74,12 +78,13 @@ function OptionsForm({
   addLabel,
 }: Required<Pick<OptionsSheetProps, 'onAdd' | 'addLabel'>> & { item: CustomerMenuItem }) {
   const ids = useId();
+  const t = useStrings();
   const [variantId, setVariantId] = useState(item.variants[0]?.id ?? null);
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState('');
   const line = cartLineFor(item, variantId, addonIds);
-  const error = selectionError(item.addonGroups, addonIds);
+  const error = selectionError(item.addonGroups, addonIds, t.choices);
 
   function choose(group: CustomerAddonGroup, addon: CustomerAddon, checked: boolean) {
     const inGroup = new Set(group.addons.map((a) => a.id));
@@ -96,7 +101,7 @@ function OptionsForm({
     <>
       <SheetHeader className="pr-14">
         <SheetTitle className="flex items-center gap-2 text-lg font-semibold text-ink">
-          <FoodTypeMark type={item.foodType} size="sm" />
+          <FoodTypeMark type={item.foodType} label={t.foodType[item.foodType]} size="sm" />
           {item.name}
         </SheetTitle>
         {item.description && <SheetDescription>{item.description}</SheetDescription>}
@@ -106,7 +111,7 @@ function OptionsForm({
         {item.variants.length > 0 && (
           <fieldset className="flex flex-col gap-2">
             <legend id={`${ids}-options`} className="mb-2 text-sm font-semibold text-ink">
-              Choose an option
+              {t.options.chooseOption}
             </legend>
             <RadioGroup
               aria-labelledby={`${ids}-options`}
@@ -135,7 +140,7 @@ function OptionsForm({
             <fieldset key={group.id} className="flex flex-col gap-2">
               <legend id={legendId} className="mb-2 text-sm font-semibold text-ink">
                 {group.name}{' '}
-                <span className="font-normal text-ink-muted">· {groupRule(group)}</span>
+                <span className="font-normal text-ink-muted">· {groupRule(group, t.choices)}</span>
               </legend>
               {group.minSelect === 1 && group.maxSelect === 1 ? (
                 <RadioGroup
@@ -185,20 +190,21 @@ function OptionsForm({
         })}
 
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-ink">Quantity</span>
+          <span className="text-sm font-semibold text-ink">{t.options.quantity}</span>
           <QuantityStepper value={quantity} onChange={setQuantity} itemName={item.name} min={1} />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${ids}-note`} className="text-sm font-semibold text-ink">
-            Note for the kitchen <span className="font-normal text-ink-muted">(optional)</span>
+            {t.options.kitchenNote}{' '}
+            <span className="font-normal text-ink-muted">{t.cart.optional}</span>
           </label>
           <Input
             id={`${ids}-note`}
             value={note}
             onChange={(event) => setNote(event.target.value)}
             maxLength={MAX_LINE_NOTE}
-            placeholder="e.g. less spicy"
+            placeholder={t.cart.dishNoteExample}
             className="h-11 text-base"
           />
         </div>
@@ -225,10 +231,11 @@ function OptionsForm({
 }
 
 function AddonName({ addon }: { addon: CustomerAddon }) {
+  const t = useStrings();
   return (
     <span>
       {addon.name}
-      {!addon.isAvailable && <span className="text-sm"> · Not available</span>}
+      {!addon.isAvailable && <span className="text-sm"> · {t.menu.notAvailable}</span>}
     </span>
   );
 }

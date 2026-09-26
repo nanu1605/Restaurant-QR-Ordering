@@ -23,15 +23,10 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { isVoidStatus } from '@/lib/order-status';
 
 import { cancelOrderItem } from '../actions';
-import {
-  CUSTOMER_STATUS_LABELS,
-  dishName,
-  formatClockTime,
-  formatCountdown,
-  NETWORK_ERROR,
-} from '../format';
+import { dishName, formatClockTime, formatCountdown } from '../format';
 import { SESSION_POLL_MS } from '../limits';
 import type { CustomerOrderItem, CustomerRound, CustomerSessionView } from '../types';
+import { useStrings } from './lang-provider';
 import { ServiceRequestButton } from './service-request-button';
 import { useNow } from '@/hooks/use-now';
 
@@ -50,6 +45,7 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
   const [confirming, setConfirming] = useState<CustomerOrderItem | null>(null);
   const [cancelling, startCancel] = useTransition();
   const now = useNow();
+  const t = useStrings();
 
   const menuHref = `/t/${qrToken}`;
 
@@ -99,10 +95,10 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
     startCancel(async () => {
       try {
         const result = await cancelOrderItem(qrToken, item.id);
-        if (result.ok) toast.success(`${item.name} cancelled.`);
+        if (result.ok) toast.success(t.orders.cancelled(item.name));
         else toast.error(result.error);
       } catch {
-        toast.error(NETWORK_ERROR);
+        toast.error(t.networkError);
       }
       setConfirming(null);
       await refresh();
@@ -118,7 +114,7 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-10">
-      <h1 className="text-xl font-semibold text-ink">Your table’s orders</h1>
+      <h1 className="text-xl font-semibold text-ink">{t.orders.title}</h1>
 
       {session.lastSessionBilled && !orderedHere ? (
         <div
@@ -127,22 +123,22 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
         >
           <p className="flex items-start gap-2 text-base text-ink">
             <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-status-served" />
-            Your bill has been generated. Please pay at the counter or to your server. Thank you!
+            {t.orders.billed}
           </p>
           {session.canOrder && (
             <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
-              Start a new order
+              {t.orders.newOrder}
             </Link>
           )}
         </div>
       ) : rounds.length === 0 ? (
         <EmptyState
           icon={ReceiptText}
-          title="No orders yet"
-          description="Dishes you order from this table appear here."
+          title={t.orders.none}
+          description={t.orders.noneHint}
           action={
             <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
-              Browse the menu
+              {t.cart.browse}
             </Link>
           }
         />
@@ -154,7 +150,7 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
               className="flex items-start gap-2 rounded-lg border border-attention/40 bg-attention/5 px-4 py-3 text-sm font-medium text-ink"
             >
               <Clock3 aria-hidden className="mt-0.5 size-4 shrink-0 text-attention" />
-              Waiting for staff to confirm your order.
+              {t.orders.waiting}
             </p>
           )}
 
@@ -176,7 +172,7 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
               className={buttonVariants({ size: 'touch', className: 'w-full' })}
             >
               <Plus aria-hidden />
-              Order more
+              {t.orders.orderMore}
             </Link>
           )}
           {rounds.some((round) => round.status === 'accepted') && (
@@ -187,21 +183,19 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
 
       {/* Always present, so a failed refresh is announced when it happens. */}
       <p role="status" className="text-center text-sm text-ink-muted empty:hidden">
-        {stale ? 'Couldn’t refresh the orders. Trying again…' : ''}
+        {stale ? t.orders.stale : ''}
       </p>
 
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel {confirming?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The kitchen won’t make it, and it won’t be on your bill.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.orders.cancelTitle(confirming?.name ?? '')}</AlertDialogTitle>
+            <AlertDialogDescription>{t.orders.cancelBody}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel size="touch">Keep it</AlertDialogCancel>
+            <AlertDialogCancel size="touch">{t.orders.keep}</AlertDialogCancel>
             <AlertDialogAction size="touch" onClick={confirmCancel} disabled={cancelling}>
-              Cancel dish
+              {t.orders.cancelDish}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -218,34 +212,35 @@ type RoundCardProps = {
 };
 
 function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
+  const t = useStrings();
   const headingId = `round-${round.id}`;
   return (
     <li>
       <section aria-labelledby={headingId} className="rounded-lg border border-line bg-surface">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
           <h2 id={headingId} className="text-base font-semibold text-ink tabular-nums">
-            Round {round.roundNumber} · {formatClockTime(round.placedAt, timezone)}
+            {t.orders.round(round.roundNumber, formatClockTime(round.placedAt, timezone))}
           </h2>
           {round.isMine && (
             <span className="rounded-full bg-paper px-2 py-0.5 text-xs font-medium text-ink-muted">
-              From this phone
+              {t.orders.fromThisPhone}
             </span>
           )}
         </header>
 
         {round.status === 'rejected' && (
           <p className="border-b border-line px-4 py-2 text-sm font-medium text-status-void">
-            Staff couldn’t confirm this order{round.rejectReason ? `: ${round.rejectReason}` : '.'}
+            {t.orders.rejected(round.rejectReason)}
           </p>
         )}
         {round.status === 'removed' && (
           <p className="border-b border-line px-4 py-2 text-sm font-medium text-status-void">
-            Removed by staff{round.removedReason ? `: ${round.removedReason}` : '.'}
+            {t.orders.removed(round.removedReason)}
           </p>
         )}
         {round.customerNote && (
           <p className="border-b border-line px-4 py-2 text-sm text-ink-muted">
-            Note: {round.customerNote}
+            {t.orders.note(round.customerNote)}
           </p>
         )}
 
@@ -256,7 +251,12 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
             const label = dishName(item);
             return (
               <li key={item.id} className="flex items-start gap-3 px-4 py-3">
-                <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
+                <FoodTypeMark
+                  type={item.foodType}
+                  label={t.foodType[item.foodType]}
+                  size="sm"
+                  className="mt-1"
+                />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <p
                     className={cn(
@@ -266,10 +266,12 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
                   >
                     <span className="tabular-nums">{item.quantity} ×</span> {label}
                   </p>
-                  {item.note && <p className="text-sm text-ink-muted">Note: {item.note}</p>}
+                  {item.note && (
+                    <p className="text-sm text-ink-muted">{t.orders.note(item.note)}</p>
+                  )}
                   {item.status === 'removed' && (
                     <p className="text-sm text-status-void">
-                      Removed by staff{item.removedReason ? `: ${item.removedReason}` : ''}
+                      {t.orders.removed(item.removedReason)}
                     </p>
                   )}
                   {left !== null && (
@@ -280,7 +282,8 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
                       className="mt-1 self-start"
                       onClick={() => onCancel(item)}
                     >
-                      Cancel<span className="sr-only"> {label}</span>
+                      {t.orders.cancel}
+                      <span className="sr-only"> {label}</span>
                       {Number.isFinite(left) && (
                         <span className="text-ink-muted tabular-nums">
                           · {formatCountdown(left)}
@@ -289,7 +292,7 @@ function RoundCard({ round, timezone, cancelMs, onCancel }: RoundCardProps) {
                     </Button>
                   )}
                 </div>
-                <StatusChip status={item.status} label={CUSTOMER_STATUS_LABELS[item.status]} />
+                <StatusChip status={item.status} label={t.status[item.status]} />
               </li>
             );
           })}

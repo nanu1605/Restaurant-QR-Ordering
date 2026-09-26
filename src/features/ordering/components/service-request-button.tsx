@@ -7,16 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 
 import { requestService } from '../actions';
-import { NETWORK_ERROR } from '../format';
-
-const LABELS = {
-  call_waiter: { idle: 'Call waiter', sent: 'Waiter called', toast: 'A waiter is on the way.' },
-  request_bill: {
-    idle: 'Request bill',
-    sent: 'Bill requested',
-    toast: 'The staff will bring your bill.',
-  },
-} as const;
+import { useStrings } from './lang-provider';
 
 type ServiceRequestButtonProps = {
   qrToken: string;
@@ -30,7 +21,8 @@ type ServiceRequestButtonProps = {
  */
 export function ServiceRequestButton({ qrToken, type, className }: ServiceRequestButtonProps) {
   const [state, setState] = useState<'idle' | 'pending' | 'sent'>('idle');
-  const labels = LABELS[type];
+  const t = useStrings();
+  const labels = t.service[type];
   const Icon = type === 'call_waiter' ? BellRing : ReceiptText;
 
   async function send() {
@@ -44,7 +36,7 @@ export function ServiceRequestButton({ qrToken, type, className }: ServiceReques
       }
       toast.error(result.error);
     } catch {
-      toast.error(NETWORK_ERROR);
+      toast.error(t.networkError);
     }
     setState('idle');
   }

@@ -2,19 +2,20 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { CartView } from '@/features/ordering/components/cart-view';
-import { tableHeading } from '@/features/ordering/format';
+import { getStrings } from '@/features/ordering/lang';
 import { getCustomerTable } from '@/features/ordering/queries';
 
 export async function generateMetadata({
   params,
 }: Pick<PageProps<'/t/[qrToken]/cart'>, 'params'>): Promise<Metadata> {
   const table = await getCustomerTable((await params).qrToken);
+  const t = await getStrings();
   return {
     // Its own title, so screen readers announce the move from the menu.
     title: {
       absolute: table
-        ? `Your order · ${table.restaurant.name} · ${tableHeading(table.tableLabel)}`
-        : 'QR code not working',
+        ? `${t.cart.title} · ${table.restaurant.name} · ${t.table(table.tableLabel)}`
+        : t.qrNotWorking,
     },
     robots: { index: false, follow: false },
   };

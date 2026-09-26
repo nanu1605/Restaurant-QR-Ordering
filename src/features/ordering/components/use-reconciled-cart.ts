@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { reconcileCart, useCart } from '../cart';
-import { unavailableMessage } from '../format';
 import type { CustomerCategory } from '../types';
+import { useStrings } from './lang-provider';
 
 /**
  * The table's cart, checked against the menu the page was rendered with:
@@ -14,6 +14,7 @@ import type { CustomerCategory } from '../types';
  */
 export function useReconciledCart(qrToken: string, menu: CustomerCategory[]) {
   const [cart, update] = useCart(qrToken);
+  const { unavailable } = useStrings();
 
   useEffect(() => {
     let removed: string[] = [];
@@ -22,8 +23,8 @@ export function useReconciledCart(qrToken: string, menu: CustomerCategory[]) {
       removed = result.removed;
       return result.cart;
     });
-    if (removed.length > 0) toast(unavailableMessage(removed));
-  }, [menu, update]);
+    if (removed.length > 0) toast(unavailable(removed));
+  }, [menu, update, unavailable]);
 
   return [cart, update] as const;
 }

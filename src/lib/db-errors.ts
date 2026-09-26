@@ -3,7 +3,8 @@ import { formatINR } from './money';
 /**
  * Maps error codes raised by database functions (spec §9.3: errcode P0001 with a
  * CODE message, context in DETAIL) to messages that say what happened and what
- * to do next (spec §13). Customers get their own wording (CUSTOMER_MESSAGES).
+ * to do next (spec §13). Customers get their own wording, in their language
+ * (src/features/ordering/strings.ts).
  */
 
 export type DbErrorLike = {
@@ -156,35 +157,11 @@ export function dbErrorCode(error: DbErrorLike): string | null {
   return null;
 }
 
-function resolve(messages: Record<string, Message>, error: DbErrorLike): string | null {
-  const code = dbErrorCode(error);
-  if (!code) return null;
-  const message = messages[code];
-  if (message === undefined) return null;
-  return typeof message === 'function' ? message(error.details?.trim() ?? '') : message;
-}
-
 /** Human message for a database error, or null if the error is unexpected. */
 export function dbErrorMessage(error: DbErrorLike): string | null {
-  return resolve(MESSAGES, error);
-}
-
-// Customer panel (spec §13.1): plain words, no staff jargon, what to do next.
-const CUSTOMER_MESSAGES: Record<string, Message> = {
-  TABLE_NOT_FOUND: 'This QR code isn’t working any more. Please ask the staff for help.',
-  ORDERING_UNAVAILABLE: 'Online ordering is unavailable right now. Please order with our staff.',
-  ITEM_UNAVAILABLE: 'Some dishes are no longer available. We took them out of your cart.',
-  RATE_LIMITED: 'Please wait a moment before ordering again.',
-  INVALID_INPUT: 'Something in your order needs checking. Look over your cart and try again.',
-  NOT_FOUND: 'This dish is no longer on your table’s order. Refresh the page.',
-  NOT_YOUR_ITEM: 'Only the phone that ordered this dish can cancel it.',
-  ITEM_NOT_CANCELLABLE: 'The kitchen has already started this dish. Please ask the staff.',
-  CANCEL_WINDOW_EXPIRED: 'It’s too late to cancel this dish. Please ask the staff.',
-};
-
-export const CUSTOMER_GENERIC_ERROR = 'Something went wrong. Please try again.';
-
-/** Customer-facing message for a database error, or null if the error is unexpected. */
-export function customerErrorMessage(error: DbErrorLike): string | null {
-  return resolve(CUSTOMER_MESSAGES, error);
+  const code = dbErrorCode(error);
+  if (!code) return null;
+  const message = MESSAGES[code];
+  if (message === undefined) return null;
+  return typeof message === 'function' ? message(error.details?.trim() ?? '') : message;
 }

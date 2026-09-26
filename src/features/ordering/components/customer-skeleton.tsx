@@ -1,10 +1,15 @@
+'use client';
+
 import { Skeleton } from '@/components/ui/skeleton';
+
+import { useStrings } from './lang-provider';
 
 /** Loading placeholder for the customer pages (spec §16.3). */
 export function CustomerSkeleton({ rows = 5 }: { rows?: number }) {
+  const t = useStrings();
   return (
     <div role="status" aria-busy="true" className="flex flex-col gap-4 px-4 py-4">
-      <span className="sr-only">Loading…</span>
+      <span className="sr-only">{t.loading}</span>
       <Skeleton className="h-11 w-full" />
       <div className="flex gap-2">
         <Skeleton className="h-9 w-24 rounded-full" />
