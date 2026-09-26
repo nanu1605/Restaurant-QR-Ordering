@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { PanelHeader } from '@/components/shared/panel-header';
+import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
 import { OfflineBanner } from '@/features/orders/components/offline-banner';
@@ -27,6 +28,11 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   return (
     <LiveProvider restaurantId={membership.restaurant.id} memberId={membership.memberId}>
       <div className="flex flex-1 flex-col">
+        <PanelAnalytics
+          userId={membership.memberId}
+          role={membership.role}
+          restaurantId={membership.restaurant.id}
+        />
         <PanelHeader
           panel="Admin panel"
           title={membership.restaurant.name}

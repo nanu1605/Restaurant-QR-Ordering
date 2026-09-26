@@ -1,4 +1,5 @@
 import { PanelHeader } from '@/components/shared/panel-header';
+import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { SuperMobileNav, SuperNav } from '@/features/platform/components/super-nav';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
@@ -8,6 +9,7 @@ export default async function SuperPanelLayout({ children }: LayoutProps<'/super
 
   return (
     <div className="flex flex-1 flex-col">
+      <PanelAnalytics userId={user.id} role="platform_admin" restaurantId={null} />
       <PanelHeader
         panel="Platform admin"
         title={APP_NAME}

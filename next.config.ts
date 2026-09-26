@@ -1,6 +1,8 @@
 import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 
+import { posthogHosts } from './src/features/analytics/posthog-hosts';
+
 type RemotePattern = Exclude<
   NonNullable<NextConfig['images']>['remotePatterns'],
   undefined
@@ -41,11 +43,23 @@ const SECURITY_HEADERS = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
 ];
 
+const posthog = posthogHosts(process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined);
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }];
   },
+  // PostHog through our own origin (its documented reverse proxy), so the
+  // Content-Security-Policy stays 'self' (docs/DECISIONS.md P10-4).
+  async rewrites() {
+    return [
+      { source: '/ingest/static/:path*', destination: `${posthog.assets}/static/:path*` },
+      { source: '/ingest/:path*', destination: `${posthog.api}/:path*` },
+    ];
+  },
+  // PostHog's API paths end in a slash; a redirect would drop the event.
+  skipTrailingSlashRedirect: true,
   images: {
     remotePatterns: images.patterns,
     // Next.js 16 refuses to optimise images from local addresses. Only the
