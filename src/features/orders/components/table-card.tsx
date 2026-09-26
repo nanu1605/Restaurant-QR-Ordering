@@ -17,6 +17,7 @@ import {
   waiterName,
 } from '../board-view';
 import { useHighlighted } from '../alert-store';
+import { RequestBadges } from './table-requests';
 import { TableStateBadge } from './table-state-badge';
 
 /** Thick left edge in the colour of the least-advanced dish (spec §10.4, §16.1). */
@@ -73,6 +74,7 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
           {table.label}
         </span>
         <TableStateBadge state={state} />
+        <RequestBadges requests={table.requests} />
       </span>
 
       {session && (

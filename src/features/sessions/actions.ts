@@ -95,3 +95,41 @@ export async function unassignWaiter(sessionId: string): Promise<ActionResult> {
   if (error) return fromDbError(error, 'admin_unassign_waiter');
   return actionOk();
 }
+
+/** Move a table's guests to a free table (spec §9.3 staff_move_session, P9-3). */
+export async function moveSession(
+  sessionId: string,
+  tableId: string,
+): Promise<ActionResult<{ table: string }>> {
+  await requireMember(CLOSER_ROLES);
+  const parsed = z
+    .object({ sessionId: z.uuid(), tableId: z.uuid() })
+    .safeParse({ sessionId, tableId });
+  if (!parsed.success) return invalid();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('staff_move_session', {
+    p_session_id: parsed.data.sessionId,
+    p_target_table_id: parsed.data.tableId,
+  });
+  if (error) return fromDbError(error, 'staff_move_session');
+  return actionOk({ table: z.object({ table: z.string() }).parse(data).table });
+}
+
+/** Acknowledge or finish a customer's call or bill request (P9-1). */
+export async function updateServiceRequest(
+  requestId: string,
+  status: 'acknowledged' | 'resolved',
+): Promise<ActionResult> {
+  await requireMember(CLOSER_ROLES);
+  const parsed = z
+    .object({ requestId: z.uuid(), status: z.enum(['acknowledged', 'resolved']) })
+    .safeParse({ requestId, status });
+  if (!parsed.success) return invalid();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('staff_update_service_request', {
+    p_request_id: parsed.data.requestId,
+    p_status: parsed.data.status,
+  });
+  if (error) return fromDbError(error, 'staff_update_service_request');
+  return actionOk();
+}

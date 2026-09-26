@@ -54,11 +54,23 @@ export type BoardSession = {
   rounds: BoardRound[];
 };
 
+export type ServiceRequestType = Database['public']['Enums']['service_request_type'];
+
+/** A customer's call or bill request that staff haven't finished (P9-2). */
+export type BoardRequest = {
+  id: string;
+  type: ServiceRequestType;
+  status: 'open' | 'acknowledged';
+  createdAt: string;
+};
+
 export type BoardTable = {
   id: string;
   label: string;
   sortOrder: number;
   session: BoardSession | null;
+  /** Oldest first; always empty for the kitchen. */
+  requests: BoardRequest[];
 };
 
 export type BoardWaiter = { id: string; name: string; onDuty: boolean };
@@ -139,6 +151,18 @@ const boardJson = z.object({
     }),
   ),
   waiters: z.array(z.object({ id: z.string(), name: z.string(), on_duty: z.boolean() })),
+  // Absent from the support view, which shows the board without requests.
+  requests: z
+    .array(
+      z.object({
+        id: z.string(),
+        table_id: z.string(),
+        type: z.enum(Constants.public.Enums.service_request_type),
+        status: z.enum(['open', 'acknowledged']),
+        created_at: z.string(),
+      }),
+    )
+    .default([]),
 });
 
 export function parseBoard(json: unknown, fetchedAt: number = Date.now()): Board {
@@ -159,6 +183,14 @@ export function parseBoard(json: unknown, fetchedAt: number = Date.now()): Board
       id: table.id,
       label: table.label,
       sortOrder: table.sort_order,
+      requests: data.requests
+        .filter((request) => request.table_id === table.id)
+        .map((request) => ({
+          id: request.id,
+          type: request.type,
+          status: request.status,
+          createdAt: request.created_at,
+        })),
       session: table.session && {
         id: table.session.id,
         openedAt: table.session.opened_at,

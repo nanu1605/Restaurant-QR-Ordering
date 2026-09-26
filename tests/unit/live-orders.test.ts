@@ -80,6 +80,7 @@ function table(
     id: id('table'),
     label,
     sortOrder: Number(label) || 0,
+    requests: [],
     session: session && {
       id: id('session'),
       openedAt: '2026-09-13T12:00:00.000Z',
@@ -354,7 +355,7 @@ describe('kitchenTickets', () => {
 describe('diffBoard', () => {
   it('stays quiet on the first load', () => {
     const b = board({ tables: [table('5', { rounds: [round()] })] });
-    expect(diffBoard(null, b)).toEqual({ orders: [], sessions: [] });
+    expect(diffBoard(null, b)).toEqual({ orders: [], sessions: [], requests: [] });
   });
 
   it('reports new accepted and waiting orders and new sessions', () => {
@@ -401,7 +402,7 @@ describe('diffBoard', () => {
     const mineRound = round({ placedVia: 'staff' });
     const after = board({ tables: [table('5', { rounds: [mineRound] })] });
     const alerts = diffBoard(snapshotOf(board({ tables: [] })), after, new Set([mineRound.id]));
-    expect(alerts).toEqual({ orders: [], sessions: [] });
+    expect(alerts).toEqual({ orders: [], sessions: [], requests: [] });
   });
 
   it('never alerts for rejected, removed or fully cancelled rounds', () => {
@@ -417,6 +418,45 @@ describe('diffBoard', () => {
       ],
     });
     expect(diffBoard(snapshotOf(board()), after).orders).toEqual([]);
+  });
+
+  it('alerts once for a new call or bill request, even at a free table', () => {
+    const call = {
+      id: id('request'),
+      type: 'call_waiter' as const,
+      status: 'open' as const,
+      createdAt: '2026-09-13T12:29:00.000Z',
+    };
+    const bill = { ...call, id: id('request'), type: 'request_bill' as const };
+    const before = board({ tables: [table('5'), table('6')] });
+    const after = board({
+      tables: [
+        { ...before.tables[0]!, requests: [call] },
+        { ...before.tables[1]!, requests: [bill] },
+      ],
+    });
+    const alerts = diffBoard(snapshotOf(before), after);
+    expect(alerts.requests.map((r) => [r.tableLabel, r.type])).toEqual([
+      ['5', 'call_waiter'],
+      ['6', 'request_bill'],
+    ]);
+    // Acknowledged on another tablet: already known, no second chime.
+    const acknowledged = board({
+      tables: [{ ...after.tables[0]!, requests: [{ ...call, status: 'acknowledged' }] }],
+    });
+    expect(diffBoard(snapshotOf(after), acknowledged).requests).toEqual([]);
+  });
+
+  it('stays quiet for a request someone acknowledged before this screen saw it', () => {
+    const request = {
+      id: id('request'),
+      type: 'call_waiter' as const,
+      status: 'acknowledged' as const,
+      createdAt: '2026-09-13T12:29:00.000Z',
+    };
+    const before = board({ tables: [table('5')] });
+    const after = board({ tables: [{ ...before.tables[0]!, requests: [request] }] });
+    expect(diffBoard(snapshotOf(before), after).requests).toEqual([]);
   });
 });
 

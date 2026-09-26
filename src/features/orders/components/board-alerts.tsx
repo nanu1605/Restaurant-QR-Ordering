@@ -23,7 +23,7 @@ type BoardAlertsProps = {
 };
 
 /**
- * Toast, highlight and chime for new orders (spec §12). Keeps the board query
+ * Toast, highlight and chime for new orders and customer requests (spec §12). Keeps the board query
  * alive on every page it is mounted on, and compares each board refresh with
  * the last one (docs/DECISIONS.md P4-16). The first load stays quiet, and so
  * does a board the cache kept while this screen was away: orders that came in
@@ -63,7 +63,9 @@ export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
       const alerts = diffBoard(previous, board, ownOrderIds());
       previous = snapshotOf(board);
       const sessions = newSessions ? alerts.sessions : [];
-      if (alerts.orders.length === 0 && sessions.length === 0) return;
+      if (alerts.orders.length === 0 && sessions.length === 0 && alerts.requests.length === 0) {
+        return;
+      }
 
       for (const order of alerts.orders) {
         const table = tableHeading(order.tableLabel);
@@ -77,9 +79,18 @@ export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
       for (const session of sessionsWithoutOrderToast) {
         toast(`${tableHeading(session.tableLabel)} is seated`, { description: 'Assign a waiter' });
       }
+      for (const request of alerts.requests) {
+        const table = tableHeading(request.tableLabel);
+        toast(
+          request.type === 'call_waiter'
+            ? `${table} is calling a waiter`
+            : `${table} asked for the bill`,
+        );
+      }
       highlightTables([
         ...alerts.orders.map((order) => order.tableId),
         ...sessions.map((session) => session.tableId),
+        ...alerts.requests.map((request) => request.tableId),
       ]);
       playChime();
     });

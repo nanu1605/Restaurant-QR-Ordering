@@ -79,6 +79,10 @@ const MESSAGES: Record<string, Message> = {
   TABLE_LABEL_DUPLICATE: 'The same table name appears twice.',
   TABLE_LABEL_TAKEN: (label) => `There is already a table called “${label}”.`,
   TABLE_HAS_OPEN_SESSION: 'This table has guests right now. Bill or close it first.',
+  TABLE_BUSY: (label) =>
+    label
+      ? `Table ${label} has guests now. Choose another table.`
+      : 'That table has guests now. Choose another table.',
 
   // Staff logins
   ROLE_NOT_ALLOWED: "You can't manage logins with that role.",

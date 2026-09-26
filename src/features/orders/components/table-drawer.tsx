@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { Plus, Trash2, Undo2, XIcon } from 'lucide-react';
+import { ArrowRightLeft, Plus, Trash2, Undo2, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -46,8 +46,10 @@ import { REJECT_REASONS, type ForwardStatus } from '../schemas';
 import { useBoardAction } from '../use-board';
 import { AddDishesSheet } from './add-dishes-sheet';
 import type { BoardMode } from './live-board';
+import { MoveTableDialog } from './move-table-dialog';
 import { ReasonDialog } from './reason-dialog';
 import { RemoveItemDialog } from './remove-item-dialog';
+import { RequestBadges, RequestsSection } from './table-requests';
 import { TableStateBadge } from './table-state-badge';
 
 /** One-tap forward buttons (spec §13.2). */
@@ -121,6 +123,8 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
   const [deleting, setDeleting] = useState<BoardRound | null>(null);
   const [removing, setRemoving] = useState<BoardItem | null>(null);
   const [closing, setClosing] = useState(false);
+  // The session the Move dialog was opened for.
+  const [moving, setMoving] = useState<string | null>(null);
 
   const approve = useBoardAction({
     action: (orderId: string) => approveOrder(orderId),
@@ -158,6 +162,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
         <SheetTitle className="flex flex-wrap items-center gap-3 text-2xl font-bold text-ink">
           {heading}
           <TableStateBadge state={state} />
+          <RequestBadges requests={table.requests} />
         </SheetTitle>
         <SheetDescription className="text-sm text-ink-muted">
           {session
@@ -180,6 +185,8 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       </SheetHeader>
 
       <div className="flex flex-col gap-4 p-4">
+        <RequestsSection table={table} nowMs={nowMs} />
+
         {session && session.waitingCount > 0 && waiting.length === 0 && (
           <p className="rounded-lg border border-attention px-3 py-2 text-sm text-ink">
             {session.waitingCount === 1 ? 'An order is' : `${session.waitingCount} orders are`}{' '}
@@ -258,12 +265,29 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
             still be served.
           </p>
         )}
+        {session && role !== 'kitchen' && (
+          <Button size="touch" variant="outline" onClick={() => setMoving(session.id)}>
+            <ArrowRightLeft aria-hidden />
+            Move table
+          </Button>
+        )}
         {canClose && (
           <Button size="touch" variant="outline" onClick={() => setClosing(true)}>
             Close without bill
           </Button>
         )}
       </SheetFooter>
+
+      {session && (
+        <MoveTableDialog
+          board={board}
+          table={table}
+          sessionId={session.id}
+          open={moving === session.id}
+          onOpenChange={(open) => setMoving(open ? session.id : null)}
+          onMoved={onClose}
+        />
+      )}
 
       <AddDishesSheet
         board={board}

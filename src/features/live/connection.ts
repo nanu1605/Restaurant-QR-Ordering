@@ -12,7 +12,7 @@ export function connectionState(online: boolean, channel: ChannelStatus): Connec
   return channel === 'subscribed' ? 'live' : 'reconnecting';
 }
 
-/** The tables in the supabase_realtime publication (spec §8.11, less Phase 9's service_requests). */
+/** The tables in the supabase_realtime publication (spec §8.11). */
 export const LIVE_TABLES = [
   'orders',
   'order_items',
@@ -20,6 +20,7 @@ export const LIVE_TABLES = [
   'bills',
   'menu_items',
   'waiters',
+  'service_requests',
 ] as const;
 
 /** Events are bunched for this long before the board refetches (spec §12). */
