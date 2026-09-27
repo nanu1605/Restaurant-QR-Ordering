@@ -56,7 +56,9 @@ never reaches a database that lacks its migrations.
    `true` turns on staging deploys.
 4. **Sentry and PostHog** (once, shared by both environments): a Sentry project for Next.js
    with IP addresses not stored and the data scrubber on, and an organization token for
-   `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded.
+   `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded. Both talk to their own
+   domains, so a browser with an ad blocker sends them nothing: allow the app's domain in the
+   blocker on restaurant tablets if their usage should count.
 5. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
    It answers 200 with `"db":"ok"`, or 503 when the database can't be reached.
 
