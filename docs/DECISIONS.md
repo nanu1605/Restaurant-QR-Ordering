@@ -1594,7 +1594,8 @@ devices; Sentry on every page, errors only.
   approval; the deploy stops at once if any of them is missing. A deploy of one target never runs
   twice at once or gets cancelled halfway; CI on `main` is no longer cancelled by a newer push
   (only pull requests are). Migrations must stay backward-compatible because the old app runs on
-  the new schema for about a minute; rollback is Vercel's Instant Rollback plus a forward-fix
+  the new schema for about a minute (and, since P10-11, pages opened before a deploy keep using it
+  for up to 7 days); rollback is Vercel's Instant Rollback plus a forward-fix
   migration, and the smoke tests fail when the live site isn't the commit just deployed (a
   rolled-back project keeps serving the old build until Undo Rollback). Two Vercel projects
   rather than Vercel's custom environments: each has its own variables, domain and cron, and
@@ -1698,12 +1699,17 @@ rejected is fixed anyway.
 - **P10-11 · Pages open through a deploy:** a page keeps the server-action IDs of the build that
   served it; after a deploy the new build answers them with 404 and Next.js throws
   `UnrecognizedActionError`, so a staff tablet left open on the board would fail every action
-  until someone reloads it. `next.config.ts` sets `deploymentId` to the deployed commit
-  (`NEXT_PUBLIC_BUILD_SHA`, set only by the deploy workflow; its first 32 characters, Vercel's
-  limit): Next.js tags the page, its assets
-  and its server actions with it, and Vercel's Skew Protection (supported for prebuilt
-  deployments with a custom `deploymentId` since January 2026) sends them to the deployment that
-  served the page, which is safe because migrations stay backward-compatible. Maximum age 7 days,
-  so a tablet that stays open across days keeps working. Locally and in CI the ID is unset and
-  nothing changes. Not `supportsImmutableAssets`: it is for hosting adapters, and Next.js warns
-  that setting it by hand can break deployments.
+  until someone reloads it. `next.config.ts` sets `deploymentId` from `DEPLOYMENT_ID`, which the
+  deploy workflow sets per build (commit prefix, run id and attempt: at most 32 characters, as
+  Vercel requires; per build rather than per commit, because two builds of one commit, such as a
+  redeploy after changing a variable, have different server-action IDs). Next.js tags the page,
+  its assets, navigations and server actions with it, and Vercel's Skew Protection (supported for
+  prebuilt deployments with a custom `deploymentId` since January 2026) sends them to the
+  deployment that served the page. The guest orders poll, a plain `fetch`, sends the same
+  `x-deployment-id` header. Maximum age 7 days, so a tablet open across days keeps working. The
+  cost is that old deployments keep running for a week: migrations must not break any deployment
+  from the last 7 days, a rollback doesn't stop pages already on the bad deployment (delete it,
+  or set a Skew Protection Threshold on the fix), and a rotated secret is revoked only after the
+  threshold is set on the deployment that has the new one (runbook). Locally and in CI the ID is
+  unset and nothing changes. Not `supportsImmutableAssets`: it is for hosting adapters, and
+  Next.js warns that setting it by hand can break deployments.

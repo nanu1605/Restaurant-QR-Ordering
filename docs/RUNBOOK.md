@@ -27,8 +27,10 @@ never reaches a database that lacks its migrations.
   can run it, and it refuses a commit whose CI on `main` failed.
 - After a deploy, the smoke tests check that the live site reports the commit just deployed
   (`/api/health` → `version`).
-- Pages already open (staff tablets, guests' phones) keep talking to the deployment that served
-  them, for up to 7 days (Skew Protection); they move to the new one on their next reload.
+- Pages already open (staff tablets, guests' phones) keep their navigations, server actions and
+  the guest orders poll on the deployment that served them, for up to 7 days (Skew Protection);
+  they move to the new one on their next reload. So an old deployment keeps running for a week:
+  see the migration, rollback and secret rules below.
 
 ### One-time setup per environment
 
@@ -81,9 +83,10 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 ## Database migrations
 
 - Every schema change is a new file in `supabase/migrations`, tested locally and in CI first.
-- Old code runs against the new schema for the minute between migrating and deploying, so a
-  migration must not break the code that is live: add columns, tables and functions freely;
-  rename or drop only in a second release, after no deployed code uses the old name.
+- Old code keeps running against the new schema: for the minute between migrating and
+  deploying, and for pages opened before a deploy, up to 7 days after it. So a migration must not
+  break any deployment from the last 7 days: add columns, tables and functions freely; rename or
+  drop only once no deployment from the last 7 days uses the old name.
 - There are no down migrations. To undo, write a new migration.
 - To see what a deploy would apply: `pnpm exec supabase link --project-ref <ref>` then
   `pnpm exec supabase db push --dry-run`.
@@ -95,6 +98,12 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   also stops new production deploys from going live: after the fix is released, press **Undo
   Rollback** on the project page (or run `vercel promote <new deployment URL>`). Until then the
   deploy's smoke tests fail, because the live site still reports the old commit.
+- **Pages already open on the bad deployment keep using it** (Skew Protection, up to 7 days); a
+  rollback doesn't stop them. When it must stop at once (wrong data, a security hole), delete the
+  bad deployment (Deployments → ⋯ → Delete) and ask staff to reload their tablets; release the fix
+  with `vercel promote <fix URL>` (Undo Rollback would bring back the deleted one). Otherwise,
+  once the fix is live, open its deployment → ⋯ → **Skew Protection Threshold** → **Set**: older
+  deployments stop answering, and open pages reload onto the fix.
 - **Database:** a forward-fix migration through the normal pipeline. Restoring a backup is for
   lost data, not bad code (see Backups).
 
@@ -140,7 +149,10 @@ app on each tablet.
 | `RESEND_API_KEY`, import keys | the provider, then Vercel            | Create the new key, set, deploy, delete the old key.                        |
 | GitHub deploy secrets         | GitHub repository secrets            | Replace; the next deploy uses them.                                         |
 
-After changing any Vercel variable, deploy again (a Release for production).
+After changing any Vercel variable, deploy again (a Release for production). Each deployment
+keeps the values it was built with, and pages opened before the deploy keep using the old one for
+up to 7 days, so after deploying a rotated secret set the new deployment's **Skew Protection
+Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 
 ## Backups and restore
 
