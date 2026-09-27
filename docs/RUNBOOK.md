@@ -30,20 +30,27 @@ never reaches a database that lacks its migrations.
 
 ### One-time setup per environment
 
-1. **Supabase:** a project in Mumbai (`ap-south-1`). Note the project ref and the database
-   password. In Authentication → Settings: sign-ups off, minimum password length 8, TOTP on,
-   Site URL = the app URL, and raise the sign-in rate limit (every staff login comes from the
-   app's server, so they share one IP).
-2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, Git deploys left to
-   `vercel.json`, the domain attached, and the environment variables below under "Production"
-   (a staging project's production is staging).
+1. **Supabase:** a project in Mumbai (`ap-south-1`); staging in its own free organization (a
+   Pro organization bills every extra project's compute). Note the project ref and the database
+   password. In Authentication: sign-ups and anonymous sign-ins off, minimum password length 8,
+   TOTP on, Site URL = the app URL, and the sign-up and sign-in rate limit raised to 1000 per 5
+   minutes (every staff login comes from the app's servers, so they share IPs).
+2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, imported from
+   GitHub (that first deploy may fail; later ones come from the pipeline, as `vercel.json` turns
+   Git deploys off), Node.js 24.x, the domain attached, and the environment variables below
+   under "Production" (a staging project's production is staging). `NEXT_PUBLIC_*`,
+   `STAFF_EMAIL_DOMAIN`, `SENTRY_ORG` and `SENTRY_PROJECT` are of type Config, because the
+   pipeline's build reads them; the rest are Secret.
 3. **GitHub** → Settings → Secrets and variables → Actions (repository level: a free plan's
    private repository has no environment secrets). Once: the secrets `SUPABASE_ACCESS_TOKEN`
    (Supabase account → Access tokens), `VERCEL_TOKEN` and `VERCEL_ORG_ID`. Per target, with the
    prefix `STAGING_` or `PRODUCTION_`: the secrets `…SUPABASE_PROJECT_REF`,
    `…SUPABASE_DB_PASSWORD` and `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the
    variable `DEPLOY_STAGING` = `true` turns on staging deploys.
-4. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
+4. **Sentry and PostHog** (once, shared by both environments): a Sentry project for Next.js
+   with IP addresses not stored and the data scrubber on, and an organization token for
+   `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded.
+5. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
    It answers 200 with `"db":"ok"`, or 503 when the database can't be reached.
 
 ### Environment variables (Vercel)
