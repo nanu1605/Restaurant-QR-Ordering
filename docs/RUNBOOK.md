@@ -27,6 +27,8 @@ never reaches a database that lacks its migrations.
   can run it, and it refuses a commit whose CI on `main` failed.
 - After a deploy, the smoke tests check that the live site reports the commit just deployed
   (`/api/health` → `version`).
+- Pages already open (staff tablets, guests' phones) keep talking to the deployment that served
+  them, for up to 7 days (Skew Protection); they move to the new one on their next reload.
 
 ### One-time setup per environment
 
