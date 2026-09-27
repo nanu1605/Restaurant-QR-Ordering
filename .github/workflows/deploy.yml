@@ -75,9 +75,11 @@ jobs:
       - name: Build and deploy on Vercel
         run: |
           export NEXT_PUBLIC_BUILD_SHA="$(git rev-parse HEAD)"
-          pnpm dlx vercel@60.1.3 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          pnpm dlx vercel@60.1.3 build --prod --token="$VERCEL_TOKEN"
-          pnpm dlx vercel@60.1.3 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          # pnpm refuses unapproved install scripts; the CLI bundles functions with esbuild.
+          vercel() { pnpm dlx --allow-build=esbuild vercel@60.1.3 "$@" --token="$VERCEL_TOKEN"; }
+          vercel pull --yes --environment=production
+          vercel build --prod
+          vercel deploy --prebuilt --prod
 
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
