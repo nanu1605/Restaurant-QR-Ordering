@@ -1695,3 +1695,14 @@ rejected is fixed anyway.
 - **P10-10 · The Vercel CLI's install script:** pnpm 12 fails a `dlx` install whose
   dependencies have unapproved build scripts; the CLI needs esbuild's, so the deploy allows
   exactly that one (`pnpm dlx --allow-build=esbuild`).
+- **P10-11 · Pages open through a deploy:** a page keeps the server-action IDs of the build that
+  served it; after a deploy the new build answers them with 404 and Next.js throws
+  `UnrecognizedActionError`, so a staff tablet left open on the board would fail every action
+  until someone reloads it. `next.config.ts` sets `deploymentId` to the deployed commit
+  (`NEXT_PUBLIC_BUILD_SHA`, set only by the deploy workflow): Next.js tags the page, its assets
+  and its server actions with it, and Vercel's Skew Protection (supported for prebuilt
+  deployments with a custom `deploymentId` since January 2026) sends them to the deployment that
+  served the page, which is safe because migrations stay backward-compatible. Maximum age 7 days,
+  so a tablet that stays open across days keeps working. Locally and in CI the ID is unset and
+  nothing changes. Not `supportsImmutableAssets`: it is for hosting adapters, and Next.js warns
+  that setting it by hand can break deployments.

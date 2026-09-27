@@ -37,7 +37,8 @@ never reaches a database that lacks its migrations.
    minutes (every staff login comes from the app's servers, so they share IPs).
 2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, imported from
    GitHub (that first deploy may fail; later ones come from the pipeline, as `vercel.json` turns
-   Git deploys off), Node.js 24.x, the domain attached, and the environment variables below
+   Git deploys off), Node.js 24.x, Settings → Advanced → Skew Protection on (the default for new
+   projects) with a maximum age of 7 days, the domain attached, and the environment variables below
    under "Production" (a staging project's production is staging). `NEXT_PUBLIC_*`,
    `STAFF_EMAIL_DOMAIN`, `SENTRY_ORG` and `SENTRY_PROJECT` are of type Config, because the
    pipeline's build reads them, and the rest are Secret: the pipeline's build only gets
