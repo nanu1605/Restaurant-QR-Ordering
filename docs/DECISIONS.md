@@ -1699,7 +1699,8 @@ rejected is fixed anyway.
   served it; after a deploy the new build answers them with 404 and Next.js throws
   `UnrecognizedActionError`, so a staff tablet left open on the board would fail every action
   until someone reloads it. `next.config.ts` sets `deploymentId` to the deployed commit
-  (`NEXT_PUBLIC_BUILD_SHA`, set only by the deploy workflow): Next.js tags the page, its assets
+  (`NEXT_PUBLIC_BUILD_SHA`, set only by the deploy workflow; its first 32 characters, Vercel's
+  limit): Next.js tags the page, its assets
   and its server actions with it, and Vercel's Skew Protection (supported for prebuilt
   deployments with a custom `deploymentId` since January 2026) sends them to the deployment that
   served the page, which is safe because migrations stay backward-compatible. Maximum age 7 days,

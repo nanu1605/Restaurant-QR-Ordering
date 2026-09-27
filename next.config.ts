@@ -46,7 +46,8 @@ const nextConfig: NextConfig = {
   // The deployed commit (set by the deploy workflow). Vercel's Skew Protection
   // uses it to send a page's server actions to the deployment that served the
   // page, so tablets left open keep working through a deploy (docs/DECISIONS.md P10-11).
-  deploymentId: process.env.NEXT_PUBLIC_BUILD_SHA,
+  // Vercel allows at most 32 characters; a commit hash has 40.
+  deploymentId: process.env.NEXT_PUBLIC_BUILD_SHA?.slice(0, 32),
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }];
   },
