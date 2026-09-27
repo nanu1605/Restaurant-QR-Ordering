@@ -1680,3 +1680,18 @@ rejected is fixed anyway.
   `NEXT_PUBLIC_BUILD_SHA=abc123`, `EXPECTED_VERSION=abc123` passes and any other value fails.
 - **By hand, with a dummy DSN build:** no Sentry request on a page load, one event when a page
   throws; the typecheck rejects `sendDefaultPii`.
+
+### Staging (Stop B)
+
+- **P10-9 · Secrets at build time:** `vercel pull` can't download Vercel's Secret values; it
+  writes `[SENSITIVE]` placeholders, so the pipeline's `vercel build` sees those. The app reads
+  its secrets (Supabase secret key, cookie secret, Razorpay, cron, Resend, import keys) only at
+  runtime, where Vercel supplies the real values: staging signs the device cookie, which fails
+  on the 11-character placeholder. What the build itself needs is Config (`NEXT_PUBLIC_*`,
+  `STAFF_EMAIL_DOMAIN`, `SENTRY_ORG`, `SENTRY_PROJECT`) or comes from GitHub: the first deploy
+  sent the placeholder as the Sentry token (401), so `SENTRY_AUTH_TOKEN` is a repository secret
+  passed to the build step, which wins because `vercel build` loads the pulled file without
+  overriding variables already set.
+- **P10-10 · The Vercel CLI's install script:** pnpm 12 fails a `dlx` install whose
+  dependencies have unapproved build scripts; the CLI needs esbuild's, so the deploy allows
+  exactly that one (`pnpm dlx --allow-build=esbuild`).

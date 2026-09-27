@@ -5,7 +5,8 @@ name: Deploy
 # (not GitHub environments, which a free plan's private repositories lack) holds
 # SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN and VERCEL_ORG_ID, and per target
 # <TARGET>_SUPABASE_PROJECT_REF, <TARGET>_SUPABASE_DB_PASSWORD and
-# <TARGET>_VERCEL_PROJECT_ID as secrets, <TARGET>_APP_URL as a variable.
+# <TARGET>_VERCEL_PROJECT_ID as secrets, <TARGET>_APP_URL as a variable, and
+# SENTRY_AUTH_TOKEN for source maps.
 
 on:
   workflow_call:
@@ -73,6 +74,10 @@ jobs:
       # The commit is built into the app (/api/health reports it), so the smoke
       # tests can tell the new deployment is the one answering.
       - name: Build and deploy on Vercel
+        env:
+          # Vercel can't hand its Secret values to a build outside Vercel (it pulls
+          # placeholders), so the build-only Sentry token comes from GitHub.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           export NEXT_PUBLIC_BUILD_SHA="$(git rev-parse HEAD)"
           # pnpm refuses unapproved install scripts; the CLI bundles functions with esbuild.

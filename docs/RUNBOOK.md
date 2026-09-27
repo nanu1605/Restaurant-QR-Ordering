@@ -40,13 +40,15 @@ never reaches a database that lacks its migrations.
    Git deploys off), Node.js 24.x, the domain attached, and the environment variables below
    under "Production" (a staging project's production is staging). `NEXT_PUBLIC_*`,
    `STAFF_EMAIL_DOMAIN`, `SENTRY_ORG` and `SENTRY_PROJECT` are of type Config, because the
-   pipeline's build reads them; the rest are Secret.
+   pipeline's build reads them, and the rest are Secret: the pipeline's build only gets
+   placeholders for Secret values, which the app reads at runtime instead.
 3. **GitHub** → Settings → Secrets and variables → Actions (repository level: a free plan's
    private repository has no environment secrets). Once: the secrets `SUPABASE_ACCESS_TOKEN`
-   (Supabase account → Access tokens), `VERCEL_TOKEN` and `VERCEL_ORG_ID`. Per target, with the
-   prefix `STAGING_` or `PRODUCTION_`: the secrets `…SUPABASE_PROJECT_REF`,
-   `…SUPABASE_DB_PASSWORD` and `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the
-   variable `DEPLOY_STAGING` = `true` turns on staging deploys.
+   (Supabase account → Access tokens), `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `SENTRY_AUTH_TOKEN`
+   (the build uploads source maps with it). Per target, with the prefix `STAGING_` or
+   `PRODUCTION_`: the secrets `…SUPABASE_PROJECT_REF`, `…SUPABASE_DB_PASSWORD` and
+   `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the variable `DEPLOY_STAGING` =
+   `true` turns on staging deploys.
 4. **Sentry and PostHog** (once, shared by both environments): a Sentry project for Next.js
    with IP addresses not stored and the data scrubber on, and an organization token for
    `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded.
@@ -55,20 +57,20 @@ never reaches a database that lacks its migrations.
 
 ### Environment variables (Vercel)
 
-| Variable                                            | Staging                         | Production                 |
-| --------------------------------------------------- | ------------------------------- | -------------------------- |
-| `NEXT_PUBLIC_APP_URL`                               | `https://staging.menumesh.in`   | `https://menumesh.in`      |
-| `NEXT_PUBLIC_SUPABASE_URL`, keys                    | staging project                 | production project         |
-| `STAFF_EMAIL_DOMAIN`                                | `staging.menumesh.in`           | `menumesh.in`              |
-| `CUSTOMER_COOKIE_SECRET`                            | 32+ random bytes                | different 32+ random bytes |
-| `RAZORPAY_KEY_ID`, `_SECRET`, `_WEBHOOK_SECRET`     | test keys                       | live keys                  |
-| `CRON_SECRET`                                       | random                          | different random           |
-| `RESEND_API_KEY`, `EMAIL_FROM`                      | optional                        | required before charging   |
-| `MENU_IMPORT_API_KEY`, `_FALLBACK_API_KEY`          | optional                        | as needed                  |
-| `NEXT_PUBLIC_SENTRY_DSN`                            | the project's DSN               | the same DSN               |
-| `NEXT_PUBLIC_SENTRY_ENVIRONMENT`                    | `staging`                       | `production`               |
-| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | for readable stack traces       | same                       |
-| `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`                  | the project key and region host | same                       |
+| Variable                                        | Staging                         | Production                 |
+| ----------------------------------------------- | ------------------------------- | -------------------------- |
+| `NEXT_PUBLIC_APP_URL`                           | `https://staging.menumesh.in`   | `https://menumesh.in`      |
+| `NEXT_PUBLIC_SUPABASE_URL`, keys                | staging project                 | production project         |
+| `STAFF_EMAIL_DOMAIN`                            | `staging.menumesh.in`           | `menumesh.in`              |
+| `CUSTOMER_COOKIE_SECRET`                        | 32+ random bytes                | different 32+ random bytes |
+| `RAZORPAY_KEY_ID`, `_SECRET`, `_WEBHOOK_SECRET` | test keys                       | live keys                  |
+| `CRON_SECRET`                                   | random                          | different random           |
+| `RESEND_API_KEY`, `EMAIL_FROM`                  | optional                        | required before charging   |
+| `MENU_IMPORT_API_KEY`, `_FALLBACK_API_KEY`      | optional                        | as needed                  |
+| `NEXT_PUBLIC_SENTRY_DSN`                        | the project's DSN               | the same DSN               |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT`                | `staging`                       | `production`               |
+| `SENTRY_ORG`, `SENTRY_PROJECT`                  | for readable stack traces       | same                       |
+| `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`              | the project key and region host | same                       |
 
 Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
 `NEXT_PUBLIC_*` values are built into the app: change them, then deploy again.
