@@ -51,7 +51,13 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/t/${qrToken}/session`, { cache: 'no-store' });
+      // Asks the deployment that served this page, as Next.js does for its own
+      // requests (docs/DECISIONS.md P10-11); unset locally and in CI.
+      const deployment = (globalThis as { NEXT_DEPLOYMENT_ID?: string }).NEXT_DEPLOYMENT_ID;
+      const response = await fetch(`/t/${qrToken}/session`, {
+        cache: 'no-store',
+        headers: deployment ? { 'x-deployment-id': deployment } : undefined,
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const next = (await response.json()) as CustomerSessionView;
       setSession(next);
