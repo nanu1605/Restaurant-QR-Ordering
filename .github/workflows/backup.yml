@@ -1,0 +1,83 @@
+name: Backup
+
+# Nightly encrypted export of the production database while it is on Supabase's
+# free plan, which keeps no backups (docs/DECISIONS.md P10-12). A restore is the
+# migrations at the backup's version plus this data (docs/RUNBOOK.md "Backups and
+# restore"). A manual run can export staging too, for the restore drill.
+
+on:
+  schedule:
+    - cron: '30 20 * * *' # 02:00 IST, before the app's daily job
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Database to export
+        type: choice
+        options: [PRODUCTION, STAGING]
+        default: PRODUCTION
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Back up ${{ inputs.target || 'PRODUCTION' }}
+    # The nightly run starts once production exists.
+    if: github.event_name == 'workflow_dispatch' || vars.BACKUP_PRODUCTION == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: backup-${{ inputs.target || 'PRODUCTION' }}
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ inputs.target || 'PRODUCTION' }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets[format('{0}_SUPABASE_PROJECT_REF', inputs.target || 'PRODUCTION')] }}
+      SUPABASE_DB_PASSWORD: ${{ secrets[format('{0}_SUPABASE_DB_PASSWORD', inputs.target || 'PRODUCTION')] }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check the target is set up
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD BACKUP_PASSPHRASE; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set for $TARGET"; exit 1; fi
+          done
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Data only, of the app (public) and the logins (auth): the schema comes from
+      # the migrations, whose version is kept alongside. Storage's tables are
+      # Supabase's own, and the files themselves are never in a database export.
+      - name: Export the database
+        run: |
+          mkdir backup
+          pnpm exec supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          pnpm exec supabase migration list --linked > backup/migrations.txt
+          pnpm exec supabase db dump --linked --data-only --use-copy -s public,auth \
+            -f backup/data.sql
+          grep -q 'COPY "public"."restaurants"' backup/data.sql
+
+      - name: Encrypt
+        run: |
+          name="menumesh-${TARGET,,}-$(date -u +%Y%m%d-%H%M)"
+          tar czf - -C backup . |
+            gpg --batch --pinentry-mode loopback --passphrase-fd 3 --symmetric \
+              --cipher-algo AES256 --output "$name.tar.gz.gpg" 3<<<"$BACKUP_PASSPHRASE"
+          rm -rf backup
+          echo "BACKUP_NAME=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.BACKUP_NAME }}
+          path: ${{ env.BACKUP_NAME }}.tar.gz.gpg
+          retention-days: 30
+          if-no-files-found: error
