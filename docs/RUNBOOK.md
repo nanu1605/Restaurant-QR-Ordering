@@ -176,27 +176,35 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
   days (Database → Backups; point-in-time recovery is a paid add-on). Keep the nightly export as a
   second copy. **Restore in place:** Database → Backups → pick a day → Restore; the project is down
   for minutes to hours and everything after the backup is lost, so tell restaurants first.
-- **Restore from an export** into a new project (tested in the drill):
-  1. Download the run's file, then in Git Bash
-     `gpg --decrypt menumesh-production-<date>.tar.gz.gpg | tar xzf -` (it asks for the
-     passphrase): `data.sql` and `migrations.txt`.
-  2. Create a new Supabase project and set it up as in One-time setup.
-  3. Apply the migrations at the backup's version. The last line of `migrations.txt` names the
-     newest applied migration; `git log -1 --format=%H -- supabase/migrations/<version>_*.sql`
-     gives the commit that added it. `git switch --detach <commit>`, then
+- **Restore from an export** into a new project (rehearsed locally, Phase 10 Stop B):
+  1. Download the run's artifact (a zip; `gh run download <run id>` unpacks it), then in Git Bash
+     `gpg --pinentry-mode loopback --output backup.tar.gz --decrypt menumesh-production-<date>.tar.gz.gpg`
+     (it asks for the passphrase) and `tar xzf backup.tar.gz`: `data.sql` and `migrations.txt`.
+  2. Create a new Supabase project and set it up as in One-time setup. On the free plan the
+     account's two free projects are staging and production: pause staging first (its Settings →
+     General → Pause project, and restore it afterwards), or move production to Pro.
+  3. Apply the migrations at the backup's version: the newest row of `migrations.txt` with a
+     value in the **Remote** column (a row with an empty Remote was on `main` but never released:
+     skip it). `git log --diff-filter=A --format=%H -- supabase/migrations/<version>_*.sql` gives
+     the commit that added it. `git switch --detach <commit>`, then
      `pnpm exec supabase link --project-ref <new ref>` and `pnpm exec supabase db push`, then
      `git switch main`.
   4. Load the data. With the local stack running (`pnpm db:start`, for its `psql`) and the new
      project's session-pooler connection string (Connect → Session pooler):
      `docker exec -i supabase_db_tableorder psql "<connection string>" -v ON_ERROR_STOP=1 --single-transaction -c "truncate public.plans, public.platform_settings cascade" -f - < data.sql`
      (the migrations insert default plans and settings; the backup has the real ones). It is one
-     transaction: an error leaves the project empty, so fix it and run it again.
+     transaction: an error loads nothing, so fix it and run it again.
   5. Point the Vercel variables (Supabase URL and keys) and the `PRODUCTION_SUPABASE_*` secrets at
-     the new project, then Release. Everyone signs in again; passwords still work. If an
-     authenticator code is refused, delete that user's factor (Authentication → Users) and enrol
-     again.
+     the new project, then Release. Then open the new deployment → ⋯ → **Skew Protection
+     Threshold** → **Set**, pause the old project if it still runs, and ask staff to reload their
+     tablets: pages opened before the Release would otherwise keep using the old project for up
+     to 7 days. Everyone signs in again; passwords still work. If an authenticator code is
+     refused, delete that user's factor (Authentication → Users) and enrol again.
 - **Drill:** after big schema changes, export staging (Run workflow → `STAGING`) and restore it
-  into a throwaway project the same way.
+  into a throwaway project the same way, then delete the throwaway (on the free plan, pause
+  staging while the throwaway exists, then restore it). A restore target's Auth must be at least
+  the backup's version: a new hosted project always is; a local stack isn't unless it runs the
+  hosted versions (copy the linked project's `supabase/.temp/*-version` files).
 
 ## Razorpay live switch
 

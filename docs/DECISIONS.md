@@ -1729,6 +1729,23 @@ rejected is fixed anyway.
   staging, checked by the staff-login and login-burst tests), not with `config.toml` remotes and
   `supabase config push`: two projects, set once, with nothing to keep in sync.
 
+### Review fixes (Phase 10 Stop B)
+
+Two rounds, each two reviewers with a verifier per finding; every finding was confirmed except
+one.
+
+- **Skew Protection (7 confirmed):** the deployment ID is per build, not per commit (two builds of
+  one commit have different server-action IDs); the guest orders poll sends `x-deployment-id`;
+  the runbook's migration rule, rollback and secret rotation now allow for old deployments that
+  keep serving open pages for 7 days (delete the bad deployment or set a Skew Protection
+  Threshold).
+- **Backups (5 confirmed, 1 rejected):** a restore takes the newest migration with a Remote value
+  in `migrations.txt` (main can be ahead of production); after a restore, the new deployment's
+  Skew Protection Threshold is set and the old project paused, or open tablets keep writing to
+  the old database; the free plan's two projects mean pausing staging to make room for a restore
+  target; the artifact downloads as a zip. Rejected: that the Windows steps fail as written (only
+  the zip detail held).
+
 ### Tests (Phase 10 Stop B)
 
 - **Pipeline on staging:** the dry run listed exactly the 44 local migrations and no seed; the
@@ -1753,3 +1770,11 @@ rejected is fixed anyway.
   into a throwaway second local stack built from the migrations without the seed: 49 tables and
   40,595 rows, every table's count equal to the export's. The first attempt, with all schemas,
   failed on `storage.buckets_vectors` (permission denied), hence `public` and `auth` only.
+- **Backup drill, end to end:** the Backup workflow exported staging (an 11 KB encrypted
+  artifact); the owner decrypted it with the runbook's command; restored into the throwaway stack:
+  53 tables and 106 rows, all counts equal (the restaurant, its members, 4 logins with an
+  authenticator factor, the platform admin, orders and bills). It first failed on
+  `auth.mfa_recovery_code_sets`, which hosted Auth (v2.197.0) has and the CLI's default local Auth
+  doesn't: a restore target's Auth must be at least the backup's version, which a new hosted
+  project always is; a local rehearsal copies the linked project's `supabase/.temp/*-version`
+  files first.
