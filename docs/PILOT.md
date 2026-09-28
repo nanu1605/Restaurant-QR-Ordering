@@ -44,12 +44,15 @@ Before the first pilot:
       `STAFF_EMAIL_DOMAIN=menumesh.in` in production) and redirect `www.menumesh.in`,
       `menumesh.app` and `menumesh.co` to it. **QR codes carry this URL, so print them only
       once it is live.**
-- [ ] Create the Supabase projects (staging and production, Mumbai region, paid plan for
-      production), the Vercel Pro team with a staging and a production project, and the GitHub
-      `staging` and `production` environments, with separate keys everywhere
-      (`docs/RUNBOOK.md` → One-time setup).
-- [ ] Set up Sentry, PostHog and Resend (verified sending domain) for the deployed app, and an
-      uptime monitor on `/api/health` for staging and production.
+- [x] Staging: Supabase project (Mumbai), Vercel Pro team and `menumesh-staging` project on
+      `staging.menumesh.in`, GitHub repository secrets, Sentry and PostHog; tested on real devices.
+- [ ] Production: a Supabase project (Mumbai; free plan to start, with nightly encrypted
+      backups), the Vercel `menumesh` project and the `PRODUCTION_` GitHub secrets, with separate
+      keys everywhere (`docs/RUNBOOK.md` → One-time setup).
+- [ ] Move production to Supabase Pro before charging the first restaurant (daily backups, no
+      pausing).
+- [ ] Set up Resend (verified sending domain) and an uptime monitor on `/api/health` for staging
+      and production.
 - [ ] Buy or borrow an 80 mm and a 58 mm thermal printer and print a test bill from the browser.
 - [ ] Design and print the QR standees for each table.
 - [ ] Ask a CA about GST registration for the SaaS business, and about the tax defaults shown to

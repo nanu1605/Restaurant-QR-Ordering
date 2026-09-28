@@ -8,7 +8,7 @@ How MenuMesh is deployed and kept running. Decisions behind it: `docs/DECISIONS.
 | ----------- | --------------------------- | -------------------------------- | --------------------------------- |
 | Local       | http://localhost:3000       | Supabase CLI (Docker), with seed | `pnpm dev`                        |
 | Staging     | https://staging.menumesh.in | Supabase project, Mumbai         | automatically, after CI on `main` |
-| Production  | https://menumesh.in         | Supabase project, Mumbai (Pro)   | the **Release** workflow          |
+| Production  | https://menumesh.in         | Supabase project, Mumbai (free)  | the **Release** workflow          |
 
 Each environment has its own Supabase project, Vercel project, keys and secrets. Nothing is
 shared. The seed (demo restaurant, demo logins) exists only locally and in CI: deploys never
@@ -59,7 +59,10 @@ never reaches a database that lacks its migrations.
    `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded. Both talk to their own
    domains, so a browser with an ad blocker sends them nothing: allow the app's domain in the
    blocker on restaurant tablets if their usage should count.
-5. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
+5. **Backups** (production, while on Supabase's free plan): the secret `BACKUP_PASSPHRASE`, a
+   long random passphrase also kept in the owner's password manager, and, once production exists,
+   the variable `BACKUP_PRODUCTION` = `true` (see Backups and restore).
+6. **Uptime:** a monitor on `https://<app>/api/health` every minute, alerting by email or phone.
    It answers 200 with `"db":"ok"`, or 503 when the database can't be reached.
 
 ### Environment variables (Vercel)
@@ -115,6 +118,8 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   "Reconnecting…"; staff can refresh. Guests' order pages poll every 10 seconds anyway.
 - **A tablet loses Wi-Fi:** dish moves are kept on the tablet and sent when it is back; other
   actions are disabled until then.
+- **Database paused** (Supabase's free plan, after 7 days without use; staging or a production
+  not yet in use): the site and deploys fail. Supabase → the project → **Restore project**.
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.
@@ -150,6 +155,7 @@ app on each tablet.
 | `CRON_SECRET`                 | Vercel                               | Vercel Cron sends the new one after the next deploy.                        |
 | `RESEND_API_KEY`, import keys | the provider, then Vercel            | Create the new key, set, deploy, delete the old key.                        |
 | GitHub deploy secrets         | GitHub repository secrets            | Replace; the next deploy uses them.                                         |
+| `BACKUP_PASSPHRASE`           | GitHub repository secrets            | New backups use it; keep the old one while its backups (30 days) matter.    |
 
 After changing any Vercel variable, deploy again (a Release for production). Each deployment
 keeps the values it was built with, and pages opened before the deploy keep using the old one for
@@ -158,26 +164,52 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 
 ## Backups and restore
 
-- Supabase Pro keeps daily backups for 7 days (Database → Backups). Point-in-time recovery is a
-  paid add-on that restores to any second; worth it once restaurants rely on it every day.
-- **Restore in place:** Database → Backups → pick a day → Restore. The project is down for
-  minutes to hours depending on size, and everything after the backup is lost; tell restaurants
-  first.
-- **Restore to a new project** (safer for looking at old data): restore the backup into a new
-  project, check it, then point the Vercel variables at it and deploy.
-- **Drill:** restore staging's backup into a scratch project once, and time it.
+- **Production starts on Supabase's free plan, which keeps no backups.** The **Backup** workflow
+  exports it every night at 02:00 IST once the variable `BACKUP_PRODUCTION` is `true` (Actions →
+  Backup → Run workflow makes one at any time, for staging too). Each run keeps one encrypted file
+  for 30 days (the run's Artifacts), holding the app's data and the logins (`public` and `auth`)
+  and the list of applied migrations. Not in it: uploaded files (menu photos, logos), which owners
+  re-upload after a restore. Only the `BACKUP_PASSPHRASE` opens it: keep the passphrase in the
+  owner's password manager. GitHub's free plan stores 500 MB of run files; lower
+  `retention-days` in `backup.yml` if they approach it. A failed night emails the owner.
+- **Supabase Pro** (before the first charge, see Razorpay live switch) adds daily backups for 7
+  days (Database → Backups; point-in-time recovery is a paid add-on). Keep the nightly export as a
+  second copy. **Restore in place:** Database → Backups → pick a day → Restore; the project is down
+  for minutes to hours and everything after the backup is lost, so tell restaurants first.
+- **Restore from an export** into a new project (tested in the drill):
+  1. Download the run's file, then in Git Bash
+     `gpg --decrypt menumesh-production-<date>.tar.gz.gpg | tar xzf -` (it asks for the
+     passphrase): `data.sql` and `migrations.txt`.
+  2. Create a new Supabase project and set it up as in One-time setup.
+  3. Apply the migrations at the backup's version. The last line of `migrations.txt` names the
+     newest applied migration; `git log -1 --format=%H -- supabase/migrations/<version>_*.sql`
+     gives the commit that added it. `git switch --detach <commit>`, then
+     `pnpm exec supabase link --project-ref <new ref>` and `pnpm exec supabase db push`, then
+     `git switch main`.
+  4. Load the data. With the local stack running (`pnpm db:start`, for its `psql`) and the new
+     project's session-pooler connection string (Connect → Session pooler):
+     `docker exec -i supabase_db_tableorder psql "<connection string>" -v ON_ERROR_STOP=1 --single-transaction -c "truncate public.plans, public.platform_settings cascade" -f - < data.sql`
+     (the migrations insert default plans and settings; the backup has the real ones). It is one
+     transaction: an error leaves the project empty, so fix it and run it again.
+  5. Point the Vercel variables (Supabase URL and keys) and the `PRODUCTION_SUPABASE_*` secrets at
+     the new project, then Release. Everyone signs in again; passwords still work. If an
+     authenticator code is refused, delete that user's factor (Authentication → Users) and enrol
+     again.
+- **Drill:** after big schema changes, export staging (Run workflow → `STAGING`) and restore it
+  into a throwaway project the same way.
 
 ## Razorpay live switch
 
-1. KYC approved; live mode enabled in the Razorpay dashboard.
-2. Create live keys; set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the production Vercel
+1. Move production to Supabase Pro (daily backups, no pausing when idle); keep the nightly export.
+2. KYC approved; live mode enabled in the Razorpay dashboard.
+3. Create live keys; set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the production Vercel
    project.
-3. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and
+4. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and
    `payment_link.paid` events and a new secret; set `RAZORPAY_WEBHOOK_SECRET`.
-4. Release (or redeploy) production.
-5. `/super` → **Plans** → **Create … plan in Razorpay** for each plan and cycle (live plans are
+5. Release (or redeploy) production.
+6. `/super` → **Plans** → **Create … plan in Razorpay** for each plan and cycle (live plans are
    separate from test ones).
-6. Subscribe a real test restaurant with a small plan, check the webhook arrives and the
+7. Subscribe a real test restaurant with a small plan, check the webhook arrives and the
    payment shows at `/super`, then cancel it.
 
 ## The first platform admin (production)

@@ -1713,3 +1713,43 @@ rejected is fixed anyway.
   threshold is set on the deployment that has the new one (runbook). Locally and in CI the ID is
   unset and nothing changes. Not `supportsImmutableAssets`: it is for hosting adapters, and
   Next.js warns that setting it by hand can break deployments.
+- **P10-12 · Production on Supabase's free plan, with nightly exports:** the owner starts
+  production on the free plan and moves to Pro before charging the first restaurant (a step in
+  the runbook's Razorpay live switch). The free plan keeps no backups, so
+  `.github/workflows/backup.yml` exports production every night (02:00 IST, on once `BACKUP_PRODUCTION` is `true`;
+  staging on demand): `supabase db dump --data-only --use-copy -s public,auth` (the app and the
+  logins; Supabase's own storage tables refuse the restore role, and uploaded files are never in a
+  database export) plus `supabase migration list`, encrypted with GnuPG (AES-256) under the
+  `BACKUP_PASSPHRASE` secret, kept 30 days as a run artifact. A restore is the migrations at the
+  backup's version plus the data: the schema, policies, functions and buckets come from the
+  migrations, which also insert the default plans and settings, so the restore truncates those two
+  tables before loading. Not a schema dump: the migrations are the tested source of the schema and
+  of the storage policies. The pause after 7 idle days is a runbook incident until then.
+- **P10-2, outcome:** the hosted Auth settings are set by hand from the runbook's list (done on
+  staging, checked by the staff-login and login-burst tests), not with `config.toml` remotes and
+  `supabase config push`: two projects, set once, with nothing to keep in sync.
+
+### Tests (Phase 10 Stop B)
+
+- **Pipeline on staging:** the dry run listed exactly the 44 local migrations and no seed; the
+  first deploy applied them (the remote migration list matches), and every deploy since ran
+  migrate → build → deploy → smoke (6 of 6), with `/api/health` reporting the deployed commit,
+  served from `bom1`, and the CSP naming Sentry's and PostHog's hosts.
+- **Secrets:** the runtime has the real Secret values (staging signs the device cookie); the
+  build uploads Sentry source maps with the GitHub token.
+- **Sentry:** a browser error from `/login` and a server `console.error` (a cross-origin server
+  action, refused before any action runs) both arrived, tagged `staging`.
+- **PostHog:** staff pages send pageviews, clicks and web vitals under the member id, with button
+  text masked; nothing comes from the customer pages; a browser ad blocker drops it all.
+- **Staff logins:** the platform admin and a staff login with a generated email work on hosted
+  Supabase (the email-validation risk is gone); the daily cron answers 200.
+- **Skew Protection:** with a page loaded from one deployment and a newer one live, the page's
+  navigations and pinned requests went to its own deployment (`x-nextjs-deployment-id`), others
+  to the new one, and a link click navigated without a full reload.
+- **On devices (owner):** the staff app installed on a tablet over HTTPS; with Wi-Fi off the
+  board shows it is offline (and the app's offline page on a reload); ordering in English and
+  Hindi, approve, serve, bill, print and pay all worked; 20 quick logins were never limited.
+- **Restore, rehearsed locally:** a data export (`-s public,auth`) of the local database loaded
+  into a throwaway second local stack built from the migrations without the seed: 49 tables and
+  40,595 rows, every table's count equal to the export's. The first attempt, with all schemas,
+  failed on `storage.buckets_vectors` (permission denied), hence `public` and `auth` only.
