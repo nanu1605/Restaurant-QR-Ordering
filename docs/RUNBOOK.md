@@ -221,7 +221,7 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
    project.
 4. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and
    `payment_link.paid` events and a new secret; set `RAZORPAY_WEBHOOK_SECRET`.
-5. Release (or redeploy) production.
+5. Release production (a changed variable reaches only new deployments).
 6. `/super` → **Plans** → **Create … plan in Razorpay** for each plan and cycle (live plans are
    separate from test ones).
 7. Subscribe a real test restaurant with a small plan, check the webhook arrives and the

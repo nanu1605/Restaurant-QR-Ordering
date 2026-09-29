@@ -73,7 +73,8 @@ Before charging anyone (Phase 8):
 
 - [ ] Razorpay account, KYC with a registered business, bank account, GST details in the Razorpay
       dashboard (Razorpay's receipts carry them), test and live keys, and the webhook URL and secret.
-- [ ] With the test keys in `.env.local`: create the Razorpay plans from `/super` → Plans, then
+- [ ] With the test keys on staging (Razorpay can reach its webhook there; locally only
+      `pnpm razorpay:event` can): create the Razorpay plans from `/super` → Plans, then
       subscribe as a test restaurant's owner with a test card and try "Charge this now" (success
       and failure) in the Razorpay dashboard.
 - [ ] Register the webhook `https://menumesh.in/api/webhooks/razorpay` for the `subscription.*`
