@@ -17,8 +17,10 @@ push it.
 ## Deploying
 
 A deploy is always: apply migrations → build and deploy on Vercel → smoke tests
-(`.github/workflows/deploy.yml`). Vercel's own Git deploys are off (`vercel.json`), so new code
-never reaches a database that lacks its migrations.
+(`.github/workflows/deploy.yml`). Neither Vercel project is connected to GitHub (and
+`vercel.json` turns Git deploys off too), so new code never reaches a database that lacks its
+migrations. Don't use Vercel's **Redeploy** or **Create Deployment**: they skip the migrations
+and the version check. Re-run the workflow instead.
 
 - **Staging:** every push to `main` that passes CI deploys staging (the `staging` job in
   `ci.yml`). It is off until the repository variable `DEPLOY_STAGING` is `true`.
@@ -40,8 +42,9 @@ never reaches a database that lacks its migrations.
    TOTP on, Site URL = the app URL, and the sign-up and sign-in rate limit raised to 1000 per 5
    minutes (every staff login comes from the app's servers, so they share IPs).
 2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, imported from
-   GitHub (that first deploy may fail; later ones come from the pipeline, as `vercel.json` turns
-   Git deploys off), Node.js 24.x, Settings → Advanced → Skew Protection on (the default for new
+   GitHub (that first deploy may fail) and then disconnected from it: Settings → Git →
+   **Disconnect** (the pipeline deploys with the CLI; a connected project once deployed a push to
+   production despite `vercel.json`), Node.js 24.x, Settings → Advanced → Skew Protection on (the default for new
    projects) with a maximum age of 7 days, the domain attached, and the environment variables below
    under "Production" (a staging project's production is staging). `NEXT_PUBLIC_*`,
    `STAFF_EMAIL_DOMAIN`, `SENTRY_ORG` and `SENTRY_PROJECT` are of type Config, because the

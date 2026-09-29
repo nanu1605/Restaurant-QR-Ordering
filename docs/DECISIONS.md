@@ -1582,8 +1582,8 @@ devices; Sentry on every page, errors only.
   runs `supabase db push --yes` (never `--include-seed`, so the demo restaurant and its known
   passwords never leave local and CI), then `vercel pull`, `vercel build --prod` and
   `vercel deploy --prebuilt --prod` with the commit built in (`NEXT_PUBLIC_BUILD_SHA`), then
-  `pnpm smoke` against the live URL. Vercel's Git deploys are off (`vercel.json`) so code never
-  runs ahead of its migrations; functions run in `bom1` (Mumbai), next to the database. Staging
+  `pnpm smoke` against the live URL. Vercel's Git deploys are off (`vercel.json`, and since
+  P10-14 the projects aren't connected to GitHub) so code never runs ahead of its migrations; functions run in `bom1` (Mumbai), next to the database. Staging
   deploys from the `staging` job in `ci.yml` after the tests pass on `main`, gated by the
   repository variable `DEPLOY_STAGING` so CI stays green before the accounts exist. Production is
   `release.yml`, run by hand: only the repository owner can run it, the word "production" must be
@@ -1735,7 +1735,9 @@ rejected is fixed anyway.
   The deploy and backup workflows read `<TARGET>_SUPABASE_ACCESS_TOKEN`, each scoped to its own
   project, like the other per-target secrets, so a leaked staging token can't touch production.
   This replaces the shared token in P10-1. A staging deploy and a staging backup passed with the
-  staging token before the shared one was deleted.
+  staging token before the shared one was deleted. Revoking the old token in Supabase then broke
+  the next staging deploy (`Unauthorized`): it had been reused as the staging secret. A new
+  staging-only token fixed it.
 
 ### Review fixes (Phase 10 Stop B)
 
@@ -1786,6 +1788,17 @@ one.
   doesn't: a restore target's Auth must be at least the backup's version, which a new hosted
   project always is; a local rehearsal copies the linked project's `supabase/.temp/*-version`
   files first.
+
+### Production (Stop C)
+
+- **P10-14 · Vercel projects disconnected from GitHub:** `vercel.json`'s
+  `git.deploymentEnabled: false` held for every push until `a8eb7ff` (2026-09-29), which Vercel's
+  GitHub app built on both projects and made live, production included, without a Release. That
+  commit was docs only, and the cause isn't visible from outside Vercel. Both projects are now
+  disconnected from the repository (the pipeline deploys with the CLI and a token and never
+  needed the connection); `vercel.json` keeps the setting in case one is reconnected. A Release of
+  `a8eb7ff` put production back on a pipeline build. The runbook says not to use Vercel's
+  Redeploy, which skips the migrations and the version check.
 
 ### Review fixes (Phase 10 Stop C)
 
