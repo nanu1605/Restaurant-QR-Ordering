@@ -120,6 +120,9 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   actions are disabled until then.
 - **Database paused** (Supabase's free plan, after 7 days without use; staging or a production
   not yet in use): the site and deploys fail. Supabase → the project → **Restore project**.
+- **Health 503 with `Invalid API key`** in Vercel's function log: `SUPABASE_SECRET_KEY` belongs
+  to another Supabase project. Put in the project's own key and deploy again: a changed variable
+  reaches only new deployments.
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.
