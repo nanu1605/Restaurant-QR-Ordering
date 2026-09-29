@@ -3,10 +3,10 @@ name: Deploy
 # Migrate, then deploy, then smoke-test one environment (docs/DECISIONS.md
 # P10-1). Called by CI for staging and by Release for production. The repository
 # (not GitHub environments, which a free plan's private repositories lack) holds
-# SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN and VERCEL_ORG_ID, and per target
-# <TARGET>_SUPABASE_PROJECT_REF, <TARGET>_SUPABASE_DB_PASSWORD and
-# <TARGET>_VERCEL_PROJECT_ID as secrets, <TARGET>_APP_URL as a variable, and
-# SENTRY_AUTH_TOKEN for source maps.
+# VERCEL_TOKEN and VERCEL_ORG_ID, and per target <TARGET>_SUPABASE_ACCESS_TOKEN
+# (scoped to that target's project), <TARGET>_SUPABASE_PROJECT_REF,
+# <TARGET>_SUPABASE_DB_PASSWORD and <TARGET>_VERCEL_PROJECT_ID as secrets,
+# <TARGET>_APP_URL as a variable, and SENTRY_AUTH_TOKEN for source maps.
 
 on:
   workflow_call:
@@ -34,7 +34,7 @@ jobs:
       cancel-in-progress: false
     env:
       TARGET: ${{ inputs.target }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets[format('{0}_SUPABASE_ACCESS_TOKEN', inputs.target)] }}
       SUPABASE_PROJECT_REF: ${{ secrets[format('{0}_SUPABASE_PROJECT_REF', inputs.target)] }}
       SUPABASE_DB_PASSWORD: ${{ secrets[format('{0}_SUPABASE_DB_PASSWORD', inputs.target)] }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -46,8 +46,11 @@ jobs:
         run: |
           case "$TARGET" in STAGING|PRODUCTION) ;; *) echo "::error::Unknown target $TARGET"; exit 1 ;; esac
           for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD \
-            VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID APP_URL; do
-            if [ -z "${!name}" ]; then echo "::error::$name is not set for $TARGET"; exit 1; fi
+            VERCEL_PROJECT_ID APP_URL; do
+            if [ -z "${!name}" ]; then echo "::error::${TARGET}_$name is not set"; exit 1; fi
+          done
+          for name in VERCEL_TOKEN VERCEL_ORG_ID; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set"; exit 1; fi
           done
 
       - uses: actions/checkout@v7
