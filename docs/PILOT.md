@@ -31,7 +31,6 @@ day goes.
 | Missing                                                  | Phase | What to do meanwhile                              |
 | -------------------------------------------------------- | ----- | ------------------------------------------------- |
 | Charging for MenuMesh (built; needs your Razorpay setup) | 8     | Pilots are free; no payment details are collected |
-| Staging and production deployment, Sentry, backups       | 10    | Deploy before the first guest scans a code        |
 
 ## Human tasks (only you can do these)
 
@@ -40,19 +39,20 @@ Before the first pilot:
 - [x] Choose the product name and buy the domains: MenuMesh, on `menumesh.app`, `menumesh.co` and
       `menumesh.in`.
 - [x] Pick the app's domain: `menumesh.in`.
-- [ ] At deploy, serve the app on `https://menumesh.in` (`NEXT_PUBLIC_APP_URL`, and
-      `STAFF_EMAIL_DOMAIN=menumesh.in` in production) and redirect `www.menumesh.in`,
-      `menumesh.app` and `menumesh.co` to it. **QR codes carry this URL, so print them only
-      once it is live.**
+- [x] Serve the app on `https://menumesh.in` and redirect `www.menumesh.in`, `menumesh.app` and
+      `menumesh.co` to it.
+- [ ] In Vercel → `menumesh` → Environment Variables, check that `NEXT_PUBLIC_APP_URL` is
+      `https://menumesh.in` and `STAFF_EMAIL_DOMAIN` is `menumesh.in`. **QR codes and staff logins
+      carry these, so print QR codes only after this check.**
 - [x] Staging: Supabase project (Mumbai), Vercel Pro team and `menumesh-staging` project on
       `staging.menumesh.in`, GitHub repository secrets, Sentry and PostHog; tested on real devices.
-- [ ] Production: a Supabase project (Mumbai; free plan to start, with nightly encrypted
+- [x] Production: a Supabase project (Mumbai; free plan to start, with nightly encrypted
       backups), the Vercel `menumesh` project and the `PRODUCTION_` GitHub secrets, with separate
       keys everywhere (`docs/RUNBOOK.md` → One-time setup).
 - [ ] Move production to Supabase Pro before charging the first restaurant (daily backups, no
       pausing).
-- [ ] Set up Resend (verified sending domain) and an uptime monitor on `/api/health` for staging
-      and production.
+- [x] An uptime monitor on `/api/health` for staging and production (Resend comes before charging,
+      below).
 - [ ] Buy or borrow an 80 mm and a 58 mm thermal printer and print a test bill from the browser.
 - [ ] Design and print the QR standees for each table.
 - [ ] Ask a CA about GST registration for the SaaS business, and about the tax defaults shown to
@@ -66,7 +66,7 @@ Before the first pilot:
       as the fallback, an OpenRouter key, each with a monthly spend limit, and set them in Vercel
       (`MENU_IMPORT_API_KEY`, `MENU_IMPORT_FALLBACK_API_KEY`). Set `CRON_SECRET` (a long random
       string) so the daily photo cleanup runs. Without the keys, menus import from CSV only.
-- [ ] Make yourself a platform admin on production (a login, then one row in `platform_admins`, in
+- [x] Make yourself a platform admin on production (a login, then one row in `platform_admins`, in
       the Supabase SQL editor) and enrol an authenticator app on the first visit to `/super`.
 
 Before charging anyone (Phase 8):

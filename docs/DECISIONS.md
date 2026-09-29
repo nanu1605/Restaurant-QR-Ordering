@@ -1734,7 +1734,8 @@ rejected is fixed anyway.
   Release stopped at `supabase link`: "Your account does not have the necessary privileges").
   The deploy and backup workflows read `<TARGET>_SUPABASE_ACCESS_TOKEN`, each scoped to its own
   project, like the other per-target secrets, so a leaked staging token can't touch production.
-  This replaces the shared token in P10-1.
+  This replaces the shared token in P10-1. A staging deploy and a staging backup passed with the
+  staging token before the shared one was deleted.
 
 ### Review fixes (Phase 10 Stop B)
 
@@ -1785,3 +1786,35 @@ one.
   doesn't: a restore target's Auth must be at least the backup's version, which a new hosted
   project always is; a local rehearsal copies the linked project's `supabase/.temp/*-version`
   files first.
+
+### Review fixes (Phase 10 Stop C)
+
+One reviewer with a verifier per finding, on the Stop C records: 4 confirmed, 1 of them wrong on
+the facts. Only the secret key can give a health 503 (the health check uses the admin client),
+so the runbook no longer names the publishable key there; the pilot's "not yet" table dropped the
+deployment row; the production URL and staff email domain in Vercel weren't checked, so that is
+its own open item before QR printing. Kept: the production dry run, which the owner ran by hand.
+
+### Tests (Phase 10 Stop C)
+
+- **Pipeline on production:** the owner's dry run (`supabase db push --dry-run`, linked by hand
+  and unlinked after) listed the 44 migrations and no seed; the Release
+  applied all 44 and deployed, then the smoke tests failed: Vercel's `SUPABASE_SECRET_KEY` was
+  another project's (health 503, the bad-QR page 500, and `Invalid API key` from the production
+  project in the function log and Sentry). With the production key, a re-run of the same Release
+  found the database up to date, deployed and passed smoke 6 of 6, with `/api/health` reporting
+  `f6d3331`. The runbook's incidents list now names that message.
+- **No demo data:** the seed's six QR codes (`DEMO0000TABLE001`…`006`) answer 404 on
+  `menumesh.in`.
+- **Domains:** `www.menumesh.in`, `menumesh.app` and `menumesh.co` redirect (308) to
+  `https://menumesh.in/`.
+- **Platform admin (owner):** made from the runbook's steps; logged in and enrolled an
+  authenticator on `/super`.
+- **Backups:** a manual production run made a 5 KB encrypted artifact; `BACKUP_PRODUCTION` is on
+  for the nightly run.
+- **Sentry and PostHog:** the first attempt's server errors arrived in Sentry; `/super` pageviews
+  arrived in PostHog once the browser's own ad blocker allowed `menumesh.in` (DevTools showed
+  every PostHog request as `(blocked:other)`).
+- **Vercel and uptime (owner):** Skew Protection at 7 days, Node.js 24, the daily cron listed and
+  run by hand (200), cookie and cron secrets different from staging; uptime monitors on both
+  health URLs are green.
