@@ -1816,5 +1816,6 @@ its own open item before QR printing. Kept: the production dry run, which the ow
   arrived in PostHog once the browser's own ad blocker allowed `menumesh.in` (DevTools showed
   every PostHog request as `(blocked:other)`).
 - **Vercel and uptime (owner):** Skew Protection at 7 days, Node.js 24, the daily cron listed and
-  run by hand (200), cookie and cron secrets different from staging; uptime monitors on both
+  run by hand (200), cookie and cron secrets different from staging, `NEXT_PUBLIC_APP_URL` and
+  `STAFF_EMAIL_DOMAIN` set to `menumesh.in` (checked after the review); uptime monitors on both
   health URLs are green.

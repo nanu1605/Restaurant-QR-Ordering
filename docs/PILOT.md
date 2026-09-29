@@ -41,7 +41,7 @@ Before the first pilot:
 - [x] Pick the app's domain: `menumesh.in`.
 - [x] Serve the app on `https://menumesh.in` and redirect `www.menumesh.in`, `menumesh.app` and
       `menumesh.co` to it.
-- [ ] In Vercel → `menumesh` → Environment Variables, check that `NEXT_PUBLIC_APP_URL` is
+- [x] In Vercel → `menumesh` → Environment Variables, check that `NEXT_PUBLIC_APP_URL` is
       `https://menumesh.in` and `STAFF_EMAIL_DOMAIN` is `menumesh.in`. **QR codes and staff logins
       carry these, so print QR codes only after this check.**
 - [x] Staging: Supabase project (Mumbai), Vercel Pro team and `menumesh-staging` project on
