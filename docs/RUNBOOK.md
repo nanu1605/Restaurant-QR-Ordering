@@ -48,12 +48,12 @@ never reaches a database that lacks its migrations.
    pipeline's build reads them, and the rest are Secret: the pipeline's build only gets
    placeholders for Secret values, which the app reads at runtime instead.
 3. **GitHub** → Settings → Secrets and variables → Actions (repository level: a free plan's
-   private repository has no environment secrets). Once: the secrets `SUPABASE_ACCESS_TOKEN`
-   (Supabase account → Access tokens), `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `SENTRY_AUTH_TOKEN`
-   (the build uploads source maps with it). Per target, with the prefix `STAGING_` or
-   `PRODUCTION_`: the secrets `…SUPABASE_PROJECT_REF`, `…SUPABASE_DB_PASSWORD` and
-   `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the variable `DEPLOY_STAGING` =
-   `true` turns on staging deploys.
+   private repository has no environment secrets). Once: the secrets `VERCEL_TOKEN`,
+   `VERCEL_ORG_ID` and `SENTRY_AUTH_TOKEN` (the build uploads source maps with it). Per target,
+   with the prefix `STAGING_` or `PRODUCTION_`: the secrets `…SUPABASE_ACCESS_TOKEN` (Supabase
+   account → Access Tokens: a token scoped to that target's project only), `…SUPABASE_PROJECT_REF`,
+   `…SUPABASE_DB_PASSWORD` and `…VERCEL_PROJECT_ID`, and the variable `…APP_URL`. Then the
+   variable `DEPLOY_STAGING` = `true` turns on staging deploys.
 4. **Sentry and PostHog** (once, shared by both environments): a Sentry project for Next.js
    with IP addresses not stored and the data scrubber on, and an organization token for
    `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded. Both talk to their own
@@ -146,16 +146,17 @@ app on each tablet.
 
 ## Rotating secrets
 
-| Secret                        | Where                                | What happens                                                                |
-| ----------------------------- | ------------------------------------ | --------------------------------------------------------------------------- |
-| `SUPABASE_SECRET_KEY`         | Supabase → API keys, then Vercel     | Create a new secret key, set it in Vercel, deploy, then revoke the old one. |
-| `CUSTOMER_COOKIE_SECRET`      | Vercel                               | Phones get new device ids: they can't cancel dishes ordered before.         |
-| `RAZORPAY_KEY_SECRET`         | Razorpay dashboard, then Vercel      | Regenerate, set, deploy. Checkout keeps working with the new pair.          |
-| `RAZORPAY_WEBHOOK_SECRET`     | Razorpay webhook settings and Vercel | Change both together; events in between fail and are retried by Razorpay.   |
-| `CRON_SECRET`                 | Vercel                               | Vercel Cron sends the new one after the next deploy.                        |
-| `RESEND_API_KEY`, import keys | the provider, then Vercel            | Create the new key, set, deploy, delete the old key.                        |
-| GitHub deploy secrets         | GitHub repository secrets            | Replace; the next deploy uses them.                                         |
-| `BACKUP_PASSPHRASE`           | GitHub repository secrets            | New backups use it; keep the old one while its backups (30 days) matter.    |
+| Secret                        | Where                                 | What happens                                                                              |
+| ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `SUPABASE_SECRET_KEY`         | Supabase → API keys, then Vercel      | Create a new secret key, set it in Vercel, deploy, then revoke the old one.               |
+| `CUSTOMER_COOKIE_SECRET`      | Vercel                                | Phones get new device ids: they can't cancel dishes ordered before.                       |
+| `RAZORPAY_KEY_SECRET`         | Razorpay dashboard, then Vercel       | Regenerate, set, deploy. Checkout keeps working with the new pair.                        |
+| `RAZORPAY_WEBHOOK_SECRET`     | Razorpay webhook settings and Vercel  | Change both together; events in between fail and are retried by Razorpay.                 |
+| `CRON_SECRET`                 | Vercel                                | Vercel Cron sends the new one after the next deploy.                                      |
+| `RESEND_API_KEY`, import keys | the provider, then Vercel             | Create the new key, set, deploy, delete the old key.                                      |
+| GitHub deploy secrets         | GitHub repository secrets             | Replace; the next deploy uses them.                                                       |
+| `BACKUP_PASSPHRASE`           | GitHub repository secrets             | New backups use it; keep the old one while its backups (30 days) matter.                  |
+| `…SUPABASE_ACCESS_TOKEN`      | Supabase → Access Tokens, then GitHub | Create a token scoped to that target's project, replace the secret, revoke the old token. |
 
 After changing any Vercel variable, deploy again (a Release for production). Each deployment
 keeps the values it was built with, and pages opened before the deploy keep using the old one for

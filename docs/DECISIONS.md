@@ -1728,6 +1728,13 @@ rejected is fixed anyway.
 - **P10-2, outcome:** the hosted Auth settings are set by hand from the runbook's list (done on
   staging, checked by the staff-login and login-burst tests), not with `config.toml` remotes and
   `supabase config push`: two projects, set once, with nothing to keep in sync.
+- **P10-13 · A Supabase access token per target:** Supabase's personal access tokens are
+  scoped to the organizations and projects chosen when they are made, and the shared
+  `SUPABASE_ACCESS_TOKEN`, made while only staging existed, couldn't reach production (the first
+  Release stopped at `supabase link`: "Your account does not have the necessary privileges").
+  The deploy and backup workflows read `<TARGET>_SUPABASE_ACCESS_TOKEN`, each scoped to its own
+  project, like the other per-target secrets, so a leaked staging token can't touch production.
+  This replaces the shared token in P10-1.
 
 ### Review fixes (Phase 10 Stop B)
 
