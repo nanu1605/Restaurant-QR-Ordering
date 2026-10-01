@@ -3,19 +3,19 @@ allowBuilds:
   sharp: false
   supabase: true
   unrs-resolver: false
-# Next.js 16.3.5 was published inside pnpm's minimum release age window.
+# Next.js 16.3.8 (security fixes) was published inside pnpm's minimum release age window.
 # Exempt only that exact release and its platform binaries; drop these
 # entries once the next upgrade lands on an older-than-a-day version.
 minimumReleaseAgeExclude:
-  - '@next/eslint-plugin-next@16.3.5'
-  - '@next/env@16.3.5'
-  - '@next/swc-darwin-arm64@16.3.5'
-  - '@next/swc-darwin-x64@16.3.5'
-  - '@next/swc-linux-arm64-gnu@16.3.5'
-  - '@next/swc-linux-arm64-musl@16.3.5'
-  - '@next/swc-linux-x64-gnu@16.3.5'
-  - '@next/swc-linux-x64-musl@16.3.5'
-  - '@next/swc-win32-arm64-msvc@16.3.5'
-  - '@next/swc-win32-x64-msvc@16.3.5'
-  - eslint-config-next@16.3.5
-  - next@16.3.5
+  - '@next/eslint-plugin-next@16.3.8'
+  - '@next/env@16.3.8'
+  - '@next/swc-darwin-arm64@16.3.8'
+  - '@next/swc-darwin-x64@16.3.8'
+  - '@next/swc-linux-arm64-gnu@16.3.8'
+  - '@next/swc-linux-arm64-musl@16.3.8'
+  - '@next/swc-linux-x64-gnu@16.3.8'
+  - '@next/swc-linux-x64-musl@16.3.8'
+  - '@next/swc-win32-arm64-msvc@16.3.8'
+  - '@next/swc-win32-x64-msvc@16.3.8'
+  - eslint-config-next@16.3.8
+  - next@16.3.8
