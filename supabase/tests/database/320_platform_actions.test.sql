@@ -153,47 +153,57 @@ select throws_ok(
 );
 
 -- ─── Manual payment ─────────────────────────────────────────────────────────
--- beta's payment failed and it is in grace.
+-- beta's payment failed and it is in grace. Months are relative to today: a
+-- payment only extends access when it ends after the grace period.
+select
+  to_char(m, 'YYYY-MM-DD') as this_month,
+  to_char(m + interval '1 month' - interval '1 day', 'YYYY-MM-DD') as this_month_end,
+  to_char(m + interval '1 month', 'YYYY-MM-DD') as next_month,
+  to_char(m + interval '2 months' - interval '1 day', 'YYYY-MM-DD') as next_month_end,
+  to_char(m + interval '2 months', 'YYYY-MM-DD') as month_after
+from (select date_trunc('month', now() at time zone 'Asia/Kolkata') as m) d \gset
 select tests.clear_auth();
 update public.restaurant_subscriptions
   set status = 'past_due', source = 'manual', billing_cycle = 'monthly',
-      current_period_start = '2026-08-01 04:00+05:30', current_period_end = '2026-09-01 04:00+05:30',
+      current_period_start = (:'this_month' || ' 04:00+05:30')::timestamptz,
+      current_period_end = (:'next_month' || ' 04:00+05:30')::timestamptz,
       grace_until = now() + interval '3 days'
   where restaurant_id = :'rest_b';
 select tests.authenticate_as_platform_admin(:'admin');
 
-select public.platform_record_manual_payment(:'rest_b', '{
-  "amount_paise": 89900, "mode": "upi", "billing_cycle": "monthly",
-  "period_start": "2026-09-01", "period_end": "2026-09-30", "notes": "UTR 1234"
-}') as paid \gset
+select public.platform_record_manual_payment(:'rest_b', jsonb_build_object(
+  'amount_paise', 89900, 'mode', 'upi', 'billing_cycle', 'monthly',
+  'period_start', :'next_month', 'period_end', :'next_month_end', 'notes', 'UTR 1234'
+)) as paid \gset
 select is(:'paid'::jsonb ->> 'status', 'active', 'the subscription is active again');
 select is(:'paid'::jsonb ->> 'extended', 'true', 'the payment moved the period forward');
 select is(
   (:'paid'::jsonb ->> 'current_period_end')::timestamptz,
-  '2026-10-01 04:00+05:30'::timestamptz,
+  (:'month_after' || ' 04:00+05:30')::timestamptz,
   'paid until the business day after the end date starts (end date inclusive)'
 );
 select is(
   (select row(source, billing_cycle, grace_until, cancel_at_period_end, current_period_start)::text
    from public.restaurant_subscriptions where restaurant_id = :'rest_b'),
-  row('manual', 'monthly', null::timestamptz, false, '2026-09-01 04:00+05:30'::timestamptz)::text,
+  row('manual', 'monthly', null::timestamptz, false,
+      (:'next_month' || ' 04:00+05:30')::timestamptz)::text,
   'manual source, cycle kept, grace cleared'
 );
 select is(
   (select row(source, amount_paise, manual_mode, period_start, period_end, notes, recorded_by)::text
    from public.subscription_payments where id = (:'paid'::jsonb ->> 'payment_id')::uuid),
-  row('manual', 89900, 'upi', '2026-09-01 04:00+05:30'::timestamptz,
-      '2026-10-01 04:00+05:30'::timestamptz, 'UTR 1234', :'admin'::uuid)::text,
+  row('manual', 89900, 'upi', (:'next_month' || ' 04:00+05:30')::timestamptz,
+      (:'month_after' || ' 04:00+05:30')::timestamptz, 'UTR 1234', :'admin'::uuid)::text,
   'the payment row'
 );
 
 -- An older period doesn't shorten access.
 select is(
-  (public.platform_record_manual_payment(:'rest_b', '{
-    "amount_paise": 89900, "mode": "cash", "billing_cycle": "monthly",
-    "period_start": "2026-08-01", "period_end": "2026-08-31"
-  }') ->> 'current_period_end')::timestamptz,
-  '2026-10-01 04:00+05:30'::timestamptz,
+  (public.platform_record_manual_payment(:'rest_b', jsonb_build_object(
+    'amount_paise', 89900, 'mode', 'cash', 'billing_cycle', 'monthly',
+    'period_start', :'this_month', 'period_end', :'this_month_end'
+  )) ->> 'current_period_end')::timestamptz,
+  (:'month_after' || ' 04:00+05:30')::timestamptz,
   'a payment for an earlier period keeps the later end'
 );
 
