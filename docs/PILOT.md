@@ -6,8 +6,9 @@ day goes.
 
 ## What the product does today
 
-- **Guests** scan the table QR, browse the menu in English or Hindi (dishes and categories in
-  Hindi where the restaurant adds a Hindi name), order round after round,
+- **Guests** scan the table QR, browse the menu in English or Hindi (dish and category names
+  are written in Hindi automatically; the owner can correct any of them in the menu editor),
+  order round after round,
   see each dish move from placed to served, cancel within the window, call a waiter, ask for the
   bill, and get the bill message when the table is billed.
   The first order of a session waits for approval when that setting is on.

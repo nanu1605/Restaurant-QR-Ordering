@@ -166,7 +166,10 @@ The reader is any OpenAI-compatible `/chat/completions` API. Set in `.env.local`
 | `MENU_IMPORT_FALLBACK_MODEL`    | `google/gemini-3.8-flash`                |
 | `MENU_IMPORT_USD_INR`           | `96`                                     |
 
-With neither key set, the Import menu page offers CSV only. A page costs about ₹0.30 with the
+The same keys write the automatic Hindi dish and category names guests see on the Hindi menu
+(docs/DECISIONS.md HN-5 to HN-8), after menu edits and in the daily cron; without them, names
+the owner gave no Hindi name stay as typed. With neither key set, the Import menu page offers
+CSV only. A page costs about ₹0.30 with the
 default model; super-admin shows each import's tokens and cost. Five photo imports a day per
 restaurant. Photos are deleted 7 days after an import ends by `/api/cron/daily`, which needs
 `CRON_SECRET` (`Authorization: Bearer …`; Vercel's scheduler sends it, see `vercel.json`).

@@ -1895,3 +1895,69 @@ names already do; the app trims before sending.
 - **E2E:** the owner adds a dish and a category Hindi name and sees them; a guest in Hindi sees
   them on the menu, the category tabs, the cart and the orders page, finds the dish by its
   typed name, and sees the typed names again in English. A dish without one stays as typed.
+
+## Automatic Hindi names (after launch, 2026-10-02)
+
+On staging the owner asked that dishes without a Hindi name be converted too, when a guest picks
+हिन्दी.
+
+- **HN-5 · Sound out, don't translate:** the owner's choice. Butter Chicken → बटर चिकन, Veg Fried
+  Rice → वेज फ्राइड राइस, as Hindi menus print them; a translation (मक्खन चिकन, तले हुए चावल)
+  reads oddly and mistranslates dish names. Stored as `name_hi_auto` beside the owner's
+  `name_hi`; guests get `coalesce(name_hi, name_hi_auto)` from `customer_get_table` and
+  `customer_get_session`, so the guest app is unchanged. The editor shows the automatic name
+  tagged "(auto)" and as the Hindi field's placeholder; typing a Hindi name overrides it, and
+  saving the form never turns the automatic one into the owner's.
+- **HN-6 · The menu import model writes them:** spelling rules from English mangle English menu
+  words (Butter, Fried Rice, Manchurian), so the names go to the menu import provider chain
+  (`chatCompletion`, `menuImportProviders`, same keys and fallback): 100 names a call, about ₹1
+  per 100 names. A reply is kept only when it is one line of Devanagari with no Latin letters
+  within 80/60 characters; anything else stays empty and is tried again later. Names are data
+  in the prompt, and a call only ever carries one restaurant's names, so the worst a crafted
+  name can do is give its own restaurant odd Hindi names. Without a key nothing is written and
+  guests see the typed names, as before.
+- **HN-7 · Stale names:** a trigger clears `name_hi_auto` (and the attempt time below) whenever
+  `name` changes, by any path (form, rename, import), so no admin function changed.
+  `menu_set_hindi_names` stores a name only while the row still has the name it was made from
+  and no automatic name, so a rename during the call drops the stale result and repeats are
+  harmless. Claiming and storing bump `updated_at`, which is also the dish photo's cache
+  version: a dish's photo is fetched again after a fill.
+- **HN-8 · When:** after every menu action that can leave a name missing (add or rename a
+  category, the suggested sets, save a dish, commit an import), `after()` fills the whole
+  restaurant's missing names (up to 300) once the response is sent, so the first edit after
+  this release also fills the existing menu. The daily cron sweeps every restaurant (up to 500,
+  five calls at a time) for the rest: default categories of new restaurants and failed calls.
+  `menu_hindi_names_claim` hands out names not tried in the last 12 hours, never-tried first,
+  and stamps `name_hi_auto_tried_at`. So repeated or overlapping edits don't resend names (the
+  cost of a fill is bounded by new or renamed names, not by how often a manager saves), and a
+  name the model can't write (digits only, emoji) waits for the next daily sweep instead of
+  holding the front of the list.
+
+### Review fixes (automatic Hindi names)
+
+Two reviewers and a verifier: 4 confirmed and fixed, 2 rejected. The daily sweep put several
+restaurants' names in one call, so a name written as an instruction could have steered another
+restaurant's Hindi names; calls are now per restaurant. Every menu action resent up to 300
+missing names with no limit, and names that always fail stayed first in line for good; both are
+fixed by claiming with a 12-hour attempt stamp (HN-8). The new E2E test now skips on a reused
+dev server without the menu reader stand-in, as the photo import test does. Rejected: the cron
+still answers `ok: true` when the model is unreachable, as it does when emails fail (the counts
+are in the body and the warnings in the logs); and the dish form's hint mentions the automatic
+name even on a deployment without import keys, where nothing breaks.
+
+### Tests (automatic Hindi names)
+
+- **pgTAP (`440_auto_hindi_names`):** only service_role may claim or store; claiming returns
+  one restaurant's (or every restaurant's) dishes and categories with no Hindi name, stamps
+  them, skips them for 12 hours, puts never-tried names first and respects the limit; storing
+  trims, skips an automatic name already there, a stale name, a blank or over-long one and a
+  wrong kind; price and visibility changes keep the name, renames clear it and its stamp; the
+  guest menu and orders page send the automatic name, and the owner's wins.
+- **Unit:** reply checks (one line of Devanagari, no Latin letters, length); numbers mapped
+  back; unusable replies dropped and the fallback asked; a refused `response_format` retried
+  without it; 100 names a call; never two restaurants in one call; storing only usable names;
+  nothing without a provider.
+- **E2E:** an owner saves "Masala Chai" with no Hindi name; it gets `मसाला चाय`, tagged
+  "(auto)" in the editor and offered as the field's placeholder; a rename writes a new one,
+  which a guest sees on the Hindi menu. The mock knows only a few words, so other tests' dishes
+  get none.

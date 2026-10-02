@@ -383,7 +383,7 @@ QR encodes `${NEXT_PUBLIC_APP_URL}/t/${qr_token}`.
 
 ### 8.4 Menu
 
-**`menu_categories`**: `name`, `name_hi` (optional Hindi name, ≤ 60 chars), `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
+**`menu_categories`**: `name`, `name_hi` (optional Hindi name, ≤ 60 chars), `name_hi_auto` (written by the app, ≤ 60 chars), `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
 
 Every new restaurant is created with a set of **default categories** so the menu is never an empty screen (§13.3 Menu). They are ordinary rows — the owner can rename, reorder, hide or delete any of them, and add their own at any time. Deleting a category with items asks where to move the items (another category) or hides them.
 
@@ -405,6 +405,7 @@ Every new restaurant is created with a set of **default categories** so the menu
 | category_id | uuid → menu_categories | |
 | name | text | |
 | name_hi | text null | ≤ 80 chars — optional Hindi name, shown on the Hindi customer menu |
+| name_hi_auto | text null | ≤ 80 chars — the name sounded out in Devanagari by the app, used when `name_hi` is empty; cleared when the name changes |
 | description | text null | ≤ 300 chars |
 | price_paise | bigint | used when the item has no variants |
 | food_type | enum `veg` \| `non_veg` \| `egg` | |
@@ -1000,7 +1001,7 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - Categories list with drag reorder, add/rename/hide/delete, and an optional Hindi name. **Add category** is a single inline field (name) — always visible above the list, so a manager can add "Jain Special" or "Today's Special" in one step. Hidden categories are shown collapsed under "Hidden (3)".
 - New restaurants start with the default categories for their cuisine type (§8.4); an "Add suggested categories" button lets the owner pull in another set later, skipping names that already exist.
 - Items list per category with drag reorder, search, quick price edit, availability toggle, hide.
-- Item form: name, optional Hindi name, category, description, food type, price or variants (add/remove/reorder rows), image upload (compressed client-side), availability.
+- Item form: name, optional Hindi name (its placeholder shows the automatic one; leaving it empty uses that), category, description, food type, price or variants (add/remove/reorder rows), image upload (compressed client-side), availability.
 - **Import menu** button (Phase 7) → photo or CSV import (§20A).
 
 **Tables & QR**
@@ -1095,7 +1096,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted.
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing.
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 
@@ -1166,7 +1167,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
 | Security | §9; cross-tenant isolation tested |
 | Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Privacy policy and terms pages (content supplied by the user) |
-| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; dishes and categories may have an optional Hindi name, shown when the customer menu is in Hindi). INR formatting with `en-IN` (₹1,23,456.00) |
+| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00) |
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
 | Browser support | Latest Chrome (Android + desktop), Safari iOS 16+, Edge; staff panel optimised for Android tablets and Chrome |
