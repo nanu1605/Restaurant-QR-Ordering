@@ -1832,3 +1832,17 @@ its own open item before QR printing. Kept: the production dry run, which the ow
   run by hand (200), cookie and cron secrets different from staging, `NEXT_PUBLIC_APP_URL` and
   `STAFF_EMAIL_DOMAIN` set to `menumesh.in` (checked after the review); uptime monitors on both
   health URLs are green.
+
+### After launch (October 2026)
+
+- **P10-15 · Next.js 16.3.8:** CI's audit failed on 16.3.5 (the critical `next/og` `ImageResponse`
+  RCE; the app's icons pass it fixed values only, so it was likely not exploitable) and 16.3.8
+  also fixes a high SSRF in image optimisation, which the customer menu uses. Upgraded, with
+  `brace-expansion` 5.0.12 and `fast-uri` 3.1.8 lifted inside their ranges, and released to
+  production. The pnpm release-age exemptions moved to the new version.
+- **P10-16 · Runners pinned to `ubuntu-24.04`:** `ubuntu-latest` moves to Ubuntu 26 from 19
+  October 2026; CI, deploy, release and backup stay on 24.04 until a tested change moves them
+  (Playwright's system packages and the Supabase CLI).
+- **A test that expired:** `320_platform_actions` paid for September 2026 against a grace period
+  counted from `now()`, so from 30 September the payment no longer extended access (correctly)
+  and the test failed. Its periods are now months relative to today.
