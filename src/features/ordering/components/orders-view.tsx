@@ -39,6 +39,13 @@ type OrdersViewProps = { qrToken: string; initial: CustomerSessionView };
  */
 export function OrdersView({ qrToken, initial }: OrdersViewProps) {
   const [session, setSession] = useState(initial);
+  // A fresh server render (e.g. after switching language, which renames dishes)
+  // replaces the polled copy without remounting the rest of the view.
+  const [rendered, setRendered] = useState(initial);
+  if (initial !== rendered) {
+    setRendered(initial);
+    setSession(initial);
+  }
   // Server clock vs this phone's clock, so countdowns survive a wrong phone clock.
   const [clockSync, setClockSync] = useState<{ server: number; client: number } | null>(null);
   const [stale, setStale] = useState(false);

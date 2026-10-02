@@ -20,7 +20,10 @@ export type CustomerAddonGroup = {
 
 export type CustomerMenuItem = {
   id: string;
+  /** In Hindi, the restaurant's Hindi name when it has one. */
   name: string;
+  /** The typed name when a Hindi name is shown, so search finds either. */
+  altName?: string;
   description: string | null;
   foodType: FoodType;
   /** With options, the cheapest option ("from ₹X"). */
@@ -33,7 +36,12 @@ export type CustomerMenuItem = {
   addonGroups: CustomerAddonGroup[];
 };
 
-export type CustomerCategory = { id: string; name: string; items: CustomerMenuItem[] };
+export type CustomerCategory = {
+  id: string;
+  name: string;
+  altName?: string;
+  items: CustomerMenuItem[];
+};
 
 export type CustomerTable = {
   restaurant: {

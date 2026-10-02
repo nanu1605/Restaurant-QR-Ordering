@@ -48,6 +48,7 @@ import {
   MAX_ORDER_LINES,
   MAX_ORDER_NOTE,
 } from '@/features/ordering/limits';
+import { localName } from '@/features/ordering/localize';
 import { countItems, filterMenu } from '@/features/ordering/menu-filter';
 import { placeOrderSchema, qrTokenSchema, toOrderItemsPayload } from '@/features/ordering/schemas';
 import { refusalMessage, STRINGS } from '@/features/ordering/strings';
@@ -845,6 +846,44 @@ describe('menu search and Veg only (spec §13.1)', () => {
     const [starters] = filterMenu(menu, 'paneer', true);
     expect(starters.id).toBe('starters');
     expect(starters.items).toEqual([menu[0].items[0]]);
+  });
+
+  it('on the Hindi menu, finds dishes and categories by either name', () => {
+    const hindi = MENU.map((category) =>
+      category.id === 'starters'
+        ? {
+            ...category,
+            name: 'स्टार्टर',
+            altName: category.name,
+            items: category.items.map((item) =>
+              item.id === PANEER ? { ...item, name: 'पनीर टिक्का', altName: item.name } : item,
+            ),
+          }
+        : category,
+    );
+    expect(itemNames(filterMenu(hindi, 'paneer', false))).toEqual([['स्टार्टर', ['पनीर टिक्का']]]);
+    expect(itemNames(filterMenu(hindi, 'पनीर', false))).toEqual([['स्टार्टर', ['पनीर टिक्का']]]);
+    expect(itemNames(filterMenu(hindi, 'starters', false))).toEqual([
+      ['स्टार्टर', ['पनीर टिक्का', 'Chicken 65']],
+    ]);
+  });
+});
+
+// ─── Hindi dish and category names ──────────────────────────────────────────
+
+describe('localName (Hindi names)', () => {
+  it('shows the Hindi name on the Hindi menu, keeping the typed one for search', () => {
+    expect(localName('Paneer Tikka', 'पनीर टिक्का', 'hi')).toEqual({
+      name: 'पनीर टिक्का',
+      altName: 'Paneer Tikka',
+    });
+  });
+
+  it('keeps the typed name in English, or without a Hindi name', () => {
+    expect(localName('Paneer Tikka', 'पनीर टिक्का', 'en')).toEqual({ name: 'Paneer Tikka' });
+    expect(localName('Chicken 65', null, 'hi')).toEqual({ name: 'Chicken 65' });
+    expect(localName('Chicken 65', undefined, 'hi')).toEqual({ name: 'Chicken 65' });
+    expect(localName('Chicken 65', '', 'hi')).toEqual({ name: 'Chicken 65' });
   });
 });
 

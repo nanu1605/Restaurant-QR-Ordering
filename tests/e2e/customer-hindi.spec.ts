@@ -75,6 +75,52 @@ test('a customer switches to Hindi, orders in Hindi and switches back', async ({
   await expect(page.getByRole('button', { name: 'Bill requested' })).toBeVisible();
 });
 
+test('dishes and categories with a Hindi name show it on the Hindi menu', async ({ page }) => {
+  const table = await createOrderingTable({ approval: false });
+  const db = adminClient();
+  await db
+    .from('menu_items')
+    .update({ name_hi: 'पनीर टिक्का' })
+    .eq('id', table.item.paneer)
+    .throwOnError();
+  await db
+    .from('menu_categories')
+    .update({ name_hi: 'स्टार्टर' })
+    .eq('restaurant_id', table.restaurantId)
+    .eq('name', 'Starters')
+    .throwOnError();
+
+  await page.goto(table.url);
+  await expect(page.getByRole('button', { name: 'Add Paneer Tikka' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'हिन्दी' }).click();
+  await expect(page.getByRole('heading', { name: 'पनीर टिक्का' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'मेन्यू की श्रेणियाँ' })
+      .getByRole('link', { name: 'स्टार्टर' }),
+  ).toBeVisible();
+  // Without a Hindi name, the name as typed.
+  await expect(page.getByRole('button', { name: 'Chicken 65 जोड़ें' })).toBeVisible();
+
+  // Search finds the dish by either name.
+  const search = page.getByRole('searchbox', { name: 'डिश खोजें' });
+  await search.fill('paneer');
+  await expect(page.getByRole('button', { name: 'पनीर टिक्का जोड़ें' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chicken 65 जोड़ें' })).toBeHidden();
+  await search.fill('');
+
+  await page.getByRole('button', { name: 'पनीर टिक्का जोड़ें' }).click();
+  await page.getByRole('link', { name: /कार्ट देखें/ }).click();
+  await expect(page.getByRole('main').getByText('पनीर टिक्का', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ऑर्डर करें' }).click();
+  await expect(page).toHaveURL(/\/orders$/);
+  await expect(page.getByRole('main').getByText(/× पनीर टिक्का$/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'English' }).click();
+  await expect(page.getByRole('main').getByText(/× Paneer Tikka$/)).toBeVisible();
+});
+
 test('a QR code that does not work says so in Hindi once Hindi is chosen', async ({ page }) => {
   const table = await createOrderingTable();
   await page.goto(table.url);

@@ -7,8 +7,8 @@ import { listNames, tableHeading } from './format';
 /**
  * The customer panel's words in English and Hindi (spec §19 Phase 9,
  * docs/DECISIONS.md P9-7). Hindi has every English key (the compiler checks);
- * dish, category and restaurant names stay as the restaurant entered them, and
- * money and times stay in the en-IN format.
+ * names stay as the restaurant entered them, except dishes and categories with
+ * a Hindi name (localize.ts), and money and times stay in the en-IN format.
  */
 
 export type Lang = 'en' | 'hi';

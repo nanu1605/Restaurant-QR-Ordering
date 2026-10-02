@@ -11,7 +11,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { Constants } from '@/types/database';
 
 import { canChoose } from './addons';
+import { getLang } from './lang';
 import { QR_TOKEN_PATTERN } from './limits';
+import { localName } from './localize';
+import type { Lang } from './strings';
 import type { CustomerAddonGroup, CustomerSessionView, CustomerTable } from './types';
 
 /**
@@ -40,10 +43,12 @@ const tableJson = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
+      name_hi: z.string().nullish(),
       items: z.array(
         z.object({
           id: z.string(),
           name: z.string(),
+          name_hi: z.string().nullish(),
           description: z.string().nullable(),
           food_type: foodType,
           price_paise: z.number().int(),
@@ -100,6 +105,7 @@ const sessionJson = z.object({
             z.object({
               id: z.string(),
               name: z.string(),
+              name_hi: z.string().nullish(),
               variant: z.string().nullable(),
               addons: z.array(z.string()),
               food_type: foodType,
@@ -117,7 +123,7 @@ const sessionJson = z.object({
     .nullable(),
 });
 
-export function toCustomerTable(json: unknown): CustomerTable {
+export function toCustomerTable(json: unknown, lang: Lang = 'en'): CustomerTable {
   const data = tableJson.parse(json);
   const supabaseUrl = getPublicEnv().NEXT_PUBLIC_SUPABASE_URL;
   const groups = new Map<string, CustomerAddonGroup>(
@@ -157,12 +163,12 @@ export function toCustomerTable(json: unknown): CustomerTable {
     cancelWindowSeconds: data.ordering.cancel_window_seconds,
     menu: data.menu.map((category) => ({
       id: category.id,
-      name: category.name,
+      ...localName(category.name, category.name_hi, lang),
       items: category.items.map((item) => {
         const addonGroups = item.addon_group_ids.flatMap((id) => groups.get(id) ?? []);
         return {
           id: item.id,
-          name: item.name,
+          ...localName(item.name, item.name_hi, lang),
           description: item.description,
           foodType: item.food_type,
           pricePaise: item.price_paise,
@@ -183,7 +189,7 @@ export function toCustomerTable(json: unknown): CustomerTable {
   };
 }
 
-export function toCustomerSession(json: unknown): CustomerSessionView {
+export function toCustomerSession(json: unknown, lang: Lang = 'en'): CustomerSessionView {
   const data = sessionJson.parse(json);
   return {
     now: data.now,
@@ -203,7 +209,7 @@ export function toCustomerSession(json: unknown): CustomerSessionView {
         removedReason: round.removed_reason,
         items: round.items.map((item) => ({
           id: item.id,
-          name: item.name,
+          name: localName(item.name, item.name_hi, lang).name,
           variant: item.variant,
           addons: item.addons,
           foodType: item.food_type,
@@ -228,7 +234,7 @@ export const getCustomerTable = cache(async (qrToken: string): Promise<CustomerT
     if (dbErrorCode(error) === 'TABLE_NOT_FOUND') return null;
     throw new Error(`customer_get_table failed: ${error.code} ${error.message}`);
   }
-  return toCustomerTable(data);
+  return toCustomerTable(data, await getLang());
 });
 
 /** The table's open session as this phone sees it, or null when the QR code doesn't work. */
@@ -245,5 +251,5 @@ export async function getCustomerSession(
     if (dbErrorCode(error) === 'TABLE_NOT_FOUND') return null;
     throw new Error(`customer_get_session failed: ${error.code} ${error.message}`);
   }
-  return toCustomerSession(data);
+  return toCustomerSession(data, await getLang());
 }
