@@ -17,6 +17,7 @@ import { dbErrorMessage, GENERIC_ERROR } from '@/lib/db-errors';
 import { createClient } from '@/lib/supabase/server';
 
 import { CUISINE_SETS, DEFAULT_CATEGORY_SETS } from './default-categories';
+import { queueHindiNames } from './hindi-names';
 import {
   addonGroupPayloadSchema,
   categoryHindiNameSchema,
@@ -45,13 +46,14 @@ function firstIssue(error: z.ZodError): ActionResult<never> {
 // ─── Categories ──────────────────────────────────────────────────────────────
 
 export async function createCategory(name: string): Promise<ActionResult<{ id: string }>> {
-  await requireMember(ADMIN_PANEL_ROLES);
+  const membership = await requireMember(ADMIN_PANEL_ROLES);
   const parsed = categoryNameSchema.safeParse(name);
   if (!parsed.success) return firstIssue(parsed.error);
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('admin_create_category', { p_name: parsed.data });
   if (error) return fromDbError(error, 'admin_create_category');
+  queueHindiNames(membership.restaurant.id);
   refresh();
   return actionOk({ id: data });
 }
@@ -72,7 +74,7 @@ export async function updateCategory(
   id: string,
   patch: { name?: string; nameHi?: string; isActive?: boolean },
 ): Promise<ActionResult> {
-  await requireMember(ADMIN_PANEL_ROLES);
+  const membership = await requireMember(ADMIN_PANEL_ROLES);
   const parsedId = idSchema.safeParse(id);
   const parsed = categoryPatchSchema.safeParse(patch);
   if (!parsedId.success) return firstIssue(parsedId.error);
@@ -88,6 +90,10 @@ export async function updateCategory(
     },
   });
   if (error) return fromDbError(error, 'admin_update_category');
+  // A rename, or a cleared Hindi name, leaves a name to write automatically.
+  if (parsed.data.name !== undefined || parsed.data.nameHi !== undefined) {
+    queueHindiNames(membership.restaurant.id);
+  }
   refresh();
   return actionOk();
 }
@@ -113,7 +119,7 @@ export async function deleteCategory(
 export async function addSuggestedCategories(
   set: string,
 ): Promise<ActionResult<{ added: number }>> {
-  await requireMember(ADMIN_PANEL_ROLES);
+  const membership = await requireMember(ADMIN_PANEL_ROLES);
   const parsed = z.enum(CUISINE_SETS).safeParse(set);
   if (!parsed.success) return actionError('Choose a set of categories.');
 
@@ -122,6 +128,7 @@ export async function addSuggestedCategories(
     p_names: [...DEFAULT_CATEGORY_SETS[parsed.data]],
   });
   if (error) return fromDbError(error, 'admin_add_categories');
+  queueHindiNames(membership.restaurant.id);
   refresh();
   return actionOk({ added: data });
 }
@@ -303,6 +310,7 @@ export async function saveMenuItem(formData: FormData): Promise<ActionResult<{ i
     if (removeError) console.error('Old menu image not removed:', removeError.message);
   }
 
+  queueHindiNames(membership.restaurant.id);
   refresh();
   return actionOk({ id: data });
 }

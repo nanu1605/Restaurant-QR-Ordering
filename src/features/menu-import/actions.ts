@@ -3,6 +3,7 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
+import { queueHindiNames } from '@/features/menu/hindi-names';
 import { actionError, actionOk, fromDbError, type ActionResult } from '@/lib/action-result';
 import { requireUser } from '@/lib/auth/guards';
 import { dbErrorCode, GENERIC_ERROR, type DbErrorLike } from '@/lib/db-errors';
@@ -360,6 +361,12 @@ export async function commitMenuImport(
     p_confirm_food_types: confirmFoodTypes === true,
   });
   if (error) return importError(error, 'Import menu');
+  const { data: menuImport } = await supabase
+    .from('menu_imports')
+    .select('restaurant_id')
+    .eq('id', importId)
+    .maybeSingle();
+  if (menuImport) queueHindiNames(menuImport.restaurant_id);
   refresh();
   return actionOk(data as ImportedCounts & { already_imported?: boolean });
 }

@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 import { NextResponse } from 'next/server';
 
+import { fillHindiNames } from '@/features/menu/hindi-names';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
 import { sendSubscriptionReminders } from '@/features/subscriptions/reminders';
 import { emailConfig } from '@/lib/email/resend';
@@ -10,6 +11,9 @@ import { getServerEnv } from '@/lib/env.server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const noStore = { 'Cache-Control': 'no-store' };
+
+// The Hindi name sweep makes up to 100 model calls, five at a time.
+export const maxDuration = 300;
 
 function digest(value: string): Buffer {
   return createHash('sha256').update(value).digest();
@@ -35,8 +39,9 @@ async function step<T>(name: string, run: () => Promise<T>): Promise<T | null> {
 
 /**
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
- * docs/DECISIONS.md P7-20, P8-12): menu import photo cleanup and
- * subscription reminder emails (skipped until Resend is set up).
+ * docs/DECISIONS.md P7-20, P8-12, HN-8): menu import photo cleanup,
+ * subscription reminder emails (skipped until Resend is set up), and Hindi
+ * names that menu edits didn't fill (skipped without a menu import key).
  */
 export async function GET(request: Request) {
   if (!authorised(request)) {
@@ -46,17 +51,18 @@ export async function GET(request: Request) {
   const email = emailConfig();
   if (!email) console.warn('[cron/daily] reminders skipped: RESEND_API_KEY or EMAIL_FROM not set');
 
-  const [menuImports, reminders] = await Promise.all([
+  const [menuImports, reminders, hindiNames] = await Promise.all([
     step('menu import cleanup', () => removeOldImportPhotos(admin)),
     email
       ? step('reminders', () =>
           sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL),
         )
       : Promise.resolve({ skipped: true }),
+    step('hindi names', () => fillHindiNames(admin, null, 500)),
   ]);
-  const ok = menuImports !== null && reminders !== null;
+  const ok = menuImports !== null && reminders !== null && hindiNames !== null;
   return NextResponse.json(
-    { ok, menuImports, reminders },
+    { ok, menuImports, reminders, hindiNames },
     { status: ok ? 200 : 500, headers: noStore },
   );
 }
