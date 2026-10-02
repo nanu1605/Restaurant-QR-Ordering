@@ -30,6 +30,12 @@ export default defineConfig({
       // The customer panel is mobile-first (spec §13.1): it runs on the phone only.
       testIgnore: /customer-.*\.spec\.ts/,
     },
+    // The public website is checked on a tablet too (docs/DECISIONS.md W-4).
+    {
+      name: 'tablet',
+      use: { ...devices['iPad Mini'], browserName: 'chromium' },
+      testMatch: /site\.spec\.ts/,
+    },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
     // Live board specs open their own phone for the customer.
