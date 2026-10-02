@@ -62,6 +62,7 @@ test('owner builds a menu from the default categories', async ({ page }) => {
   await dishes(page).getByRole('button', { name: 'Add dish' }).first().click();
   let dialog = page.getByRole('dialog', { name: 'Add a dish' });
   await dialog.getByLabel('Dish name').fill('Jain Pav Bhaji');
+  await dialog.getByLabel('Hindi name (optional)').fill('जैन पाव भाजी');
   await dialog.getByLabel('Description (optional)').fill('No onion, no garlic');
   await dialog.getByLabel('Price', { exact: true }).fill('150');
   await dialog.getByLabel('Photo (optional)').setInputFiles({
@@ -76,6 +77,7 @@ test('owner builds a menu from the default categories', async ({ page }) => {
   const pavBhaji = dishRow(page, 'Jain Pav Bhaji');
   const pavBhajiPrice = pavBhaji.getByRole('button', { name: /Change price of Jain Pav Bhaji/ });
   await expect(pavBhaji).toBeVisible();
+  await expect(pavBhaji).toContainText('जैन पाव भाजी');
   await expect(pavBhajiPrice).toHaveText('₹150');
   await expect(pavBhaji.locator('img')).toHaveAttribute('src', /\/menu-images\/.+\.webp\?v=/);
 
@@ -157,6 +159,18 @@ test('owner builds a menu from the default categories', async ({ page }) => {
   await dishes(page).getByText('Hidden dishes (1)').click();
   await dishes(page).getByRole('button', { name: 'Show Jain Pav Bhaji again' }).click();
   await expect(dishes(page).getByText('Hidden dishes (1)')).toBeHidden();
+  // Editing the dish kept its Hindi name.
+  await expect(pavBhaji).toContainText('जैन पाव भाजी');
+
+  // A Hindi name for the category, shown after its name.
+  await openCategoryActions(page, 'Jain Special');
+  await page.getByRole('menuitem', { name: 'Hindi name' }).click();
+  const hindiName = categories(page).getByRole('textbox', { name: 'Hindi name for Jain Special' });
+  await hindiName.fill('जैन स्पेशल');
+  await hindiName.press('Enter');
+  await expect(
+    categories(page).getByRole('button', { name: /^Jain Special जैन स्पेशल \d+$/ }),
+  ).toBeVisible();
 });
 
 test('suggested categories add only what is missing, and deleting moves dishes', async ({

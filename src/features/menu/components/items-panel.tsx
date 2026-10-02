@@ -94,7 +94,11 @@ export function ItemsPanel({
 
       {search ? (
         <SearchResults
-          items={items.filter((item) => item.name.toLowerCase().includes(search))}
+          items={items.filter(
+            (item) =>
+              item.name.toLowerCase().includes(search) ||
+              (item.nameHi?.toLowerCase().includes(search) ?? false),
+          )}
           categoryNames={categoryNames}
           {...rowProps}
         />
@@ -245,7 +249,17 @@ function ItemRow({
       <div className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <FoodTypeMark type={item.foodType} size="sm" />
-          <span className="truncate text-sm font-medium text-ink">{item.name}</span>
+          <span className="truncate text-sm font-medium text-ink">
+            {item.name}
+            {item.nameHi && (
+              <>
+                {' '}
+                <span lang="hi" className="font-normal text-ink-muted">
+                  {item.nameHi}
+                </span>
+              </>
+            )}
+          </span>
         </div>
         <p className="truncate text-xs text-ink-muted">
           {categoryName ? `${categoryName} · ` : ''}

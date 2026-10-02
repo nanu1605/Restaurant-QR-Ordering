@@ -8,6 +8,8 @@ import type { FoodType } from './schemas';
 export type AdminCategory = {
   id: string;
   name: string;
+  /** Shown on the Hindi customer menu when set. */
+  nameHi: string | null;
   isActive: boolean;
   sortOrder: number;
 };
@@ -22,6 +24,8 @@ export type AdminMenuItem = {
   id: string;
   categoryId: string;
   name: string;
+  /** Shown on the Hindi customer menu when set. */
+  nameHi: string | null;
   description: string | null;
   pricePaise: number;
   foodType: FoodType;
@@ -51,13 +55,13 @@ export async function getAdminMenu(): Promise<AdminMenu> {
   const [categories, items, groups] = await Promise.all([
     supabase
       .from('menu_categories')
-      .select('id, name, is_active, sort_order')
+      .select('id, name, name_hi, is_active, sort_order')
       .order('sort_order')
       .order('created_at'),
     supabase
       .from('menu_items')
       .select(
-        'id, category_id, name, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
+        'id, category_id, name, name_hi, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
       )
       .order('sort_order')
       .order('created_at'),
@@ -77,6 +81,7 @@ export async function getAdminMenu(): Promise<AdminMenu> {
     categories: categories.data.map((category) => ({
       id: category.id,
       name: category.name,
+      nameHi: category.name_hi,
       isActive: category.is_active,
       sortOrder: category.sort_order,
     })),
@@ -84,6 +89,7 @@ export async function getAdminMenu(): Promise<AdminMenu> {
       id: item.id,
       categoryId: item.category_id,
       name: item.name,
+      nameHi: item.name_hi,
       description: item.description,
       pricePaise: item.price_paise,
       foodType: item.food_type,

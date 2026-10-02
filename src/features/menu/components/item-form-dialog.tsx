@@ -88,6 +88,7 @@ function defaultsFor(item: AdminMenuItem | null, categoryId: string | null): Men
       id: item.id,
       categoryId: item.categoryId,
       name: item.name,
+      nameHi: item.nameHi ?? '',
       description: item.description ?? '',
       foodType: item.foodType,
       hasVariants: item.variants.length > 0,
@@ -105,6 +106,7 @@ function defaultsFor(item: AdminMenuItem | null, categoryId: string | null): Men
     id: crypto.randomUUID(),
     categoryId: categoryId ?? '',
     name: '',
+    nameHi: '',
     description: '',
     foodType: 'veg',
     hasVariants: false,
@@ -119,6 +121,7 @@ function defaultsFor(item: AdminMenuItem | null, categoryId: string | null): Men
 function formField(key: string): Path<MenuItemForm> {
   const mapped = key
     .replace(/^category_id$/, 'categoryId')
+    .replace(/^name_hi$/, 'nameHi')
     .replace(/^food_type$/, 'foodType')
     .replace(/^price_paise$/, 'price')
     .replace(/^is_available$/, 'isAvailable')
@@ -227,6 +230,23 @@ function ItemForm({
             {...register('name')}
           />
           <FieldError errors={[errors.name]} />
+        </Field>
+
+        <Field data-invalid={errors.nameHi ? true : undefined}>
+          <FieldLabel htmlFor={`${ids}-name-hi`}>Hindi name (optional)</FieldLabel>
+          <Input
+            id={`${ids}-name-hi`}
+            lang="hi"
+            maxLength={80}
+            autoComplete="off"
+            aria-invalid={errors.nameHi ? true : undefined}
+            className="h-9"
+            {...register('nameHi')}
+          />
+          <FieldDescription>
+            Shown when guests switch the menu to <span lang="hi">हिन्दी</span>.
+          </FieldDescription>
+          <FieldError errors={[errors.nameHi]} />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">

@@ -42,12 +42,16 @@ export const categoryNameSchema = z
   .min(1, 'Enter a category name.')
   .max(60, 'Use 60 characters or fewer.');
 
+/** Optional Hindi names, shown on the Hindi customer menu; empty clears them. */
+export const categoryHindiNameSchema = z.string().trim().max(60, 'Use 60 characters or fewer.');
+
 export const menuItemFormSchema = z
   .object({
     /** Picked by the browser for new dishes so the image can be stored under it. */
     id: z.uuid(),
     categoryId: z.uuid({ message: 'Choose a category.' }),
     name: z.string().trim().min(1, 'Enter a dish name.').max(80, 'Use 80 characters or fewer.'),
+    nameHi: z.string().trim().max(80, 'Use 80 characters or fewer.'),
     description: z.string().trim().max(300, 'Use 300 characters or fewer.'),
     foodType: z.enum(FOOD_TYPES, { message: 'Choose veg, non-veg or egg.' }),
     hasVariants: z.boolean(),
@@ -106,6 +110,7 @@ export const menuItemPayloadSchema = z.object({
   id: z.uuid(),
   category_id: z.uuid(),
   name: z.string().trim().min(1).max(80),
+  name_hi: z.string().trim().min(1).max(80).nullable(),
   description: z.string().trim().max(300).nullable(),
   food_type: z.enum(FOOD_TYPES),
   price_paise: z.number().int().min(0).max(MAX_PRICE_PAISE),
@@ -137,6 +142,7 @@ export function toMenuItemPayload(form: z.output<typeof menuItemFormSchema>): Me
     id: form.id,
     category_id: form.categoryId,
     name: form.name,
+    name_hi: form.nameHi === '' ? null : form.nameHi,
     description: form.description === '' ? null : form.description,
     food_type: form.foodType,
     price_paise: form.hasVariants

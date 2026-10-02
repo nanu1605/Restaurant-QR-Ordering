@@ -95,6 +95,7 @@ describe('menu item form', () => {
     id: '11111111-1111-4111-8111-111111111111',
     categoryId: '22222222-2222-4222-8222-222222222222',
     name: ' Paneer Tikka ',
+    nameHi: '',
     description: '',
     foodType: 'veg',
     hasVariants: false,
@@ -144,6 +145,7 @@ describe('menu item form', () => {
       id: base.id,
       category_id: base.categoryId,
       name: 'Paneer Tikka',
+      name_hi: null,
       description: null,
       food_type: 'veg',
       price_paise: 22050,
@@ -158,6 +160,18 @@ describe('menu item form', () => {
     expect(toMenuItemPayload(menuItemFormSchema.parse(base))).toMatchObject({
       price_paise: 28000,
       variants: [],
+    });
+  });
+
+  it('keeps an optional Hindi name, trimmed, and clears an empty one', () => {
+    const named = menuItemFormSchema.parse({ ...base, nameHi: ' पनीर टिक्का ' });
+    expect(toMenuItemPayload(named).name_hi).toBe('पनीर टिक्का');
+    expect(toMenuItemPayload(menuItemFormSchema.parse(base)).name_hi).toBeNull();
+
+    const tooLong = menuItemFormSchema.safeParse({ ...base, nameHi: 'क'.repeat(81) });
+    expect(tooLong.error?.issues[0]).toMatchObject({
+      path: ['nameHi'],
+      message: 'Use 80 characters or fewer.',
     });
   });
 });

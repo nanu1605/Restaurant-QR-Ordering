@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server';
 import { CUISINE_SETS, DEFAULT_CATEGORY_SETS } from './default-categories';
 import {
   addonGroupPayloadSchema,
+  categoryHindiNameSchema,
   categoryNameSchema,
   imageExtension,
   MAX_IMAGE_BYTES,
@@ -56,12 +57,20 @@ export async function createCategory(name: string): Promise<ActionResult<{ id: s
 }
 
 const categoryPatchSchema = z
-  .object({ name: categoryNameSchema.optional(), isActive: z.boolean().optional() })
-  .refine((patch) => patch.name !== undefined || patch.isActive !== undefined);
+  .object({
+    name: categoryNameSchema.optional(),
+    nameHi: categoryHindiNameSchema.optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine(
+    (patch) =>
+      patch.name !== undefined || patch.nameHi !== undefined || patch.isActive !== undefined,
+  );
 
+/** nameHi '' clears the Hindi name. */
 export async function updateCategory(
   id: string,
-  patch: { name?: string; isActive?: boolean },
+  patch: { name?: string; nameHi?: string; isActive?: boolean },
 ): Promise<ActionResult> {
   await requireMember(ADMIN_PANEL_ROLES);
   const parsedId = idSchema.safeParse(id);
@@ -74,6 +83,7 @@ export async function updateCategory(
     p_category_id: parsedId.data,
     p_patch: {
       ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+      ...(parsed.data.nameHi !== undefined ? { name_hi: parsed.data.nameHi || null } : {}),
       ...(parsed.data.isActive !== undefined ? { is_active: parsed.data.isActive } : {}),
     },
   });

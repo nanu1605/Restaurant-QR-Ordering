@@ -1,7 +1,16 @@
 'use client';
 
 import { cn } from 'cn';
-import { Eye, EyeOff, MoreHorizontal, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Languages,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { useOptimistic, useState, useTransition, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
@@ -234,23 +243,36 @@ function CategoryRow({
   readOnly: boolean;
   handle: React.ReactNode;
 }) {
-  const [editing, setEditing] = useState(false);
+  // The inline field edits either the name or the optional Hindi name.
+  const [editing, setEditing] = useState<'name' | 'nameHi' | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function rename(value: string) {
-    const name = value.trim();
-    if (name === '' || name === category.name) {
-      setEditing(false);
+  function save(value: string) {
+    const field = editing;
+    const text = value.trim();
+    const unchanged =
+      field === 'name' ? text === '' || text === category.name : text === (category.nameHi ?? '');
+    if (!field || unchanged) {
+      setEditing(null);
       return;
     }
     startTransition(async () => {
-      const result = await updateCategory(category.id, { name });
+      const result = await updateCategory(
+        category.id,
+        field === 'name' ? { name: text } : { nameHi: text },
+      );
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setEditing(false);
-      toast.success(`Renamed to “${name}”`);
+      setEditing(null);
+      toast.success(
+        field === 'name'
+          ? `Renamed to “${text}”`
+          : text
+            ? `Hindi name set to “${text}”`
+            : 'Hindi name removed',
+      );
     });
   }
 
@@ -261,21 +283,26 @@ function CategoryRow({
       {handle}
       {editing ? (
         <Input
-          aria-label={`Rename ${category.name}`}
-          defaultValue={category.name}
+          aria-label={
+            editing === 'name' ? `Rename ${category.name}` : `Hindi name for ${category.name}`
+          }
+          defaultValue={editing === 'name' ? category.name : (category.nameHi ?? '')}
+          lang={editing === 'nameHi' ? 'hi' : undefined}
           maxLength={60}
           autoFocus
           disabled={pending}
           className="h-9 flex-1"
           onKeyDown={(event) => {
+            // Enter also picks a word in Hindi keyboards (IMEs); only a plain Enter saves.
+            if (event.nativeEvent.isComposing) return;
             if (event.key === 'Enter') {
               event.preventDefault();
-              rename(event.currentTarget.value);
+              save(event.currentTarget.value);
             } else if (event.key === 'Escape') {
-              setEditing(false);
+              setEditing(null);
             }
           }}
-          onBlur={(event) => rename(event.currentTarget.value)}
+          onBlur={(event) => save(event.currentTarget.value)}
         />
       ) : (
         <button
@@ -287,7 +314,17 @@ function CategoryRow({
             selected && 'font-semibold text-brand hover:bg-accent',
           )}
         >
-          <span className="truncate">{category.name}</span>
+          <span className="truncate">
+            {category.name}
+            {category.nameHi && (
+              <>
+                {' '}
+                <span lang="hi" className="font-normal text-ink-muted">
+                  {category.nameHi}
+                </span>
+              </>
+            )}
+          </span>
           <span className="shrink-0 text-xs text-ink-muted tabular-nums">{count}</span>
         </button>
       )}
@@ -305,8 +342,11 @@ function CategoryRow({
           <MoreHorizontal aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onClick={() => setEditing(true)}>
+          <DropdownMenuItem onClick={() => setEditing('name')}>
             <Pencil aria-hidden /> Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setEditing('nameHi')}>
+            <Languages aria-hidden /> Hindi name
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onHide}>
             <EyeOff aria-hidden /> Hide
