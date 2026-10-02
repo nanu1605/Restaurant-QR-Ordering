@@ -383,7 +383,7 @@ QR encodes `${NEXT_PUBLIC_APP_URL}/t/${qr_token}`.
 
 ### 8.4 Menu
 
-**`menu_categories`**: `name`, `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
+**`menu_categories`**: `name`, `name_hi` (optional Hindi name, ≤ 60 chars), `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
 
 Every new restaurant is created with a set of **default categories** so the menu is never an empty screen (§13.3 Menu). They are ordinary rows — the owner can rename, reorder, hide or delete any of them, and add their own at any time. Deleting a category with items asks where to move the items (another category) or hides them.
 
@@ -404,6 +404,7 @@ Every new restaurant is created with a set of **default categories** so the menu
 |---|---|---|
 | category_id | uuid → menu_categories | |
 | name | text | |
+| name_hi | text null | ≤ 80 chars — optional Hindi name, shown on the Hindi customer menu |
 | description | text null | ≤ 300 chars |
 | price_paise | bigint | used when the item has no variants |
 | food_type | enum `veg` \| `non_veg` \| `egg` | |
@@ -996,10 +997,10 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 **Reports**: §19 Phase 6.
 
 **Menu**
-- Categories list with drag reorder, add/rename/hide/delete. **Add category** is a single inline field (name) — always visible above the list, so a manager can add "Jain Special" or "Today's Special" in one step. Hidden categories are shown collapsed under "Hidden (3)".
+- Categories list with drag reorder, add/rename/hide/delete, and an optional Hindi name. **Add category** is a single inline field (name) — always visible above the list, so a manager can add "Jain Special" or "Today's Special" in one step. Hidden categories are shown collapsed under "Hidden (3)".
 - New restaurants start with the default categories for their cuisine type (§8.4); an "Add suggested categories" button lets the owner pull in another set later, skipping names that already exist.
 - Items list per category with drag reorder, search, quick price edit, availability toggle, hide.
-- Item form: name, category, description, food type, price or variants (add/remove/reorder rows), image upload (compressed client-side), availability.
+- Item form: name, optional Hindi name, category, description, food type, price or variants (add/remove/reorder rows), image upload (compressed client-side), availability.
 - **Import menu** button (Phase 7) → photo or CSV import (§20A).
 
 **Tables & QR**
@@ -1165,7 +1166,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
 | Security | §9; cross-tenant isolation tested |
 | Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Privacy policy and terms pages (content supplied by the user) |
-| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (menu item names remain as entered by the restaurant, with an optional Hindi name field later). INR formatting with `en-IN` (₹1,23,456.00) |
+| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; dishes and categories may have an optional Hindi name, shown when the customer menu is in Hindi). INR formatting with `en-IN` (₹1,23,456.00) |
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
 | Browser support | Latest Chrome (Android + desktop), Safari iOS 16+, Edge; staff panel optimised for Android tablets and Chrome |

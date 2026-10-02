@@ -1846,3 +1846,52 @@ its own open item before QR printing. Kept: the production dry run, which the ow
 - **A test that expired:** `320_platform_actions` paid for September 2026 against a grace period
   counted from `now()`, so from 30 September the payment no longer extended access (correctly)
   and the test failed. Its periods are now months relative to today.
+
+## Hindi names (after launch, 2026-10-02)
+
+The owner read the Hindi customer screens on staging: everything was Hindi except dish names,
+which the spec kept as typed "with an optional Hindi name field later". Asked for it now.
+
+- **HN-1 · Scope:** an optional `name_hi` on dishes (≤ 80) and categories (≤ 60), entered in the
+  menu editor: a "Hindi name (optional)" field in the dish form and a "Hindi name" action on each
+  category. Option names (Half/Full), add-on groups and add-ons stay as typed, and so do the
+  menu import (no CSV column; photo and PDF imports keep names as printed) and every staff,
+  kitchen, bill and report screen, which read the typed name or the order's snapshot.
+- **HN-2 · Older deployments:** `admin_save_menu_item` and `admin_update_category` change
+  `name_hi` only when the key is sent (the `addon_group_ids` rule), so a page from an older
+  deployment, kept alive by Skew Protection for up to 7 days, saves a dish without erasing it.
+  The guest reads only add a key, which their non-strict schemas ignore.
+- **HN-3 · Resolved on the server:** `customer_get_table` returns `name_hi` on categories and
+  dishes; `getCustomerTable` reads the `lang` cookie and shows it in Hindi (`localName`), keeping
+  the typed name as `altName` so a search for "paneer" still finds "पनीर टिक्का". The client
+  components are unchanged: the menu, options sheet, announcements and the cart (whose lines are
+  refreshed from the menu) all read `name`. Admin search matches either name too.
+- **HN-4 · Orders page:** `customer_get_session` adds the dish's current `name_hi` by joining
+  `menu_items` rather than snapshotting it at order time (marked `ponytail:`): a rename during a
+  meal changes the Hindi name shown, which is harmless for guests; staff and bills keep the
+  snapshot.
+
+### Review fixes (Hindi names)
+
+Two reviewers; the verifier was cut short, so each finding was checked by hand: 5 fixed, 1 left.
+The orders page kept the old language's dish names until its next poll after the switch, so it
+now takes a fresh server render into its polled copy (without remounting, which lost "Bill
+requested"). The Hindi name is separated from the typed one by a real space, so screen readers
+and accessible names don't run them together. Enter while a Hindi keyboard (IME) is composing no
+longer saves a category's Hindi name. The dish form's "हिन्दी" is marked `lang="hi"`. The
+database test now checks that null and empty clear a stored name. Left: input of only tabs or
+newlines through a direct database call fails the column check instead of clearing, as typed
+names already do; the app trims before sending.
+
+### Tests (Hindi names)
+
+- **pgTAP (`430_hindi_names`):** dish and category Hindi names are tidied, kept by saves
+  without the key, cleared by null or empty, refused over 80/60 characters or when not text;
+  unknown keys are still refused; the guest menu sends them (null when unset) and the orders
+  page gets the dish's. The full suite passes locally except the two known `310` local-only
+  failures.
+- **Unit:** the form keeps and trims the Hindi name and clears an empty one; `localName`; search
+  finds dishes and categories by either name.
+- **E2E:** the owner adds a dish and a category Hindi name and sees them; a guest in Hindi sees
+  them on the menu, the category tabs, the cart and the orders page, finds the dish by its
+  typed name, and sees the typed names again in English. A dish without one stays as typed.
