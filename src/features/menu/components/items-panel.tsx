@@ -17,6 +17,7 @@ import { formatINR } from '@/lib/money';
 import { reorderItems, setItemAvailability, updateMenuItem } from '../actions';
 import { publicImageUrl } from '../images';
 import type { AdminCategory, AdminMenuItem } from '../queries';
+import { HindiName } from './hindi-name';
 import { formatPriceInput, parsePriceInput } from '../schemas';
 
 type ItemsPanelProps = {
@@ -97,7 +98,7 @@ export function ItemsPanel({
           items={items.filter(
             (item) =>
               item.name.toLowerCase().includes(search) ||
-              (item.nameHi?.toLowerCase().includes(search) ?? false),
+              (item.nameHi ?? item.nameHiAuto ?? '').toLowerCase().includes(search),
           )}
           categoryNames={categoryNames}
           {...rowProps}
@@ -251,14 +252,7 @@ function ItemRow({
           <FoodTypeMark type={item.foodType} size="sm" />
           <span className="truncate text-sm font-medium text-ink">
             {item.name}
-            {item.nameHi && (
-              <>
-                {' '}
-                <span lang="hi" className="font-normal text-ink-muted">
-                  {item.nameHi}
-                </span>
-              </>
-            )}
+            <HindiName nameHi={item.nameHi} nameHiAuto={item.nameHiAuto} />
           </span>
         </div>
         <p className="truncate text-xs text-ink-muted">

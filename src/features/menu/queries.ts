@@ -10,6 +10,8 @@ export type AdminCategory = {
   name: string;
   /** Shown on the Hindi customer menu when set. */
   nameHi: string | null;
+  /** Written by the app when nameHi is empty (docs/DECISIONS.md HN-5). */
+  nameHiAuto: string | null;
   isActive: boolean;
   sortOrder: number;
 };
@@ -26,6 +28,8 @@ export type AdminMenuItem = {
   name: string;
   /** Shown on the Hindi customer menu when set. */
   nameHi: string | null;
+  /** Written by the app when nameHi is empty (docs/DECISIONS.md HN-5). */
+  nameHiAuto: string | null;
   description: string | null;
   pricePaise: number;
   foodType: FoodType;
@@ -55,13 +59,13 @@ export async function getAdminMenu(): Promise<AdminMenu> {
   const [categories, items, groups] = await Promise.all([
     supabase
       .from('menu_categories')
-      .select('id, name, name_hi, is_active, sort_order')
+      .select('id, name, name_hi, name_hi_auto, is_active, sort_order')
       .order('sort_order')
       .order('created_at'),
     supabase
       .from('menu_items')
       .select(
-        'id, category_id, name, name_hi, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
+        'id, category_id, name, name_hi, name_hi_auto, description, price_paise, food_type, image_path, updated_at, is_available, is_active, sort_order, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
       )
       .order('sort_order')
       .order('created_at'),
@@ -82,6 +86,7 @@ export async function getAdminMenu(): Promise<AdminMenu> {
       id: category.id,
       name: category.name,
       nameHi: category.name_hi,
+      nameHiAuto: category.name_hi_auto,
       isActive: category.is_active,
       sortOrder: category.sort_order,
     })),
@@ -90,6 +95,7 @@ export async function getAdminMenu(): Promise<AdminMenu> {
       categoryId: item.category_id,
       name: item.name,
       nameHi: item.name_hi,
+      nameHiAuto: item.name_hi_auto,
       description: item.description,
       pricePaise: item.price_paise,
       foodType: item.food_type,

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { createTestRestaurant, logInAsOwner, makePng } from './helpers';
+import { createOrderingTable } from './customer-fixtures';
+import { adminClient, createTestRestaurant, logInAsOwner, makePng } from './helpers';
 
 // Spec §19 Phase 2 acceptance: a new restaurant already has sensible
 // categories; the owner renames one, hides one, adds "Jain Special" and builds
@@ -213,4 +214,64 @@ test('suggested categories add only what is missing, and deleting moves dishes',
 
   await categoryButton(page, 'Burgers').click();
   await expect(dishRow(page, 'Veg Momos')).toBeVisible();
+});
+
+// Automatic Hindi names (docs/DECISIONS.md HN-5 to HN-8). The e2e menu reader
+// knows only a few words (tests/e2e/mock-apis.mjs), so these names are made up
+// of them.
+test('a dish saved without a Hindi name gets one automatically', async ({ page }) => {
+  const table = await createOrderingTable({ approval: false, prefix: 'hiauto' });
+  const automatic = async () =>
+    (
+      await adminClient()
+        .from('menu_items')
+        .select('name, name_hi_auto')
+        .eq('restaurant_id', table.restaurantId)
+        .like('name', 'Masala Chai%')
+        .single()
+        .throwOnError()
+    ).data;
+
+  await logInAsOwner(page, table.restaurant);
+  // The names come from the menu reader stand-in, like the photo import's.
+  await page.goto('/admin/menu/import');
+  test.skip(
+    !(await page.getByRole('region', { name: 'From photos or a PDF' }).isVisible()),
+    'The running server has no menu reader configured (reuse of a dev server without the E2E env).',
+  );
+  await page.goto('/admin/menu');
+  await categoryButton(page, 'Starters').click();
+  await dishes(page).getByRole('button', { name: 'Add dish' }).first().click();
+  let dialog = page.getByRole('dialog', { name: 'Add a dish' });
+  await dialog.getByLabel('Dish name').fill('Masala Chai');
+  await dialog.getByLabel('Price', { exact: true }).fill('40');
+  await dialog.getByRole('button', { name: 'Add dish' }).click();
+  await expect(dialog).toBeHidden();
+
+  // Written once the save has answered.
+  await expect
+    .poll(automatic, { timeout: 15_000 })
+    .toEqual({ name: 'Masala Chai', name_hi_auto: 'मसाला चाय' });
+  await page.reload();
+  const chai = dishRow(page, 'Masala Chai');
+  await expect(chai).toContainText('Masala Chai मसाला चाय (auto)');
+
+  // The form offers it without filling the field; a rename writes a new one.
+  await chai.getByRole('button', { name: 'Edit Masala Chai' }).click();
+  dialog = page.getByRole('dialog', { name: 'Edit Masala Chai' });
+  const hindi = dialog.getByLabel('Hindi name (optional)');
+  await expect(hindi).toHaveValue('');
+  await expect(hindi).toHaveAttribute('placeholder', 'मसाला चाय');
+  await dialog.getByLabel('Dish name').fill('Masala Chai Kadak');
+  await dialog.getByRole('button', { name: 'Save dish' }).click();
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(automatic, { timeout: 15_000 })
+    .toEqual({ name: 'Masala Chai Kadak', name_hi_auto: 'मसाला चाय कड़क' });
+
+  // Guests on the Hindi menu see it.
+  await page.goto(table.url);
+  await page.getByRole('button', { name: 'हिन्दी' }).click();
+  await expect(page.getByRole('heading', { name: 'मसाला चाय कड़क' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chicken 65 जोड़ें' })).toBeVisible();
 });

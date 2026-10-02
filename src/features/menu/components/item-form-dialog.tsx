@@ -239,12 +239,14 @@ function ItemForm({
             lang="hi"
             maxLength={80}
             autoComplete="off"
+            placeholder={item?.nameHiAuto ?? undefined}
             aria-invalid={errors.nameHi ? true : undefined}
             className="h-9"
             {...register('nameHi')}
           />
           <FieldDescription>
-            Shown when guests switch the menu to <span lang="hi">हिन्दी</span>.
+            Shown when guests switch the menu to <span lang="hi">हिन्दी</span>. Leave it empty to
+            use the automatic Hindi name.
           </FieldDescription>
           <FieldError errors={[errors.nameHi]} />
         </Field>

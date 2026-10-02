@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 
 import { createCategory, reorderCategories, updateCategory } from '../actions';
 import type { AdminCategory } from '../queries';
+import { HindiName } from './hindi-name';
 
 type CategoryPanelProps = {
   categories: AdminCategory[];
@@ -288,6 +289,7 @@ function CategoryRow({
           }
           defaultValue={editing === 'name' ? category.name : (category.nameHi ?? '')}
           lang={editing === 'nameHi' ? 'hi' : undefined}
+          placeholder={editing === 'nameHi' ? (category.nameHiAuto ?? undefined) : undefined}
           maxLength={60}
           autoFocus
           disabled={pending}
@@ -316,14 +318,7 @@ function CategoryRow({
         >
           <span className="truncate">
             {category.name}
-            {category.nameHi && (
-              <>
-                {' '}
-                <span lang="hi" className="font-normal text-ink-muted">
-                  {category.nameHi}
-                </span>
-              </>
-            )}
+            <HindiName nameHi={category.nameHi} nameHiAuto={category.nameHiAuto} />
           </span>
           <span className="shrink-0 text-xs text-ink-muted tabular-nums">{count}</span>
         </button>

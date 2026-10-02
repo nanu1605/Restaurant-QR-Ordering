@@ -3,7 +3,9 @@
 // - The menu reader, an OpenAI-compatible /v1/chat/completions API
 //   (docs/DECISIONS.md P7-12). A detailed photo returns the fixture menu; a
 //   nearly blank one (a tiny JPEG) returns no dishes, like a real reader given
-//   a blurry or empty photo.
+//   a blurry or empty photo. Hindi name requests (HN-5) are answered from a
+//   small word list; a name with any other word comes back unchanged, which
+//   the app rejects, so other tests' dishes keep no automatic name.
 // - Razorpay under /razorpay/v1 (P8-1): plans, subscriptions and payment
 //   links, kept in memory. Fetching a subscription that was just created
 //   answers "authenticated", as if Checkout had been completed.
@@ -16,6 +18,18 @@ const PORT = Number(process.env.MOCK_APIS_PORT ?? 3190);
 const API_KEY = 'e2e-menu-reader-key';
 const RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
 const RESEND_AUTH = 'Bearer re_e2e_resend_key';
+/** Words the Hindi name stand-in knows (tests/e2e/admin-menu.spec.ts). */
+const HINDI_WORDS = { masala: 'मसाला', chai: 'चाय', kadak: 'कड़क' };
+
+function hindiNames(body) {
+  const sent = JSON.parse(body.messages.find((message) => message.role === 'user').content);
+  return sent.map(({ n, name }) => {
+    const words = name.toLowerCase().split(/\s+/);
+    const known = words.every((word) => Object.hasOwn(HINDI_WORDS, word));
+    return { n, hindi: known ? words.map((word) => HINDI_WORDS[word]).join(' ') : name };
+  });
+}
+
 /** Base64 characters below which a photo counts as blank. */
 const BLANK_BELOW = 60_000;
 
@@ -252,6 +266,22 @@ const server = createServer((request, response) => {
       body = JSON.parse(raw);
     } catch {
       send(response, 400, { error: { message: 'Body is not JSON' } });
+      return;
+    }
+    if (body.response_format?.json_schema?.name === 'hindi_names') {
+      send(response, 200, {
+        id: 'chatcmpl-e2e',
+        object: 'chat.completion',
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: JSON.stringify({ names: hindiNames(body) }) },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 300, completion_tokens: 40, total_tokens: 340 },
+      });
       return;
     }
     const user = body.messages?.find((message) => message.role === 'user');
