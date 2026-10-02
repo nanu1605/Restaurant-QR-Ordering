@@ -26,7 +26,7 @@ permissions:
 jobs:
   deploy:
     name: Migrate and deploy ${{ inputs.target }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Never two deploys of one target at once, and never cancel one halfway.
     concurrency:

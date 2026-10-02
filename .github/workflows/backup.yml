@@ -27,7 +27,7 @@ jobs:
     name: Back up ${{ inputs.target || 'PRODUCTION' }}
     # The nightly run starts once production exists.
     if: github.event_name == 'workflow_dispatch' || vars.BACKUP_PRODUCTION == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
       group: backup-${{ inputs.target || 'PRODUCTION' }}

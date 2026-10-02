@@ -17,7 +17,9 @@ permissions:
 jobs:
   ci:
     name: Lint, test and build
-    runs-on: ubuntu-latest
+    # Pinned in every workflow: ubuntu-latest moves to Ubuntu 26 from 19 October 2026, and
+    # Playwright's system packages and the Supabase CLI should move with a tested change.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CI: true
