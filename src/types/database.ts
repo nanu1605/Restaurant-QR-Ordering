@@ -436,6 +436,8 @@ export type Database = {
           is_active: boolean
           name: string
           name_hi: string | null
+          name_hi_auto: string | null
+          name_hi_auto_tried_at: string | null
           restaurant_id: string
           sort_order: number
           source: Database["public"]["Enums"]["category_source"]
@@ -447,6 +449,8 @@ export type Database = {
           is_active?: boolean
           name: string
           name_hi?: string | null
+          name_hi_auto?: string | null
+          name_hi_auto_tried_at?: string | null
           restaurant_id: string
           sort_order?: number
           source?: Database["public"]["Enums"]["category_source"]
@@ -458,6 +462,8 @@ export type Database = {
           is_active?: boolean
           name?: string
           name_hi?: string | null
+          name_hi_auto?: string | null
+          name_hi_auto_tried_at?: string | null
           restaurant_id?: string
           sort_order?: number
           source?: Database["public"]["Enums"]["category_source"]
@@ -653,6 +659,8 @@ export type Database = {
           is_available: boolean
           name: string
           name_hi: string | null
+          name_hi_auto: string | null
+          name_hi_auto_tried_at: string | null
           price_paise: number
           restaurant_id: string
           sort_order: number
@@ -669,6 +677,8 @@ export type Database = {
           is_available?: boolean
           name: string
           name_hi?: string | null
+          name_hi_auto?: string | null
+          name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id: string
           sort_order?: number
@@ -685,6 +695,8 @@ export type Database = {
           is_available?: boolean
           name?: string
           name_hi?: string | null
+          name_hi_auto?: string | null
+          name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id?: string
           sort_order?: number
@@ -1853,6 +1865,15 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
       }
+      menu_hindi_names_claim: {
+        Args: { p_limit?: number; p_restaurant_id?: string }
+        Returns: {
+          id: string
+          kind: string
+          name: string
+          restaurant_id: string
+        }[]
+      }
       menu_import_claim_page: {
         Args: { p_import_id: string; p_index: number }
         Returns: boolean
@@ -1898,6 +1919,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      menu_set_hindi_names: { Args: { p_names: Json }; Returns: number }
       platform_admin_status: { Args: never; Returns: string }
       platform_audit_payment_link: {
         Args: { p_link: Json; p_restaurant_id: string }
