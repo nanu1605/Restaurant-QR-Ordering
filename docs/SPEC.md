@@ -203,7 +203,7 @@ tableorder/
 │  └─ tests/                  # pgTAP tests
 ├─ src/
 │  ├─ app/
-│  │  ├─ page.tsx             # simple marketing/landing placeholder
+│  │  ├─ (site)/              # public website: home, contact, policies (§24)
 │  │  ├─ login/               # staff/admin/platform login
 │  │  ├─ t/[qrToken]/         # customer panel
 │  │  │  ├─ page.tsx          # menu
@@ -1526,7 +1526,7 @@ Clean, printed, flat menus photographed straight on read well; the usual failure
 - WhatsApp bills and marketing (WhatsApp Business API)
 - Customer accounts, loyalty, feedback collection
 - Multi-outlet dashboard for chains
-- Self-serve restaurant signup (onboarding is sales-led via super-admin for now)
+- Self-serve restaurant signup (onboarding is sales-led via super-admin for now; planned as the website's phase W3, §24)
 - Custom GST invoices for subscription fees
 - Table reservations, takeaway/delivery ordering
 
@@ -1557,3 +1557,19 @@ Clean, printed, flat menus photographed straight on read well; the usual failure
 | Menu import limits | 10 pages per import, 5 imports per restaurant per day |
 
 Add any change to these defaults to `docs/DECISIONS.md`.
+
+---
+
+## 24. Public website (after launch)
+
+The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same Next.js app, in the `(site)` route group, on its own branch and released phase by phase.
+
+| Phase | Ships |
+|---|---|
+| W1 | Header, footer, phone call-to-action bar; the home page (animated hero scene, problems, how it works, roles, highlights, Hindi, FAQ, final call to action); contact page; terms, privacy, refunds and shipping pages |
+| W2 | Features and pricing pages (plans read from the database), an interactive demo, a "Book a demo" form stored as leads for super-admin |
+| W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial, then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
+| W4 | SEO (sitemap, robots, Open Graph, structured data), funnel analytics, performance and accessibility budgets, launch |
+| W5 | The website in Hindi |
+
+Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels.

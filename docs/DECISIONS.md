@@ -1961,3 +1961,67 @@ name even on a deployment without import keys, where nothing breaks.
   "(auto)" in the editor and offered as the field's placeholder; a rename writes a new one,
   which a guest sees on the Hindi menu. The mock knows only a few words, so other tests' dishes
   get none.
+
+## Public website (after launch, from 2026-10-02)
+
+The owner asked for an attractive, animated website at menumesh.in that explains everything about
+MenuMesh, works on phones, tablets and laptops, and lets a restaurant buy a plan directly; built in
+phases on a new branch (`feat/website`), with extra features where they help (SPEC §24).
+
+- **W-1 · Shape:** the same Next.js app in a `(site)` route group, so the site shares plans, auth
+  and the subscription flow, and ships with the same pipeline. Phases W1 (shell and home), W2
+  (features, pricing, demo, leads), W3 (self-serve signup and autopay), W4 (SEO, analytics,
+  performance, launch), W5 (Hindi). Each phase is a PR from `feat/website` to `main`; production
+  only through a Release. The owner's choices: trial + autopay (first charge when the 14-day
+  trial ends, skippable), email code + Cloudflare Turnstile, a product-led warm look with the
+  product's own screens and no stock photos, English first.
+- **W-2 · Pages and copy:** the policies move under the site's header and footer, and gain
+  refund-and-cancellation and shipping pages, which Razorpay's website review expects with
+  contact and pricing; they stay placeholders until the owner's texts arrive, and the contact
+  page shows placeholder details until then. All copy lives in `src/features/site/content.ts`
+  (one shape for Hindi later) and claims only what the product does today: no testimonials,
+  logos or numbers until real, consented ones exist. Until signup exists the call to action is
+  "Book a demo".
+- **W-3 · Look and motion:** the app's tokens and Noto Sans, plus display sizes (40/48/56 px)
+  that only the site uses. The hero is a drawn scene, not a video: a phone, the kitchen tablet
+  and the admin laptop rendered from simplified copies of the real screens (`StatusChip`,
+  `FoodTypeMark`, `Money`), one order moving from "Add" to "Paid". `motion` 13 drives it and the
+  how-it-works picture, through `LazyMotion` with `domAnimation` in strict mode (the small
+  bundle). Section reveals are CSS scroll-driven animations where supported and plain content
+  elsewhere. The scene plays only on screen with the tab visible, has a pause button (WCAG
+  2.2.2), and with reduced motion shows the finished order with no reveals. This departs from
+  §16.1's "no decorative motion" for the website only; the panels keep it.
+- **W-4 · Devices:** laid out for 360 px phones to wide desktops: the section links move into a
+  sheet below 1024 px, phones get a call-to-action bar once the hero's buttons scroll away, and
+  on narrow screens the bill appears on the tablet instead of the hidden laptop. E2E runs the
+  site spec on the desktop and Pixel 7 projects and a new tablet project (iPad Mini viewport on
+  Chromium), including a CSP check of the home page.
+
+### Review fixes (website W1)
+
+Two reviewers (accessibility and layout; correctness and claims); the verifier hit the usage
+limit, so each of the 20 distinct findings was checked by hand and all were fixed.
+
+- **Claims:** Growth-only features (kitchen view, discounts, split payments, UPI QR on the bill,
+  dish and waiter reports, CSV export) now carry a "Growth plan" badge, and the trial reads
+  "free for 14 days on the Growth plan". With first-order approval on by default, the kitchen
+  gets a table's first order once a waiter takes it; the hero text, the scene's caption and the
+  steps say so. Bills are described as laid out for 80/58 mm receipt printers (there is no A4
+  layout, P5-11), and the FAQ no longer says "many restaurants" use a setup.
+- **Motion:** `MotionConfig reducedMotion="user"` makes motion's own animations instant for
+  reduced motion (the CSS kill switch never reached them); the hero's finger-tap pulse runs only
+  while the scene plays, so Pause stops everything; Next 16 needs
+  `data-scroll-behavior="smooth"` on `<html>` so page changes don't smooth-scroll.
+- **Layout:** grids get an explicit single column on phones, so wide pictures can't stretch them
+  (nothing scrolls sideways at 320 px, now tested); the header's "Book a demo" hides below 380
+  px (the menu and the hero carry it); the mobile sheet scrolls on landscape phones and has a
+  44 px close button; header and footer targets are 44 px; step pictures shrink with the screen.
+- **Keyboard and screen readers:** a strong 2 px focus outline on every site control, white on
+  the brand panel; scroll padding keeps focused controls clear of the sticky header and the
+  phone bar; section links are plain anchors (the browser moves focus), and the mobile sheet
+  scrolls to the section and focuses its heading once its scroll lock is released; "हिन्दी" in
+  English copy is marked `lang="hi"`; the site wrapper is `lang="en"`, since a guest arriving
+  from the Hindi menu keeps the menu's `<html lang>` on client-side navigation.
+- **Sticky bar:** rendered by the home page, not the layout, so it never lingers on the contact
+  page or misses the hero after navigation. The reduced-motion test now checks the visible
+  caption and the visible "Paid" stamp instead of text that the screen-reader list always has.
