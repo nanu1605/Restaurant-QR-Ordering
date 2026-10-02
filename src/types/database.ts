@@ -435,6 +435,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          name_hi: string | null
           restaurant_id: string
           sort_order: number
           source: Database["public"]["Enums"]["category_source"]
@@ -445,6 +446,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          name_hi?: string | null
           restaurant_id: string
           sort_order?: number
           source?: Database["public"]["Enums"]["category_source"]
@@ -455,6 +457,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          name_hi?: string | null
           restaurant_id?: string
           sort_order?: number
           source?: Database["public"]["Enums"]["category_source"]
@@ -649,6 +652,7 @@ export type Database = {
           is_active: boolean
           is_available: boolean
           name: string
+          name_hi: string | null
           price_paise: number
           restaurant_id: string
           sort_order: number
@@ -664,6 +668,7 @@ export type Database = {
           is_active?: boolean
           is_available?: boolean
           name: string
+          name_hi?: string | null
           price_paise?: number
           restaurant_id: string
           sort_order?: number
@@ -679,6 +684,7 @@ export type Database = {
           is_active?: boolean
           is_available?: boolean
           name?: string
+          name_hi?: string | null
           price_paise?: number
           restaurant_id?: string
           sort_order?: number
