@@ -120,15 +120,15 @@ export function PlanEditor({ plan, razorpayReady }: { plan: Plan; razorpayReady:
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {input('name', 'Name')}
-        {input('priceMonthly', 'Monthly price (₹)', undefined, 'decimal')}
-        {input('priceYearly', 'Yearly price (₹)', undefined, 'decimal')}
+        {input('priceMonthly', 'Monthly price (₹)', 'Before GST.', 'decimal')}
+        {input('priceYearly', 'Yearly price (₹)', 'Before GST.', 'decimal')}
         {input('maxTables', 'Table limit', 'Empty = unlimited.', 'numeric')}
         {input('maxStaff', 'Staff login limit', 'Besides the owner. Empty = unlimited.', 'numeric')}
         {input('sortOrder', 'Order on the plans page', undefined, 'numeric')}
         {input(
           'razorpayMonthly',
           'Razorpay plan id (monthly)',
-          'A new price clears it: Razorpay plans can’t change price.',
+          'Charges the price plus 18% GST. A new price clears it: Razorpay plans can’t change price.',
         )}
         {input('razorpayYearly', 'Razorpay plan id (yearly)')}
       </div>

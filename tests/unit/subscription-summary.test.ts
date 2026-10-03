@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AccessInput } from '@/features/subscriptions/access-banner';
 import { autopayStartAt, autopayState, cancelsAtCycleEnd } from '@/features/subscriptions/autopay';
+import { feeGst, withGst } from '@/features/subscriptions/gst';
 import {
   daysUntil,
   formatPaidPeriod,
@@ -263,5 +264,17 @@ describe('autopay', () => {
     });
     expect(summary).toMatchObject({ label: 'Trial ended', tone: 'ok' });
     expect(summary.text).toContain('The first autopay payment is on its way');
+  });
+});
+
+describe('GST on MenuMesh fees', () => {
+  it('adds 18% to plan prices and the setup fee, to the nearest paisa', () => {
+    expect(withGst(39900)).toBe(47082);
+    expect(withGst(89900)).toBe(106082);
+    expect(withGst(1799000)).toBe(2122820);
+    expect(withGst(149900)).toBe(176882);
+    expect(feeGst(1)).toBe(0);
+    expect(feeGst(3)).toBe(1);
+    expect(withGst(0)).toBe(0);
   });
 });
