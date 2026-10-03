@@ -30,7 +30,7 @@ export function StaffNav({ kitchenView }: { kitchenView: boolean }) {
                 href={href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex h-12 items-center gap-2 border-b-2 border-transparent px-4 text-base font-medium text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+                  'flex h-12 items-center gap-1.5 border-b-2 border-transparent px-2.5 text-base font-medium text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:gap-2 sm:px-4',
                   active && 'border-brand text-brand hover:text-brand',
                 )}
               >
