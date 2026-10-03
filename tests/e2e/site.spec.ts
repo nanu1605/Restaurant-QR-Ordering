@@ -76,7 +76,7 @@ test('pricing shows the plans from the database and finds the right one', async 
   const violations = await watchCspViolations(context);
   const { data: plans } = await adminClient()
     .from('plans')
-    .select('name, price_monthly_paise, price_yearly_paise, max_staff')
+    .select('code, name, price_monthly_paise, price_yearly_paise, max_staff')
     .eq('is_active', true)
     .order('price_monthly_paise');
   expect(plans?.length).toBeGreaterThan(0);
@@ -101,6 +101,12 @@ test('pricing shows the plans from the database and finds the right one', async 
   await expect(page.getByRole('status', { name: 'Recommended plan' })).toContainText(
     unlimited?.name ?? 'Let’s talk',
   );
+  // Visitors can sign up on this server, so a plan that fits leads to the trial.
+  if (unlimited) {
+    await expect(
+      page.locator('#fit').getByRole('link', { name: 'Start free trial' }),
+    ).toHaveAttribute('href', `/signup?plan=${unlimited.code}`);
+  }
   expect(violations).toEqual([]);
 });
 

@@ -60,7 +60,7 @@ export default async function PricingPage() {
         lead="Tell us about your restaurant and we’ll pick the plan that covers it."
         className="bg-surface"
       >
-        <PlanHelper plans={pricing.plans} />
+        <PlanHelper plans={pricing.plans} signup={signup} />
       </Section>
       <Section id="compare" title="Compare the plans">
         <PlanComparison plans={pricing.plans} />

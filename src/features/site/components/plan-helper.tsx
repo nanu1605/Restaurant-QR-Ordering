@@ -8,14 +8,14 @@ import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from '@/features/plans/plan-features';
 
-import { HERO } from '../content';
+import { HERO, SIGNUP_CTA } from '../content';
 import { recommendPlan, staffLabel, tablesLabel, type PricingPlan } from '../pricing';
 
 const MAX_TABLES = 60;
 const MAX_STAFF = 40;
 
 /** "Which plan fits me?": a few questions, answered with the real plan limits. */
-export function PlanHelper({ plans }: { plans: PricingPlan[] }) {
+export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: boolean }) {
   const [tables, setTables] = useState(8);
   const [staff, setStaff] = useState(3);
   const [features, setFeatures] = useState<FeatureKey[]>([]);
@@ -90,11 +90,18 @@ export function PlanHelper({ plans }: { plans: PricingPlan[] }) {
             </p>
           </>
         )}
+        {/* "Let's talk" stays a conversation, even when visitors can sign up. */}
         <Link
-          href={plan ? `/contact?plan=${plan.code}` : '/contact'}
+          href={
+            plan
+              ? signup
+                ? `/signup?plan=${plan.code}`
+                : `/contact?plan=${plan.code}`
+              : '/contact'
+          }
           className={cn(buttonVariants({ size: 'touch' }), 'self-center px-6')}
         >
-          {HERO.primary}
+          {plan && signup ? SIGNUP_CTA : HERO.primary}
         </Link>
       </div>
     </div>
