@@ -2025,3 +2025,64 @@ limit, so each of the 20 distinct findings was checked by hand and all were fixe
 - **Sticky bar:** rendered by the home page, not the layout, so it never lingers on the contact
   page or misses the hero after navigation. The reduced-motion test now checks the visible
   caption and the visible "Paid" stamp instead of text that the screen-reader list always has.
+
+### W2: features, pricing, demo and leads
+
+- **W-5 · Pricing from the database:** `/pricing` and the home page's "Plans from …" read the
+  active `plans` rows and `platform_settings` (trial days, setup fee) with the service-role client
+  (`getSitePricing`, a few columns only), because visitors are signed out and `anon` reads no
+  table; so the site always shows what `/super/plans` set. Cards list what each plan adds to the
+  one before; yearly shows the saving in rupees and the toggle the whole months free that every
+  plan gives (computed, not hard-coded). "Which plan fits me?" picks the cheapest plan whose
+  limits and features cover the visitor's tables, staff logins and chosen features; nothing fits
+  → "Let's talk". The setup fee is shown, since onboarding is still sales-led; W3 decides it for
+  self-serve.
+- **W-6 · "Book a demo" leads:** a form on `/contact` (name, restaurant, city, mobile, optional
+  email, plan, message) checked with Cloudflare Turnstile, then saved by
+  `site_create_lead(jsonb, ip_hash)` (service role only) into `site_leads`, which only platform
+  admins can read (`/super/leads`). Limits: 5 an hour per network, 3 a day per phone
+  (`RATE_LIMITED`); the network is an HMAC of the IP with `CUSTOMER_COOKIE_SECRET`, never the
+  address. Each lead is emailed to `platform_settings.support_email` through Resend after the
+  response (`after()`), skipped when that address or Resend isn't set; the list is the record.
+  Turnstile's script loads from bundle code under `'strict-dynamic'` (CSP gains
+  `challenges.cloudflare.com` in script-src and frame-src), siteverify fails closed, and a fresh
+  widget renders after every refusal since tokens work once. The form is hidden without
+  `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, except under `next dev`, which uses
+  Cloudflare's always-pass test keys. E2E fakes the widget in the browser and points
+  `TURNSTILE_VERIFY_URL` at the mock, so tests never reach Cloudflare.
+- **W-7 · Real screens on the features page:** `/features` shows each role beside screenshots of
+  the real app, taken by `pnpm site:shots` (Playwright, `tests/site-shots`) from a fresh sample
+  restaurant on the local stack, and served through `next/image` from
+  `src/features/site/shots`. Re-run it when the screens change. It creates a restaurant, so it
+  never points at staging or production.
+- **W-8 · Demo in the browser:** `/demo` is a small state machine (`src/features/site/demo`) that
+  plays one table's order on a guest phone (real English and Hindi guest strings), the kitchen
+  tablet and the counter laptop, with a "Next step" hint. Nothing reaches the server. Instead of
+  playing itself when idle, a "Show me" button runs the next steps until stopped, off screen or
+  hidden, and is absent under reduced motion. Below 1024 px one device shows at a time, with a
+  switcher. `RequestBadges` moved to its own module so the site doesn't load the live board.
+
+### Review fixes (website W2)
+
+Three reviewers (security, correctness and claims, accessibility and layout) and a verifier; 14
+of 16 findings were confirmed and fixed.
+
+- **Lead limits under concurrency:** `site_create_lead` takes transaction advisory locks (the
+  phone, then the network) before counting, so simultaneous requests can't all pass the limits;
+  `451_site_leads_concurrency` races two requests over dblink.
+- **Claims:** the pricing FAQ counts the setup fee; billing is described as from everything the
+  table ordered (the app bills unserved dishes too, "Bill anyway"); the guest menu's Hindi covers
+  its buttons and dish names, not descriptions. The draft privacy page names Cloudflare
+  Turnstile and Resend's new role, and gains a section for people who book a demo.
+- **Demo:** waiter calls are answered on the counter laptop (the admin's live orders, like the
+  waiters' board), never on the kitchen view, which has no calls in the app; the bill follows
+  the app's maths (CGST and SGST halves, total rounded to the rupee with a round-off line) and
+  can be made before every dish is served.
+- **Form:** below 300 px the Turnstile widget renders in its compact size and the form's padding
+  shrinks, so `/contact` doesn't scroll sideways at 320 px (the fake widget in E2E now takes the
+  real widget's room); a refusal moves focus to the first field to fix and announces it; a
+  widget that fails to load says so, with a "Try again" button; message line breaks count once,
+  as in the textarea.
+- **Pricing:** a hidden "Plans" heading keeps the outline in order; the sliders' visible numbers
+  are hidden from screen readers (the slider already announces its value); a plan that adds no
+  features to the one before reads "Everything in …" without "plus".

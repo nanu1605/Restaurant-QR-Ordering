@@ -29,12 +29,22 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section>
+        <h2>People who book a demo</h2>
+        <p>
+          The “Book a demo” form asks for your name, your restaurant’s name and city, your mobile
+          number, and optionally your email, the plan you’re interested in and a message. We use
+          them only to contact you about a demo. To limit abuse we keep a keyed hash of your network
+          address with the request, not the address itself. [Retention for demo requests.]
+        </p>
+      </section>
+      <section>
         <h2>Service providers</h2>
         <p>
           Supabase (database, Mumbai, India), Vercel (hosting), Sentry (error reports), PostHog
           (usage of the staff and admin screens only, never diners’ phones), Razorpay (subscription
-          payments by restaurants) and Resend (billing emails to owners). [Confirm the list and
-          their regions.]
+          payments by restaurants), Resend (billing emails to owners, and demo requests to our team)
+          and Cloudflare Turnstile (a bot check on the website’s forms, which sees your network
+          address and browser signals). [Confirm the list and their regions.]
         </p>
       </section>
       <section>

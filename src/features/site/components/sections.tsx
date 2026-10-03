@@ -1,6 +1,7 @@
 import { cn } from 'cn';
 import {
   Activity,
+  ArrowRight,
   Camera,
   ChartColumn,
   ChevronDown,
@@ -8,25 +9,29 @@ import {
   Clock3,
   EyeOff,
   Languages,
+  MousePointerClick,
   Printer,
   QrCode,
   ReceiptText,
+  Tags,
   WifiOff,
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
+import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 
 import { FAQ, FINAL_CTA, HERO, HIGHLIGHTS, PROBLEMS, ROLES, type HighlightIcon } from '../content';
 import { PhoneFrame } from './device-frames';
 import { HeroStory } from './hero-story';
 import { HowItWorks } from './how-it-works';
+import { WithHindi } from './with-hindi';
 
 /** The home page's sections (docs/DECISIONS.md W-1), top to bottom. */
 
-function Section({
+export function Section({
   id,
   title,
   lead,
@@ -97,20 +102,7 @@ export function Hero() {
   );
 }
 
-/** "हिन्दी" inside English copy, marked as Hindi for screen readers. */
-export function WithHindi({ text }: { text: string }) {
-  const [before, after] = text.split('हिन्दी');
-  if (after === undefined) return text;
-  return (
-    <>
-      {before}
-      <span lang="hi">हिन्दी</span>
-      {after}
-    </>
-  );
-}
-
-function GrowthBadge() {
+export function GrowthBadge() {
   return (
     <span className="ml-1.5 inline-flex rounded-full bg-accent px-2 py-0.5 align-middle text-xs font-semibold whitespace-nowrap text-brand">
       Growth plan
@@ -306,11 +298,69 @@ export function Hindi() {
   );
 }
 
-export function Faq() {
+/** Two ways on from the home page: the demo, and the plans with the lowest price. */
+export function NextSteps({ fromPaise }: { fromPaise: number | null }) {
+  const cards = [
+    {
+      href: '/demo',
+      icon: MousePointerClick,
+      title: 'Try it in your browser',
+      body: 'Order as a guest, cook in the kitchen and bill at the counter, all on one page. Nothing to sign up for.',
+      link: 'Open the demo',
+    },
+    {
+      href: '/pricing',
+      icon: Tags,
+      title:
+        fromPaise === null ? (
+          'Plans and pricing'
+        ) : (
+          <>
+            Plans from <Money paise={fromPaise} fraction="auto" /> a month
+          </>
+        ),
+      body: 'Every plan has QR ordering, the staff board, bills and the Hindi menu. No commission on your sales.',
+      link: 'Compare plans',
+    },
+  ];
   return (
-    <Section id="faq" title="Questions owners ask" className="bg-surface">
+    <section aria-label="Next steps" className="px-4 py-16 sm:px-6 sm:py-24">
+      <ul className="mx-auto grid max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
+        {cards.map(({ href, icon: Icon, title, body, link }) => (
+          <li key={href} className="site-reveal">
+            <Link
+              href={href}
+              className="group flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-ink/5 sm:p-8"
+            >
+              <Icon aria-hidden className="size-7 text-brand" />
+              <h2 className="text-xl font-bold text-ink">{title}</h2>
+              <p className="text-base text-ink-muted">{body}</p>
+              <span className="mt-auto inline-flex items-center gap-1.5 font-semibold text-brand">
+                {link}
+                <ArrowRight
+                  aria-hidden
+                  className="size-4 transition-transform group-hover:translate-x-1"
+                />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function Faq({
+  items = FAQ,
+  title = 'Questions owners ask',
+}: {
+  items?: ReadonlyArray<{ q: string; a: string }>;
+  title?: string;
+}) {
+  return (
+    <Section id="faq" title={title} className="bg-surface">
       <div className="flex max-w-3xl flex-col divide-y divide-line rounded-2xl border border-line bg-paper">
-        {FAQ.map((item) => (
+        {items.map((item) => (
           <details key={item.q} className="group px-5 sm:px-6">
             <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-4 text-base font-semibold text-ink [&::-webkit-details-marker]:hidden">
               {item.q}

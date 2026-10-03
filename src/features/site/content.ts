@@ -6,8 +6,9 @@
 
 export const SITE_NAV = [
   { href: '/#how', label: 'How it works' },
-  { href: '/#features', label: 'Features' },
-  { href: '/#faq', label: 'FAQ' },
+  { href: '/features', label: 'Features' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/demo', label: 'Demo' },
   { href: '/contact', label: 'Contact' },
 ] as const;
 
@@ -190,3 +191,132 @@ export const FINAL_CTA = {
   title: 'See it running in your restaurant',
   body: 'We’ll set up your menu and tables with you, and you can try MenuMesh free for 14 days on the Growth plan.',
 } as const;
+
+export const PRICING = {
+  title: 'Simple plans for every size of restaurant',
+  lead: 'Every plan has QR ordering, the staff board, bills and the Hindi menu. Pick the one that fits your tables and team.',
+  /** Under each plan's name, by plan code. */
+  blurbs: {
+    starter: 'For cafés and small restaurants starting with QR ordering.',
+    growth: 'For busy restaurants with a kitchen screen and a team on the floor.',
+    pro: 'For large restaurants: no limits, and no “Powered by” line on bills.',
+  } as Record<string, string>,
+  everyPlan: [
+    'Guests order from their own phone by QR code, no app',
+    'Menu in English and हिन्दी',
+    'Live staff board for waiters',
+    'Bills with GST and service charge, for 80 and 58 mm printers',
+    'Cash, UPI and card payments recorded on each bill',
+    'Menu import from a photo, PDF or CSV',
+    'Today’s sales and a daily report',
+  ],
+  noCommission:
+    'No commission on your sales. Guests pay you directly, by cash, your UPI or your card machine; MenuMesh never touches that money.',
+} as const;
+
+export const PRICING_FAQ = [
+  {
+    q: 'What counts as a staff login?',
+    a: 'Each waiter, kitchen or manager account that signs in. You, the owner, don’t count, and waiters you only name on tables, without a login of their own, don’t count either.',
+  },
+  {
+    q: 'What counts as a table?',
+    a: 'Each table with its own QR code.',
+  },
+  {
+    q: 'What if I outgrow my plan?',
+    a: 'Nothing stops working. You can’t add more tables or staff logins than your plan allows until you move to a bigger plan.',
+  },
+  {
+    q: 'What happens when the free trial ends?',
+    a: 'Choose a plan to keep going. If the plan isn’t paid, your restaurant becomes read-only after a short grace period: nothing is deleted, and it comes back as soon as the plan is renewed.',
+  },
+  {
+    q: 'Do you take a share of my sales?',
+    a: 'No. You pay for your plan, and the one-time setup fee, nothing more. Food payments go straight from your guests to you.',
+  },
+] as const;
+
+export const FEATURES_PAGE = {
+  title: 'Everything from the table to the bill',
+  lead: 'One system for your guests, waiters, kitchen and counter. Every picture on this page is the real app.',
+} as const;
+
+/** The features page, one section per role; `shots` name the screenshots in ./shots. */
+export const FEATURE_SECTIONS: ReadonlyArray<{
+  id: string;
+  /** Its name in the page's jump links. */
+  nav: string;
+  title: string;
+  lead: string;
+  plan?: SitePlan;
+  points: ReadonlyArray<{ text: string; plan?: SitePlan }>;
+}> = [
+  {
+    id: 'guests',
+    nav: 'Guests',
+    title: 'Guests order from their own phone',
+    lead: 'The QR code on the table opens your menu in the phone’s browser, already tied to that table.',
+    points: [
+      { text: 'No app to install and no login' },
+      { text: 'Categories, a veg-only switch and search' },
+      { text: 'Sizes and add-ons, and a note for the kitchen' },
+      { text: 'Menu buttons and dish names in English or हिन्दी' },
+      { text: 'Each dish’s status, live: placed, preparing, ready, served' },
+      { text: 'Cancel a dish in the first moments, call a waiter, ask for the bill' },
+      { text: 'Friends at the table order from their own phones, round after round' },
+    ],
+  },
+  {
+    id: 'waiters',
+    nav: 'Waiters',
+    title: 'Waiters see every table at a glance',
+    lead: 'A live board on any phone or tablet, coloured by how far each table’s order has got.',
+    points: [
+      { text: 'New orders appear straight away, with a chime if you turn sound on' },
+      { text: 'Approve a table’s first order to stop prank orders' },
+      { text: 'Take a table, add or remove dishes, move guests to another table' },
+      { text: 'A badge when a guest calls a waiter or asks for the bill' },
+      { text: 'Mark a dish out of stock from the floor' },
+      { text: 'Dish updates are kept through a short Wi-Fi drop and sent when it’s back' },
+    ],
+  },
+  {
+    id: 'kitchen',
+    nav: 'Kitchen',
+    title: 'The kitchen sees what to cook next',
+    lead: 'Tickets for every table, in columns for new, preparing and ready.',
+    plan: 'growth',
+    points: [
+      { text: 'Each ticket shows its table, round, dishes and notes' },
+      { text: 'Start or finish a whole ticket, or one dish at a time' },
+      { text: 'Waiters and guests see each change at once' },
+    ],
+  },
+  {
+    id: 'billing',
+    nav: 'Billing',
+    title: 'Bills in one tap',
+    lead: 'The counter makes the bill from everything the table ordered, with your taxes and charges.',
+    points: [
+      { text: 'GST and service charge added the same way on every bill' },
+      { text: 'Prints on 80 mm and 58 mm receipt printers' },
+      { text: 'Record cash, UPI or card on each bill' },
+      { text: 'Discounts and split payments', plan: 'growth' },
+      { text: 'Your UPI QR code printed on the bill', plan: 'growth' },
+    ],
+  },
+  {
+    id: 'owners',
+    nav: 'Owners and managers',
+    title: 'Owners and managers stay in charge',
+    lead: 'Set the restaurant up once, then see how it’s doing every day.',
+    points: [
+      { text: 'Menu with categories, sizes and add-ons, or imported from a photo, PDF or CSV' },
+      { text: 'Tables with printable QR codes' },
+      { text: 'Staff logins for managers, waiters and the kitchen, each seeing only their part' },
+      { text: 'Today’s sales and a daily report' },
+      { text: 'Sales by dish and waiter, busy hours and CSV export', plan: 'growth' },
+    ],
+  },
+];

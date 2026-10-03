@@ -20,6 +20,11 @@ describe('content security policy (docs/DECISIONS.md P9-9)', () => {
       "'nonce-abc'",
       "'strict-dynamic'",
       'https://*.razorpay.com',
+      'https://challenges.cloudflare.com',
+    ]);
+    expect(policy['frame-src']).toEqual([
+      'https://*.razorpay.com',
+      'https://challenges.cloudflare.com',
     ]);
     expect(policy['connect-src']).toEqual([
       "'self'",

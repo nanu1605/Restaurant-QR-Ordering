@@ -4,6 +4,7 @@ import { cn } from 'cn';
 import {
   Building2,
   CreditCard,
+  Inbox,
   LayoutDashboard,
   Menu,
   ScrollText,
@@ -24,6 +25,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon };
 const NAV_ITEMS: NavItem[] = [
   { href: '/super', label: 'Overview', icon: LayoutDashboard },
   { href: '/super/restaurants', label: 'Restaurants', icon: Building2 },
+  { href: '/super/leads', label: 'Leads', icon: Inbox },
   { href: '/super/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/super/plans', label: 'Plans', icon: Tags },
   { href: '/super/webhooks', label: 'Webhooks', icon: Webhook },

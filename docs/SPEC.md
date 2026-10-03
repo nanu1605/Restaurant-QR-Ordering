@@ -305,7 +305,17 @@ Conventions for every table unless stated otherwise:
 | trial_days | int | default 14 |
 | grace_days | int | default 7 |
 | support_phone | text | shown to restaurants |
-| support_email | text | |
+| support_email | text | also receives the website's "Book a demo" leads |
+
+**`site_leads`** (website "Book a demo" requests; written only by `site_create_lead`, read by platform admins)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| name, restaurant_name, city | text | 80 / 120 / 60 chars |
+| phone | text | ten digits |
+| email, plan_code, message | text null | message up to 1000 chars |
+| ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
+| created_at | timestamptz | |
 
 ### 8.2 Restaurants and members
 
@@ -1034,6 +1044,7 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
 - **Subscriptions**: list with status filters, past-due first.
+- **Leads**: "Book a demo" requests from the website, newest first.
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable.
 
@@ -1567,7 +1578,7 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | Phase | Ships |
 |---|---|
 | W1 | Header, footer, phone call-to-action bar; the home page (animated hero scene, problems, how it works, roles, highlights, Hindi, FAQ, final call to action); contact page; terms, privacy, refunds and shipping pages |
-| W2 | Features and pricing pages (plans read from the database), an interactive demo, a "Book a demo" form stored as leads for super-admin |
+| W2 | Features page with screenshots of the real app; pricing page (plans read from the database, monthly/yearly, plan finder, comparison); an interactive demo in the browser; a "Book a demo" form behind Cloudflare Turnstile, stored as leads for super-admin and emailed to the support address |
 | W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial, then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
 | W4 | SEO (sitemap, robots, Open Graph, structured data), funnel analytics, performance and accessibility budgets, launch |
 | W5 | The website in Hindi |

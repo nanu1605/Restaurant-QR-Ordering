@@ -93,6 +93,7 @@ test('the platform admin pages run under the policy without violations', async (
   for (const path of [
     '/super',
     '/super/restaurants',
+    '/super/leads',
     '/super/plans',
     '/super/subscriptions',
     '/super/webhooks',

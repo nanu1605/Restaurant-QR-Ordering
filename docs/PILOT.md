@@ -89,6 +89,9 @@ Before charging anyone (Phase 8):
 - [ ] Verify `menumesh.in` as a Resend sending domain and set `RESEND_API_KEY` and `EMAIL_FROM`
       (e.g. `MenuMesh <billing@menumesh.in>`) in Vercel, with `CRON_SECRET`, so reminder emails go
       out from the daily cron.
+- [ ] Create a Cloudflare Turnstile widget for `menumesh.in` (and `staging.menumesh.in`) and set
+      `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in Vercel, so the website's "Book a demo"
+      form appears; set `platform_settings.support_email` (SQL editor) to receive each request.
 
 ## Setting a restaurant up
 
