@@ -44,7 +44,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
           <LiveStatus />
         </PanelHeader>
         <div className="flex flex-1">
-          <aside className="hidden w-56 shrink-0 border-r border-line bg-surface p-3 md:block print:hidden">
+          <aside className="hidden w-56 shrink-0 border-r border-line bg-surface p-3 lg:block print:hidden">
             <AdminNav role={membership.role} />
           </aside>
           <main className="flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6 print:p-0">

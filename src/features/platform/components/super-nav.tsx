@@ -52,7 +52,7 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
                 onClick={onNavigate}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+                  'flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
                   active && 'bg-accent text-brand hover:bg-accent hover:text-brand',
                 )}
               >
@@ -75,7 +75,7 @@ export function SuperMobileNav() {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button variant="ghost" size="icon-lg" className="md:hidden" aria-label="Open menu" />
+          <Button variant="ghost" size="icon-touch" className="lg:hidden" aria-label="Open menu" />
         }
       >
         <Menu aria-hidden />
