@@ -49,7 +49,7 @@ export const metadata: Metadata = {
 const TONE_CLASSES: Record<SubscriptionSummary['tone'], string> = {
   ok: 'bg-status-served-fill text-status-served-foreground',
   warning: 'bg-status-preparing-fill text-status-preparing-foreground',
-  blocked: 'bg-status-void text-white',
+  blocked: 'bg-status-void-fill text-status-void-foreground',
 };
 
 export default async function SubscriptionPage({ searchParams }: PageProps<'/admin/subscription'>) {

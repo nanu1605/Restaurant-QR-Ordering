@@ -13,6 +13,7 @@ import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatINR } from '@/lib/money';
+import { ThemeSwitch } from '@/features/theme/theme-switch';
 
 import { hasChoices } from '../addons';
 import {
@@ -221,7 +222,10 @@ export function MenuView({ qrToken, table }: MenuViewProps) {
         </>
       )}
 
-      <LegalLinks className="mt-auto px-4 pt-8 pb-6" />
+      <footer className="mt-auto flex flex-col items-center gap-3 px-4 pt-8 pb-6">
+        <ThemeSwitch labels={t.theme} />
+        <LegalLinks />
+      </footer>
 
       {table.canOrder && count > 0 && (
         <CartBar href={`${base}/cart`} count={count} totalPaise={cartTotalPaise(cart)} />

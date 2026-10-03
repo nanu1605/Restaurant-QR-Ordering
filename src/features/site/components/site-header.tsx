@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { Wordmark } from '@/components/shared/logo';
 import { buttonVariants } from '@/components/ui/button';
+import { ThemeMenu } from '@/features/theme/theme-switch';
 import { APP_NAME } from '@/lib/config';
 
 import { SITE_NAV } from '../content';
@@ -38,6 +39,8 @@ export function SiteHeader() {
           </ul>
         </nav>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {/* Below 1024px the menu sheet carries it. */}
+          <ThemeMenu className="hidden lg:inline-flex" />
           <Link
             href="/login"
             className={cn(

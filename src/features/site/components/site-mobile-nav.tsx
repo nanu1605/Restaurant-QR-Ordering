@@ -8,6 +8,7 @@ import { useRef, useState } from 'react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { ThemeSwitch } from '@/features/theme/theme-switch';
 
 import { SITE_NAV } from '../content';
 
@@ -59,7 +60,7 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
         side="right"
         showCloseButton={false}
         finalFocus={() => section.current === null}
-        className="w-80 gap-6 overflow-y-auto p-6"
+        className="gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
       >
         <div className="flex items-center justify-between">
           <SheetTitle className="text-base font-semibold text-ink">Menu</SheetTitle>
@@ -82,6 +83,7 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
             ))}
           </ul>
         </nav>
+        <ThemeSwitch className="self-start" />
         <div className="mt-auto flex flex-col gap-3">
           <Link
             href="/login"

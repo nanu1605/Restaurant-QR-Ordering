@@ -16,7 +16,10 @@ type FrameProps = {
 export function PhoneFrame({ children, className, screenClassName }: FrameProps) {
   return (
     <div
-      className={cn('rounded-[1.75rem] bg-stone-900 p-[5px] shadow-2xl shadow-ink/25', className)}
+      className={cn(
+        'rounded-[1.75rem] bg-stone-900 p-[5px] shadow-2xl shadow-black/25 dark:ring-1 dark:ring-line',
+        className,
+      )}
     >
       <div
         className={cn(
@@ -34,7 +37,10 @@ export function PhoneFrame({ children, className, screenClassName }: FrameProps)
 export function TabletFrame({ children, className, screenClassName }: FrameProps) {
   return (
     <div
-      className={cn('rounded-[1.25rem] bg-stone-900 p-[7px] shadow-2xl shadow-ink/20', className)}
+      className={cn(
+        'rounded-[1.25rem] bg-stone-900 p-[7px] shadow-2xl shadow-black/20 dark:ring-1 dark:ring-line',
+        className,
+      )}
     >
       <div
         className={cn(
@@ -51,7 +57,7 @@ export function TabletFrame({ children, className, screenClassName }: FrameProps
 export function LaptopFrame({ children, className, screenClassName }: FrameProps) {
   return (
     <div className={cn('flex flex-col items-center', className)}>
-      <div className="w-full rounded-t-[0.9rem] bg-stone-900 p-[6px] pb-[9px] shadow-2xl shadow-ink/20">
+      <div className="w-full rounded-t-[0.9rem] bg-stone-900 p-[6px] pb-[9px] shadow-2xl shadow-black/20 dark:ring-1 dark:ring-line">
         <div
           className={cn(
             'relative flex aspect-[16/10] flex-col overflow-hidden rounded-[0.35rem] bg-paper',

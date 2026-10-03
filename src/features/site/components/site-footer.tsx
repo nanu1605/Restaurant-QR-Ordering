@@ -1,4 +1,5 @@
 import { Wordmark } from '@/components/shared/logo';
+import { ThemeSwitch } from '@/features/theme/theme-switch';
 import { APP_NAME } from '@/lib/config';
 
 import { SiteLink } from './site-link';
@@ -59,9 +60,12 @@ export function SiteFooter() {
           </nav>
         ))}
       </div>
-      <p className="mx-auto max-w-6xl border-t border-line px-4 py-6 text-xs text-ink-muted sm:px-6">
-        © {new Date().getFullYear()} {APP_NAME}
-      </p>
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 border-t border-line px-4 py-6 sm:px-6">
+        <p className="text-xs text-ink-muted">
+          © {new Date().getFullYear()} {APP_NAME}
+        </p>
+        <ThemeSwitch />
+      </div>
     </footer>
   );
 }

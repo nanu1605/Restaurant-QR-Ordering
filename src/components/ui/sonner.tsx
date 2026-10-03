@@ -9,11 +9,10 @@ import {
 } from 'lucide-react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
-// The panels use one light theme (spec §16), so no theme provider is needed.
+// The root layout passes the theme from its cookie, so no theme provider is needed.
 const Toaster = ({ toastOptions, ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme="light"
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,

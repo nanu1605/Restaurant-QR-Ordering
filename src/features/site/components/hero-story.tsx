@@ -152,7 +152,7 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
     <div className="flex h-full flex-col text-[0.5rem] sm:text-[0.6rem]">
       <div className="bg-primary px-[0.9em] pt-[2.4em] pb-[0.9em] text-primary-foreground">
         <p className="text-[1.15em] font-bold">Spice Route</p>
-        <p className="opacity-80">Table 5</p>
+        <p>Table 5</p>
       </div>
       <AnimatePresence mode="wait" initial={false}>
         {status === null ? (

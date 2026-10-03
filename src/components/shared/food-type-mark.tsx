@@ -24,7 +24,7 @@ type FoodTypeMarkProps = {
 
 /**
  * The standard Indian square food mark: outlined square with a filled
- * circle (veg), triangle (non-veg) or egg shape.
+ * circle (veg), triangle (non-veg) or egg shape, on white in either theme.
  */
 export function FoodTypeMark({
   type,
@@ -52,7 +52,7 @@ export function FoodTypeMark({
         width="17.5"
         height="17.5"
         rx="2"
-        fill="none"
+        fill="#fff"
         stroke="currentColor"
         strokeWidth="2.5"
       />
