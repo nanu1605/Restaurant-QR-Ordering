@@ -2117,10 +2117,17 @@ of 16 findings were confirmed and fixed.
   tables and QR codes, so they pay no setup fee; the one-time fee stays for restaurants we set up
   (with printed QR codes), and `/pricing` says both once signup is open. Charging it at signup
   would also mean a payment before the trial, which the trial-first flow avoids.
-- **W-11 · Prices exclude GST:** the owner confirmed that plan prices are before GST; `/pricing`,
-  its FAQ and the home page's "Plans from …" say so. Razorpay plans are still created from the
-  plan price as it is: charging GST on top means Razorpay plans priced with GST (or Razorpay's
-  tax settings), which is the owner's call with their GST registration.
+- **W-11 · Prices exclude GST, payments include it:** the owner confirmed that plan prices (and
+  the setup fee) are before GST, and that autopay charges the price plus GST. `/pricing`, its
+  FAQ and the home page's "Plans from …" say prices are before GST; the stored plan prices stay
+  before GST. 18% (software services, `FEE_GST_BPS` in `src/features/subscriptions/gst.ts`) is
+  added, rounded to the paisa, wherever money is asked for: the Razorpay plan created from
+  `/super/plans` charges `withGst(price)` (₹899 → ₹1,060.82 a month), and a payment link
+  suggests the fee or months with GST (still editable). The owner's plan cards show the price
+  "+ GST" and what each payment is with it. Payments are recorded at what Razorpay took. A
+  Razorpay plan created before this change, or typed in by hand, must charge the price with GST;
+  clear its id and create it again from `/super/plans` otherwise. A custom GST invoice stays out
+  of scope (§14.7).
 
 ### Review fixes (website W3)
 

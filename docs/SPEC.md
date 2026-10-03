@@ -1127,7 +1127,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.7 Subscription invoices
 
-Razorpay generates payment receipts/invoices for subscription charges — configure business GST details in the Razorpay dashboard (human task). A custom GST invoice PDF for subscription fees is out of scope for now.
+Plan prices and the setup fee are before GST; every payment to MenuMesh adds 18% GST (Razorpay plans charge the price with GST, payment links suggest it; docs/DECISIONS.md W-11). Razorpay generates payment receipts/invoices for subscription charges — configure business GST details in the Razorpay dashboard (human task). A custom GST invoice PDF for subscription fees is out of scope for now.
 
 ---
 
