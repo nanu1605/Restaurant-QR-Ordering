@@ -86,7 +86,7 @@ export default async function PrintQrCardsPage({ searchParams }: PageProps<'/adm
             <section
               key={index}
               aria-label={`Page ${index + 1}`}
-              className="qr-page grid w-full max-w-[210mm] grid-cols-2 grid-rows-3 gap-[6mm] border border-line bg-white p-[10mm] shadow-sm print:max-w-none print:border-0 print:p-0 print:shadow-none"
+              className="qr-page theme-light grid w-full max-w-[210mm] grid-cols-2 grid-rows-3 gap-[6mm] border border-line bg-white p-[10mm] shadow-sm print:max-w-none print:border-0 print:p-0 print:shadow-none"
             >
               {page.map((card) => (
                 <article

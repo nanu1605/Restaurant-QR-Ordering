@@ -44,7 +44,7 @@ export function BillDocument({
   return (
     <article
       aria-label={`${DOCUMENT_TITLES[bill.documentType]} ${bill.invoiceNumber}`}
-      className={cn('flex flex-col gap-2 bg-white text-black', className)}
+      className={cn('theme-light flex flex-col gap-2 bg-white text-black', className)}
       style={style}
     >
       <header className="flex flex-col items-center gap-0.5 text-center">

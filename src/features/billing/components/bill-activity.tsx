@@ -8,7 +8,7 @@ import { type AuditEntry, type BillDetail, PAYMENT_MODE_LABELS } from '../bill';
 const STATUS_STYLES = {
   unpaid: 'border-attention text-attention',
   paid: 'border-status-served bg-status-served text-status-served-foreground',
-  void: 'border-status-void bg-status-void text-white',
+  void: 'border-status-void bg-status-void-fill text-status-void-foreground',
 } as const;
 
 const STATUS_LABELS = { unpaid: 'Unpaid', paid: 'Paid', void: 'Void' } as const;

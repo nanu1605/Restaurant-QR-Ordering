@@ -52,7 +52,7 @@ export async function PrintableBillPage({
         backLabel={backLabel}
         selfHref={selfHref}
       />
-      <div className="bill-sheet mx-auto my-6 border border-line bg-white px-[3mm] py-[4mm] shadow-sm">
+      <div className="bill-sheet theme-light mx-auto my-6 border border-line bg-white px-[3mm] py-[4mm] shadow-sm">
         <BillDocument
           bill={bill}
           print={print}
