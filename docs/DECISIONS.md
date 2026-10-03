@@ -2197,3 +2197,19 @@ text, kept restaurant accents on the customer menu, and warm neutrals.
   accent where it reads (4.5:1 for text, 3:1 for the ring), else ink. A colour that neither
   white nor ink reads on falls back to the MenuMesh orange with ink, which is darker than the old
   ink, so more light accents keep their own colour.
+
+### Review fixes (B1)
+
+Three reviewers (correctness, accessibility and contrast, brand and docs) and a verifier; 7 of
+12 findings were confirmed (two were duplicates, three were older than this change) and all 7
+are fixed.
+
+- **Selected and checked states:** with indigo, a fill alone told a selected option or a checked
+  control apart; the logo orange is under 3:1 against white and paper, so the state now also has
+  a deep-orange edge (`--ring`, 4.9:1 or more): checked checkboxes and radios, a pressed or
+  current default button (payment mode, report tabs, plan cycle), the board's active filter, and
+  the website's cycle and device toggles. A checked switch's track is `--brand`, so its white
+  thumb stands out (4.9:1), and the native checkbox uses `accent-brand`.
+- **Cached icons:** next/og serves icons with a year-long immutable cache, and `/icon/192` and
+  `/icon/512` kept their addresses, so the manifest asks for them with `?v=2`.
+- **SPEC:** the restaurants table still named indigo as the default accent.

@@ -342,7 +342,7 @@ Conventions for every table unless stated otherwise:
 | address_line, city, state, pincode | text | |
 | phone, email | text | |
 | logo_path | text null | Storage path |
-| accent_color | text | hex, default brand indigo; used on customer menu |
+| accent_color | text | hex, default `#FF6606` (MenuMesh orange, §16.2 `primary`); used on customer menu |
 | gstin | text null | validated format (15 chars) when present |
 | fssai_license | text null | printed on bill when present |
 | gst_mode | enum `none` \| `regular` \| `composition` | default `none` |
