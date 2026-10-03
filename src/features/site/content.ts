@@ -251,7 +251,7 @@ export const PRICING_FAQ = [
   },
   {
     q: 'Do you take a share of my sales?',
-    a: 'No. You pay for your plan, plus GST, and a one-time setup fee only if we set up your restaurant for you. Food payments go straight from your guests to you.',
+    a: 'No. You pay for your plan, and a one-time setup fee only if we set up your restaurant for you, plus 18% GST on each payment. Food payments go straight from your guests to you.',
   },
 ] as const;
 
