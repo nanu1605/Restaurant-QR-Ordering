@@ -3,7 +3,11 @@ import { ArrowRight, CircleCheck, Circle } from 'lucide-react';
 import Link from 'next/link';
 
 import { autopayState } from '@/features/subscriptions/autopay';
-import { getOwnerSubscription, getPlanUsage } from '@/features/subscriptions/queries';
+import {
+  getCheckoutPlans,
+  getOwnerSubscription,
+  getPlanUsage,
+} from '@/features/subscriptions/queries';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
 import { createClient } from '@/lib/supabase/server';
 
@@ -13,14 +17,16 @@ type Step = { title: string; body: string; href: string; done: boolean };
 async function steps(restaurantId: string): Promise<Step[]> {
   const supabase = await createClient();
   const online = razorpayConfig() !== null;
-  const [usage, items, restaurant, subscription] = await Promise.all([
+  const [usage, items, restaurant, subscription, checkoutPlans] = await Promise.all([
     getPlanUsage(restaurantId),
     supabase
       .from('menu_items')
       .select('id', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurantId),
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true),
     supabase.from('restaurants').select('address_line').eq('id', restaurantId).single(),
     online ? getOwnerSubscription(restaurantId) : Promise.resolve(null),
+    online ? getCheckoutPlans() : Promise.resolve([]),
   ]);
   if (items.error) throw new Error(`Could not count dishes: ${items.error.message}`);
   if (restaurant.error)
@@ -52,7 +58,8 @@ async function steps(restaurantId: string): Promise<Step[]> {
       done: Boolean(restaurant.data.address_line),
     },
   ];
-  if (online && subscription) {
+  // Only when a plan can be paid online; otherwise support takes payment.
+  if (subscription && checkoutPlans.length > 0) {
     list.push({
       title: 'Set up autopay',
       body: 'So ordering keeps running when your free trial ends.',
@@ -96,10 +103,7 @@ export async function FirstSteps({ restaurantId }: { restaurantId: string }) {
             <li key={step.href}>
               <Link
                 href={step.href}
-                className={cn(
-                  'flex min-h-11 items-start gap-3 rounded-md border border-line p-3 hover:border-brand/50',
-                  step.done && 'opacity-70',
-                )}
+                className="flex min-h-11 items-start gap-3 rounded-md border border-line p-3 hover:border-brand/50"
               >
                 <Icon
                   aria-hidden
