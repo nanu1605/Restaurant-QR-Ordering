@@ -2226,11 +2226,14 @@ are fixed.
   `:root` holds the light values and a nested `@variant dark` the dark ones (warm near-black
   paper `#121110`, surface `#1C1A18`, ink `#F5F2EE`; lighter status colours that carry
   near-black text). The orange buttons don't change. shadcn's own `dark:` classes now work.
-  The switch is a plain form (`setTheme` server action), so it also works before the page's
-  JavaScript; with it, the page repaints at once and the action saves the cookie. The panels
-  have it in a new account menu in the header, which also holds the name and role, the other
-  panel and Log out; the website in the top bar (laptops), the menu sheet and the footer; the
-  customer menu at the foot of the menu, in Hindi too (the Hindi words need the owner's check).
+  The choice is saved by a `setTheme` server action; with JavaScript the page repaints at once
+  and goes back if saving fails (offline). The website's footer and menu sheet and the customer
+  menu (at its foot, in Hindi too; the Hindi words need the owner's check) use a plain form of
+  System / Light / Dark buttons, which also works before the page's JavaScript, and shows the
+  current choice from the server render. The panels have it in a new account menu in the
+  header, which also holds the name and role, the other panel and Log out, and the website's
+  top bar (laptops) in a theme button; those are dropdowns and need JavaScript, like the rest of
+  the panels.
   The offline page follows the device's setting, since a service worker can't read the cookie.
   `theme-tokens.test.ts` checks both themes; `colour-guard.test.ts` fails on a fixed colour
   (`bg-white`, `text-black`, a palette shade or an arbitrary hex) outside its allow-list; and
@@ -2249,3 +2252,28 @@ are fixed.
   ink. The accent `<style>` adds those under the same two conditions as the dark variant, with
   a more specific selector so they win over globals.css. The MenuMesh orange is too light as
   text on white but reads on the dark page, so there it is its own text and ring.
+
+### Review fixes (B2)
+
+Three reviewers (theme mechanism, accessibility and contrast, tests and docs) and a verifier;
+12 of 14 findings were confirmed (two were duplicates) and all 12 are fixed.
+
+- **Text in paper areas:** `color` is inherited as a resolved value, so text with no colour of
+  its own inside `.theme-light` kept the dark theme's near-white (the print pages' Back and copy
+  links were 1.05:1 on the paper). The base layer now sets `.theme-light`'s text colour again;
+  utilities such as the bill's `text-black` still win. The UPI QR preview tile is paper too.
+  The contrast sweep now also visits the QR sheet and test print pages, sign-up and the cart.
+- **The switch's selected option** was only a faint tint (1.1:1); it is now the orange fill with
+  a deep-orange edge, like the plan and filter toggles. The server render marks it too: the root
+  layout hands the cookie's theme to a context that the switch reads until it hydrates. The
+  buttons sit in a `role="group"` inside the form (a form may not take that role).
+- **Saving fails:** the page goes back to the theme it had instead of staying on one that wasn't
+  saved.
+- **shadcn's `dark:` classes, now live:** the unchecked switch track used `input` at 80 %
+  (2.8:1), so it keeps the project's `ink-muted` track; the destructive button's dark hover
+  lightened its own text's background to 3.8:1, so it fades instead; the call-to-action's Log in
+  link took the ghost button's dark hover on the orange panel (2.6:1).
+- **The website's menu sheet** was 75 % wide on phones (its `w-80` lost to the sheet's own
+  width), too narrow for the switch at 360 px; it is 320 px as intended.
+- **Docs:** B-3 now says which switches work without JavaScript, and SPEC §16.2 says what the
+  contrast sweep covers.

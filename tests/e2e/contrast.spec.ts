@@ -38,8 +38,8 @@ async function logIn(page: Page, username: string) {
 
 test('website and customer menu', async ({ page }) => {
   test.slow();
-  const paths = ['/', '/features', '/pricing', '/demo', '/contact', '/terms', '/login'];
-  paths.push('/t/DEMO0000TABLE001', '/t/DEMO0000TABLE001/orders');
+  const paths = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/terms', '/login'];
+  paths.push('/t/DEMO0000TABLE001', '/t/DEMO0000TABLE001/cart', '/t/DEMO0000TABLE001/orders');
   expect(await sweep(page, paths)).toEqual([]);
 });
 
@@ -63,6 +63,9 @@ test('admin panel', async ({ page }) => {
     '/admin/staff',
     '/admin/settings',
     '/admin/subscription',
+    // Paper inside a dark page (docs/DECISIONS.md B-4).
+    '/admin/tables/print',
+    '/admin/settings/test-print',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

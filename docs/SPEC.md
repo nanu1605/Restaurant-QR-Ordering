@@ -1173,7 +1173,7 @@ Colours come from the MenuMesh logo, an orange hexagon (`#FF6606`) with a white 
 | `status-void` | `#B42318` | `#F87171` | cancelled/removed (text + strikethrough) |
 | `attention` | `#C2185B` | `#F06292` | needs approval, bill requested |
 
-Check text/background contrast ≥ 4.5:1 in both themes (white or ink text on light-theme status fills as required; `#1C1917` on every dark-theme fill); `tests/unit/theme-tokens.test.ts` checks the palette and `tests/e2e/contrast.spec.ts` every screen. Colours come from tokens only (`tests/unit/colour-guard.test.ts`). Status chips = colour fill + icon + label.
+Check text/background contrast ≥ 4.5:1 in both themes (white or ink text on light-theme status fills as required; `#1C1917` on every dark-theme fill); `tests/unit/theme-tokens.test.ts` checks the palette and `tests/e2e/contrast.spec.ts` the main screens of the website, the customer menu and each panel, print pages included. Colours come from tokens only (`tests/unit/colour-guard.test.ts`). Status chips = colour fill + icon + label.
 
 Typography: **Noto Sans** (with Noto Sans Devanagari for Hindi in Phase 9) via `next/font`, chosen for Latin + Devanagari coverage and clear numerals. Use `font-variant-numeric: tabular-nums` for all prices, totals and timers. Scale: 12 / 14 / 16 / 20 / 24 / 32 px; staff board labels ≥ 16 px; table labels on cards 24–32 px bold.
 

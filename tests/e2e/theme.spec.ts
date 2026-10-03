@@ -64,8 +64,18 @@ test('the switch works before the page’s JavaScript', async ({ browser, baseUR
   const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto('/pricing');
-  await page.getByRole('contentinfo').getByRole('button', { name: 'Dark' }).click();
+  const footer = page.getByRole('contentinfo');
+  await expect(footer.getByRole('button', { name: 'System' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await footer.getByRole('button', { name: 'Dark' }).click();
   await expect(html(page)).toHaveAttribute('data-theme', 'dark');
+  // The server render marks the choice too.
+  await expect(footer.getByRole('button', { name: 'Dark' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await context.close();
 });
 
