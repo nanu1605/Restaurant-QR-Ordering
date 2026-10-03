@@ -122,9 +122,9 @@ function Range({
         <label htmlFor={id} className="text-sm font-semibold text-ink">
           {label}
         </label>
-        <output htmlFor={id} className="text-2xl font-bold text-brand tabular-nums">
+        <span aria-hidden className="text-2xl font-bold text-brand tabular-nums">
           {value === max ? `${max}+` : value}
-        </output>
+        </span>
       </div>
       <input
         id={id}

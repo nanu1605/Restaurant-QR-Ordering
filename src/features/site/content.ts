@@ -233,7 +233,7 @@ export const PRICING_FAQ = [
   },
   {
     q: 'Do you take a share of my sales?',
-    a: 'No. You pay the plan price and nothing else. Food payments go straight from your guests to you.',
+    a: 'No. You pay for your plan, and the one-time setup fee, nothing more. Food payments go straight from your guests to you.',
   },
 ] as const;
 
@@ -261,7 +261,7 @@ export const FEATURE_SECTIONS: ReadonlyArray<{
       { text: 'No app to install and no login' },
       { text: 'Categories, a veg-only switch and search' },
       { text: 'Sizes and add-ons, and a note for the kitchen' },
-      { text: 'The whole menu in English or हिन्दी, dish names included' },
+      { text: 'Menu buttons and dish names in English or हिन्दी' },
       { text: 'Each dish’s status, live: placed, preparing, ready, served' },
       { text: 'Cancel a dish in the first moments, call a waiter, ask for the bill' },
       { text: 'Friends at the table order from their own phones, round after round' },
@@ -297,7 +297,7 @@ export const FEATURE_SECTIONS: ReadonlyArray<{
     id: 'billing',
     nav: 'Billing',
     title: 'Bills in one tap',
-    lead: 'The counter makes the bill from what was served, with your taxes and charges.',
+    lead: 'The counter makes the bill from everything the table ordered, with your taxes and charges.',
     points: [
       { text: 'GST and service charge added the same way on every bill' },
       { text: 'Prints on 80 mm and 58 mm receipt printers' },

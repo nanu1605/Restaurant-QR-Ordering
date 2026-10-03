@@ -64,6 +64,7 @@ export function PlanCards({ pricing }: { pricing: SitePricing }) {
           </button>
         ))}
       </div>
+      <h2 className="sr-only">Plans</h2>
       <ul aria-label="Plans" className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {pricing.plans.map((plan, index) => {
           const trial = plan.code === pricing.trialPlanCode;
@@ -73,6 +74,9 @@ export function PlanCards({ pricing }: { pricing: SitePricing }) {
           const builds =
             previous !== undefined &&
             FEATURE_KEYS.every((key) => !previous.features[key] || plan.features[key]);
+          const shown = FEATURE_KEYS.filter(
+            (key) => plan.features[key] && !(builds && previous.features[key]),
+          );
           return (
             <li
               key={plan.code}
@@ -113,13 +117,14 @@ export function PlanCards({ pricing }: { pricing: SitePricing }) {
                 <li className="font-semibold">{tablesLabel(plan.maxTables)}</li>
                 <li className="font-semibold">{staffLabel(plan.maxStaff)}</li>
                 {builds ? (
-                  <li className="pt-1 text-ink-muted">Everything in {previous.name}, plus:</li>
+                  <li className="pt-1 text-ink-muted">
+                    Everything in {previous.name}
+                    {shown.length > 0 ? ', plus:' : ''}
+                  </li>
                 ) : (
                   PRICING.everyPlan.map((text) => <Feature key={text} text={text} />)
                 )}
-                {FEATURE_KEYS.filter(
-                  (key) => plan.features[key] && !(builds && previous.features[key]),
-                ).map((key) => (
+                {shown.map((key) => (
                   <Feature key={key} text={FEATURE_LABELS[key]} />
                 ))}
               </ul>
