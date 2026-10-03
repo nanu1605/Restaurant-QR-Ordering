@@ -236,3 +236,87 @@ export const PRICING_FAQ = [
     a: 'No. You pay the plan price and nothing else. Food payments go straight from your guests to you.',
   },
 ] as const;
+
+export const FEATURES_PAGE = {
+  title: 'Everything from the table to the bill',
+  lead: 'One system for your guests, waiters, kitchen and counter. Every picture on this page is the real app.',
+} as const;
+
+/** The features page, one section per role; `shots` name the screenshots in ./shots. */
+export const FEATURE_SECTIONS: ReadonlyArray<{
+  id: string;
+  /** Its name in the page's jump links. */
+  nav: string;
+  title: string;
+  lead: string;
+  plan?: SitePlan;
+  points: ReadonlyArray<{ text: string; plan?: SitePlan }>;
+}> = [
+  {
+    id: 'guests',
+    nav: 'Guests',
+    title: 'Guests order from their own phone',
+    lead: 'The QR code on the table opens your menu in the phone’s browser, already tied to that table.',
+    points: [
+      { text: 'No app to install and no login' },
+      { text: 'Categories, a veg-only switch and search' },
+      { text: 'Sizes and add-ons, and a note for the kitchen' },
+      { text: 'The whole menu in English or हिन्दी, dish names included' },
+      { text: 'Each dish’s status, live: placed, preparing, ready, served' },
+      { text: 'Cancel a dish in the first moments, call a waiter, ask for the bill' },
+      { text: 'Friends at the table order from their own phones, round after round' },
+    ],
+  },
+  {
+    id: 'waiters',
+    nav: 'Waiters',
+    title: 'Waiters see every table at a glance',
+    lead: 'A live board on any phone or tablet, coloured by how far each table’s order has got.',
+    points: [
+      { text: 'New orders appear straight away, with a chime if you turn sound on' },
+      { text: 'Approve a table’s first order to stop prank orders' },
+      { text: 'Take a table, add or remove dishes, move guests to another table' },
+      { text: 'A badge when a guest calls a waiter or asks for the bill' },
+      { text: 'Mark a dish out of stock from the floor' },
+      { text: 'Dish updates are kept through a short Wi-Fi drop and sent when it’s back' },
+    ],
+  },
+  {
+    id: 'kitchen',
+    nav: 'Kitchen',
+    title: 'The kitchen sees what to cook next',
+    lead: 'Tickets for every table, in columns for new, preparing and ready.',
+    plan: 'growth',
+    points: [
+      { text: 'Each ticket shows its table, round, dishes and notes' },
+      { text: 'Start or finish a whole ticket, or one dish at a time' },
+      { text: 'Waiters and guests see each change at once' },
+    ],
+  },
+  {
+    id: 'billing',
+    nav: 'Billing',
+    title: 'Bills in one tap',
+    lead: 'The counter makes the bill from what was served, with your taxes and charges.',
+    points: [
+      { text: 'GST and service charge added the same way on every bill' },
+      { text: 'Prints on 80 mm and 58 mm receipt printers' },
+      { text: 'Record cash, UPI or card on each bill' },
+      { text: 'Discounts and split payments', plan: 'growth' },
+      { text: 'Your UPI QR code printed on the bill', plan: 'growth' },
+    ],
+  },
+  {
+    id: 'owners',
+    nav: 'Owners and managers',
+    title: 'Owners and managers stay in charge',
+    lead: 'Set the restaurant up once, then see how it’s doing every day.',
+    points: [
+      { text: 'Menu with categories, sizes and add-ons, or imported from a photo, PDF or CSV' },
+      { text: 'Tables with printable QR codes' },
+      { text: 'Staff logins for managers, waiters and the kitchen, each seeing only their part' },
+      { text: 'Today’s sales and a daily report' },
+      { text: 'Sales by dish and waiter, busy hours and CSV export', plan: 'growth' },
+    ],
+  },
+];

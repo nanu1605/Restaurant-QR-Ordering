@@ -102,7 +102,7 @@ export function Hero() {
   );
 }
 
-function GrowthBadge() {
+export function GrowthBadge() {
   return (
     <span className="ml-1.5 inline-flex rounded-full bg-accent px-2 py-0.5 align-middle text-xs font-semibold whitespace-nowrap text-brand">
       Growth plan
