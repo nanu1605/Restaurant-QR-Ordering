@@ -2,17 +2,33 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-/* No dark theme in the spec: keep shadcn's `dark:` classes inert unless a
-   `.dark` ancestor is added deliberately. */
-@custom-variant dark (&:is(.dark *));
+/* Dark theme (docs/DECISIONS.md B-3): <html data-theme> is "dark", or
+   "system" while the device is set to dark. Screen only, so print stays light;
+   `.theme-light` keeps paper areas (bills, QR sheets) light inside a dark page. */
+@custom-variant dark {
+  @media screen {
+    &:where([data-theme='dark'], [data-theme='dark'] *):not(.theme-light, .theme-light *) {
+      @slot;
+    }
+  }
+  @media screen and (prefers-color-scheme: dark) {
+    &:where([data-theme='system'], [data-theme='system'] *):not(.theme-light, .theme-light *) {
+      @slot;
+    }
+  }
+}
 
 /*
  * Design tokens (spec §16.2). Brand tokens are the source of truth; the
  * shadcn semantic variables below are mapped onto them so ui/ components
  * pick up the same palette. Warm neutrals around the logo orange
- * (docs/DECISIONS.md B-2); tests/unit/theme-tokens.test.ts checks contrast.
+ * (docs/DECISIONS.md B-2); tests/unit/theme-tokens.test.ts checks contrast
+ * in both themes.
  */
-:root {
+:root,
+.theme-light {
+  color-scheme: light;
+
   /* Brand palette */
   --ink: #1c1917;
   --ink-muted: #57534e; /* 6.9:1 or more on every background — secondary text */
@@ -43,6 +59,8 @@
   --status-ready-foreground: #ffffff;
   --status-served-fill: var(--status-served);
   --status-served-foreground: #ffffff;
+  --status-void-fill: var(--status-void);
+  --status-void-foreground: #ffffff;
   --attention-foreground: #ffffff;
 
   /* Indian food-type marks (FSSAI green veg / brown non-veg; egg has no
@@ -84,6 +102,35 @@
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: var(--line);
   --sidebar-ring: var(--brand);
+
+  /* Dark theme: the same names on a warm near-black page. Fills are light
+     enough for near-black text, so every fill takes #1c1917; the orange
+     buttons don't change. Food marks keep their colours on a white tile. */
+  @variant dark {
+    color-scheme: dark;
+    --ink: #f5f2ee;
+    --ink-muted: #b5afa9;
+    --paper: #121110;
+    --surface: #1c1a18;
+    --line: #3a3531;
+    --brand: #ff8a3d;
+    --status-placed: #94a3b8;
+    --status-preparing: #e5a50a;
+    --status-ready: #2bb3b3;
+    --status-served: #4cb782;
+    --status-void: #f87171;
+    --attention: #f06292;
+    --status-placed-foreground: #1c1917;
+    --status-ready-fill: var(--status-ready);
+    --status-ready-foreground: #1c1917;
+    --status-served-foreground: #1c1917;
+    --status-void-foreground: #1c1917;
+    --attention-foreground: #1c1917;
+    --secondary: #2a2622;
+    --muted: #2a2622;
+    --accent: #33261c;
+    --input: #78716c;
+  }
 }
 
 @theme inline {
@@ -109,6 +156,8 @@
   --color-status-ready-foreground: var(--status-ready-foreground);
   --color-status-served-fill: var(--status-served-fill);
   --color-status-served-foreground: var(--status-served-foreground);
+  --color-status-void-fill: var(--status-void-fill);
+  --color-status-void-foreground: var(--status-void-foreground);
   --color-food-veg: var(--food-veg);
   --color-food-non-veg: var(--food-non-veg);
   --color-food-egg: var(--food-egg);

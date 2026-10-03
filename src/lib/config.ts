@@ -7,8 +7,9 @@ import type { Metadata } from 'next';
  */
 export const APP_NAME = 'MenuMesh';
 
-/** Browser and installed-app bar colour: the header surface (globals.css --surface). */
+/** Browser and installed-app bar colour: the header surface (globals.css --surface), per theme. */
 export const THEME_COLOR = '#FFFFFF';
+export const THEME_COLOR_DARK = '#1C1A18';
 
 /**
  * The staff and admin layouts' install manifest and home screen name (spec §19

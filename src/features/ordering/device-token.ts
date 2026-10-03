@@ -42,15 +42,16 @@ export async function verifyDeviceToken(
 }
 
 /**
- * httpOnly, SameSite=Lax, one year, scoped to the customer pages. `Secure` only
- * when the app runs on https, so http://localhost and LAN testing still work.
+ * httpOnly, SameSite=Lax, one year, scoped to the customer pages unless another
+ * path is given. `Secure` only when the app runs on https, so http://localhost
+ * and LAN testing still work.
  */
-export function deviceCookieOptions(appUrl: string) {
+export function deviceCookieOptions(appUrl: string, path = '/t') {
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
     secure: appUrl.startsWith('https://'),
-    path: '/t',
+    path,
     maxAge: ONE_YEAR_SECONDS,
   };
 }
