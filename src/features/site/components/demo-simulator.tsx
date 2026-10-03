@@ -187,7 +187,7 @@ export function DemoSimulator() {
             className={cn(
               'inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-center text-sm leading-tight font-semibold transition-colors',
               active === device.id
-                ? 'border-brand bg-brand text-white'
+                ? 'border-brand bg-primary text-primary-foreground'
                 : 'border-line bg-surface text-ink hover:border-brand',
             )}
           >
@@ -265,10 +265,10 @@ function GuestPhone({ state, act }: { state: DemoState; act: Act }) {
 
   return (
     <div lang={state.lang} className="flex min-h-0 flex-1 flex-col text-sm">
-      <header className="on-brand flex items-end justify-between gap-2 bg-brand px-4 pt-6 pb-2 text-white">
+      <header className="on-brand flex items-end justify-between gap-2 bg-primary px-4 pt-6 pb-2 text-primary-foreground">
         <div className="min-w-0">
           <p className="truncate text-base font-bold">Spice Route</p>
-          <p className="text-white/85">{t.table(DEMO_TABLE)}</p>
+          <p>{t.table(DEMO_TABLE)}</p>
         </div>
         <button
           type="button"
@@ -356,7 +356,7 @@ function GuestMenu({ state, t, act, go, titleRef }: ViewProps) {
           <button
             type="button"
             onClick={() => go({ type: 'view', view: 'cart' })}
-            className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl bg-brand px-3 text-left font-semibold text-white shadow-lg"
+            className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl bg-primary px-3 text-left font-semibold text-primary-foreground shadow-lg"
           >
             <span className="flex items-center gap-2 tabular-nums">
               <ShoppingBag aria-hidden className="size-5 shrink-0" />

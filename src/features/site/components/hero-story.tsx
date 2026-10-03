@@ -150,7 +150,7 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
   const status = dishStatus(step);
   return (
     <div className="flex h-full flex-col text-[0.5rem] sm:text-[0.6rem]">
-      <div className="bg-brand px-[0.9em] pt-[2.4em] pb-[0.9em] text-white">
+      <div className="bg-primary px-[0.9em] pt-[2.4em] pb-[0.9em] text-primary-foreground">
         <p className="text-[1.15em] font-bold">Spice Route</p>
         <p className="opacity-80">Table 5</p>
       </div>
@@ -171,7 +171,7 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
                   <m.span
                     initial={{ scale: 0.6 }}
                     animate={{ scale: 1 }}
-                    className="rounded bg-brand px-[0.6em] py-[0.2em] font-bold text-white"
+                    className="rounded bg-primary px-[0.6em] py-[0.2em] font-bold text-primary-foreground"
                   >
                     1
                   </m.span>
@@ -212,7 +212,7 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            className="m-[0.6em] flex items-center justify-between rounded-md bg-brand px-[0.7em] py-[0.6em] font-semibold text-white"
+            className="m-[0.6em] flex items-center justify-between rounded-md bg-primary px-[0.7em] py-[0.6em] font-semibold text-primary-foreground"
           >
             <span>
               1 item · <Money paise={DISH.paise} fraction="auto" />
@@ -368,7 +368,7 @@ function BillScreen({ step }: { step: number }) {
               <BillRow label="GST 5%" paise={GST_PAISE} muted />
               <div className="my-[0.2em] border-t border-dashed border-line" />
               <BillRow label="Total" paise={DISH.paise + GST_PAISE} strong />
-              <span className="mt-[0.3em] inline-flex items-center gap-[0.4em] self-start rounded bg-brand px-[0.6em] py-[0.3em] font-semibold text-white">
+              <span className="mt-[0.3em] inline-flex items-center gap-[0.4em] self-start rounded bg-primary px-[0.6em] py-[0.3em] font-semibold text-primary-foreground">
                 <Printer aria-hidden className="size-[1.1em]" /> Printed
               </span>
             </m.div>
@@ -412,7 +412,7 @@ function BillRow({
 function Tap() {
   return (
     <m.span
-      className="pointer-events-none absolute top-1/2 left-1/2 size-[2.4em] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/30"
+      className="pointer-events-none absolute top-1/2 left-1/2 size-[2.4em] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/30"
       initial={{ scale: 0.4, opacity: 0.9 }}
       animate={{ scale: 1.4, opacity: 0 }}
       transition={{ duration: 0.9, repeat: Infinity, ease: 'easeOut' }}

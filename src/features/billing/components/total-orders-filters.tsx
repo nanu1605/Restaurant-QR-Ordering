@@ -195,7 +195,7 @@ export function TotalOrdersFiltersForm({ data, filters }: TotalOrdersFiltersForm
                 name="void"
                 value="hide"
                 defaultChecked={filters.show_void === false}
-                className="size-5 accent-primary"
+                className="size-5 accent-brand"
               />
               Hide void bills
             </label>

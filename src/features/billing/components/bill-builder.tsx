@@ -233,7 +233,7 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
           )}
           <p className="text-sm text-ink-muted">
             To change dishes, use Remove dish or Delete order on{' '}
-            <Link href="/admin/live" className="text-primary underline underline-offset-4">
+            <Link href="/admin/live" className="text-brand underline underline-offset-4">
               Live orders
             </Link>
             .

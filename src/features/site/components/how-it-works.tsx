@@ -68,7 +68,7 @@ export function HowItWorks() {
                   : 'border-line',
               )}
             >
-              <span className="flex size-10 items-center justify-center rounded-full bg-brand text-base font-bold text-white">
+              <span className="flex size-10 items-center justify-center rounded-full bg-primary text-base font-bold text-primary-foreground">
                 {index + 1}
               </span>
               <h3 className="text-xl font-bold text-ink">{step.title}</h3>
@@ -114,10 +114,12 @@ function StepPicture({ step, large = false }: { step: number; large?: boolean })
             >
               <FoodTypeMark type="veg" size="sm" />
               <span className="flex-1 font-medium text-ink">{dish.name}</span>
-              <span className="rounded bg-brand px-1.5 font-bold text-white">{dish.count}</span>
+              <span className="rounded bg-primary px-1.5 font-bold text-primary-foreground">
+                {dish.count}
+              </span>
             </div>
           ))}
-          <div className="mt-1 flex justify-between rounded-lg bg-brand px-3 py-2.5 font-semibold text-white">
+          <div className="mt-1 flex justify-between rounded-lg bg-primary px-3 py-2.5 font-semibold text-primary-foreground">
             <span>4 items</span>
             <span>Place order</span>
           </div>
@@ -171,7 +173,7 @@ function StepPicture({ step, large = false }: { step: number; large?: boolean })
                 className={cn(
                   'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold',
                   label === 'UPI'
-                    ? 'border-status-served bg-status-served text-white'
+                    ? 'border-status-served bg-status-served text-status-served-foreground'
                     : 'border-line text-ink-muted',
                 )}
               >

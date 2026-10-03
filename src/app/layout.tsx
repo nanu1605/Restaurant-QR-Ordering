@@ -4,7 +4,7 @@ import { Noto_Sans } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
 import { STRINGS } from '@/features/ordering/strings';
-import { APP_NAME, BRAND_COLOR } from '@/lib/config';
+import { APP_NAME, THEME_COLOR } from '@/lib/config';
 
 import './globals.css';
 
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: BRAND_COLOR,
+  themeColor: THEME_COLOR,
 };
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {

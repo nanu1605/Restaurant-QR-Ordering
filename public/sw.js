@@ -11,12 +11,12 @@ const OFFLINE_PAGE = `<!doctype html>
 <title>You&rsquo;re offline</title>
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
-    font-family: system-ui, sans-serif; background: #f6f7f9; color: #243040; }
+    font-family: system-ui, sans-serif; background: #faf8f5; color: #1c1917; }
   main { max-width: 28rem; text-align: center; }
   h1 { font-size: 1.5rem; margin: 0 0 8px; }
   p { margin: 0 0 16px; line-height: 1.5; }
-  a { display: inline-block; padding: 12px 20px; border-radius: 8px; background: #3b4ba8;
-    color: #ffffff; text-decoration: none; font-weight: 600; }
+  a { display: inline-block; padding: 12px 20px; border-radius: 8px; background: #ff6606;
+    color: #1c1917; text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>

@@ -1,7 +1,7 @@
+import { Wordmark } from '@/components/shared/logo';
 import { APP_NAME } from '@/lib/config';
 
 import { SiteLink } from './site-link';
-import { SiteLogo } from './site-logo';
 
 const COLUMNS = [
   {
@@ -36,7 +36,7 @@ export function SiteFooter() {
     <footer className="border-t border-line bg-surface pb-28 md:pb-0">
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.5fr_repeat(3,1fr)]">
         <div className="flex flex-col gap-3">
-          <SiteLogo />
+          <Wordmark className="self-start" />
           <p className="max-w-xs text-sm text-ink-muted">
             QR table ordering, kitchen and waiter screens, and billing for restaurants in India.
           </p>
