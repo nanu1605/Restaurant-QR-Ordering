@@ -31,7 +31,9 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const lang = await getLang();
   const { toasts } = STRINGS[lang];
   return (
-    <html lang={lang} className={`${notoSans.variable} h-full`}>
+    // data-scroll-behavior: page changes jump to the top even where the website
+    // scrolls smoothly to its sections (Next 16 no longer forces this).
+    <html lang={lang} data-scroll-behavior="smooth" className={`${notoSans.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         {children}
         <Toaster

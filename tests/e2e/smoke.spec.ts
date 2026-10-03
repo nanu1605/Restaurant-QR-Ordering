@@ -1,12 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-import { APP_NAME } from '../../src/lib/config';
-
-test('home page renders the placeholder', async ({ page }) => {
+test('the home page renders', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: APP_NAME })).toBeVisible();
   await expect(
-    page.getByRole('list', { name: 'Dish progress' }).getByText('Preparing'),
+    page.getByRole('heading', { level: 1, name: /Your menu on every table/ }),
   ).toBeVisible();
 });
 

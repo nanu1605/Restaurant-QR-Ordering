@@ -134,6 +134,7 @@ platform admin nothing.
   look is recorded in that restaurant's audit log.
 - **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids), **Webhooks** (what
   Razorpay sent; a failed one can be reprocessed) and the **Audit log**.
+- **Leads**: "Book a demo" requests from the website's contact page.
 
 A platform admin who loses their phone can't pass the second factor. Remove their authenticator in
 the Supabase SQL editor, and they enrol again on the next login:
@@ -247,6 +248,27 @@ Owners and managers set the restaurant up at `/admin`:
 - **Staff logins**: logins for managers, waiters and kitchen staff; password resets.
 - **Settings**: restaurant details and logo, tax and charges, bill options, ordering rules.
 
+### Website
+
+The public site at `/` (`src/app/(site)`, copy in `src/features/site/content.ts`, spec §24): the
+home page, `/features`, `/pricing` (plans and prices straight from the `plans` table), `/demo`
+(an in-browser simulator; nothing is saved), `/contact` and the policy pages.
+
+The "Book a demo" form on `/contact` is protected by Cloudflare Turnstile and shows only when both
+keys are set; `pnpm dev` uses Cloudflare's always-pass test keys instead. Each request is listed
+in `/super/leads` and emailed to `platform_settings.support_email` (set it in the SQL editor) when
+Resend is set up.
+
+| Variable               | What it is                                             |
+| ---------------------- | ------------------------------------------------------ |
+| `TURNSTILE_SITE_KEY`   | The Turnstile widget's site key (public)               |
+| `TURNSTILE_SECRET_KEY` | Its secret key, for siteverify                         |
+| `TURNSTILE_VERIFY_URL` | Defaults to Cloudflare's siteverify (tests use a mock) |
+
+The pictures on `/features` are real screens: with `pnpm dev` running, `pnpm site:shots` builds a
+sample restaurant in your local database and saves fresh screenshots to
+`src/features/site/shots`.
+
 ### Security headers
 
 Every page gets a Content-Security-Policy with a new script nonce per request (`src/proxy.ts`,
@@ -289,3 +311,4 @@ placeholders to replace before launch.
 | `pnpm db:types`          | Regenerate `src/types/database.ts`            |
 | `pnpm create-restaurant` | Onboard a restaurant + owner login            |
 | `pnpm razorpay:event`    | Send a signed Razorpay webhook to the app     |
+| `pnpm site:shots`        | Retake the website's app screenshots (local)  |

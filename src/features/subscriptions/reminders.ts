@@ -3,7 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { APP_NAME } from '@/lib/config';
-import { sendEmail, type EmailConfig } from '@/lib/email/resend';
+import { escapeHtml, sendEmail, type EmailConfig } from '@/lib/email/resend';
 import type { Database } from '@/types/database';
 
 import { formatDay, lastDay } from './summary';
@@ -50,12 +50,6 @@ function content(reminder: DueReminder): ReminderEmail {
       };
   }
 }
-
-const escapeHtml = (text: string) =>
-  text.replace(
-    /[&<>"']/g,
-    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!,
-  );
 
 /** Subject, plain text and HTML for one reminder. */
 export function reminderEmail(reminder: DueReminder, appUrl: string) {

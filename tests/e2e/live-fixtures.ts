@@ -65,8 +65,8 @@ export async function createLiveRestaurant({
 export type LiveRestaurant = Awaited<ReturnType<typeof createLiveRestaurant>>;
 
 /** A staff login the way the Staff logins page makes one (docs/DECISIONS.md P2-5). */
-async function createStaffLogin(
-  ordering: OrderingTable,
+export async function createStaffLogin(
+  ordering: Pick<OrderingTable, 'restaurant'>,
   username: string,
   role: 'waiter' | 'kitchen' | 'manager',
   displayName: string,

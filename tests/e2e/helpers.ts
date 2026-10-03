@@ -35,6 +35,34 @@ export async function watchCspViolations(context: BrowserContext) {
   return violations;
 }
 
+/**
+ * Stands in for Cloudflare's Turnstile script (docs/DECISIONS.md W-6), so the
+ * tests never reach Cloudflare: the "widget" passes at once with the dummy
+ * token that the siteverify mock accepts.
+ */
+export async function fakeTurnstile(context: BrowserContext) {
+  await context.route('https://challenges.cloudflare.com/turnstile/v0/api.js*', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `window.turnstile = {
+        render(container, options) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'cf-turnstile-response';
+          input.value = 'XXXX.DUMMY.TOKEN.XXXX';
+          // Takes the real widget's room, so layout tests see it.
+          const box = document.createElement('div');
+          box.style.cssText = options.size === 'compact' ? 'width:150px;height:140px' : 'width:300px;height:65px';
+          container.append(input, box);
+          setTimeout(() => options.callback(input.value), 50);
+          return 'e2e-widget';
+        },
+        remove() {},
+      };`,
+    }),
+  );
+}
+
 export function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;

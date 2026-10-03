@@ -30,6 +30,12 @@ export default defineConfig({
       // The customer panel is mobile-first (spec §13.1): it runs on the phone only.
       testIgnore: /customer-.*\.spec\.ts/,
     },
+    // The public website is checked on a tablet too (docs/DECISIONS.md W-4).
+    {
+      name: 'tablet',
+      use: { ...devices['iPad Mini'], browserName: 'chromium' },
+      testMatch: /site(-demo)?\.spec\.ts/,
+    },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
     // Live board specs open their own phone for the customer.
@@ -38,7 +44,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads)\.spec\.ts/,
       ],
     },
   ],
@@ -69,6 +75,10 @@ export default defineConfig({
         RESEND_API_KEY: 're_e2e_resend_key',
         RESEND_API_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/resend`,
         EMAIL_FROM: 'MenuMesh <billing@menumesh.test>',
+        // Cloudflare's always-pass test keys; the browser widget is faked (fakeTurnstile).
+        TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+        TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
+        TURNSTILE_VERIFY_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/turnstile/siteverify`,
       },
     },
   ],

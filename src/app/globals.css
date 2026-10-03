@@ -168,6 +168,13 @@
   --text-xl--line-height: 2rem;
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
+  /* Display sizes for the public website only (docs/DECISIONS.md W-3). */
+  --text-3xl: 2.5rem;
+  --text-3xl--line-height: 3rem;
+  --text-4xl: 3rem;
+  --text-4xl--line-height: 3.5rem;
+  --text-5xl: 3.5rem;
+  --text-5xl--line-height: 4rem;
 }
 
 @layer base {
@@ -196,6 +203,50 @@
   }
 }
 
+/* Public website (docs/DECISIONS.md W-3): sections fade up as they scroll in,
+   where the browser has scroll-driven animations; elsewhere they simply show. */
+@supports (animation-timeline: view()) {
+  .site-reveal {
+    animation: site-reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 70%;
+  }
+}
+@keyframes site-reveal {
+  from {
+    opacity: 0;
+    translate: 0 1.5rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.site) {
+    scroll-behavior: smooth;
+  }
+}
+/* Sections and focused controls stay clear of the sticky header, and on
+   phones of the call-to-action bar. */
+html:has(.site) {
+  scroll-padding-top: 5rem;
+}
+@media (max-width: 767px) {
+  html:has(.site) {
+    scroll-padding-bottom: 6rem;
+  }
+}
+/* A strong focus ring on every website control; white on brand panels. */
+.site :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.site .on-brand :is(a, button):focus-visible {
+  outline-color: #ffffff;
+}
+/* A quiet dot grid behind the website's hero. */
+.site-dots {
+  background-image: radial-gradient(circle, var(--line) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+
 /* Motion only in response to actions; honour the OS setting (spec §16.2). */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -205,5 +256,8 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .site-reveal {
+    animation: none !important;
   }
 }
