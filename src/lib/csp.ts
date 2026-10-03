@@ -28,18 +28,20 @@ export function contentSecurityPolicy({
   // Realtime is a WebSocket on the Supabase host.
   const realtime = `${supabase.protocol === 'https:' ? 'wss' : 'ws'}://${supabase.host}`;
   const razorpay = 'https://*.razorpay.com';
+  // Cloudflare Turnstile on the website's forms (docs/DECISIONS.md W-6).
+  const turnstile = 'https://challenges.cloudflare.com';
   const monitoring = [
     ...(sentryDsn ? [new URL(sentryDsn).origin] : []),
     ...(posthogHost ? Object.values(posthogHosts(posthogHost)) : []),
   ];
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${razorpay}${dev ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${razorpay} ${turnstile}${dev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: ${supabase.origin} ${razorpay}`,
     "font-src 'self'",
     ['connect-src', "'self'", supabase.origin, realtime, razorpay, ...monitoring].join(' '),
-    `frame-src ${razorpay}`,
+    `frame-src ${razorpay} ${turnstile}`,
     // The service worker and the PDF reader for menu imports.
     "worker-src 'self'",
     "object-src 'none'",

@@ -21,6 +21,13 @@ export function emailConfig(): EmailConfig | null {
   return { apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, baseUrl: env.RESEND_API_URL };
 }
 
+/** Text made safe inside HTML email bodies. */
+export const escapeHtml = (text: string) =>
+  text.replace(
+    /[&<>"']/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!,
+  );
+
 export class EmailError extends Error {
   constructor(
     message: string,

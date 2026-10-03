@@ -51,6 +51,12 @@ const serverSchema = z.object({
   EMAIL_FROM: optionalString,
   // Resend's REST API; tests point it at a local mock (docs/DECISIONS.md P8-12).
   RESEND_API_URL: urlWithDefault('https://api.resend.com'),
+  // Cloudflare Turnstile on the website's forms (docs/DECISIONS.md W-6). The
+  // forms are off without both keys, except under `next dev` (test keys).
+  TURNSTILE_SITE_KEY: optionalString,
+  TURNSTILE_SECRET_KEY: optionalString,
+  // Siteverify's address; tests point it at a local mock.
+  TURNSTILE_VERIFY_URL: urlWithDefault('https://challenges.cloudflare.com/turnstile/v0/siteverify'),
   PLATFORM_TRIAL_DAYS: positiveInt(14),
   PLATFORM_GRACE_DAYS: positiveInt(7),
 });
