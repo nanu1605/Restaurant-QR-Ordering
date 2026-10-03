@@ -1438,6 +1438,42 @@ export type Database = {
         }
         Relationships: []
       }
+      site_signups: {
+        Row: {
+          code_hash: string
+          created_at: string
+          details: Json
+          email: string
+          expires_at: string
+          id: string
+          ip_hash: string | null
+          tries: number
+          verified_at: string | null
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          details: Json
+          email: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          tries?: number
+          verified_at?: string | null
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          details?: Json
+          email?: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          tries?: number
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       subscription_payments: {
         Row: {
           amount_paise: number
@@ -2040,6 +2076,19 @@ export type Database = {
       site_create_lead: {
         Args: { p_ip_hash?: string; p_lead: Json }
         Returns: string
+      }
+      site_signup_start: {
+        Args: {
+          p_code_hash: string
+          p_details: Json
+          p_email: string
+          p_ip_hash?: string
+        }
+        Returns: string
+      }
+      site_signup_verify: {
+        Args: { p_code_hash: string; p_id: string }
+        Returns: Json
       }
       staff_approve_order: { Args: { p_order_id: string }; Returns: Json }
       staff_close_session_unbilled: {
