@@ -187,7 +187,7 @@ export function DemoSimulator() {
             className={cn(
               'inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-center text-sm leading-tight font-semibold transition-colors',
               active === device.id
-                ? 'border-primary bg-primary text-primary-foreground'
+                ? 'border-brand bg-primary text-primary-foreground'
                 : 'border-line bg-surface text-ink hover:border-brand',
             )}
           >

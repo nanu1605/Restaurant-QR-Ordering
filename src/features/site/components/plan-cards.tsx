@@ -53,7 +53,7 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
             className={cn(
               'h-11 rounded-full px-5 text-sm font-semibold transition-colors',
               cycle === value
-                ? 'bg-primary text-primary-foreground'
+                ? 'bg-primary text-primary-foreground ring-1 ring-brand ring-inset'
                 : 'text-ink-muted hover:text-ink',
             )}
           >

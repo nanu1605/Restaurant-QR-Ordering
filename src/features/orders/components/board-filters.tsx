@@ -25,7 +25,7 @@ export function BoardFilters({ filters, value, counts, onChange }: BoardFiltersP
             onClick={() => onChange(filter)}
             className={cn(
               'inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-4 text-base font-medium text-ink hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-              active && 'border-primary bg-primary text-primary-foreground hover:bg-primary',
+              active && 'border-ring bg-primary text-primary-foreground hover:bg-primary',
             )}
           >
             {FILTER_LABELS[filter]}
