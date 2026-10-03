@@ -1,9 +1,7 @@
-import { LogOut } from 'lucide-react';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { AccountMenu } from '@/components/shared/account-menu';
 import { LogoMark } from '@/components/shared/logo';
-import { Button } from '@/components/ui/button';
 
 type PanelHeaderProps = {
   /** Panel name, e.g. "Worker panel". */
@@ -42,24 +40,7 @@ export function PanelHeader({
 
       <div className="flex items-center gap-3">
         {children}
-        {switchTo && (
-          <Link
-            href={switchTo.href}
-            className="text-sm font-medium text-brand underline-offset-4 hover:underline"
-          >
-            {switchTo.label}
-          </Link>
-        )}
-        <div className="hidden text-right sm:block">
-          <p className="text-sm font-medium text-ink">{userName}</p>
-          <p className="text-xs text-ink-muted">{roleLabel}</p>
-        </div>
-        <form action="/logout" method="post">
-          <Button type="submit" variant="outline" size="lg">
-            <LogOut aria-hidden />
-            Log out
-          </Button>
-        </form>
+        <AccountMenu userName={userName} roleLabel={roleLabel} switchTo={switchTo} />
       </div>
     </header>
   );

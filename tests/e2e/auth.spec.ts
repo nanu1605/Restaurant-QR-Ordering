@@ -19,6 +19,9 @@ const field = (page: Page, name: string) => page.getByRole('textbox', { name, ex
 // Next.js' route announcer is also role="alert" and repeats the page title,
 // so scope text checks to the panel header or the form error.
 const header = (page: Page) => page.getByRole('banner');
+// The account menu, named by who is signed in, holds the panel switch and Log out.
+const openAccountMenu = (page: Page, userName: string) =>
+  header(page).getByRole('button', { name: userName }).click();
 const loginError = (page: Page) =>
   page.getByRole('alert').filter({ hasText: /Wrong restaurant code, username or password/ });
 
@@ -29,7 +32,10 @@ test('waiter logs in with restaurant code and cannot open the admin panel', asyn
   await expect(page).toHaveURL(/\/staff$/);
   await expect(header(page).getByText('Worker panel')).toBeVisible();
   await expect(header(page).getByText('Demo Kitchen')).toBeVisible();
-  await expect(header(page).getByRole('link', { name: 'Admin panel' })).toHaveCount(0);
+  await openAccountMenu(page, 'Ravi Kumar');
+  await expect(page.getByRole('menuitem', { name: 'Log out' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Admin panel' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/staff$/);
@@ -49,7 +55,8 @@ test('manager lands on the admin panel and cannot open super-admin', async ({ pa
   await expect(header(page).getByText('Admin panel')).toBeVisible();
 
   // Managers may use the worker panel too.
-  await header(page).getByRole('link', { name: 'Worker panel' }).click();
+  await openAccountMenu(page, 'Manoj Singh');
+  await page.getByRole('menuitem', { name: 'Worker panel' }).click();
   await expect(page).toHaveURL(/\/staff$/);
 
   await page.goto('/super');
@@ -133,7 +140,8 @@ test('log out ends the session on this device', async ({ page }) => {
   await logInWithCode(page, 'demo', 'waiter1');
   await expect(page).toHaveURL(/\/staff$/);
 
-  await page.getByRole('button', { name: 'Log out' }).click();
+  await openAccountMenu(page, 'Ravi Kumar');
+  await page.getByRole('menuitem', { name: 'Log out' }).click();
   await expect(page).toHaveURL(/\/login$/);
 
   await page.goto('/staff');
