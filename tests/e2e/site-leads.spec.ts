@@ -32,9 +32,8 @@ test('a demo request reaches the platform team', async ({ page, context, request
   await admin.from('platform_settings').update({ support_email: SUPPORT_EMAIL }).eq('id', 1);
 
   try {
-    await page.goto('/pricing');
-    await page.getByRole('link', { name: 'Book a demo for the Growth plan' }).click();
-    await expect(page).toHaveURL(/\/contact\?plan=growth$/);
+    // Plans link to the signup on this server; a link from elsewhere can still pick one.
+    await page.goto('/contact?plan=growth');
     const form = page.getByRole('form', { name: 'Book a demo' });
     await expect(form.getByLabel('Plan you’re interested in')).toHaveValue('growth');
 

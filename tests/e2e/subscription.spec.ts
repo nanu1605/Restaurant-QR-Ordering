@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-import { adminClient, createTestRestaurant, logInAsOwner, watchCspViolations } from './helpers';
+import {
+  adminClient,
+  createTestRestaurant,
+  fakeTurnstile,
+  logInAsOwner,
+  watchCspViolations,
+} from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 import {
   razorpayId,
@@ -207,6 +213,109 @@ test('autopay set up during a trial can be cancelled straight away', async ({ pa
     status: 'trialing',
     razorpay_status: 'cancelled',
   });
+});
+
+test('a visitor signs up from the pricing page and sets up autopay for the plan they chose', async ({
+  page,
+  request,
+}) => {
+  await fakeTurnstile(page.context());
+  await stubCheckout(page);
+  const violations = await watchCspViolations(page.context());
+  const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const email = `signup-${unique}@e2e.test`;
+  const inbox = async () => {
+    const response = await request.get(`http://127.0.0.1:3190/resend/inbox?to=${email}`);
+    return ((await response.json()) as { emails: { subject: string; text: string }[] }).emails;
+  };
+
+  await page.goto('/pricing');
+  await page.getByRole('link', { name: 'Start free trial, then the Growth plan' }).click();
+  await expect(page).toHaveURL(/\/signup\?plan=growth&cycle=monthly$/);
+  await expect(
+    page.getByText(/After the trial: the Growth plan at ₹899 a month \+ GST/),
+  ).toBeVisible();
+
+  const form = page.getByRole('form', { name: 'Start your free trial' });
+  await form.getByLabel('Restaurant name').fill(`Signup Café ${unique}`);
+  await form.getByLabel('City').fill('Pune');
+  await form.getByLabel('Menu style').selectOption('cafe');
+  await form.getByLabel('Your name').fill('Asha Rao');
+  await form.getByLabel('Email').fill(email);
+  await form.getByLabel('Mobile number').fill('98765 43210');
+  // Without the terms ticked, nothing is sent.
+  await form.getByRole('button', { name: 'Email me a code' }).click();
+  await expect(form.getByText('Agree to the terms to continue.')).toBeVisible();
+  await expect(form.getByLabel('Email')).toHaveValue(email);
+  await form.getByRole('checkbox', { name: /I agree to the terms/ }).check();
+  await form.getByRole('button', { name: 'Email me a code' }).click();
+
+  await expect(page).toHaveURL(/\/signup\/verify$/);
+  await expect(page.getByText(`We sent a 6-digit code to ${email}`)).toBeVisible();
+  const [sent] = await inbox();
+  const code = /^(\d{6}) is your MenuMesh code$/.exec(sent!.subject)![1]!;
+
+  const verify = page.getByRole('form', { name: 'Create your restaurant' });
+  await verify.getByLabel('6-digit code').fill(code === '000000' ? '111111' : '000000');
+  await verify.getByLabel('Choose a password').fill('signup-pass-123');
+  await verify.getByRole('button', { name: 'Create my restaurant' }).click();
+  await expect(verify.getByText('That code isn’t right. 4 tries left.')).toBeVisible();
+  await expect(verify.getByLabel('Choose a password')).toHaveValue('signup-pass-123');
+  await verify.getByLabel('6-digit code').fill(code);
+  await verify.getByRole('button', { name: 'Create my restaurant' }).click();
+
+  // Signed in as the owner, on autopay with Growth monthly picked.
+  await expect(page).toHaveURL(/\/admin\/subscription\?welcome=1&cycle=monthly&plan=growth$/);
+  await expect(page.getByRole('heading', { name: 'Your restaurant is ready' })).toBeVisible();
+  const growth = page
+    .getByRole('list', { name: 'Plans' })
+    .getByRole('listitem', { name: 'Growth' });
+  await expect(growth.getByText('Your choice')).toBeVisible();
+  await expect(page.getByTestId('subscription-status')).toHaveText('Free trial');
+  await growth.getByRole('button', { name: 'Subscribe to Growth' }).click();
+  await expect(page.getByText('Autopay is set up', { exact: true })).toBeVisible();
+
+  // The welcome email names the restaurant code staff log in with.
+  const { data: restaurant } = await adminClient()
+    .from('restaurants')
+    .select('slug, city, phone, email')
+    .eq('name', `Signup Café ${unique}`)
+    .single();
+  expect(restaurant).toMatchObject({ city: 'Pune', phone: '+91 9876543210', email });
+  expect(restaurant!.slug).toBe(`signup-cafe-${unique}`);
+  await expect.poll(async () => (await inbox()).length).toBe(2);
+  const welcome = (await inbox()).find((item) => item.subject.startsWith('Welcome to MenuMesh'));
+  expect(welcome?.text).toContain(`Your restaurant code is ${restaurant!.slug}.`);
+
+  // The dashboard lists what's left to set up; autopay is done.
+  await page.getByRole('link', { name: 'Go to the dashboard' }).click();
+  const steps = page.getByRole('region', { name: 'Set up your restaurant' });
+  await expect(steps.getByText('1 of 5 done')).toBeVisible();
+  await expect(steps.getByRole('link', { name: /Set up autopay \(done\)/ })).toBeVisible();
+  await expect(steps.getByRole('link', { name: /Add your menu \(to do\)/ })).toBeVisible();
+  expect(violations).toEqual([]);
+
+  // The same email can't sign up twice.
+  await page.context().clearCookies();
+  await page.goto('/signup');
+  await form.getByLabel('Restaurant name').fill('Second Café');
+  await form.getByLabel('City').fill('Pune');
+  await form.getByLabel('Your name').fill('Asha Rao');
+  await form.getByLabel('Email').fill(email);
+  await form.getByLabel('Mobile number').fill('9876543210');
+  await form.getByRole('checkbox', { name: /I agree to the terms/ }).check();
+  await form.getByRole('button', { name: 'Email me a code' }).click();
+  await expect(page).toHaveURL(/\/signup\/verify$/);
+  const codes = (await inbox()).filter((item) => item.subject.endsWith('is your MenuMesh code'));
+  expect(codes).toHaveLength(2);
+  const secondCode = /^(\d{6})/.exec(codes[1]!.subject)![1]!;
+  await verify.getByLabel('6-digit code').fill(secondCode);
+  await verify.getByLabel('Choose a password').fill('signup-pass-123');
+  await verify.getByRole('button', { name: 'Create my restaurant' }).click();
+  await expect(verify.getByRole('alert')).toContainText(
+    'This email already has a MenuMesh account. Log in instead.',
+  );
+  await expect(verify.getByRole('link', { name: 'Go to log in' })).toBeVisible();
 });
 
 test('webhooks with a bad signature are refused and not stored', async ({ request }) => {

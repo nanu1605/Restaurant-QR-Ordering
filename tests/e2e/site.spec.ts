@@ -40,9 +40,12 @@ test('the home page tells the story and leads to a demo', async ({ page, context
     page.getByText(/scan the QR code on the table with their phone camera/),
   ).toBeVisible();
 
-  await page.getByRole('main').getByRole('link', { name: 'Book a demo' }).first().click();
-  await expect(page).toHaveURL(/\/contact$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Book a demo' })).toBeVisible();
+  // The test server has Turnstile and email set up, so visitors can sign up.
+  await page.getByRole('main').getByRole('link', { name: 'Start free trial' }).first().click();
+  await expect(page).toHaveURL(/\/signup$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Start your free trial' }),
+  ).toBeVisible();
   expect(violations).toEqual([]);
 });
 
@@ -104,12 +107,12 @@ test('pricing shows the plans from the database and finds the right one', async 
 test('on a phone the call to action follows the page down', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) >= 768, 'The sticky bar is for phones.');
   await page.goto('/');
-  const sticky = page.locator('div.fixed').filter({ hasText: 'Book a demo' });
+  const sticky = page.locator('div.fixed').filter({ hasText: 'Start free trial' });
   await expect(sticky).not.toBeInViewport();
   await page.getByRole('heading', { name: 'How it works' }).scrollIntoViewIfNeeded();
   await expect(sticky).toBeInViewport();
-  await sticky.getByRole('link', { name: 'Book a demo' }).click();
-  await expect(page).toHaveURL(/\/contact$/);
+  await sticky.getByRole('link', { name: 'Start free trial' }).click();
+  await expect(page).toHaveURL(/\/signup$/);
   // The bar belongs to the home page only.
   await expect(sticky).toHaveCount(0);
 });
@@ -163,7 +166,7 @@ test('nothing scrolls sideways on a 320px screen', async ({ page, context }) => 
   const violations = await watchCspViolations(context);
   // 320 CSS px: the narrowest phones, or a desktop at 400% zoom (WCAG 1.4.10).
   await page.setViewportSize({ width: 320, height: 700 });
-  for (const path of ['/', '/features', '/pricing', '/demo', '/contact', '/terms']) {
+  for (const path of ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/terms']) {
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

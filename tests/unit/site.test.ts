@@ -8,7 +8,9 @@ import {
   yearlySavingPaise,
   type PricingPlan,
 } from '@/features/site/pricing';
-import { leadSchema, normalizePhone } from '@/features/site/schemas';
+import { leadSchema, normalizePhone, signupSchema, verifySchema } from '@/features/site/schemas';
+import { signupCodeEmail, slugFromName, welcomeEmail } from '@/features/site/signup';
+import { RESTAURANT_CODE_PATTERN } from '@/lib/auth/staff-email';
 import { verifyTurnstile, type TurnstileConfig } from '@/lib/turnstile';
 
 // The website's pricing, "Book a demo" form and Turnstile check
@@ -145,6 +147,80 @@ describe('the "Book a demo" form', () => {
     expect(email.text).toContain('All leads: https://menumesh.in/super/leads');
     expect(email.html).toContain('Tom &amp; &lt;Jerry&gt;');
     expect(email.html).not.toContain('<Jerry>');
+  });
+});
+
+describe('the self-serve signup', () => {
+  const valid = {
+    restaurantName: ' Spice Route ',
+    city: 'Pune',
+    cuisine: 'cafe',
+    ownerName: 'Asha Rao',
+    email: ' Asha@Example.IN ',
+    phone: '+91 98765 43210',
+    terms: 'on',
+    planCode: 'starter',
+    cycle: 'yearly',
+  };
+
+  it('cleans the details and needs the terms agreed', () => {
+    expect(signupSchema.parse(valid)).toEqual({
+      ...valid,
+      restaurantName: 'Spice Route',
+      email: 'asha@example.in',
+      phone: '9876543210',
+    });
+    expect(signupSchema.parse({ ...valid, planCode: '', cycle: 'weekly' })).toMatchObject({
+      planCode: null,
+      cycle: 'monthly',
+    });
+    const refused = signupSchema.safeParse({ ...valid, terms: '', email: '', cuisine: 'thai' });
+    expect(refused.error!.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
+      ['cuisine', 'Choose your menu style.'],
+      ['email', 'Enter a valid email address.'],
+      ['terms', 'Agree to the terms to continue.'],
+    ]);
+  });
+
+  it('takes the code with spaces and a password of 8 to 72 characters', () => {
+    expect(verifySchema.parse({ code: '123 456', password: 'longenough' }).code).toBe('123456');
+    expect(verifySchema.safeParse({ code: '12345', password: 'longenough' }).success).toBe(false);
+    expect(verifySchema.safeParse({ code: '123456', password: 'short' }).success).toBe(false);
+    expect(verifySchema.safeParse({ code: '123456', password: 'x'.repeat(73) }).success).toBe(
+      false,
+    );
+  });
+
+  it('makes a restaurant code from the name', () => {
+    expect(slugFromName('Spice Route & Co.')).toBe('spice-route-and-co');
+    expect(slugFromName('  Café Mocha!! ')).toBe('cafe-mocha');
+    expect(slugFromName('स्वाद')).toBe('restaurant');
+    expect(slugFromName('The Very Long Restaurant Name Of Delhi')).toBe('the-very-long-restaurant');
+    expect(slugFromName('Spice Route', 'k7m2')).toBe('spice-route-k7m2');
+    for (const name of ['A', 'Hotel —— Annapurna ——', 'x'.repeat(200)]) {
+      expect(slugFromName(name, 'ab12')).toMatch(RESTAURANT_CODE_PATTERN);
+    }
+  });
+
+  it('emails the code and the welcome with everything escaped', () => {
+    const code = signupCodeEmail('042917');
+    expect(code.subject).toBe('042917 is your MenuMesh code');
+    expect(code.text).toContain('It works for 15 minutes.');
+    expect(code.html).toContain('<strong');
+
+    const welcome = welcomeEmail({
+      ownerName: 'Asha <b>',
+      restaurantName: 'Tom & Jerry',
+      slug: 'tom-and-jerry',
+      appUrl: 'https://menumesh.in/',
+    });
+    expect(welcome.subject).toBe('Welcome to MenuMesh, Tom & Jerry');
+    expect(welcome.text).toContain('Your restaurant code is tom-and-jerry.');
+    expect(welcome.text).toContain(
+      '1. Add your menu, or import it from a photo: https://menumesh.in/admin/menu',
+    );
+    expect(welcome.html).toContain('Asha &lt;b&gt;');
+    expect(welcome.html).not.toContain('<b>');
   });
 });
 
