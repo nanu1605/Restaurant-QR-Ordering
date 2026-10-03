@@ -189,6 +189,11 @@ describe('the self-serve signup', () => {
     expect(verifySchema.safeParse({ code: '123456', password: 'x'.repeat(73) }).success).toBe(
       false,
     );
+    // Supabase Auth reads 72 bytes: 25 Hindi letters are 75.
+    expect(verifySchema.safeParse({ code: '123456', password: 'क'.repeat(25) }).success).toBe(
+      false,
+    );
+    expect(verifySchema.safeParse({ code: '123456', password: 'क'.repeat(24) }).success).toBe(true);
   });
 
   it('makes a restaurant code from the name', () => {

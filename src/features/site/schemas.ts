@@ -70,5 +70,9 @@ export const verifySchema = z.object({
     .string()
     .transform((value) => value.replace(/\D/g, ''))
     .pipe(z.string().length(6, 'Enter the 6-digit code from the email.')),
-  password: passwordSchema,
+  // Supabase Auth (bcrypt) reads 72 bytes, fewer characters in Hindi.
+  password: passwordSchema.refine(
+    (password) => new TextEncoder().encode(password).length <= 72,
+    'Use a shorter password.',
+  ),
 });

@@ -14,7 +14,6 @@ import { getServerEnv } from '@/lib/env.server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { turnstileConfig, verifyTurnstile } from '@/lib/turnstile';
-import type { Json } from '@/types/database';
 
 import { hashIp } from './leads';
 import { signupSchema, verifySchema, type Signup } from './schemas';
@@ -60,12 +59,19 @@ export type VerifyFormState = {
   fieldErrors?: Partial<Record<'code' | 'password', string>>;
 } | null;
 
-export type ResendState = { ok: boolean; message: string } | null;
+export type ResendState = {
+  ok: boolean;
+  message: string;
+  /** No new code is possible: only starting again helps. */
+  restart?: boolean;
+  /** New codes sent so far, so each one reads differently. */
+  sends: number;
+} | null;
 
 const CLOSED = 'Signing up isn’t open yet. Book a demo instead, and we’ll set you up.';
 const CHECK_FAILED =
   'We couldn’t confirm you’re not a robot. Wait for the check above the button to finish, then try again.';
-const RATE_LIMITED = 'Too many codes asked for. Wait an hour, then try again.';
+const RATE_LIMITED = 'Too many codes asked for. Try again later.';
 const NOT_SENT = 'We couldn’t send the email. Check the address and try again.';
 const FAILED = 'Something went wrong. Please try again in a minute.';
 
@@ -85,38 +91,17 @@ async function clientIp(): Promise<string | null> {
   );
 }
 
-/** Stores the signup with a new code and emails the code; returns an error message, if any. */
-async function storeAndSend(
-  email: string,
-  details: Json,
-  ipHash: string | null,
-): Promise<string | null> {
+/** Emails a code; false when email is off, or Resend refused or couldn't be reached. */
+async function sendCode(email: string, code: string, key: string): Promise<boolean> {
   const config = emailConfig();
-  if (!config) return CLOSED;
-  const code = newCode();
-  const { data: id, error } = await createAdminClient().rpc('site_signup_start', {
-    p_email: email,
-    p_details: details,
-    p_code_hash: hashCode(code),
-    p_ip_hash: ipHash ?? undefined,
-  });
-  if (error) {
-    if (dbErrorCode(error) === 'RATE_LIMITED') return RATE_LIMITED;
-    console.error('[signup] site_signup_start failed:', error.code, error.message);
-    return FAILED;
-  }
+  if (!config) return false;
   try {
-    await sendEmail(config, {
-      ...signupCodeEmail(code),
-      to: [email],
-      idempotencyKey: `signup/${id}`,
-    });
-  } catch (sendError) {
-    console.error('[signup] could not send a code', sendError);
-    return NOT_SENT;
+    await sendEmail(config, { ...signupCodeEmail(code), to: [email], idempotencyKey: key });
+    return true;
+  } catch (error) {
+    console.error('[signup] could not send a code', error);
+    return false;
   }
-  await setSignupCookie(id);
-  return null;
 }
 
 /** Step 1: details and the bot check; emails a code and moves on to /signup/verify. */
@@ -143,30 +128,64 @@ export async function startSignup(
   if (!(await verifyTurnstile(turnstile, token, ip))) return { error: CHECK_FAILED, values };
 
   const { email, restaurantName, city, cuisine, ownerName, phone, planCode, cycle } = parsed.data;
-  const details = { restaurantName, city, cuisine, ownerName, phone, planCode, cycle };
-  const failure = await storeAndSend(email, details, ip ? hashIp(ip) : null);
-  if (failure) return { error: failure, values };
+  const code = newCode();
+  const { data: id, error } = await createAdminClient().rpc('site_signup_start', {
+    p_email: email,
+    p_details: { restaurantName, city, cuisine, ownerName, phone, planCode, cycle },
+    p_code_hash: hashCode(code),
+    p_ip_hash: ip ? hashIp(ip) : undefined,
+  });
+  if (error) {
+    if (dbErrorCode(error) === 'RATE_LIMITED') return { error: RATE_LIMITED, values };
+    console.error('[signup] site_signup_start failed:', error.code, error.message);
+    return { error: FAILED, values };
+  }
+  if (!(await sendCode(email, code, `signup/${id}/1`))) return { error: NOT_SENT, values };
+  await setSignupCookie(id);
   redirect('/signup/verify');
 }
 
-/** "Send a new code": the same details again, under the same limits. */
-export async function resendSignupCode(): Promise<ResendState> {
+/**
+ * "Send a new code": replaces the code of the signup in progress. Bounded in
+ * the database (3 codes per signup, within its first hour), since it takes
+ * no new bot check.
+ */
+export async function resendSignupCode(previous: ResendState): Promise<ResendState> {
+  const sends = previous?.sends ?? 0;
   const id = await signupIdFromCookie();
   if (!id) redirect('/signup');
-  const { data: signup, error } = await createAdminClient()
-    .from('site_signups')
-    .select('email, details, ip_hash, verified_at')
-    .eq('id', id)
-    .maybeSingle();
+  const code = newCode();
+  const { data: email, error } = await createAdminClient().rpc('site_signup_resend', {
+    p_id: id,
+    p_code_hash: hashCode(code),
+  });
   if (error) {
-    console.error('[signup] could not read a signup', error);
-    return { ok: false, message: FAILED };
+    const reason = dbErrorCode(error);
+    if (reason === 'NOT_FOUND' || reason === 'RATE_LIMITED') {
+      return {
+        ok: false,
+        restart: true,
+        sends,
+        message:
+          reason === 'NOT_FOUND'
+            ? 'This sign-up is too old for a new code.'
+            : 'That was the last new code for this sign-up. Check your spam folder too.',
+      };
+    }
+    console.error('[signup] site_signup_resend failed:', error.code, error.message);
+    return { ok: false, sends, message: FAILED };
   }
-  if (!signup || signup.verified_at) redirect('/signup');
-
-  const failure = await storeAndSend(signup.email, signup.details, signup.ip_hash);
-  if (failure) return { ok: false, message: failure };
-  return { ok: true, message: 'We sent a new code. Use it instead of the old one.' };
+  if (!(await sendCode(email, code, `signup/${id}/${hashCode(code).slice(0, 16)}`))) {
+    return { ok: false, sends, message: NOT_SENT };
+  }
+  return {
+    ok: true,
+    sends: sends + 1,
+    message:
+      sends === 0
+        ? 'We sent a new code. Use it instead of the old one.'
+        : 'We sent another new code. Use the latest one.',
+  };
 }
 
 type StoredDetails = Omit<Signup, 'email' | 'terms'>;
@@ -217,7 +236,8 @@ export async function completeSignup(
     return { fieldErrors };
   }
 
-  const { data, error } = await createAdminClient().rpc('site_signup_verify', {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc('site_signup_verify', {
     p_id: id,
     p_code_hash: hashCode(parsed.data.code),
   });
@@ -237,13 +257,14 @@ export async function completeSignup(
         },
       };
     case 'expired':
-      return { error: 'This code has expired. Send a new code below.' };
+      return { fieldErrors: { code: 'This code has expired. Send a new code below.' } };
     case 'locked':
-      return { error: 'Too many wrong codes. Send a new code below.' };
+      return { fieldErrors: { code: 'Too many wrong codes. Send a new code below.' } };
     case 'gone':
       return { error: 'This sign-up has already been used or is too old.', restart: 'signup' };
   }
 
+  // The right code doesn't use the signup up, so a failure here can be tried again.
   const { email, details } = result;
   let restaurant;
   try {
@@ -255,10 +276,15 @@ export async function completeSignup(
         restart: 'login',
       };
     }
+    if (error instanceof OnboardError && error.code === 'weak_password') {
+      return { fieldErrors: { password: 'Choose a password that’s harder to guess.' } };
+    }
     console.error('[signup] could not create the restaurant', error);
-    return { error: FAILED, restart: 'signup' };
+    return { error: FAILED };
   }
 
+  const finished = await admin.rpc('site_signup_finish', { p_id: id });
+  if (finished.error) console.error('[signup] could not finish a signup', finished.error);
   await clearSignupCookie();
   const config = emailConfig();
   if (config) {
