@@ -85,7 +85,7 @@ export default async function CustomerLayout({ children, params }: LayoutProps<'
             <ServiceRequestButton
               qrToken={qrToken}
               type="call_waiter"
-              className="ml-auto shrink-0"
+              className="ml-auto shrink-0 gap-1.5 px-2.5 text-sm"
             />
           </header>
           {children}
