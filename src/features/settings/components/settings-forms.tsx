@@ -288,7 +288,7 @@ function LogoField({ settings, readOnly, supabaseUrl }: FormProps & { supabaseUr
             <ImagePlus aria-hidden className="size-6 text-ink-muted" />
           )}
         </div>
-        <div className="flex flex-col items-start gap-1.5">
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
           <input
             id="restaurant-logo"
             type="file"
@@ -298,7 +298,7 @@ function LogoField({ settings, readOnly, supabaseUrl }: FormProps & { supabaseUr
               upload(event.target.files?.[0]);
               event.target.value = '';
             }}
-            className="text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:bg-muted"
+            className="max-w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:bg-muted"
           />
           {pending && (
             <span role="status" className="text-xs text-ink-muted">
