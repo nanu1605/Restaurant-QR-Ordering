@@ -44,7 +44,7 @@ export function ServiceRequestButton({ qrToken, type, className }: ServiceReques
   return (
     <Button
       variant="outline"
-      size={type === 'call_waiter' ? 'default' : 'touch'}
+      size="touch"
       className={className}
       disabled={state === 'pending'}
       aria-live="polite"
