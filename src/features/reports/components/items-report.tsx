@@ -6,7 +6,7 @@ import { FoodTypeMark } from '@/components/shared/food-type-mark';
 
 import type { ItemsReport } from '../report';
 import { CategoryChart, type CategoryPoint } from './category-chart';
-import { ScrollRegion } from './scroll-region';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /** Dish and category sales (spec §19 Phase 6 item-wise and category sales). */
 export function ItemsReportView({ report }: { report: ItemsReport }) {

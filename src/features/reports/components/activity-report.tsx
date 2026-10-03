@@ -7,7 +7,7 @@ import { percentLabel } from '@/features/billing/bill';
 import { formatBillDate, tableHeading } from '@/features/ordering/format';
 
 import { type ActivityReport, dishLabel } from '../report';
-import { ScrollRegion } from './scroll-region';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /**
  * The activity logs (spec §19 Phase 6, §10.8): voids and discounts, removed

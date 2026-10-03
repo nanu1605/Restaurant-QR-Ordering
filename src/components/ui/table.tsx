@@ -3,15 +3,18 @@
 import * as React from 'react';
 import { cn } from 'cn';
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+import { ScrollRegion } from '@/components/shared/scroll-region';
+
+/** `label` names the region the table scrolls in on narrow screens (docs/DECISIONS.md B-6). */
+function Table({ className, label, ...props }: React.ComponentProps<'table'> & { label: string }) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <ScrollRegion label={label} className="w-full">
       <table
         data-slot="table"
         className={cn('w-full caption-bottom text-sm', className)}
         {...props}
       />
-    </div>
+    </ScrollRegion>
   );
 }
 

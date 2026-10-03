@@ -168,109 +168,105 @@ export function StaffManager({
           </p>
         )}
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Username</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last login</TableHead>
-                <TableHead className="w-12">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {staff.map((member) => {
-                const isSelf = member.memberId === actorMemberId;
-                const canManage = !isSelf && canManageRole(actorRole, member.role);
-                return (
-                  <TableRow
-                    key={member.memberId}
-                    className={cn(!member.isActive && 'text-ink-muted')}
-                  >
-                    <TableCell className="font-medium">
-                      {member.displayName}
-                      {isSelf && <span className="ml-1 text-xs text-ink-muted">(you)</span>}
-                      {member.waiterName && (
-                        <span className="block text-xs text-ink-muted">
-                          Waiter profile: {member.waiterName}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{member.username}</TableCell>
-                    <TableCell>{ROLE_LABELS[member.role]}</TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          member.isActive ? 'bg-muted text-ink' : 'bg-paper text-ink-muted',
-                        )}
-                      >
-                        {member.isActive ? 'Active' : 'Deactivated'}
+        <Table label="Staff logins table">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Username</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Last login</TableHead>
+              <TableHead className="w-12">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {staff.map((member) => {
+              const isSelf = member.memberId === actorMemberId;
+              const canManage = !isSelf && canManageRole(actorRole, member.role);
+              return (
+                <TableRow
+                  key={member.memberId}
+                  className={cn(!member.isActive && 'text-ink-muted')}
+                >
+                  <TableCell className="font-medium">
+                    {member.displayName}
+                    {isSelf && <span className="ml-1 text-xs text-ink-muted">(you)</span>}
+                    {member.waiterName && (
+                      <span className="block text-xs text-ink-muted">
+                        Waiter profile: {member.waiterName}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-sm tabular-nums">
-                      {member.lastSignInAt
-                        ? formatLastLogin.format(new Date(member.lastSignInAt))
-                        : 'Never'}
-                    </TableCell>
-                    <TableCell>
-                      {(canManage || isSelf) && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Actions for ${member.displayName}`}
-                              />
-                            }
-                          >
-                            <MoreHorizontal aria-hidden />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            {canManage && member.isActive && (
+                    )}
+                  </TableCell>
+                  <TableCell className="font-mono text-sm">{member.username}</TableCell>
+                  <TableCell>{ROLE_LABELS[member.role]}</TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        member.isActive ? 'bg-muted text-ink' : 'bg-paper text-ink-muted',
+                      )}
+                    >
+                      {member.isActive ? 'Active' : 'Deactivated'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums">
+                    {member.lastSignInAt
+                      ? formatLastLogin.format(new Date(member.lastSignInAt))
+                      : 'Never'}
+                  </TableCell>
+                  <TableCell>
+                    {(canManage || isSelf) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Actions for ${member.displayName}`}
+                            />
+                          }
+                        >
+                          <MoreHorizontal aria-hidden />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {canManage && member.isActive && (
+                            <DropdownMenuItem
+                              onClick={() => setDialog({ kind: 'edit', member })}
+                              disabled={readOnly}
+                            >
+                              <Pencil aria-hidden /> Edit
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => setDialog({ kind: 'password', member })}>
+                            <KeyRound aria-hidden /> Reset password
+                          </DropdownMenuItem>
+                          {canManage &&
+                            (member.isActive ? (
                               <DropdownMenuItem
-                                onClick={() => setDialog({ kind: 'edit', member })}
+                                variant="destructive"
+                                onClick={() => setDialog({ kind: 'deactivate', member })}
+                              >
+                                <UserX aria-hidden /> Deactivate
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => reactivate(member)}
                                 disabled={readOnly}
                               >
-                                <Pencil aria-hidden /> Edit
+                                <UserCheck aria-hidden /> Reactivate
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => setDialog({ kind: 'password', member })}
-                            >
-                              <KeyRound aria-hidden /> Reset password
-                            </DropdownMenuItem>
-                            {canManage &&
-                              (member.isActive ? (
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDialog({ kind: 'deactivate', member })}
-                                >
-                                  <UserX aria-hidden /> Deactivate
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => reactivate(member)}
-                                  disabled={readOnly}
-                                >
-                                  <UserCheck aria-hidden /> Reactivate
-                                </DropdownMenuItem>
-                              ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                            ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </section>
 
       <Dialog open={dialog?.kind === 'add'} onOpenChange={(open) => !open && setDialog(null)}>

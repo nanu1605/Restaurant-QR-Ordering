@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pager } from '@/components/shared/pager';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { buttonVariants } from '@/components/ui/button';
 import { ReprocessButton } from '@/features/platform/components/reprocess-button';
 import { formatDateTime } from '@/features/platform/platform';
@@ -68,7 +69,7 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <ScrollRegion label="Webhooks" className="rounded-lg border border-line bg-surface">
           <table className="w-full min-w-[48rem] text-left text-sm text-ink">
             <caption className="sr-only">Webhooks</caption>
             <thead className="border-b border-line text-ink-muted">
@@ -106,7 +107,7 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
                   <td className="px-3 py-2">
                     <details>
                       <summary className="cursor-pointer text-xs text-brand">Payload</summary>
-                      <pre className="mt-1 max-w-md overflow-x-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+                      <pre className="mt-1 max-w-md rounded bg-muted p-2 text-xs wrap-anywhere whitespace-pre-wrap">
                         {JSON.stringify(row.payload, null, 2)}
                       </pre>
                     </details>
@@ -115,7 +116,7 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
       <Pager
         page={list.page}

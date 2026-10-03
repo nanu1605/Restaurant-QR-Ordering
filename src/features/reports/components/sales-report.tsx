@@ -14,7 +14,7 @@ import {
   WEEKDAYS_SHORT,
 } from '../report';
 import { SalesTrendChart, type TrendPoint } from './sales-trend-chart';
-import { ScrollRegion } from './scroll-region';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /** Sales report (spec §13.3, §19 Phase 6): the summary, how it was paid, the
  * day trend and the busy hours. */

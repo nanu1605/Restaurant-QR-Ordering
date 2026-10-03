@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pager } from '@/components/shared/pager';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { formatDateTime } from '@/features/platform/platform';
 import { LEADS_PAGE_SIZE, listSiteLeads } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
@@ -35,7 +36,7 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
           description="They appear here when someone sends the form on the website’s contact page."
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <ScrollRegion label="Leads" className="rounded-lg border border-line bg-surface">
           <table className="w-full min-w-[56rem] text-left text-sm text-ink">
             <caption className="sr-only">Leads</caption>
             <thead className="border-b border-line text-ink-muted">
@@ -79,7 +80,7 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
       <Pager
         page={list.page}
