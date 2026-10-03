@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from 'cn';
 import { Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
@@ -75,11 +76,19 @@ type AutopayPanelProps = {
   cancel: CancelOptions | null;
   /** Text about when the first payment happens, for the cards. */
   firstPayment: string;
+  /** The plan and cycle chosen on the website before signing up (docs/DECISIONS.md W-9). */
+  chosen?: { planCode: string | null; cycle: BillingCycle };
 };
 
-export function AutopayPanel({ plans, canSubscribe, cancel, firstPayment }: AutopayPanelProps) {
+export function AutopayPanel({
+  plans,
+  canSubscribe,
+  cancel,
+  firstPayment,
+  chosen,
+}: AutopayPanelProps) {
   const router = useRouter();
-  const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const [cycle, setCycle] = useState<BillingCycle>(chosen?.cycle ?? 'monthly');
   const [busy, setBusy] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
 
@@ -181,13 +190,22 @@ export function AutopayPanel({ plans, canSubscribe, cancel, firstPayment }: Auto
           <ul aria-label="Plans" className="grid gap-3 md:grid-cols-3">
             {plans.map((plan) => {
               const available = plan.cycles.includes(cycle);
+              const picked = plan.code === chosen?.planCode;
               return (
                 <li
                   key={plan.code}
                   aria-label={plan.name}
-                  className="flex flex-col gap-3 rounded-lg border border-line p-4"
+                  className={cn(
+                    'flex flex-col gap-3 rounded-lg border p-4',
+                    picked ? 'border-brand ring-2 ring-brand/25' : 'border-line',
+                  )}
                 >
                   <div>
+                    {picked && (
+                      <p className="text-xs font-semibold tracking-wide text-brand uppercase">
+                        Your choice
+                      </p>
+                    )}
                     <h3 className="text-base font-semibold text-ink">{plan.name}</h3>
                     <p className="text-sm text-ink-muted">
                       <span className="text-xl font-semibold text-ink">
