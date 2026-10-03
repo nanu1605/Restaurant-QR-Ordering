@@ -52,7 +52,9 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
             onClick={() => setCycle(value)}
             className={cn(
               'h-11 rounded-full px-5 text-sm font-semibold transition-colors',
-              cycle === value ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink',
+              cycle === value
+                ? 'bg-primary text-primary-foreground'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             {value === 'monthly' ? 'Monthly' : 'Yearly'}
@@ -87,7 +89,7 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
               )}
             >
               {trial && (
-                <span className="absolute -top-3 left-6 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white">
+                <span className="absolute -top-3 left-6 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
                   Free for {pricing.trialDays} days
                 </span>
               )}

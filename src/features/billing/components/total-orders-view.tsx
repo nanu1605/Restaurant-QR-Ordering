@@ -139,7 +139,7 @@ function BillsTable({
               {linkBills ? (
                 <Link
                   href={`/admin/bills/${row.id}`}
-                  className="font-semibold text-primary underline-offset-4 hover:underline"
+                  className="font-semibold text-brand underline-offset-4 hover:underline"
                 >
                   {row.invoiceNumber}
                 </Link>

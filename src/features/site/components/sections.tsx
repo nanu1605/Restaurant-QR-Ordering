@@ -152,7 +152,7 @@ export function How() {
   );
 }
 
-const ROLE_ACCENTS = ['bg-status-ready', 'bg-status-preparing', 'bg-brand'];
+const ROLE_ACCENTS = ['bg-status-ready', 'bg-status-preparing', 'bg-primary'];
 
 export function Roles() {
   return (
@@ -246,7 +246,7 @@ function MiniMenu({ lang }: { lang: 'en' | 'hi' }) {
   const hindi = lang === 'hi';
   return (
     <div lang={lang} className="flex h-full flex-col text-[0.6rem]">
-      <div className="bg-brand px-3 pt-6 pb-3 text-white">
+      <div className="bg-primary px-3 pt-6 pb-3 text-primary-foreground">
         <p className="text-[1.15em] font-bold">Spice Route</p>
         <p className="opacity-80">{hindi ? 'टेबल 5' : 'Table 5'}</p>
       </div>
@@ -274,14 +274,14 @@ export function Hindi() {
   return (
     <section
       aria-labelledby="hindi-title"
-      className="bg-ink px-4 py-16 text-white sm:px-6 sm:py-24"
+      className="bg-ink px-4 py-16 text-paper sm:px-6 sm:py-24"
     >
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
         <div className="site-reveal flex flex-col gap-4">
           <h2 id="hindi-title" className="text-2xl font-bold sm:text-3xl">
             Your menu, in your guests’ language
           </h2>
-          <p className="text-base text-white/80 sm:text-lg">
+          <p className="text-base text-paper/80 sm:text-lg">
             One tap switches the whole menu to <span lang="hi">हिन्दी</span>: buttons, the cart,
             order status, and your dish names. MenuMesh writes each dish name in Hindi for you, and
             you can change any of them in the menu editor.
@@ -383,17 +383,17 @@ export function FinalCta() {
   const cta = siteCta();
   return (
     <section className="px-4 py-16 sm:px-6 sm:py-24">
-      <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-brand px-6 py-14 text-center text-white sm:px-12">
+      <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground sm:px-12">
         <h2 className="text-2xl font-bold sm:text-3xl">{FINAL_CTA.title}</h2>
-        <p className="max-w-2xl text-base text-white/85 sm:text-lg">
+        <p className="max-w-2xl text-base sm:text-lg">
           {cta.href === '/signup' ? FINAL_CTA.signupBody : FINAL_CTA.body}
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
             href={cta.href}
             className={cn(
-              buttonVariants({ variant: 'outline', size: 'touch' }),
-              'border-white bg-white px-6 text-brand hover:bg-white/90',
+              buttonVariants({ size: 'touch' }),
+              'bg-ink px-6 text-paper hover:bg-ink/90',
             )}
           >
             {cta.label}
@@ -402,7 +402,7 @@ export function FinalCta() {
             href="/login"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'touch' }),
-              'px-6 text-white hover:bg-white/10 hover:text-white',
+              'px-6 text-primary-foreground hover:bg-ink/10 hover:text-primary-foreground',
             )}
           >
             Log in

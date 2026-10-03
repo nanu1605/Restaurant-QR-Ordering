@@ -7,7 +7,7 @@ import { type AuditEntry, type BillDetail, PAYMENT_MODE_LABELS } from '../bill';
 
 const STATUS_STYLES = {
   unpaid: 'border-attention text-attention',
-  paid: 'border-status-served bg-status-served text-white',
+  paid: 'border-status-served bg-status-served text-status-served-foreground',
   void: 'border-status-void bg-status-void text-white',
 } as const;
 
