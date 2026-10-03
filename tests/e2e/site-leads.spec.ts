@@ -45,6 +45,7 @@ test('a demo request reaches the platform team', async ({ page, context, request
     await form.getByLabel('Anything we should know? (optional)').fill('Twelve tables.\nOpen late.');
     await form.getByRole('button', { name: 'Book a demo' }).click();
     await expect(form.getByText('Enter a 10-digit mobile number.')).toBeVisible();
+    await expect(form.getByLabel('Mobile number')).toBeFocused();
     // What was typed stays, and a fresh check runs before the next try.
     await expect(form.getByLabel('Restaurant name')).toHaveValue(restaurant);
 

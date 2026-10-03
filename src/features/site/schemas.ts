@@ -30,8 +30,9 @@ export const leadSchema = z.object({
   planCode: z.string().transform((value) => (/^[a-z_]{2,30}$/.test(value) ? value : null)),
   message: z
     .string()
-    .trim()
-    .max(1000, 'Use 1000 characters or fewer.')
+    // Forms send line breaks as CRLF; the textarea counted each as one character.
+    .transform((value) => value.replace(/\r\n?/g, '\n'))
+    .pipe(z.string().trim().max(1000, 'Use 1000 characters or fewer.'))
     .transform((value) => value || null),
 });
 

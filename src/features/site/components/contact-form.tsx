@@ -35,11 +35,17 @@ export function ContactForm({
   );
   const [checked, setChecked] = useState(false);
   const thanks = useRef<HTMLHeadingElement>(null);
+  const form = useRef<HTMLFormElement>(null);
   const done = result?.ok === true;
 
   useEffect(() => {
     if (done) thanks.current?.focus();
   }, [done]);
+
+  // After a refusal, focus the first field to fix (its message is linked to it).
+  useEffect(() => {
+    form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [result]);
 
   if (done) {
     return (
@@ -61,10 +67,11 @@ export function ContactForm({
 
   return (
     <form
+      ref={form}
       action={action}
       noValidate
       aria-label="Book a demo"
-      className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-6 sm:p-8"
+      className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field
@@ -108,10 +115,11 @@ export function ContactForm({
         <PlanSelect plans={plans} defaultValue={failed ? value('planCode') : (defaultPlan ?? '')} />
       </div>
       <MessageField defaultValue={value('message')} error={error('message')} />
+      {/* Each submit renders a fresh check: tokens work once, and the form resets. */}
       <TurnstileWidget siteKey={siteKey} round={round} onReady={setChecked} />
-      {failed?.error && (
+      {failed && (failed.error || failed.fieldErrors) && (
         <p role="alert" className="text-sm font-medium text-status-void">
-          {failed.error}
+          {failed.error ?? 'Check the highlighted fields and try again.'}
         </p>
       )}
       <Button

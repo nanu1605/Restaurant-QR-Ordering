@@ -131,6 +131,9 @@ describe('the "Book a demo" form', () => {
       email: 'Enter a valid email address, or leave it empty.',
     });
     expect(leadSchema.safeParse({ ...valid, message: 'x'.repeat(1001) }).success).toBe(false);
+    // Forms send line breaks as CRLF; they count once, as in the textarea.
+    const lines = Array.from({ length: 10 }, () => 'x'.repeat(99)).join('\r\n');
+    expect(leadSchema.parse({ ...valid, message: lines }).message).toHaveLength(999);
   });
 
   it('emails the lead with everything escaped', () => {

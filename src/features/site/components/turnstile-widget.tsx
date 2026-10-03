@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useEffectEvent, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+
+import { Button } from '@/components/ui/button';
 
 /**
  * Cloudflare Turnstile's widget (docs/DECISIONS.md W-6). Rendered inside a
@@ -53,11 +55,17 @@ export function TurnstileWidget({
   onReady: (ready: boolean) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const report = useEffectEvent((ready: boolean) => onReady(ready));
 
   useEffect(() => {
     let widgetId: string | undefined;
     let cancelled = false;
+    const fail = () => {
+      report(false);
+      if (!cancelled) setFailed(true);
+    };
     report(false);
     loadTurnstile()
       .then((turnstile) => {
@@ -66,18 +74,39 @@ export function TurnstileWidget({
           sitekey: siteKey,
           action: 'lead',
           theme: 'light',
-          size: 'flexible',
+          // "flexible" needs 300 px; narrow phones get the compact widget.
+          size: container.current.clientWidth < 300 ? 'compact' : 'flexible',
           callback: () => report(true),
           'expired-callback': () => report(false),
-          'error-callback': () => report(false),
+          'error-callback': fail,
         });
       })
-      .catch(() => report(false));
+      .catch(fail);
     return () => {
       cancelled = true;
       if (widgetId) window.turnstile?.remove(widgetId);
     };
-  }, [siteKey, round]);
+  }, [siteKey, round, attempt]);
 
-  return <div ref={container} className="min-h-[65px]" />;
+  return (
+    <div className="flex flex-col gap-2">
+      <div ref={container} className="min-h-[65px] min-w-0" />
+      {failed && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-status-void">
+          <p>The check that you’re not a robot didn’t load. Try again, or reach us directly.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="touch"
+            onClick={() => {
+              setFailed(false);
+              setAttempt((count) => count + 1);
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }

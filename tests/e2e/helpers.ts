@@ -50,7 +50,10 @@ export async function fakeTurnstile(context: BrowserContext) {
           input.type = 'hidden';
           input.name = 'cf-turnstile-response';
           input.value = 'XXXX.DUMMY.TOKEN.XXXX';
-          container.append(input);
+          // Takes the real widget's room, so layout tests see it.
+          const box = document.createElement('div');
+          box.style.cssText = options.size === 'compact' ? 'width:150px;height:140px' : 'width:300px;height:65px';
+          container.append(input, box);
           setTimeout(() => options.callback(input.value), 50);
           return 'e2e-widget';
         },
