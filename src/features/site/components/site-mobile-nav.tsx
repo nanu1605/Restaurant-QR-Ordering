@@ -60,7 +60,7 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
         side="right"
         showCloseButton={false}
         finalFocus={() => section.current === null}
-        className="w-80 gap-6 overflow-y-auto p-6"
+        className="gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
       >
         <div className="flex items-center justify-between">
           <SheetTitle className="text-base font-semibold text-ink">Menu</SheetTitle>

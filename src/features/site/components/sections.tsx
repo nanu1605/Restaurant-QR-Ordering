@@ -402,7 +402,7 @@ export function FinalCta() {
             href="/login"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'touch' }),
-              'px-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground',
+              'px-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground dark:hover:bg-primary-foreground/10',
             )}
           >
             Log in
