@@ -13,7 +13,7 @@ import { TurnstileWidget } from './turnstile-widget';
 
 type State = { result: LeadFormState; round: number };
 
-const SELECT_CLASS =
+export const SELECT_CLASS =
   'h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
 
 /** "Book a demo" (docs/DECISIONS.md W-6): stored as a lead for the platform team. */
@@ -145,7 +145,7 @@ type FieldProps = Omit<React.ComponentProps<'input'>, 'id' | 'name'> & {
   error?: string;
 };
 
-function Field({ name, label, error, ...inputProps }: FieldProps) {
+export function Field({ name, label, error, ...inputProps }: FieldProps) {
   const id = useId();
   return (
     <div className="flex min-w-0 flex-col gap-1.5">

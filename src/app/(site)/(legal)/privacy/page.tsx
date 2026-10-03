@@ -38,13 +38,23 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section>
+        <h2>People who sign up</h2>
+        <p>
+          The sign-up form asks for your restaurant’s name, city and menu style, your name, email
+          and mobile number. We email you a code to confirm the address. Until you enter it, we keep
+          these details for at most 7 days, with a keyed hash of your network address to limit
+          abuse; once you do, they become your restaurant’s account.
+        </p>
+      </section>
+      <section>
         <h2>Service providers</h2>
         <p>
           Supabase (database, Mumbai, India), Vercel (hosting), Sentry (error reports), PostHog
           (usage of the staff and admin screens only, never diners’ phones), Razorpay (subscription
-          payments by restaurants), Resend (billing emails to owners, and demo requests to our team)
-          and Cloudflare Turnstile (a bot check on the website’s forms, which sees your network
-          address and browser signals). [Confirm the list and their regions.]
+          payments by restaurants), Resend (sign-up codes, welcome and billing emails to owners, and
+          demo requests to our team) and Cloudflare Turnstile (a bot check on the website’s forms,
+          which sees your network address and browser signals). [Confirm the list and their
+          regions.]
         </p>
       </section>
       <section>

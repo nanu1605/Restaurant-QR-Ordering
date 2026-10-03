@@ -19,6 +19,9 @@ export const HERO = {
   secondary: 'See how it works',
 } as const;
 
+/** The main call to action once self-serve signup is open (docs/DECISIONS.md W-9). */
+export const SIGNUP_CTA = 'Start free trial';
+
 /** The hero animation's story, also read out as its text alternative. */
 export const STORY_STEPS = [
   'A guest at table 5 adds Paneer Tikka from their phone.',
@@ -190,6 +193,20 @@ export const FAQ = [
 export const FINAL_CTA = {
   title: 'See it running in your restaurant',
   body: 'We’ll set up your menu and tables with you, and you can try MenuMesh free for 14 days on the Growth plan.',
+  /** When visitors can sign up themselves. */
+  signupBody:
+    'Try MenuMesh free for 14 days on the Growth plan. Set it up yourself in minutes, or book a demo and we’ll help.',
+} as const;
+
+export const SIGNUP = {
+  title: 'Start your free trial',
+  lead: 'Set up your restaurant in a few minutes. Nothing to pay today.',
+  perks: [
+    'Every Growth feature free for the length of your trial',
+    'No card needed to start; set up autopay when you’re ready',
+    'Import your menu from a photo, then print QR codes for your tables',
+    'Cancel any time: your data stays yours',
+  ],
 } as const;
 
 export const PRICING = {
