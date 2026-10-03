@@ -112,16 +112,34 @@ describe('the kitchen', () => {
 });
 
 describe('the bill', () => {
-  it('adds GST at 5%, rounded half up to whole paise', () => {
-    expect(billTotals(28000)).toEqual({ subtotalPaise: 28000, gstPaise: 1400, totalPaise: 29400 });
-    expect(billTotals(1010)).toEqual({ subtotalPaise: 1010, gstPaise: 51, totalPaise: 1061 });
-    expect(billTotals(1009)).toEqual({ subtotalPaise: 1009, gstPaise: 50, totalPaise: 1059 });
+  it('works out GST and the total the way the app’s bills do', () => {
+    // 5% GST rounded half up, CGST the lower half, total rounded to the rupee.
+    expect(billTotals(28000)).toEqual({
+      subtotalPaise: 28000,
+      cgstPaise: 700,
+      sgstPaise: 700,
+      roundOffPaise: 0,
+      totalPaise: 29400,
+    });
+    expect(billTotals(9000)).toEqual({
+      subtotalPaise: 9000,
+      cgstPaise: 225,
+      sgstPaise: 225,
+      roundOffPaise: 50,
+      totalPaise: 9500,
+    });
+    expect(billTotals(1010)).toMatchObject({
+      cgstPaise: 25,
+      sgstPaise: 26,
+      roundOffPaise: 39,
+      totalPaise: 1100,
+    });
   });
 
-  it('is made only once every dish is served, with one line per dish', () => {
+  it('can be made once anything is ordered, with one line per dish', () => {
+    expect(canMakeBill(INITIAL_DEMO)).toBe(false);
     const cooking = play(add('paneer-tikka'), place);
-    expect(canMakeBill(cooking)).toBe(false);
-    expect(demoReducer(cooking, { type: 'makeBill' })).toBe(cooking);
+    expect(canMakeBill(cooking)).toBe(true);
 
     let state = play(add('butter-naan'), add('butter-naan'), place, add('butter-naan'), place);
     for (const lineId of ['1-butter-naan', '2-butter-naan']) {
@@ -135,7 +153,12 @@ describe('the bill', () => {
     expect(bill.lines.map((line) => [line.dish.name, line.quantity, line.paise])).toEqual([
       ['Butter Naan', 3, 18000],
     ]);
-    expect(bill).toMatchObject({ subtotalPaise: 18000, gstPaise: 900, totalPaise: 18900 });
+    expect(bill).toMatchObject({
+      subtotalPaise: 18000,
+      cgstPaise: 450,
+      sgstPaise: 450,
+      totalPaise: 18900,
+    });
     expect(state.message).toBe('Bill made for table 5: ₹189.00.');
     // The bill closes ordering.
     expect(demoReducer(state, add('butter-naan'))).toBe(state);
@@ -163,10 +186,10 @@ describe('the next step hint', () => {
     expect(nextHint(served())).toMatchObject({ device: 'counter', action: { type: 'makeBill' } });
   });
 
-  it('sends a waiter call to the kitchen first', () => {
+  it('sends a waiter call to the counter first (the kitchen view shows no calls)', () => {
     const state = play(add('masala-chai'), place, { type: 'request', kind: 'call_waiter' });
     expect(nextHint(state)).toMatchObject({
-      device: 'kitchen',
+      device: 'counter',
       action: { type: 'resolve', kind: 'call_waiter' },
     });
   });

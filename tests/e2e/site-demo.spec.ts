@@ -68,11 +68,13 @@ test('a visitor plays one table’s order from the menu to a paid bill', async (
   await phone.getByRole('button', { name: 'Call waiter' }).click();
   await expect(phone.getByRole('button', { name: 'Waiter called' })).toBeVisible();
 
-  // The kitchen answers the call and moves the dishes on.
+  // The counter answers the call; the kitchen moves the dishes on.
+  let counter = await open(page, 'Counter laptop');
+  await expect(counter.getByText('Calling', { exact: true })).toBeVisible();
+  await counter.getByRole('button', { name: /^Done\W+calling a waiter$/ }).click();
+  await expect(counter.getByText('Calling', { exact: true })).toBeHidden();
   const kitchen = await open(page, 'Kitchen tablet');
-  await expect(kitchen.getByText('Calling', { exact: true })).toBeVisible();
-  await kitchen.getByRole('button', { name: /^Done\W+calling a waiter$/ }).click();
-  await expect(kitchen.getByText('Calling', { exact: true })).toBeHidden();
+  await expect(kitchen.getByText('Calling', { exact: true })).toHaveCount(0);
   await kitchen.getByRole('button', { name: 'Start all in round 1' }).click();
   await expect(kitchen.getByText('Preparing', { exact: true })).toHaveCount(2);
   await kitchen.getByRole('button', { name: 'Mark ready Paneer Tikka' }).click();
@@ -84,10 +86,10 @@ test('a visitor plays one table’s order from the menu to a paid bill', async (
   phone = await open(page, 'Guest phone');
   await expect(phone.getByText('Served', { exact: true })).toHaveCount(2);
 
-  // The counter makes the bill (₹620 + 5% GST) and takes the payment.
-  const counter = await open(page, 'Counter laptop');
+  // The counter makes the bill (₹620 + 2.5% CGST + 2.5% SGST) and takes the payment.
+  counter = await open(page, 'Counter laptop');
   await counter.getByRole('button', { name: 'Make bill' }).click();
-  await expect(counter).toContainText('₹31.00');
+  await expect(counter).toContainText('₹15.50');
   await expect(counter).toContainText('₹651.00');
   await counter.getByRole('button', { name: 'UPI' }).click();
   await expect(counter.getByText('Paid · UPI')).toBeVisible();

@@ -30,6 +30,7 @@ import { DEFAULT_TIMEZONE } from '@/lib/config';
 import { formatINR } from '@/lib/money';
 
 import {
+  allServed,
   canMakeBill,
   cartCount,
   cartLines,
@@ -654,12 +655,6 @@ function KitchenTablet({ state, act }: { state: DemoState; act: Act }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const free = state.rounds.length === 0 || state.paid !== null;
   const allServed = state.rounds.every((round) => !ticketStep(round));
-  const requests = state.requests.map((kind) => ({
-    id: kind,
-    type: kind,
-    status: 'open' as const,
-    createdAt: '',
-  }));
   /** A tap whose button goes away afterwards: focus moves to the table. */
   const settle: Act = (action) => {
     focusSoon(titleRef);
@@ -681,29 +676,7 @@ function KitchenTablet({ state, act }: { state: DemoState; act: Act }) {
             {TABLE}
           </h3>
           <TableStateBadge state={free ? 'free' : allServed ? 'all_served' : 'in_progress'} />
-          <RequestBadges requests={requests} />
         </div>
-        {state.requests.length > 0 && (
-          <section
-            aria-label="Customer requests"
-            className="flex flex-col gap-2 rounded-lg border-2 border-attention bg-surface p-3"
-          >
-            {state.requests.map((kind) => {
-              const { icon: Icon, line } = REQUESTS[kind];
-              return (
-                <div key={kind} className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="flex items-center gap-2 text-base font-semibold text-ink">
-                    <Icon aria-hidden className="size-5 shrink-0 text-attention" />
-                    {line}
-                  </p>
-                  <Button size="touch" onClick={() => settle({ type: 'resolve', kind })}>
-                    Done<span className="sr-only">: {line.toLowerCase()}</span>
-                  </Button>
-                </div>
-              );
-            })}
-          </section>
-        )}
         {free ? (
           <p className="text-base text-ink-muted">
             {state.paid
@@ -814,11 +787,14 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
           <h3 ref={titleRef} tabIndex={-1} className={viewTitle}>
             Bill · {TABLE}
           </h3>
-          {state.requests.includes('request_bill') && (
-            <RequestBadges
-              requests={[{ id: 'bill', type: 'request_bill', status: 'open', createdAt: '' }]}
-            />
-          )}
+          <RequestBadges
+            requests={state.requests.map((kind) => ({
+              id: kind,
+              type: kind,
+              status: 'open' as const,
+              createdAt: '',
+            }))}
+          />
           {state.paid && (
             <m.span
               initial={{ opacity: 0, scale: 1.4 }}
@@ -829,14 +805,28 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
             </m.span>
           )}
         </div>
+        {state.requests.includes('call_waiter') && (
+          <section
+            aria-label="Customer requests"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-attention bg-surface p-3"
+          >
+            <p className="flex items-center gap-2 text-base font-semibold text-ink">
+              <BellRing aria-hidden className="size-5 shrink-0 text-attention" />
+              {REQUESTS.call_waiter.line}
+            </p>
+            <Button size="touch" onClick={() => settle({ type: 'resolve', kind: 'call_waiter' })}>
+              Done<span className="sr-only">: {REQUESTS.call_waiter.line.toLowerCase()}</span>
+            </Button>
+          </section>
+        )}
         {!state.billed ? (
           <>
             <p className="text-base text-ink-muted">
               {state.rounds.length === 0
-                ? 'No orders yet. The bill is made here once the dishes are served.'
-                : ready
+                ? 'No orders yet. The bill is made here when the table is ready to pay.'
+                : allServed(state)
                   ? 'Every dish is served. The bill is ready to make.'
-                  : `${TABLE} is eating. Make the bill once every dish is served.`}
+                  : `Some dishes aren’t served yet. The bill can still be made now; it includes them.`}
             </p>
             <Button
               size="touch"
@@ -863,8 +853,12 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
               ))}
               <div className="my-1 border-t border-dashed border-line" />
               <BillRow label="Subtotal" paise={bill.subtotalPaise} muted />
-              <BillRow label="GST 5%" paise={bill.gstPaise} muted />
-              <BillRow label="Total" paise={bill.totalPaise} strong />
+              <BillRow label="CGST 2.5%" paise={bill.cgstPaise} muted />
+              <BillRow label="SGST 2.5%" paise={bill.sgstPaise} muted />
+              {bill.roundOffPaise !== 0 && (
+                <BillRow label="Round off" paise={bill.roundOffPaise} muted />
+              )}
+              <BillRow label="Grand total" paise={bill.totalPaise} strong />
             </m.div>
             {state.paid ? (
               <p className="text-base text-ink-muted">{TABLE} is free for the next guests.</p>

@@ -195,9 +195,13 @@ function allLines(state: DemoState): DemoLine[] {
   return state.rounds.flatMap((round) => round.lines);
 }
 
+/** Any time after the first order, as in the app (unserved dishes are billed too). */
 export function canMakeBill(state: DemoState): boolean {
-  const lines = allLines(state);
-  return !state.billed && lines.length > 0 && lines.every((line) => line.status === 'served');
+  return !state.billed && allLines(state).length > 0;
+}
+
+export function allServed(state: DemoState): boolean {
+  return allLines(state).every((line) => line.status === 'served');
 }
 
 /** One bill line per dish, in menu order. */
@@ -214,14 +218,29 @@ export function billLines(
 
 export const GST_PERCENT = 5;
 
-/** GST at 5% of the subtotal, rounded half up to whole paise. */
+/**
+ * The app's bill maths (private.calc_bill_totals): GST at 5% rounded half up
+ * to whole paise, split into CGST (the lower half) and SGST, and the total
+ * rounded to the rupee.
+ */
 export function billTotals(subtotalPaise: Paise): {
   subtotalPaise: Paise;
-  gstPaise: Paise;
+  cgstPaise: Paise;
+  sgstPaise: Paise;
+  roundOffPaise: Paise;
   totalPaise: Paise;
 } {
   const gstPaise = Math.floor((subtotalPaise * GST_PERCENT + 50) / 100);
-  return { subtotalPaise, gstPaise, totalPaise: subtotalPaise + gstPaise };
+  const cgstPaise = Math.floor(gstPaise / 2);
+  const preRound = subtotalPaise + gstPaise;
+  const totalPaise = Math.round(preRound / 100) * 100;
+  return {
+    subtotalPaise,
+    cgstPaise,
+    sgstPaise: gstPaise - cgstPaise,
+    roundOffPaise: totalPaise - preRound,
+    totalPaise,
+  };
 }
 
 export function demoBill(state: DemoState) {
@@ -400,10 +419,11 @@ export function kitchenHint(state: DemoState): DemoHint | null {
 /** Which device and button the visitor should try next; null once paid. */
 export function nextHint(state: DemoState): DemoHint | null {
   if (state.paid) return null;
+  // Calls reach the waiters' board and the admin's live orders, not the kitchen view.
   if (state.requests.includes('call_waiter')) {
     return {
-      device: 'kitchen',
-      text: 'The guest is calling. On the kitchen tablet, tap “Done”.',
+      device: 'counter',
+      text: 'The guest is calling. On the counter laptop, tap “Done”.',
       action: { type: 'resolve', kind: 'call_waiter' },
     };
   }
