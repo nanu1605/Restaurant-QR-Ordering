@@ -109,7 +109,7 @@ export function WaitersManager({
           description="Add the people who serve tables, so managers can assign them and bills show who served."
         />
       ) : (
-        <Table label="Waiters table">
+        <Table label="Waiters">
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>

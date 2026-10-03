@@ -168,7 +168,7 @@ export function StaffManager({
           </p>
         )}
 
-        <Table label="Staff logins table">
+        <Table label="Staff logins">
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>

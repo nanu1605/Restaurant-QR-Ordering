@@ -5,12 +5,16 @@ import { cn } from 'cn';
 
 import { ScrollRegion } from '@/components/shared/scroll-region';
 
-/** `label` names the region the table scrolls in on narrow screens (docs/DECISIONS.md B-6). */
+/**
+ * `label` names the table; the region it scrolls in on narrow screens is "<label> table", so it
+ * never repeats the name of the section around it (docs/DECISIONS.md B-6).
+ */
 function Table({ className, label, ...props }: React.ComponentProps<'table'> & { label: string }) {
   return (
-    <ScrollRegion label={label} className="w-full">
+    <ScrollRegion label={`${label} table`} className="w-full">
       <table
         data-slot="table"
+        aria-label={label}
         className={cn('w-full caption-bottom text-sm', className)}
         {...props}
       />
