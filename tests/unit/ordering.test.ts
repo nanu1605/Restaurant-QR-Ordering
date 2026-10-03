@@ -624,7 +624,16 @@ describe('accent colour (spec §16.1, §16.2)', () => {
   const WHITE = '#FFFFFF';
   const INK = '#1C1917';
   const PAPER = '#FAF8F5';
-  const fallback = { accent: DEFAULT_ACCENT, foreground: INK, text: INK, ring: INK };
+  const DARK_INK = '#F5F2EE';
+  const DARK_PAGE = ['#1C1A18', '#121110'];
+  /** The orange reads on the dark page, so it is its own text and ring there. */
+  const fallback = {
+    accent: DEFAULT_ACCENT,
+    foreground: INK,
+    text: INK,
+    ring: INK,
+    dark: { text: DEFAULT_ACCENT, ring: DEFAULT_ACCENT },
+  };
 
   it('measures WCAG contrast either way round', () => {
     expect(contrastRatio('#FFFFFF', '#000000')).toBeCloseTo(21, 5);
@@ -640,17 +649,21 @@ describe('accent colour (spec §16.1, §16.2)', () => {
   });
 
   it('keeps dark accents for text and focus rings, with white on the fill', () => {
+    // Too dark for the dark page: its ink takes text and ring there.
     expect(accentColors('#3b4ba8')).toEqual({
       accent: '#3B4BA8',
       foreground: WHITE,
       text: '#3B4BA8',
       ring: '#3B4BA8',
+      dark: { text: DARK_INK, ring: DARK_INK },
     });
+    // 3:1 on the dark page but not 4.5:1: a ring there, not text.
     expect(accentColors('#2e7d32')).toEqual({
       accent: '#2E7D32',
       foreground: WHITE,
       text: '#2E7D32',
       ring: '#2E7D32',
+      dark: { text: DARK_INK, ring: '#2E7D32' },
     });
     // 4.5:1 on white but not on the paper background: a ring, not text.
     expect(accentColors('#767676')).toEqual({
@@ -658,11 +671,19 @@ describe('accent colour (spec §16.1, §16.2)', () => {
       foreground: WHITE,
       text: INK,
       ring: '#767676',
+      dark: { text: DARK_INK, ring: '#767676' },
     });
   });
 
   it('puts ink on light accents, with ink text and focus ring', () => {
-    const ink = (accent: string) => ({ accent, foreground: INK, text: INK, ring: INK });
+    // On the dark page a light accent is its own text and ring.
+    const ink = (accent: string) => ({
+      accent,
+      foreground: INK,
+      text: INK,
+      ring: INK,
+      dark: { text: accent, ring: accent },
+    });
     expect(accentColors('#F5C518')).toEqual(ink('#F5C518'));
     expect(accentColors('#ff6b00')).toEqual(ink('#FF6B00'));
     // Dark enough for a ring on white, not on the paper background.
@@ -680,7 +701,7 @@ describe('accent colour (spec §16.1, §16.2)', () => {
     }
   });
 
-  it('always gives 4.5:1 text and a 3:1 focus ring, on the fill and on the page', () => {
+  it('always gives 4.5:1 text and a 3:1 focus ring, on the fill and on both pages', () => {
     const steps = [0x00, 0x33, 0x66, 0x99, 0xcc, 0xff];
     for (const r of steps) {
       for (const g of steps) {
@@ -692,6 +713,10 @@ describe('accent colour (spec §16.1, §16.2)', () => {
           for (const page of [WHITE, PAPER]) {
             expect(contrastRatio(colors.text, page)).toBeGreaterThanOrEqual(4.5);
             expect(contrastRatio(colors.ring, page)).toBeGreaterThanOrEqual(3);
+          }
+          for (const page of DARK_PAGE) {
+            expect(contrastRatio(colors.dark.text, page)).toBeGreaterThanOrEqual(4.5);
+            expect(contrastRatio(colors.dark.ring, page)).toBeGreaterThanOrEqual(3);
           }
         }
       }
@@ -1071,6 +1096,15 @@ describe('customerThemeCss', () => {
     const css = customerThemeCss(accentColors('#b42318'));
     expect(css).toContain(
       ':root{--brand:#B42318;--primary:#B42318;--primary-foreground:#FFFFFF;--ring:#B42318}',
+    );
+  });
+
+  it('swaps text and ring for the dark theme, chosen or from the device', () => {
+    const css = customerThemeCss(accentColors('#b42318'));
+    const dark = '{--brand:#F5F2EE;--ring:#F5F2EE}';
+    expect(css).toContain(`@media screen{html:root[data-theme=dark]${dark}}`);
+    expect(css).toContain(
+      `@media screen and (prefers-color-scheme:dark){html:root[data-theme=system]${dark}}`,
     );
   });
 
