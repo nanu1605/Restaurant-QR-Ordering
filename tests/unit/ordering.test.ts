@@ -622,8 +622,9 @@ describe('idempotency keys (spec §9.3)', () => {
 
 describe('accent colour (spec §16.1, §16.2)', () => {
   const WHITE = '#FFFFFF';
-  const INK = '#243040';
-  const fallback = { accent: DEFAULT_ACCENT, foreground: WHITE, ring: DEFAULT_ACCENT };
+  const INK = '#1C1917';
+  const PAPER = '#FAF8F5';
+  const fallback = { accent: DEFAULT_ACCENT, foreground: INK, text: INK, ring: INK };
 
   it('measures WCAG contrast either way round', () => {
     expect(contrastRatio('#FFFFFF', '#000000')).toBeCloseTo(21, 5);
@@ -632,31 +633,45 @@ describe('accent colour (spec §16.1, §16.2)', () => {
     expect(contrastRatio('#767676', WHITE)).toBeCloseTo(4.54, 2);
   });
 
-  it('keeps the default brand with white text', () => {
-    expect(DEFAULT_ACCENT).toBe('#3B4BA8');
-    expect(accentColors('#3B4BA8')).toEqual({
+  it('starts restaurants on the MenuMesh orange, with ink on it', () => {
+    expect(DEFAULT_ACCENT).toBe('#FF6606');
+    // Too light for text or a focus ring on the page: ink takes those.
+    expect(accentColors('#ff6606')).toEqual(fallback);
+  });
+
+  it('keeps dark accents for text and focus rings, with white on the fill', () => {
+    expect(accentColors('#3b4ba8')).toEqual({
       accent: '#3B4BA8',
       foreground: WHITE,
+      text: '#3B4BA8',
       ring: '#3B4BA8',
     });
-    expect(accentColors('#3b4ba8').accent).toBe('#3B4BA8');
     expect(accentColors('#2e7d32')).toEqual({
       accent: '#2E7D32',
       foreground: WHITE,
+      text: '#2E7D32',
       ring: '#2E7D32',
+    });
+    // 4.5:1 on white but not on the paper background: a ring, not text.
+    expect(accentColors('#767676')).toEqual({
+      accent: '#767676',
+      foreground: WHITE,
+      text: INK,
+      ring: '#767676',
     });
   });
 
-  it('puts ink on light accents, with an ink focus ring', () => {
-    expect(accentColors('#F5C518')).toEqual({ accent: '#F5C518', foreground: INK, ring: INK });
-    expect(accentColors('#ff6b00')).toEqual({ accent: '#FF6B00', foreground: INK, ring: INK });
+  it('puts ink on light accents, with ink text and focus ring', () => {
+    const ink = (accent: string) => ({ accent, foreground: INK, text: INK, ring: INK });
+    expect(accentColors('#F5C518')).toEqual(ink('#F5C518'));
+    expect(accentColors('#ff6b00')).toEqual(ink('#FF6B00'));
+    // Dark enough for a ring on white, not on the paper background.
+    expect(accentColors('#00A86B')).toEqual(ink('#00A86B'));
   });
 
-  it('falls back to the default brand when neither text colour is readable', () => {
+  it('falls back to the MenuMesh orange when neither text colour is readable', () => {
     expect(accentColors('#808080')).toEqual(fallback);
-    expect(accentColors('#E4572E')).toEqual(fallback);
-    // Dark enough for a ring, not for text.
-    expect(accentColors('#00A86B')).toEqual(fallback);
+    expect(accentColors('#D9480F')).toEqual(fallback);
   });
 
   it('falls back on anything that is not #rrggbb', () => {
@@ -665,7 +680,7 @@ describe('accent colour (spec §16.1, §16.2)', () => {
     }
   });
 
-  it('always gives 4.5:1 text and a 3:1 focus ring on white', () => {
+  it('always gives 4.5:1 text and a 3:1 focus ring, on the fill and on the page', () => {
     const steps = [0x00, 0x33, 0x66, 0x99, 0xcc, 0xff];
     for (const r of steps) {
       for (const g of steps) {
@@ -674,7 +689,10 @@ describe('accent colour (spec §16.1, §16.2)', () => {
           const colors = accentColors(hex);
           expect([hex.toUpperCase(), DEFAULT_ACCENT]).toContain(colors.accent);
           expect(contrastRatio(colors.accent, colors.foreground)).toBeGreaterThanOrEqual(4.5);
-          expect(contrastRatio(colors.ring, WHITE)).toBeGreaterThanOrEqual(3);
+          for (const page of [WHITE, PAPER]) {
+            expect(contrastRatio(colors.text, page)).toBeGreaterThanOrEqual(4.5);
+            expect(contrastRatio(colors.ring, page)).toBeGreaterThanOrEqual(3);
+          }
         }
       }
     }
@@ -1051,8 +1069,9 @@ describe('place order payload (spec §9.3, §9.6)', () => {
 describe('customerThemeCss', () => {
   it('puts the accent on :root so portalled sheets and dialogs inherit it', () => {
     const css = customerThemeCss(accentColors('#b42318'));
-    expect(css).toContain(':root{--brand:#B42318;');
-    expect(css).toContain('--primary:#B42318;--primary-foreground:#FFFFFF;--ring:#B42318}');
+    expect(css).toContain(
+      ':root{--brand:#B42318;--primary:#B42318;--primary-foreground:#FFFFFF;--ring:#B42318}',
+    );
   });
 
   it('draws focus as a full-strength outline in the ring colour', () => {
@@ -1064,7 +1083,7 @@ describe('customerThemeCss', () => {
   it('only ever contains validated colours', () => {
     const css = customerThemeCss(accentColors('red;}body{display:none'));
     expect(css).not.toContain('display:none');
-    expect(css).toContain(`--brand:${DEFAULT_ACCENT}`);
+    expect(css).toContain(`--primary:${DEFAULT_ACCENT}`);
   });
 });
 
