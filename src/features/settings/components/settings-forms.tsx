@@ -698,7 +698,7 @@ function UpiPreview({ vpa, payeeName }: { vpa: string; payeeName: string }) {
   const src = qr && qr.key === url ? qr.src : null;
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="flex size-24 items-center justify-center rounded-md border border-line bg-white">
+      <div className="theme-light flex size-24 items-center justify-center rounded-md border border-line bg-white">
         {src ? (
           <Image
             src={src}

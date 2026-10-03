@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
 import { STRINGS } from '@/features/ordering/strings';
 import { parseTheme, THEME_COOKIE } from '@/features/theme/theme';
+import { ThemeProvider } from '@/features/theme/theme-switch';
 import { APP_NAME, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
 
 import './globals.css';
@@ -57,7 +58,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
       className={`${notoSans.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">
-        {children}
+        <ThemeProvider theme={theme}>{children}</ThemeProvider>
         <Toaster
           position="top-center"
           theme={theme}

@@ -1,8 +1,7 @@
 'use client';
 
-import { cn } from 'cn';
-import { Monitor, Moon, Sun, SunMoon } from 'lucide-react';
-import { startTransition, useSyncExternalStore } from 'react';
+import { Monitor, Moon, Sun } from 'lucide-react';
+import { createContext, startTransition, use, useSyncExternalStore } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +19,13 @@ import { parseTheme, type Theme, THEME_LABELS, type ThemeLabels, THEMES } from '
 
 const ICONS = { system: Monitor, light: Sun, dark: Moon } as const;
 
+/** The theme from the cookie, as the root layout rendered it. */
+const CookieTheme = createContext<Theme>('system');
+
+export function ThemeProvider({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return <CookieTheme value={theme}>{children}</CookieTheme>;
+}
+
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, { attributeFilter: ['data-theme'] });
@@ -27,20 +33,30 @@ function subscribe(onChange: () => void) {
 }
 
 /**
- * The theme on <html> (null until hydrated: the server can't see it), and a
- * setter that repaints at once, then saves the choice and re-renders.
+ * The theme on <html> (the cookie's while server rendering), and a setter
+ * that repaints at once, then saves the choice; if saving fails (offline),
+ * the page goes back to the theme it had.
  */
-function useTheme(): [Theme | null, (theme: Theme) => void] {
+function useTheme(): [Theme, (theme: Theme) => void] {
+  const rendered = use(CookieTheme);
   const theme = useSyncExternalStore(
     subscribe,
     () => parseTheme(document.documentElement.dataset.theme),
-    () => null,
+    () => rendered,
   );
   function change(next: Theme) {
-    document.documentElement.dataset.theme = next;
+    const root = document.documentElement;
+    const previous = root.dataset.theme;
+    root.dataset.theme = next;
     const data = new FormData();
     data.set('theme', next);
-    startTransition(() => setTheme(data));
+    startTransition(async () => {
+      try {
+        await setTheme(data);
+      } catch {
+        if (previous) root.dataset.theme = previous;
+      }
+    });
   }
   return [theme, change];
 }
@@ -55,35 +71,33 @@ export function ThemeSwitch({
 }) {
   const [theme, change] = useTheme();
   return (
-    <form
-      action={setTheme}
-      role="group"
-      aria-label={labels.group}
-      className={cn(
-        'inline-flex gap-0.5 rounded-lg border border-line bg-surface p-0.5',
-        className,
-      )}
-    >
-      {THEMES.map((value) => {
-        const Icon = ICONS[value];
-        return (
-          <button
-            key={value}
-            type="submit"
-            name="theme"
-            value={value}
-            aria-pressed={theme === null ? undefined : theme === value}
-            onClick={(event) => {
-              event.preventDefault();
-              change(value);
-            }}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink aria-pressed:bg-muted aria-pressed:text-ink"
-          >
-            <Icon aria-hidden className="size-4" />
-            {labels[value]}
-          </button>
-        );
-      })}
+    <form action={setTheme} className={className}>
+      <div
+        role="group"
+        aria-label={labels.group}
+        className="inline-flex gap-0.5 rounded-lg border border-line bg-surface p-0.5"
+      >
+        {THEMES.map((value) => {
+          const Icon = ICONS[value];
+          return (
+            <button
+              key={value}
+              type="submit"
+              name="theme"
+              value={value}
+              aria-pressed={theme === value}
+              onClick={(event) => {
+                event.preventDefault();
+                change(value);
+              }}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-ink-muted transition-colors not-aria-pressed:hover:text-ink aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:ring-1 aria-pressed:ring-brand aria-pressed:ring-inset"
+            >
+              <Icon aria-hidden className="size-4" />
+              {labels[value]}
+            </button>
+          );
+        })}
+      </div>
     </form>
   );
 }
@@ -94,10 +108,7 @@ export function ThemeRadioGroup({ itemClassName }: { itemClassName?: string }) {
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel>{THEME_LABELS.group}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        value={theme ?? 'system'}
-        onValueChange={(v) => change(parseTheme(v))}
-      >
+      <DropdownMenuRadioGroup value={theme} onValueChange={(v) => change(parseTheme(v))}>
         {THEMES.map((value) => {
           const Icon = ICONS[value];
           return (
@@ -115,7 +126,7 @@ export function ThemeRadioGroup({ itemClassName }: { itemClassName?: string }) {
 /** A theme button for the website's top bar. */
 export function ThemeMenu({ className }: { className?: string }) {
   const [theme] = useTheme();
-  const Icon = theme ? ICONS[theme] : SunMoon;
+  const Icon = ICONS[theme];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger

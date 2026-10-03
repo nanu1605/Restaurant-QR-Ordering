@@ -238,6 +238,10 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* Text inherits a resolved colour, so paper areas set theirs again. */
+  .theme-light {
+    @apply text-foreground;
+  }
 }
 
 /* QR card sheets (spec §15): one sheet of 6 cards per printed page. The A4
