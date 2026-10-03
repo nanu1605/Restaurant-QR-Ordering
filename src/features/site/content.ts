@@ -6,8 +6,9 @@
 
 export const SITE_NAV = [
   { href: '/#how', label: 'How it works' },
-  { href: '/#features', label: 'Features' },
-  { href: '/#faq', label: 'FAQ' },
+  { href: '/features', label: 'Features' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/demo', label: 'Demo' },
   { href: '/contact', label: 'Contact' },
 ] as const;
 
@@ -190,3 +191,48 @@ export const FINAL_CTA = {
   title: 'See it running in your restaurant',
   body: 'We’ll set up your menu and tables with you, and you can try MenuMesh free for 14 days on the Growth plan.',
 } as const;
+
+export const PRICING = {
+  title: 'Simple plans for every size of restaurant',
+  lead: 'Every plan has QR ordering, the staff board, bills and the Hindi menu. Pick the one that fits your tables and team.',
+  /** Under each plan's name, by plan code. */
+  blurbs: {
+    starter: 'For cafés and small restaurants starting with QR ordering.',
+    growth: 'For busy restaurants with a kitchen screen and a team on the floor.',
+    pro: 'For large restaurants: no limits, and no “Powered by” line on bills.',
+  } as Record<string, string>,
+  everyPlan: [
+    'Guests order from their own phone by QR code, no app',
+    'Menu in English and हिन्दी',
+    'Live staff board for waiters',
+    'Bills with GST and service charge, for 80 and 58 mm printers',
+    'Cash, UPI and card payments recorded on each bill',
+    'Menu import from a photo, PDF or CSV',
+    'Today’s sales and a daily report',
+  ],
+  noCommission:
+    'No commission on your sales. Guests pay you directly, by cash, your UPI or your card machine; MenuMesh never touches that money.',
+} as const;
+
+export const PRICING_FAQ = [
+  {
+    q: 'What counts as a staff login?',
+    a: 'Each waiter, kitchen or manager account that signs in. You, the owner, don’t count, and waiters you only name on tables, without a login of their own, don’t count either.',
+  },
+  {
+    q: 'What counts as a table?',
+    a: 'Each table with its own QR code.',
+  },
+  {
+    q: 'What if I outgrow my plan?',
+    a: 'Nothing stops working. You can’t add more tables or staff logins than your plan allows until you move to a bigger plan.',
+  },
+  {
+    q: 'What happens when the free trial ends?',
+    a: 'Choose a plan to keep going. If the plan isn’t paid, your restaurant becomes read-only after a short grace period: nothing is deleted, and it comes back as soon as the plan is renewed.',
+  },
+  {
+    q: 'Do you take a share of my sales?',
+    a: 'No. You pay the plan price and nothing else. Food payments go straight from your guests to you.',
+  },
+] as const;
