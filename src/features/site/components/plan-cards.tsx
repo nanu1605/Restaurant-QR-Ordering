@@ -9,7 +9,7 @@ import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 
-import { HERO, PRICING } from '../content';
+import { HERO, PRICING, SIGNUP_CTA } from '../content';
 import {
   monthsFreeYearly,
   staffLabel,
@@ -33,7 +33,7 @@ function Feature({ text }: { text: string }) {
 }
 
 /** The plans side by side, with a monthly / yearly switch. */
-export function PlanCards({ pricing }: { pricing: SitePricing }) {
+export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: boolean }) {
   const [cycle, setCycle] = useState<Cycle>('monthly');
   const monthsFree = monthsFreeYearly(pricing.plans);
 
@@ -129,14 +129,20 @@ export function PlanCards({ pricing }: { pricing: SitePricing }) {
                 ))}
               </ul>
               <Link
-                href={`/contact?plan=${plan.code}`}
-                aria-label={`${HERO.primary} for the ${plan.name} plan`}
+                href={
+                  signup ? `/signup?plan=${plan.code}&cycle=${cycle}` : `/contact?plan=${plan.code}`
+                }
+                aria-label={
+                  signup
+                    ? `${SIGNUP_CTA}, then the ${plan.name} plan`
+                    : `${HERO.primary} for the ${plan.name} plan`
+                }
                 className={cn(
                   buttonVariants({ variant: trial ? 'default' : 'outline', size: 'touch' }),
                   'mt-auto',
                 )}
               >
-                {HERO.primary}
+                {signup ? SIGNUP_CTA : HERO.primary}
               </Link>
             </li>
           );

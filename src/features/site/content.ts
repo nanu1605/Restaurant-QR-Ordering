@@ -227,6 +227,7 @@ export const PRICING = {
     'Menu import from a photo, PDF or CSV',
     'Today’s sales and a daily report',
   ],
+  gst: 'All prices are before GST.',
   noCommission:
     'No commission on your sales. Guests pay you directly, by cash, your UPI or your card machine; MenuMesh never touches that money.',
 } as const;
@@ -250,7 +251,7 @@ export const PRICING_FAQ = [
   },
   {
     q: 'Do you take a share of my sales?',
-    a: 'No. You pay for your plan, and the one-time setup fee, nothing more. Food payments go straight from your guests to you.',
+    a: 'No. You pay for your plan, plus GST, and a one-time setup fee only if we set up your restaurant for you. Food payments go straight from your guests to you.',
   },
 ] as const;
 

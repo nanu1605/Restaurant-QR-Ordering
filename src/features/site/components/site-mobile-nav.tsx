@@ -9,14 +9,14 @@ import { useRef, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
-import { HERO, SITE_NAV } from '../content';
+import { SITE_NAV } from '../content';
 
 /**
  * The sections and log in, in a sheet below 1024px. A section on this page is
  * reached once the sheet has closed and released its scroll lock; focus then
  * moves to the section's heading rather than back to the menu button.
  */
-export function SiteMobileNav() {
+export function SiteMobileNav({ cta }: { cta: { href: string; label: string } }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const section = useRef<string | null>(null);
@@ -91,11 +91,11 @@ export function SiteMobileNav() {
             Log in
           </Link>
           <Link
-            href="/contact"
+            href={cta.href}
             onClick={() => setOpen(false)}
             className={cn(buttonVariants({ size: 'touch' }), 'w-full')}
           >
-            {HERO.primary}
+            {cta.label}
           </Link>
         </div>
       </SheetContent>

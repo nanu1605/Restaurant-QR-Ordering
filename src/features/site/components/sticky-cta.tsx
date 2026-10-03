@@ -6,13 +6,11 @@ import { useEffect, useState } from 'react';
 
 import { buttonVariants } from '@/components/ui/button';
 
-import { HERO } from '../content';
-
 /**
  * On phones, the main call to action stays at the bottom of the screen once
  * the hero's own button has scrolled away.
  */
-export function StickyCta() {
+export function StickyCta({ cta }: { cta: { href: string; label: string } }) {
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -31,8 +29,8 @@ export function StickyCta() {
         shown ? 'translate-y-0' : 'translate-y-full',
       )}
     >
-      <Link href="/contact" className={cn(buttonVariants({ size: 'touch' }), 'w-full')}>
-        {HERO.primary}
+      <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'w-full')}>
+        {cta.label}
       </Link>
     </div>
   );

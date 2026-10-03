@@ -13,6 +13,7 @@ import {
 } from '@/features/site/components/sections';
 import { StickyCta } from '@/features/site/components/sticky-cta';
 import { getSitePricing } from '@/features/site/queries';
+import { siteCta } from '@/features/site/signup';
 import { APP_NAME } from '@/lib/config';
 
 export const metadata: Metadata = {
@@ -45,7 +46,7 @@ export default async function HomePage() {
       <NextSteps fromPaise={fromPaise} />
       <Faq />
       <FinalCta />
-      <StickyCta />
+      <StickyCta cta={siteCta()} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import { PlanComparison } from '@/features/site/components/plan-comparison';
 import { PlanHelper } from '@/features/site/components/plan-helper';
 import { Faq, FinalCta, Section } from '@/features/site/components/sections';
 import { getSitePricing } from '@/features/site/queries';
+import { signupOpen } from '@/features/site/signup';
 import { APP_NAME } from '@/lib/config';
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
 export default async function PricingPage() {
   const pricing = await getSitePricing();
   const trialPlan = pricing.plans.find((plan) => plan.code === pricing.trialPlanCode);
+  const signup = signupOpen();
 
   return (
     <>
@@ -35,13 +37,19 @@ export default async function PricingPage() {
               </p>
             )}
           </div>
-          <PlanCards pricing={pricing} />
+          <PlanCards pricing={pricing} signup={signup} />
           <div className="mx-auto flex max-w-3xl flex-col gap-2 text-center text-sm text-ink-muted">
+            {/* Self-serve signups set up for free (docs/DECISIONS.md W-10). */}
             <p>
-              One-time setup fee of{' '}
-              <Money paise={pricing.setupFeePaise} fraction="auto" className="font-semibold" />: we
-              set up your menu and tables with you, with printed QR codes for your tables.
+              {signup
+                ? 'Setting up yourself is free. Or we set up your menu and tables with you for a one-time '
+                : 'One-time setup fee of '}
+              <Money paise={pricing.setupFeePaise} fraction="auto" className="font-semibold" />
+              {signup
+                ? ', with printed QR codes for your tables.'
+                : ': we set up your menu and tables with you, with printed QR codes for your tables.'}
             </p>
+            <p>{PRICING.gst}</p>
             <p>{PRICING.noCommission}</p>
           </div>
         </div>
