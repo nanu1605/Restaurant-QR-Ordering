@@ -20,6 +20,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 
+import { withGst } from '../gst';
+
 import { cancelAutopay, confirmCheckout, startSubscription, type CheckoutStart } from '../actions';
 import type { BillingCycle, CheckoutPlan } from '../autopay';
 
@@ -211,7 +213,14 @@ export function AutopayPanel({
                       <span className="text-xl font-semibold text-ink">
                         <Money paise={cycle === 'monthly' ? plan.monthlyPaise : plan.yearlyPaise} />
                       </span>{' '}
-                      {cycle === 'monthly' ? 'a month' : 'a year'}
+                      {cycle === 'monthly' ? 'a month' : 'a year'} + GST
+                    </p>
+                    <p className="text-sm text-ink-muted">
+                      You pay{' '}
+                      <Money
+                        paise={withGst(cycle === 'monthly' ? plan.monthlyPaise : plan.yearlyPaise)}
+                      />{' '}
+                      {cycle === 'monthly' ? 'a month' : 'a year'} with 18% GST
                     </p>
                   </div>
                   <ul className="flex flex-col gap-1 text-sm text-ink">
@@ -249,8 +258,8 @@ export function AutopayPanel({
             })}
           </ul>
           <p className="text-xs text-ink-muted">
-            Payments go through Razorpay by UPI Autopay or card and renew automatically. You can
-            cancel any time; it stops at the end of the paid period.
+            Payments go through Razorpay by UPI Autopay or card, include 18% GST and renew
+            automatically. You can cancel any time; it stops at the end of the paid period.
           </p>
         </>
       )}

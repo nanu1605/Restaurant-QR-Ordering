@@ -17,6 +17,7 @@ import {
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { autopayStartAt, autopayState, cancelsAtCycleEnd } from '@/features/subscriptions/autopay';
+import { withGst } from '@/features/subscriptions/gst';
 import {
   AutopayPanel,
   type CancelOptions,
@@ -267,7 +268,7 @@ function cancelOptions(
   };
 }
 
-/** "Starter, monthly: ₹399.00 a month" while autopay waits for its first payment. */
+/** "Starter, monthly: ₹470.82 a month with GST" while autopay waits for its first payment. */
 function autopayFact(subscription: OwnerSubscription): [string, ReactNode] | null {
   const { nextPlanName, nextBillingCycle, nextPricePaise } = subscription;
   if (autopayState(subscription) !== 'on' || !nextPlanName || !nextBillingCycle) return null;
@@ -278,7 +279,7 @@ function autopayFact(subscription: OwnerSubscription): [string, ReactNode] | nul
       {nextPlanName}, {yearly ? 'yearly' : 'monthly'}
       {nextPricePaise !== null && (
         <>
-          : <Money paise={nextPricePaise} /> {yearly ? 'a year' : 'a month'}
+          : <Money paise={withGst(nextPricePaise)} /> {yearly ? 'a year' : 'a month'} with GST
         </>
       )}
     </>,
@@ -299,7 +300,7 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
         'Price after the trial',
         <>
           <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
-          <Money paise={plan.priceYearlyPaise} /> a year
+          <Money paise={plan.priceYearlyPaise} /> a year, plus GST
         </>,
       ],
     );
@@ -311,7 +312,7 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
     'Price',
     <>
       <Money paise={yearly ? plan.priceYearlyPaise : plan.priceMonthlyPaise} />{' '}
-      {yearly ? 'a year' : 'a month'}
+      {yearly ? 'a year' : 'a month'} + GST
     </>,
   ]);
   facts.push([

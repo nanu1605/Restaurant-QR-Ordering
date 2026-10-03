@@ -4,6 +4,7 @@ import { refresh } from 'next/cache';
 
 import { parsePriceInput } from '@/features/menu/schemas';
 import { autopayState } from '@/features/subscriptions/autopay';
+import { withGst } from '@/features/subscriptions/gst';
 import { stopAutopay, syncSubscription } from '@/features/subscriptions/razorpay-sync';
 import {
   actionError,
@@ -302,7 +303,8 @@ export async function createRazorpayPlan(
       await createPlan(config, {
         cycle,
         name: `${APP_NAME} ${plan.name} — ${cycle}`,
-        amountPaise,
+        // Plan prices are before GST; each charge adds it (docs/DECISIONS.md W-11).
+        amountPaise: withGst(amountPaise),
         notes: { plan_code: plan.code },
       })
     ).id;

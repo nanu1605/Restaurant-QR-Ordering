@@ -8,6 +8,7 @@ import {
   watchCspViolations,
 } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import { withGst } from '../../src/features/subscriptions/gst';
 import {
   razorpayId,
   razorpayReady,
@@ -93,6 +94,9 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
   await expect(
     page.getByText(/The first payment is on .*, when your free trial ends\./),
   ).toBeVisible();
+  // Prices are before GST; each payment adds 18%.
+  await expect(growth).toContainText('₹899.00 a month + GST');
+  await expect(growth).toContainText('You pay ₹1,060.82 a month with 18% GST');
   await page.getByRole('button', { name: 'Yearly' }).click();
   await expect(growth.getByRole('button', { name: 'Not available yearly' })).toBeDisabled();
   await page.getByRole('button', { name: 'Monthly' }).click();
@@ -359,6 +363,19 @@ test('a platform admin creates a missing Razorpay plan from the plans page', asy
   await starter.getByRole('button', { name: 'Create yearly plan in Razorpay' }).click();
   await expect(page.getByText('Starter yearly plan created in Razorpay')).toBeVisible();
   await expect(starter.getByLabel('Razorpay plan id (yearly)')).toHaveValue(/^plan_E2E/);
+  // The Razorpay plan charges the yearly price plus 18% GST.
+  const planId = await starter.getByLabel('Razorpay plan id (yearly)').inputValue();
+  const { data: price } = await adminClient()
+    .from('plans')
+    .select('price_yearly_paise')
+    .eq('code', 'starter')
+    .single();
+  const created = await page.request.get(`${MOCK_RAZORPAY}/plans/${planId}`, {
+    headers: { Authorization: MOCK_RAZORPAY_AUTH },
+  });
+  expect(((await created.json()) as { item: { amount: number } }).item.amount).toBe(
+    withGst(price!.price_yearly_paise),
+  );
   await expect(starter.getByRole('button', { name: 'Create yearly plan in Razorpay' })).toHaveCount(
     0,
   );

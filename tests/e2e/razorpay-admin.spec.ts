@@ -58,12 +58,12 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-link'));
   await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
 
-  // Three months of Growth: the amount and description follow the months.
+  // Three months of Growth: the amount (with 18% GST) and description follow the months.
   await page.getByRole('button', { name: 'Send payment link' }).click();
   const dialog = page.getByRole('dialog', { name: 'Send payment link' });
   await dialog.getByLabel('Months').fill('3');
-  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('2697');
-  await expect(dialog.getByLabel('Description')).toHaveValue('MenuMesh Growth, 3 months');
+  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('3182.46');
+  await expect(dialog.getByLabel('Description')).toHaveValue('MenuMesh Growth, 3 months, with GST');
   await dialog.getByRole('button', { name: 'Send link' }).click();
   await expect(dialog.getByRole('textbox', { name: 'Payment link' })).toHaveValue(
     /^https:\/\/rzp\.io\/l\/plink_E2E/,
@@ -74,7 +74,7 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
 
   const [link] = await linksFor(request, restaurant.restaurantId);
   expect(link).toMatchObject({
-    amount: 269700,
+    amount: 318246,
     notes: { restaurant_id: restaurant.restaurantId, purpose: 'subscription', months: '3' },
   });
 
@@ -82,13 +82,13 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   await page.getByRole('button', { name: 'Send payment link' }).click();
   await dialog.getByLabel('For').selectOption('setup_fee');
   await expect(dialog.getByLabel('Months')).toHaveCount(0);
-  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('1499');
+  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('1768.82');
   await dialog.getByRole('button', { name: 'Send link' }).click();
   await expect(dialog.getByRole('textbox', { name: 'Payment link' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Done' }).click();
   const links = await linksFor(request, restaurant.restaurantId);
   expect(links[1]).toMatchObject({
-    amount: 149900,
+    amount: 176882,
     notes: { restaurant_id: restaurant.restaurantId, purpose: 'setup_fee' },
   });
   expect(links[1]!.notes).not.toHaveProperty('months');
@@ -96,13 +96,13 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   // The restaurant pays the subscription link.
   const paid = await sendWebhook(
     request,
-    paymentLinkEvent(link!.notes, { id: razorpayId('pay'), amount: 269700 }),
+    paymentLinkEvent(link!.notes, { id: razorpayId('pay'), amount: 318246 }),
   );
   expect(await paid.json()).toMatchObject({ ok: true, result: 'applied' });
   await page.reload();
   const payments = page.getByRole('table', { name: 'Payments' });
   await expect(payments).toContainText('Payment link');
-  await expect(payments).toContainText('₹2,697.00');
+  await expect(payments).toContainText('₹3,182.46');
   const row = await subscriptionRow(restaurant.restaurantId);
   expect(row).toMatchObject({ status: 'active', source: 'manual' });
   expect(Date.parse(row.current_period_end!)).toBeGreaterThan(Date.now() + 90 * DAY);

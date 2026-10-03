@@ -115,6 +115,7 @@ function readJson(request, callback) {
 const newId = (prefix) => `${prefix}_E2E${randomUUID().replaceAll('-', '').slice(0, 14)}`;
 const subscriptions = new Map();
 const paymentLinks = [];
+const plans = new Map(); // plan id → plan
 const emails = new Map(); // Idempotency-Key → email
 
 function razorpay(request, response, path) {
@@ -131,6 +132,13 @@ function razorpay(request, response, path) {
 
   if (request.method === 'GET' && path === '/payment_links') {
     send(response, 200, { payment_links: paymentLinks });
+    return;
+  }
+  const planMatch = request.method === 'GET' && path.match(/^\/plans\/(plan_\w+)$/);
+  if (planMatch) {
+    const plan = plans.get(planMatch[1]);
+    if (!plan) return notFound();
+    send(response, 200, plan);
     return;
   }
   if (request.method === 'GET') {
@@ -150,12 +158,9 @@ function razorpay(request, response, path) {
       return;
     }
     if (path === '/plans') {
-      send(response, 200, {
-        id: newId('plan'),
-        entity: 'plan',
-        period: body.period,
-        item: body.item,
-      });
+      const plan = { id: newId('plan'), entity: 'plan', period: body.period, item: body.item };
+      plans.set(plan.id, plan);
+      send(response, 200, plan);
       return;
     }
     if (path === '/subscriptions') {

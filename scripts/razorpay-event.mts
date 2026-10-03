@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { withGst } from '../src/features/subscriptions/gst.ts';
 import type { Database } from '../src/types/database.ts';
 
 // Event → the subscription status Razorpay reports with it.
@@ -93,13 +94,16 @@ if (error) fail(`Could not read the subscription: ${error.message}`);
 const plan = sub.next_plan ?? sub.plan;
 const cycle = sub.next_billing_cycle ?? sub.billing_cycle ?? 'monthly';
 const price = cycle === 'yearly' ? plan.price_yearly_paise : plan.price_monthly_paise;
+// What Razorpay takes: the fee plus GST (docs/DECISIONS.md W-11), unless --amount says otherwise.
 const amount = Number(
   args.amount ??
-    (args.event === 'setup-fee'
-      ? 149900
-      : args.event === 'payment-link'
-        ? price * Number(args.months)
-        : price),
+    withGst(
+      args.event === 'setup-fee'
+        ? 149900
+        : args.event === 'payment-link'
+          ? price * Number(args.months)
+          : price,
+    ),
 );
 const now = new Date();
 
