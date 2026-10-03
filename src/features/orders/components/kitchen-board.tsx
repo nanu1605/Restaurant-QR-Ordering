@@ -95,11 +95,13 @@ export function KitchenBoard() {
     });
   };
 
-  const jumpTo = (status: KitchenColumn) =>
-    document
-      .getElementById(`kitchen-${status}`)
-      ?.closest('section')
-      ?.scrollIntoView({ inline: 'start', block: 'nearest' });
+  /** Scrolls the columns (not the page) to one, and moves focus there so Tab carries on in it. */
+  const jumpTo = (status: KitchenColumn) => {
+    const heading = document.getElementById(`kitchen-${status}`);
+    const column = heading?.closest('section');
+    column?.parentElement?.scrollTo({ left: column.offsetLeft - 16 });
+    heading?.focus({ preventScroll: true });
+  };
 
   return (
     <div className="flex flex-col gap-3">
