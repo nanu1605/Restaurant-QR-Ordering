@@ -25,6 +25,7 @@ import { buttonVariants } from '@/components/ui/button';
 
 import { FAQ, FINAL_CTA, HERO, HIGHLIGHTS, PROBLEMS, ROLES, type HighlightIcon } from '../content';
 import { PhoneFrame } from './device-frames';
+import { siteCta } from '../signup';
 import { HeroStory } from './hero-story';
 import { HowItWorks } from './how-it-works';
 import { WithHindi } from './with-hindi';
@@ -69,6 +70,7 @@ export function Section({
 }
 
 export function Hero() {
+  const cta = siteCta();
   return (
     <section className="site-dots relative overflow-hidden px-4 pt-10 pb-16 sm:px-6 sm:pt-16 lg:pt-20">
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-[1fr_1.15fr]">
@@ -78,8 +80,8 @@ export function Hero() {
           </h1>
           <p className="max-w-xl text-base text-ink-muted sm:text-lg">{HERO.lead}</p>
           <div id="hero-cta" className="flex flex-wrap gap-3">
-            <Link href="/contact" className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
-              {HERO.primary}
+            <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
+              {cta.label}
             </Link>
             {/* A plain anchor, so focus moves on to the section too. */}
             <a
@@ -316,7 +318,7 @@ export function NextSteps({ fromPaise }: { fromPaise: number | null }) {
           'Plans and pricing'
         ) : (
           <>
-            Plans from <Money paise={fromPaise} fraction="auto" /> a month
+            Plans from <Money paise={fromPaise} fraction="auto" /> a month + GST
           </>
         ),
       body: 'Every plan has QR ordering, the staff board, bills and the Hindi menu. No commission on your sales.',
@@ -378,20 +380,23 @@ export function Faq({
 }
 
 export function FinalCta() {
+  const cta = siteCta();
   return (
     <section className="px-4 py-16 sm:px-6 sm:py-24">
       <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-brand px-6 py-14 text-center text-white sm:px-12">
         <h2 className="text-2xl font-bold sm:text-3xl">{FINAL_CTA.title}</h2>
-        <p className="max-w-2xl text-base text-white/85 sm:text-lg">{FINAL_CTA.body}</p>
+        <p className="max-w-2xl text-base text-white/85 sm:text-lg">
+          {cta.href === '/signup' ? FINAL_CTA.signupBody : FINAL_CTA.body}
+        </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
-            href="/contact"
+            href={cta.href}
             className={cn(
               buttonVariants({ variant: 'outline', size: 'touch' }),
               'border-white bg-white px-6 text-brand hover:bg-white/90',
             )}
           >
-            {HERO.primary}
+            {cta.label}
           </Link>
           <Link
             href="/login"

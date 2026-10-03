@@ -1,6 +1,7 @@
 import { cn } from 'cn';
 import { Check, Minus } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Money } from '@/components/shared/money';
@@ -37,6 +38,7 @@ import {
 } from '@/features/subscriptions/summary';
 import { getRestaurantAccess } from '@/lib/auth/access';
 import { requireMember } from '@/lib/auth/guards';
+import { firstParam } from '@/lib/date-range';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
 export const metadata: Metadata = {
@@ -49,9 +51,16 @@ const TONE_CLASSES: Record<SubscriptionSummary['tone'], string> = {
   blocked: 'bg-status-void text-white',
 };
 
-export default async function SubscriptionPage() {
+export default async function SubscriptionPage({ searchParams }: PageProps<'/admin/subscription'>) {
   // Owner only (spec §13.3).
   const membership = await requireMember(['owner']);
+  // Straight after the website's signup (docs/DECISIONS.md W-9).
+  const params = await searchParams;
+  const welcome = firstParam(params, 'welcome') === '1';
+  const chosen = {
+    planCode: firstParam(params, 'plan') ?? null,
+    cycle: firstParam(params, 'cycle') === 'yearly' ? ('yearly' as const) : ('monthly' as const),
+  };
   const restaurantId = membership.restaurant.id;
   const timezone = membership.restaurant.timezone;
   // Paying online needs Razorpay keys (docs/DECISIONS.md P8-1).
@@ -73,9 +82,53 @@ export default async function SubscriptionPage() {
       ? cancelOptions(subscription.razorpayStatus, subscription, timezone)
       : null;
 
+  const choose =
+    (canSubscribe && checkoutPlans.length > 0) || cancel ? (
+      <Section title={autopay === 'on' ? 'Autopay' : 'Choose a plan'}>
+        <AutopayPanel
+          plans={checkoutPlans}
+          canSubscribe={canSubscribe}
+          cancel={cancel}
+          firstPayment={subscription ? firstPayment(subscription, timezone) : ''}
+          chosen={chosen}
+        />
+      </Section>
+    ) : (
+      <p className="text-sm text-ink-muted">
+        {online
+          ? 'To pay or change your plan, contact support.'
+          : 'Paying online is coming soon. Until then, contact support to pay by bank transfer or UPI, or to change your plan.'}
+      </p>
+    );
+  const offerAutopay = welcome && canSubscribe && checkoutPlans.length > 0;
+
   return (
     <>
       <PageHeader title="Subscription" />
+
+      {welcome && (
+        <section
+          aria-labelledby="welcome-title"
+          className="flex flex-col items-start gap-2 rounded-lg border border-brand/30 bg-brand/5 p-4"
+        >
+          <h2 id="welcome-title" className="text-base font-semibold text-ink">
+            Your restaurant is ready
+          </h2>
+          <p className="text-sm text-ink">
+            Your free trial has started.{' '}
+            {offerAutopay
+              ? 'Set up autopay now so ordering keeps running after it: nothing is charged until the trial ends. Or skip this for now.'
+              : 'Start with your menu and tables.'}
+          </p>
+          <Link
+            href="/admin"
+            className="inline-flex h-11 items-center text-sm font-semibold text-brand underline-offset-2 hover:underline"
+          >
+            {offerAutopay ? 'Skip for now and go to the dashboard' : 'Go to the dashboard'}
+          </Link>
+        </section>
+      )}
+      {offerAutopay && choose}
 
       <Section title="Your plan">
         <div className="flex flex-wrap items-center gap-3">
@@ -180,22 +233,7 @@ export default async function SubscriptionPage() {
         )}
       </Section>
 
-      {(canSubscribe && checkoutPlans.length > 0) || cancel ? (
-        <Section title={autopay === 'on' ? 'Autopay' : 'Choose a plan'}>
-          <AutopayPanel
-            plans={checkoutPlans}
-            canSubscribe={canSubscribe}
-            cancel={cancel}
-            firstPayment={subscription ? firstPayment(subscription, timezone) : ''}
-          />
-        </Section>
-      ) : (
-        <p className="text-sm text-ink-muted">
-          {online
-            ? 'To pay or change your plan, contact support.'
-            : 'Paying online is coming soon. Until then, contact support to pay by bank transfer or UPI, or to change your plan.'}
-        </p>
-      )}
+      {!offerAutopay && choose}
     </>
   );
 }

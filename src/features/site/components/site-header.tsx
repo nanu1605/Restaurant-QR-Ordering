@@ -4,13 +4,15 @@ import Link from 'next/link';
 import { buttonVariants } from '@/components/ui/button';
 import { APP_NAME } from '@/lib/config';
 
-import { HERO, SITE_NAV } from '../content';
+import { SITE_NAV } from '../content';
+import { siteCta } from '../signup';
 import { SiteLink } from './site-link';
 import { SiteLogo } from './site-logo';
 import { SiteMobileNav } from './site-mobile-nav';
 
 /** The website's top bar: logo, sections, log in and the main call to action. */
 export function SiteHeader() {
+  const cta = siteCta();
   return (
     <header className="sticky top-0 z-40 border-b border-line/70 bg-paper/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
@@ -47,15 +49,15 @@ export function SiteHeader() {
           </Link>
           {/* On the narrowest phones the menu and the hero carry it instead. */}
           <Link
-            href="/contact"
+            href={cta.href}
             className={cn(
               buttonVariants(),
               'hidden h-11 px-3 text-sm min-[380px]:inline-flex sm:px-4 sm:text-base',
             )}
           >
-            {HERO.primary}
+            {cta.label}
           </Link>
-          <SiteMobileNav />
+          <SiteMobileNav cta={cta} />
         </div>
       </div>
     </header>

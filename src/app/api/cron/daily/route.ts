@@ -40,8 +40,9 @@ async function step<T>(name: string, run: () => Promise<T>): Promise<T | null> {
 /**
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
  * docs/DECISIONS.md P7-20, P8-12, HN-8): menu import photo cleanup,
- * subscription reminder emails (skipped until Resend is set up), and Hindi
- * names that menu edits didn't fill (skipped without a menu import key).
+ * subscription reminder emails (skipped until Resend is set up), Hindi
+ * names that menu edits didn't fill (skipped without a menu import key), and
+ * website signups older than a week (W-9).
  */
 export async function GET(request: Request) {
   if (!authorised(request)) {
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
   const email = emailConfig();
   if (!email) console.warn('[cron/daily] reminders skipped: RESEND_API_KEY or EMAIL_FROM not set');
 
-  const [menuImports, reminders, hindiNames] = await Promise.all([
+  const [menuImports, reminders, hindiNames, signups] = await Promise.all([
     step('menu import cleanup', () => removeOldImportPhotos(admin)),
     email
       ? step('reminders', () =>
@@ -59,10 +60,15 @@ export async function GET(request: Request) {
         )
       : Promise.resolve({ skipped: true }),
     step('hindi names', () => fillHindiNames(admin, null, 500)),
+    step('signup cleanup', async () => {
+      const { data, error } = await admin.rpc('site_signups_cleanup');
+      if (error) throw new Error(error.message);
+      return { deleted: data };
+    }),
   ]);
-  const ok = menuImports !== null && reminders !== null && hindiNames !== null;
+  const ok = menuImports !== null && reminders !== null && hindiNames !== null && signups !== null;
   return NextResponse.json(
-    { ok, menuImports, reminders, hindiNames },
+    { ok, menuImports, reminders, hindiNames, signups },
     { status: ok ? 200 : 500, headers: noStore },
   );
 }

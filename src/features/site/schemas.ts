@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { CUISINE_SETS } from '@/features/menu/default-categories';
+import { passwordSchema } from '@/features/platform/schemas';
+
 /** Ten digits, without spaces, +91 or a leading 0 ("+91 98765-43210" → "9876543210"). */
 export function normalizePhone(text: string): string {
   const digits = text.replace(/\D/g, '');
@@ -38,3 +41,38 @@ export const leadSchema = z.object({
 
 export type LeadInput = z.input<typeof leadSchema>;
 export type Lead = z.output<typeof leadSchema>;
+
+/** Step 1 of the self-serve signup (docs/DECISIONS.md W-9). */
+export const signupSchema = z.object({
+  restaurantName: text('your restaurant’s name', 120),
+  city: text('your city', 60),
+  cuisine: z.enum(CUISINE_SETS, { message: 'Choose your menu style.' }),
+  ownerName: text('your name', 80),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(254, 'Use 254 characters or fewer.')
+    .pipe(z.email('Enter a valid email address.')),
+  phone: leadSchema.shape.phone,
+  terms: z.literal('on', { message: 'Agree to the terms to continue.' }),
+  /** The plan the visitor came from on /pricing, for autopay after signup. */
+  planCode: leadSchema.shape.planCode,
+  cycle: z.string().transform((value) => (value === 'yearly' ? 'yearly' : 'monthly')),
+});
+
+export type SignupInput = z.input<typeof signupSchema>;
+export type Signup = z.output<typeof signupSchema>;
+
+/** Step 2: the emailed code and the owner's password. */
+export const verifySchema = z.object({
+  code: z
+    .string()
+    .transform((value) => value.replace(/\D/g, ''))
+    .pipe(z.string().length(6, 'Enter the 6-digit code from the email.')),
+  // Supabase Auth (bcrypt) reads 72 bytes, fewer characters in Hindi.
+  password: passwordSchema.refine(
+    (password) => new TextEncoder().encode(password).length <= 72,
+    'Use a shorter password.',
+  ),
+});

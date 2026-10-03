@@ -259,6 +259,11 @@ keys are set; `pnpm dev` uses Cloudflare's always-pass test keys instead. Each r
 in `/super/leads` and emailed to `platform_settings.support_email` (set it in the SQL editor) when
 Resend is set up.
 
+With both Turnstile and Resend (`RESEND_API_KEY`, `EMAIL_FROM`) set, visitors can also sign up
+themselves at `/signup`: an emailed 6-digit code, then a password, creates the restaurant on a
+free trial and opens autopay with the plan they picked (docs/DECISIONS.md W-9). Until then every
+"Start free trial" button reads "Book a demo" instead.
+
 | Variable               | What it is                                             |
 | ---------------------- | ------------------------------------------------------ |
 | `TURNSTILE_SITE_KEY`   | The Turnstile widget's site key (public)               |

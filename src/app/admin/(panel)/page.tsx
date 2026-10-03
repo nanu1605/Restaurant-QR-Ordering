@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Dashboard } from '@/features/dashboard/components/dashboard';
+import { FirstSteps } from '@/features/dashboard/components/first-steps';
 import { billingKey, boardKey, getQueryClient } from '@/features/live/query-client';
 import { getBoard } from '@/features/orders/queries';
 import { getSalesReport } from '@/features/reports/queries';
@@ -28,6 +29,7 @@ export default async function AdminDashboardPage() {
         title={`Welcome, ${membership.displayName}`}
         description="Today at a glance, with the tables as they are right now."
       />
+      {membership.role === 'owner' && <FirstSteps restaurantId={membership.restaurant.id} />}
       <Dashboard />
     </HydrationBoundary>
   );

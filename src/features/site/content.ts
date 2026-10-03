@@ -19,6 +19,9 @@ export const HERO = {
   secondary: 'See how it works',
 } as const;
 
+/** The main call to action once self-serve signup is open (docs/DECISIONS.md W-9). */
+export const SIGNUP_CTA = 'Start free trial';
+
 /** The hero animation's story, also read out as its text alternative. */
 export const STORY_STEPS = [
   'A guest at table 5 adds Paneer Tikka from their phone.',
@@ -190,6 +193,20 @@ export const FAQ = [
 export const FINAL_CTA = {
   title: 'See it running in your restaurant',
   body: 'We’ll set up your menu and tables with you, and you can try MenuMesh free for 14 days on the Growth plan.',
+  /** When visitors can sign up themselves. */
+  signupBody:
+    'Try MenuMesh free for 14 days on the Growth plan. Set it up yourself in minutes, or book a demo and we’ll help.',
+} as const;
+
+export const SIGNUP = {
+  title: 'Start your free trial',
+  lead: 'Set up your restaurant in a few minutes. Nothing to pay today.',
+  perks: [
+    'Every Growth feature free for the length of your trial',
+    'No card needed to start; set up autopay when you’re ready',
+    'Import your menu from a photo, then print QR codes for your tables',
+    'Cancel any time: your data stays yours',
+  ],
 } as const;
 
 export const PRICING = {
@@ -210,6 +227,7 @@ export const PRICING = {
     'Menu import from a photo, PDF or CSV',
     'Today’s sales and a daily report',
   ],
+  gst: 'All prices are before GST.',
   noCommission:
     'No commission on your sales. Guests pay you directly, by cash, your UPI or your card machine; MenuMesh never touches that money.',
 } as const;
@@ -233,7 +251,7 @@ export const PRICING_FAQ = [
   },
   {
     q: 'Do you take a share of my sales?',
-    a: 'No. You pay for your plan, and the one-time setup fee, nothing more. Food payments go straight from your guests to you.',
+    a: 'No. You pay for your plan, plus GST, and a one-time setup fee only if we set up your restaurant for you. Food payments go straight from your guests to you.',
   },
 ] as const;
 

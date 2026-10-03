@@ -92,6 +92,9 @@ Before charging anyone (Phase 8):
 - [ ] Create a Cloudflare Turnstile widget for `menumesh.in` (and `staging.menumesh.in`) and set
       `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in Vercel, so the website's "Book a demo"
       form appears; set `platform_settings.support_email` (SQL editor) to receive each request.
+- [ ] With Turnstile and Resend both set, self-serve signup opens on the website: on staging, sign
+      up once with a real address, check the code and welcome emails arrive, and suspend the test
+      restaurant from `/super` afterwards.
 
 ## Setting a restaurant up
 
