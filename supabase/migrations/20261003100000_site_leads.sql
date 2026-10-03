@@ -51,6 +51,13 @@ begin
   );
   v_phone := private.json_text(v_lead, 'phone');
 
+  -- One request at a time per phone and per network, so concurrent requests
+  -- can't all pass the counts below (always phone first, then network).
+  perform pg_advisory_xact_lock(hashtextextended('site_lead:phone:' || coalesce(v_phone, ''), 0));
+  if p_ip_hash is not null then
+    perform pg_advisory_xact_lock(hashtextextended('site_lead:ip:' || p_ip_hash, 0));
+  end if;
+
   if p_ip_hash is not null
      and (select count(*) from public.site_leads l
           where l.ip_hash = p_ip_hash and l.created_at > now() - interval '1 hour') >= 5 then
