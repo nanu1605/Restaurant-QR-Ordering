@@ -1,9 +1,14 @@
 import { expect, test } from '@playwright/test';
 
-import { watchCspViolations } from './helpers';
+import { formatINR } from '../../src/lib/money';
+import { adminClient, fakeTurnstile, watchCspViolations } from './helpers';
 
-// The public website (docs/DECISIONS.md W-1 to W-4), on desktop, a tablet and
-// a phone: sections, navigation, the hero scene, the policies.
+// The public website (docs/DECISIONS.md W-1 to W-6), on desktop, a tablet and
+// a phone: sections, navigation, the hero scene, pricing, the policies.
+
+test.beforeEach(async ({ context }) => {
+  await fakeTurnstile(context);
+});
 
 test('the home page tells the story and leads to a demo', async ({ page, context }) => {
   const violations = await watchCspViolations(context);
@@ -16,6 +21,7 @@ test('the home page tells the story and leads to a demo', async ({ page, context
     'One system for the whole restaurant',
     'Made for restaurants in India',
     'Your menu, in your guests’ language',
+    'Try it in your browser',
     'Questions owners ask',
   ]) {
     await expect(page.getByRole('heading', { level: 2, name })).toBeAttached();
@@ -40,18 +46,59 @@ test('the home page tells the story and leads to a demo', async ({ page, context
   expect(violations).toEqual([]);
 });
 
-test('the sections are reachable from the menu', async ({ page }) => {
+test('the sections and pages are reachable from the menu', async ({ page }) => {
   await page.goto('/');
   const wide = (page.viewportSize()?.width ?? 0) >= 1024;
-  if (!wide) {
+  const openMenuLink = async (name: string) => {
+    if (wide) return page.getByRole('banner').getByRole('link', { name }).click();
     await page.getByRole('button', { name: 'Open menu' }).click();
-    await page.getByRole('dialog').getByRole('link', { name: 'FAQ' }).click();
+    await page.getByRole('dialog').getByRole('link', { name }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
-  } else {
-    await page.getByRole('banner').getByRole('link', { name: 'FAQ' }).click();
+  };
+  await openMenuLink('How it works');
+  await expect(page).toHaveURL(/#how$/);
+  await expect(page.getByRole('heading', { name: 'How it works' })).toBeInViewport();
+
+  await openMenuLink('Pricing');
+  await expect(page).toHaveURL(/\/pricing$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'Simple plans for every size of restaurant',
+  );
+});
+
+test('pricing shows the plans from the database and finds the right one', async ({
+  page,
+  context,
+}) => {
+  const violations = await watchCspViolations(context);
+  const { data: plans } = await adminClient()
+    .from('plans')
+    .select('name, price_monthly_paise, price_yearly_paise, max_staff')
+    .eq('is_active', true)
+    .order('price_monthly_paise');
+  expect(plans?.length).toBeGreaterThan(0);
+
+  await page.goto('/pricing');
+  const cards = page.getByRole('list', { name: 'Plans' });
+  for (const plan of plans!) {
+    await expect(cards.getByRole('listitem').filter({ hasText: plan.name }).first()).toContainText(
+      `${formatINR(plan.price_monthly_paise, { fraction: 'auto' })} a month`,
+    );
   }
-  await expect(page).toHaveURL(/#faq$/);
-  await expect(page.getByRole('heading', { name: 'Questions owners ask' })).toBeInViewport();
+  await page.getByRole('button', { name: /^Yearly/ }).click();
+  for (const plan of plans!) {
+    await expect(cards.getByRole('listitem').filter({ hasText: plan.name }).first()).toContainText(
+      `${formatINR(plan.price_yearly_paise, { fraction: 'auto' })} a year`,
+    );
+  }
+
+  // The most staff the helper asks about: only a plan without a staff limit fits.
+  await page.getByLabel('Staff who sign in (not counting you)').fill('40');
+  const unlimited = plans!.find((plan) => plan.max_staff === null);
+  await expect(page.getByRole('status', { name: 'Recommended plan' })).toContainText(
+    unlimited?.name ?? 'Let’s talk',
+  );
+  expect(violations).toEqual([]);
 });
 
 test('on a phone the call to action follows the page down', async ({ page }) => {
@@ -95,7 +142,7 @@ test('the policies are linked from every page footer', async ({ page }) => {
 test('nothing scrolls sideways on a 320px screen', async ({ page }) => {
   // 320 CSS px: the narrowest phones, or a desktop at 400% zoom (WCAG 1.4.10).
   await page.setViewportSize({ width: 320, height: 700 });
-  for (const path of ['/', '/contact', '/terms']) {
+  for (const path of ['/', '/pricing', '/contact', '/terms']) {
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

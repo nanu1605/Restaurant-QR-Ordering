@@ -11,6 +11,8 @@
 //   answers "authenticated", as if Checkout had been completed.
 // - Resend under /resend (P8-12): POST /emails keeps each email (once per
 //   Idempotency-Key, as Resend does); GET /inbox?to=<address> lists them.
+// - Cloudflare Turnstile's siteverify under /turnstile (W-6): Cloudflare's
+//   test secret accepts only its dummy token, as the real one does.
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
@@ -18,6 +20,9 @@ const PORT = Number(process.env.MOCK_APIS_PORT ?? 3190);
 const API_KEY = 'e2e-menu-reader-key';
 const RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
 const RESEND_AUTH = 'Bearer re_e2e_resend_key';
+/** Cloudflare's always-pass test secret and the token its test widgets give. */
+const TURNSTILE_SECRET = '1x0000000000000000000000000000000AA';
+const TURNSTILE_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX';
 /** Words the Hindi name stand-in knows (tests/e2e/admin-menu.spec.ts). */
 const HINDI_WORDS = { masala: 'मसाला', chai: 'चाय', kadak: 'कड़क' };
 
@@ -235,6 +240,30 @@ function resend(request, response, path) {
   });
 }
 
+function turnstile(request, response, path) {
+  if (request.method !== 'POST' || path !== '/siteverify') {
+    send(response, 404, { success: false, 'error-codes': ['bad-request'] });
+    return;
+  }
+  let raw = '';
+  request.on('data', (chunk) => (raw += chunk));
+  request.on('end', () => {
+    const form = new URLSearchParams(raw);
+    if (form.get('secret') !== TURNSTILE_SECRET) {
+      send(response, 200, { success: false, 'error-codes': ['invalid-input-secret'] });
+      return;
+    }
+    const ok = form.get('response') === TURNSTILE_TOKEN;
+    send(
+      response,
+      200,
+      ok
+        ? { success: true, action: 'lead' }
+        : { success: false, 'error-codes': ['invalid-input-response'] },
+    );
+  });
+}
+
 const server = createServer((request, response) => {
   const path = new URL(request.url ?? '/', 'http://mock').pathname;
   if (request.method === 'GET' && path === '/health') {
@@ -247,6 +276,10 @@ const server = createServer((request, response) => {
   }
   if (path.startsWith('/resend/')) {
     resend(request, response, path.slice('/resend'.length));
+    return;
+  }
+  if (path.startsWith('/turnstile/')) {
+    turnstile(request, response, path.slice('/turnstile'.length));
     return;
   }
   if (request.method !== 'POST' || !path.endsWith('/chat/completions')) {
