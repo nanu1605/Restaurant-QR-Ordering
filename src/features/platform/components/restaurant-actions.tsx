@@ -45,6 +45,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { withGst } from '@/features/subscriptions/gst';
 import type { ActionResult } from '@/lib/action-result';
 import { APP_NAME } from '@/lib/config';
 
@@ -553,17 +554,20 @@ function SuspendForm({ restaurantId, onDone }: { restaurantId: string; onDone: (
 /** Rupees for a form field: 149900 → "1499". */
 const rupees = (paise: number) => String(paise / 100);
 
+/** The suggested amount: the fee plus GST, like autopay (docs/DECISIONS.md W-11). */
 function linkAmount(defaults: LinkDefaults, purpose: string, months: number): string {
-  if (purpose === 'setup_fee') return rupees(defaults.setupFeePaise);
+  if (purpose === 'setup_fee') return rupees(withGst(defaults.setupFeePaise));
   if (!Number.isInteger(months) || months < 1) return '';
   return rupees(
-    months % 12 === 0 ? (months / 12) * defaults.yearlyPaise : months * defaults.monthlyPaise,
+    withGst(
+      months % 12 === 0 ? (months / 12) * defaults.yearlyPaise : months * defaults.monthlyPaise,
+    ),
   );
 }
 
 function linkDescription(defaults: LinkDefaults, purpose: string, months: number): string {
-  if (purpose === 'setup_fee') return `${APP_NAME} setup fee`;
-  return `${APP_NAME} ${defaults.planName}, ${months} ${months === 1 ? 'month' : 'months'}`;
+  if (purpose === 'setup_fee') return `${APP_NAME} setup fee, with GST`;
+  return `${APP_NAME} ${defaults.planName}, ${months} ${months === 1 ? 'month' : 'months'}, with GST`;
 }
 
 function PaymentLinkForm({
