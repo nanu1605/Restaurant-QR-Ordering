@@ -88,7 +88,8 @@ bottom of each section.
 
 - **The palette below was replaced by the logo's** on 2026-10-03: see "Brand refresh" (B-1, B-2).
 - **No dark theme.** The spec defines one light palette. shadcn's `dark:` classes are scoped to a
-  `.dark` ancestor so they never fire from the OS setting.
+  `.dark` ancestor so they never fire from the OS setting. _Superseded on 2026-10-03: a dark
+  theme the user can switch (B-3)._
 - **Ready chip fill is `#0C7C7C`, one shade darker than the `status-ready` token `#0E8A8A`.** White
   on `#0E8A8A` is 4.2:1 and ink is 3.2:1, both under the 4.5:1 floor (§16.2). The token itself is
   still used for edges, icons and dots. Preparing chips use ink text (5.0:1 on turmeric).
@@ -310,7 +311,7 @@ bottom of each section.
 - **P2-15 · Forms:** react-hook-form with zod schemas shared by the dialog and the server action;
   actions return `{ ok, data } | { ok: false, error, fieldErrors }`. Watching values uses
   `useWatch` (the React Compiler lint rule rejects `watch()`). Toasts use sonner without
-  `next-themes` (one light theme).
+  `next-themes` (one light theme; since B-3 the root layout passes the theme to the toaster).
 - **Drag and drop uses `@dnd-kit/core` + `sortable` 6.x/10.x**, the stable line; the new
   `@dnd-kit/react` is still pre-1.0. Screen readers hear dish, category and table names instead of
   ids, and the keyboard works (Space, arrows, Space). Order changes show at once
@@ -2213,3 +2214,38 @@ are fixed.
 - **Cached icons:** next/og serves icons with a year-long immutable cache, and `/icon/192` and
   `/icon/512` kept their addresses, so the manifest asks for them with `?v=2`.
 - **SPEC:** the restaurants table still named indigo as the default accent.
+
+### B2 · Dark mode
+
+- **B-3 · Theme:** System (the default), Light or Dark, remembered in a `theme` cookie on this
+  device (`path=/`, a year, httpOnly; no cookie means System). The root layout reads it and
+  writes `<html data-theme>`, the `color-scheme` and the browser-bar colour (one per scheme for
+  System) into the first HTML, so there is no flash and no inline script, and the CSP stays as
+  it was. globals.css defines the `dark` variant as `data-theme="dark"`, or `"system"` while the
+  device is set to dark, on screen only, so printing stays light. The tokens are written once:
+  `:root` holds the light values and a nested `@variant dark` the dark ones (warm near-black
+  paper `#121110`, surface `#1C1A18`, ink `#F5F2EE`; lighter status colours that carry
+  near-black text). The orange buttons don't change. shadcn's own `dark:` classes now work.
+  The switch is a plain form (`setTheme` server action), so it also works before the page's
+  JavaScript; with it, the page repaints at once and the action saves the cookie. The panels
+  have it in a new account menu in the header, which also holds the name and role, the other
+  panel and Log out; the website in the top bar (laptops), the menu sheet and the footer; the
+  customer menu at the foot of the menu, in Hindi too (the Hindi words need the owner's check).
+  The offline page follows the device's setting, since a service worker can't read the cookie.
+  `theme-tokens.test.ts` checks both themes; `colour-guard.test.ts` fails on a fixed colour
+  (`bg-white`, `text-black`, a palette shade or an arbitrary hex) outside its allow-list; and
+  `contrast.spec.ts` runs axe's colour-contrast rule over the website, the customer menu and
+  every panel in both themes. That sweep caught two things the token test can't see: inactive
+  tabs used ink at 60 % on the muted background (4.4:1), now `muted-foreground`, and the
+  website's mock menus dimmed "Table 5" on the orange (4.5:1 was 4.48).
+- **B-4 · Paper stays paper:** bills, the bill print pages and QR sheets are white paper in
+  either theme: `.theme-light` re-declares the light tokens inside them, and the dark variant
+  skips them. The authenticator QR code and the logo preview keep their white tile; food marks
+  are drawn on a white tile, so their FSSAI colours read on the dark page; dialog and sheet
+  scrims are darker in dark mode, and shadows are black instead of ink.
+- **B-5 · Customer accent in dark mode:** the restaurant's accent stays the fill (with the same
+  text on it) in both themes, but its text and focus-ring colours are chosen again against the
+  dark page: the accent where it reads (4.5:1 and 3:1 on `#1C1A18` and `#121110`), else the dark
+  ink. The accent `<style>` adds those under the same two conditions as the dark variant, with
+  a more specific selector so they win over globals.css. The MenuMesh orange is too light as
+  text on white but reads on the dark page, so there it is its own text and ring.

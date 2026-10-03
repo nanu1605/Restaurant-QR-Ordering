@@ -1154,26 +1154,26 @@ Avoid generic SaaS styling: no gradient washes, no identical soft-shadow cards e
 
 ### 16.2 Tokens
 
-Colours come from the MenuMesh logo, an orange hexagon (`#FF6606`) with a white "M", with warm neutrals around it (docs/DECISIONS.md B-1, B-2).
+Colours come from the MenuMesh logo, an orange hexagon (`#FF6606`) with a white "M", with warm neutrals around it (docs/DECISIONS.md B-1, B-2). Every screen has a light and a dark theme: System (the default) follows the device, and the user can choose Light or Dark on this device (B-3). Bills and QR sheets stay white paper in both (B-4).
 
-| Token | Hex | Use |
-|---|---|---|
-| `ink` | `#1C1917` | primary text (warm near-black) |
-| `ink-muted` | `#57534E` | secondary text |
-| `paper` | `#FAF8F5` | app background |
-| `surface` | `#FFFFFF` | cards, drawers |
-| `line` | `#E7E2DC` | dividers |
-| `input` | `#8C857E` | control borders (3:1) |
-| `primary` (logo orange) | `#FF6606` | primary buttons and selected fills, always with `ink` text; default restaurant accent |
-| `brand` (deep orange) | `#C2410C` | links, labels, focus ring, chart marks: the orange that reads on white |
-| `status-placed` | `#64748B` | new items (slate) |
-| `status-preparing` | `#B8860B` | turmeric |
-| `status-ready` | `#0E8A8A` | teal |
-| `status-served` | `#2E7D4F` | leaf green |
-| `status-void` | `#B42318` | cancelled/removed (text + strikethrough) |
-| `attention` | `#C2185B` | needs approval, bill requested |
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `ink` | `#1C1917` | `#F5F2EE` | primary text |
+| `ink-muted` | `#57534E` | `#B5AFA9` | secondary text |
+| `paper` | `#FAF8F5` | `#121110` | app background |
+| `surface` | `#FFFFFF` | `#1C1A18` | cards, drawers, header |
+| `line` | `#E7E2DC` | `#3A3531` | dividers |
+| `input` | `#8C857E` | `#78716C` | control borders (3:1) |
+| `primary` (logo orange) | `#FF6606` | `#FF6606` | primary buttons and selected fills, always with `#1C1917` text; default restaurant accent |
+| `brand` (orange as text) | `#C2410C` | `#FF8A3D` | links, labels, focus ring, chart marks |
+| `status-placed` | `#64748B` | `#94A3B8` | new items (slate) |
+| `status-preparing` | `#B8860B` | `#E5A50A` | turmeric |
+| `status-ready` | `#0E8A8A` | `#2BB3B3` | teal |
+| `status-served` | `#2E7D4F` | `#4CB782` | leaf green |
+| `status-void` | `#B42318` | `#F87171` | cancelled/removed (text + strikethrough) |
+| `attention` | `#C2185B` | `#F06292` | needs approval, bill requested |
 
-Check text/background contrast ≥ 4.5:1 (use white or ink text on status fills as required); `tests/unit/theme-tokens.test.ts` checks the palette. Status chips = colour fill + icon + label.
+Check text/background contrast ≥ 4.5:1 in both themes (white or ink text on light-theme status fills as required; `#1C1917` on every dark-theme fill); `tests/unit/theme-tokens.test.ts` checks the palette and `tests/e2e/contrast.spec.ts` every screen. Colours come from tokens only (`tests/unit/colour-guard.test.ts`). Status chips = colour fill + icon + label.
 
 Typography: **Noto Sans** (with Noto Sans Devanagari for Hindi in Phase 9) via `next/font`, chosen for Latin + Devanagari coverage and clear numerals. Use `font-variant-numeric: tabular-nums` for all prices, totals and timers. Scale: 12 / 14 / 16 / 20 / 24 / 32 px; staff board labels ≥ 16 px; table labels on cards 24–32 px bold.
 
