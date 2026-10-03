@@ -217,7 +217,7 @@ export function Highlights() {
           return (
             <li
               key={highlight.title}
-              className="site-reveal group flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-ink/5"
+              className="site-reveal group flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-black/5"
             >
               <span className="flex size-11 items-center justify-center rounded-xl bg-accent text-brand transition-transform duration-300 group-hover:-rotate-6">
                 <Icon aria-hidden className="size-5" />
@@ -248,7 +248,7 @@ function MiniMenu({ lang }: { lang: 'en' | 'hi' }) {
     <div lang={lang} className="flex h-full flex-col text-[0.6rem]">
       <div className="bg-primary px-3 pt-6 pb-3 text-primary-foreground">
         <p className="text-[1.15em] font-bold">Spice Route</p>
-        <p className="opacity-80">{hindi ? 'टेबल 5' : 'Table 5'}</p>
+        <p>{hindi ? 'टेबल 5' : 'Table 5'}</p>
       </div>
       <ul className="flex flex-col gap-1.5 p-2">
         {HINDI_MENU.map((dish) => (
@@ -274,14 +274,14 @@ export function Hindi() {
   return (
     <section
       aria-labelledby="hindi-title"
-      className="bg-ink px-4 py-16 text-paper sm:px-6 sm:py-24"
+      className="bg-ink px-4 py-16 text-paper sm:px-6 sm:py-24 dark:border-y dark:border-line dark:bg-surface dark:text-ink"
     >
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
         <div className="site-reveal flex flex-col gap-4">
           <h2 id="hindi-title" className="text-2xl font-bold sm:text-3xl">
             Your menu, in your guests’ language
           </h2>
-          <p className="text-base text-paper/80 sm:text-lg">
+          <p className="text-base text-paper/80 sm:text-lg dark:text-ink-muted">
             One tap switches the whole menu to <span lang="hi">हिन्दी</span>: buttons, the cart,
             order status, and your dish names. MenuMesh writes each dish name in Hindi for you, and
             you can change any of them in the menu editor.
@@ -332,7 +332,7 @@ export function NextSteps({ fromPaise }: { fromPaise: number | null }) {
           <li key={href} className="site-reveal">
             <Link
               href={href}
-              className="group flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-ink/5 sm:p-8"
+              className="group flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-black/5 sm:p-8"
             >
               <Icon aria-hidden className="size-7 text-brand" />
               <h2 className="text-xl font-bold text-ink">{title}</h2>
@@ -393,7 +393,7 @@ export function FinalCta() {
             href={cta.href}
             className={cn(
               buttonVariants({ size: 'touch' }),
-              'bg-ink px-6 text-paper hover:bg-ink/90',
+              'bg-primary-foreground px-6 text-paper hover:bg-primary-foreground/90 dark:text-ink',
             )}
           >
             {cta.label}
@@ -402,7 +402,7 @@ export function FinalCta() {
             href="/login"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'touch' }),
-              'px-6 text-primary-foreground hover:bg-ink/10 hover:text-primary-foreground',
+              'px-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground',
             )}
           >
             Log in
