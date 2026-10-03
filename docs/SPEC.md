@@ -1154,21 +1154,26 @@ Avoid generic SaaS styling: no gradient washes, no identical soft-shadow cards e
 
 ### 16.2 Tokens
 
+Colours come from the MenuMesh logo, an orange hexagon (`#FF6606`) with a white "M", with warm neutrals around it (docs/DECISIONS.md B-1, B-2).
+
 | Token | Hex | Use |
 |---|---|---|
-| `ink` | `#243040` | primary text (deep blue-slate) |
-| `paper` | `#F6F7F9` | app background |
+| `ink` | `#1C1917` | primary text (warm near-black) |
+| `ink-muted` | `#57534E` | secondary text |
+| `paper` | `#FAF8F5` | app background |
 | `surface` | `#FFFFFF` | cards, drawers |
-| `line` | `#D9DEE5` | borders, dividers |
-| `brand` (indigo) | `#3B4BA8` | primary buttons, links, focus ring; default restaurant accent |
+| `line` | `#E7E2DC` | dividers |
+| `input` | `#8C857E` | control borders (3:1) |
+| `primary` (logo orange) | `#FF6606` | primary buttons and selected fills, always with `ink` text; default restaurant accent |
+| `brand` (deep orange) | `#C2410C` | links, labels, focus ring, chart marks: the orange that reads on white |
 | `status-placed` | `#64748B` | new items (slate) |
-| `status-preparing` | `#D98E04` | turmeric |
+| `status-preparing` | `#B8860B` | turmeric |
 | `status-ready` | `#0E8A8A` | teal |
 | `status-served` | `#2E7D4F` | leaf green |
 | `status-void` | `#B42318` | cancelled/removed (text + strikethrough) |
 | `attention` | `#C2185B` | needs approval, bill requested |
 
-Check text/background contrast ≥ 4.5:1 (use white or ink text on status fills as required). Status chips = colour fill + icon + label.
+Check text/background contrast ≥ 4.5:1 (use white or ink text on status fills as required); `tests/unit/theme-tokens.test.ts` checks the palette. Status chips = colour fill + icon + label.
 
 Typography: **Noto Sans** (with Noto Sans Devanagari for Hindi in Phase 9) via `next/font`, chosen for Latin + Devanagari coverage and clear numerals. Use `font-variant-numeric: tabular-nums` for all prices, totals and timers. Scale: 12 / 14 / 16 / 20 / 24 / 32 px; staff board labels ≥ 16 px; table labels on cards 24–32 px bold.
 

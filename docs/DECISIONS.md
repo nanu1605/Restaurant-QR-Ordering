@@ -86,6 +86,7 @@ bottom of each section.
 
 ## Design system
 
+- **The palette below was replaced by the logo's** on 2026-10-03: see "Brand refresh" (B-1, B-2).
 - **No dark theme.** The spec defines one light palette. shadcn's `dark:` classes are scoped to a
   `.dark` ancestor so they never fire from the OS setting.
 - **Ready chip fill is `#0C7C7C`, one shade darker than the `status-ready` token `#0E8A8A`.** White
@@ -2153,3 +2154,46 @@ of 15 findings were confirmed (two were duplicates, one was wrong) and all 12 ar
   is open (a plan that doesn't exist yet still says "Let's talk"); first steps count only dishes
   on the menu, offer autopay only when a plan can be paid online, and no longer dim finished
   steps below readable contrast.
+
+## Brand refresh (after launch, from 2026-10-03)
+
+The owner finalized the logo: a white "M" in an orange hexagon (`#FF6606`), with a wordmark
+in black. They asked for the website and all four panels to take their colours from it, for a
+dark mode the user can switch, and for every panel to work well on phones, tablets and laptops,
+installed or not. Delivered in four phases, each its own PR: B1 logo and light palette, B2 dark
+mode, B3 responsive panels, B4 installed-app polish. The owner chose logo-orange buttons with dark
+text, kept restaurant accents on the customer menu, and warm neutrals.
+
+- **B-1 · Logo and icons:** `src/components/shared/logo.tsx` draws the logo's SVGs: `LogoMark`
+  (the hexagon, decorative) and `Wordmark` (mark and name, `role="img"`, the name in
+  `currentColor` so it reads on any background). The wordmark replaces the drawn "M" on the
+  website and the login page; the mark leads the panel header. The customer menu keeps the
+  restaurant's own logo. The paths live once in `src/lib/app-icon.tsx`, which also draws the app
+  icons with next/og: `/icon/192` and `/icon/512` (the hexagon on transparent, for tabs),
+  `/apple-icon` and the manifest's maskable `/maskable-icon.png` (the hexagon in the middle 64%
+  of white: inside a maskable icon's safe circle, and opaque as iOS wants). The maskable icon is
+  a route of its own, because an `icon.tsx` size would also be linked as a page icon.
+  `favicon.ico` (16, 32, 48 px) was redrawn from the logo's PNG. The manifest keeps its `id` and
+  `start_url`, so installed apps update in place (iOS shows the new icon after a reinstall).
+  The browser and installed-app bar takes the header's white (`THEME_COLOR`), the manifest's
+  splash the paper colour. The default restaurant accent becomes `#FF6606`; a migration moves
+  restaurants still on the old indigo default (never changed in Settings) with it.
+- **B-2 · Palette:** warm neutrals around the orange: ink `#1C1917`, muted `#57534E`, paper
+  `#FAF8F5`, surface white, line `#E7E2DC`. White on `#FF6606` is 2.9:1, so the logo orange is a
+  fill that carries ink text (6.0:1): `--primary` (buttons, selected chips, the cart bar). As
+  text, focus rings and chart marks it is too light on white, so `--brand` became a deeper orange,
+  `#C2410C` (4.7:1 or more on every background). Splitting the two kept all `text-brand` and
+  `border-brand` uses as they were; the white-on-brand fills (website mockups, the board's
+  active filter) moved to `bg-primary text-primary-foreground`, and the `link` variants to
+  `text-brand`. Control borders get their own `--input` (`#8C857E`, 3:1 on paper and white) so
+  fields stand out, and the dividers stay light. Turmeric moves from `#D98E04` to `#B8860B`:
+  the old one was 2.5:1 as a card edge on the new paper and too close to the orange buttons now
+  beside its chips; its chips keep ink text (5.4:1). Button hover is `primary/90`, which keeps
+  ink at 4.5:1 or more. `tests/unit/theme-tokens.test.ts` reads the tokens from `globals.css` and
+  checks every text pair (4.5:1) and every ring, border, status edge and chart colour (3:1), and
+  that the default accent and the bar colour match the stylesheet.
+- **Customer accent:** besides the text on its fill, the accent now gets a text colour and a
+  focus ring of its own, each checked against both page backgrounds (white and paper): the
+  accent where it reads (4.5:1 for text, 3:1 for the ring), else ink. A colour that neither
+  white nor ink reads on falls back to the MenuMesh orange with ink, which is darker than the old
+  ink, so more light accents keep their own colour.
