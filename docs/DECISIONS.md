@@ -2277,3 +2277,32 @@ Three reviewers (theme mechanism, accessibility and contrast, tests and docs) an
   width), too narrow for the switch at 360 px; it is 320 px as intended.
 - **Docs:** B-3 now says which switches work without JavaScript, and SPEC §16.2 says what the
   contrast sweep covers.
+
+### B3 · Responsive panels
+
+- **B-6 · From a 360 px phone to a laptop:** a sweep of every panel page at 360, 768 and 1024 px
+  found little wrong, and B3 fixes what it found rather than redesigning screens.
+  - The admin and platform sidebars show from 1024 px (`lg`). Below that the sections are in the
+    menu sheet, so a tablet held upright gets the full width for content. The sheet button is
+    44 px, and section links are 44 px tall.
+  - On phones the kitchen view shows one column at a time, 85 % wide, so the next one peeks in,
+    and it snaps as staff swipe. A row of New / Preparing / Ready buttons above the columns keeps
+    every count in sight, and a tap jumps to that column. From 768 px the three columns sit side
+    by side as before. Ticket headers no longer break "Round 1" or "0 min" across lines.
+  - The worker panel's section tabs fit a 360 px screen without scrolling.
+  - On the customer menu, Call waiter and the language link are 44 px tap targets. The language
+    link keeps the header's height by using negative margins. Switches have a 44 px tap area.
+  - Wide tables scroll sideways inside a focusable, named region (`ScrollRegion`, now in
+    `components/shared`; the shadcn `Table` uses it and needs a `label`), so a keyboard can
+    reach every column. This now applies to the platform pages, total orders, staff logins,
+    waiters and payments too. The scroller is `relative` so screen-reader text in a column off
+    to the side can't widen the page: the kitchen's columns had that bug once they held
+    tickets. JSON in the audit log and webhooks wraps instead of scrolling. One more overflow
+    was fixed: the settings page's logo picker, at 360 px.
+  - Not done: total orders keeps every column on phones, scrolling rather than hiding the waiter
+    and billed-by columns. The admin panel's row actions (32 px) and the menu editor's controls
+    (28 px) stay as they are. The admin panel is desktop-first (spec §13.3), and those controls
+    meet WCAG 2.2's 24 px minimum.
+  - `panels-responsive.spec.ts` checks every panel page at the three sizes: no sideways scroll,
+    44 px header controls, the admin sheet below 1024 px, and the kitchen columns. The tablet
+    test project now also runs the admin navigation spec.
