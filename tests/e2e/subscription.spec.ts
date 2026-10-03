@@ -261,7 +261,22 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   await verify.getByRole('button', { name: 'Create my restaurant' }).click();
   await expect(verify.getByText('That code isn’t right. 4 tries left.')).toBeVisible();
   await expect(verify.getByLabel('Choose a password')).toHaveValue('signup-pass-123');
-  await verify.getByLabel('6-digit code').fill(code);
+
+  // A new code replaces the old one; the old error goes, the password stays.
+  await page.getByRole('button', { name: 'Send a new code' }).click();
+  await expect(page.getByText('We sent a new code. Use it instead of the old one.')).toBeVisible();
+  await expect(verify.getByText('That code isn’t right. 4 tries left.')).toHaveCount(0);
+  await expect(verify.getByLabel('Choose a password')).toHaveValue('signup-pass-123');
+  const codeEmails = async () =>
+    (await inbox()).filter((item) => item.subject.endsWith('is your MenuMesh code'));
+  await expect.poll(async () => (await codeEmails()).length).toBe(2);
+  const newCode = /^(\d{6})/.exec((await codeEmails())[1]!.subject)![1]!;
+  if (newCode !== code) {
+    await verify.getByLabel('6-digit code').fill(code);
+    await verify.getByRole('button', { name: 'Create my restaurant' }).click();
+    await expect(verify.getByText('That code isn’t right. 4 tries left.')).toBeVisible();
+  }
+  await verify.getByLabel('6-digit code').fill(newCode);
   await verify.getByRole('button', { name: 'Create my restaurant' }).click();
 
   // Signed in as the owner, on autopay with Growth monthly picked.
@@ -283,7 +298,7 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
     .single();
   expect(restaurant).toMatchObject({ city: 'Pune', phone: '+91 9876543210', email });
   expect(restaurant!.slug).toBe(`signup-cafe-${unique}`);
-  await expect.poll(async () => (await inbox()).length).toBe(2);
+  await expect.poll(async () => (await inbox()).length).toBe(3);
   const welcome = (await inbox()).find((item) => item.subject.startsWith('Welcome to MenuMesh'));
   expect(welcome?.text).toContain(`Your restaurant code is ${restaurant!.slug}.`);
 
@@ -306,16 +321,16 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   await form.getByRole('checkbox', { name: /I agree to the terms/ }).check();
   await form.getByRole('button', { name: 'Email me a code' }).click();
   await expect(page).toHaveURL(/\/signup\/verify$/);
-  const codes = (await inbox()).filter((item) => item.subject.endsWith('is your MenuMesh code'));
-  expect(codes).toHaveLength(2);
-  const secondCode = /^(\d{6})/.exec(codes[1]!.subject)![1]!;
-  await verify.getByLabel('6-digit code').fill(secondCode);
+  await expect.poll(async () => (await codeEmails()).length).toBe(3);
+  const thirdCode = /^(\d{6})/.exec((await codeEmails())[2]!.subject)![1]!;
+  await verify.getByLabel('6-digit code').fill(thirdCode);
   await verify.getByLabel('Choose a password').fill('signup-pass-123');
   await verify.getByRole('button', { name: 'Create my restaurant' }).click();
-  await expect(verify.getByRole('alert')).toContainText(
-    'This email already has a MenuMesh account. Log in instead.',
-  );
-  await expect(verify.getByRole('link', { name: 'Go to log in' })).toBeVisible();
+  // Only the way forward is left.
+  const taken = page.getByRole('alert').filter({ hasText: 'already has a MenuMesh account' });
+  await expect(taken).toContainText('This email already has a MenuMesh account. Log in instead.');
+  await expect(taken.getByRole('link', { name: 'Go to log in' })).toBeVisible();
+  await expect(verify).toHaveCount(0);
 });
 
 test('webhooks with a bad signature are refused and not stored', async ({ request }) => {

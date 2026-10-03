@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -130,13 +129,25 @@ export function SignupForm({
           <Label htmlFor={termsId} className="text-base leading-snug font-normal">
             <span>
               I agree to the{' '}
-              <Link href="/terms" className="font-medium text-brand underline underline-offset-2">
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener"
+                className="font-medium text-brand underline underline-offset-2"
+              >
                 terms
-              </Link>{' '}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>{' '}
               and the{' '}
-              <Link href="/privacy" className="font-medium text-brand underline underline-offset-2">
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noopener"
+                className="font-medium text-brand underline underline-offset-2"
+              >
                 privacy policy
-              </Link>
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
               .
             </span>
           </Label>
