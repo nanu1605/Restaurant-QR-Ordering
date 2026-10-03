@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-import { APP_NAME, BRAND_COLOR } from '@/lib/config';
+import { APP_NAME, THEME_COLOR } from '@/lib/config';
 
 /**
  * The install manifest for the staff and admin panels (spec §19 Phase 9,
@@ -17,12 +17,12 @@ export function GET() {
     start_url: '/login',
     scope: '/',
     display: 'standalone',
-    background_color: '#ffffff',
-    theme_color: BRAND_COLOR,
+    background_color: '#FAF8F5',
+    theme_color: THEME_COLOR,
     icons: [
       { src: '/icon/192', sizes: '192x192', type: 'image/png' },
       { src: '/icon/512', sizes: '512x512', type: 'image/png' },
-      { src: '/icon/512', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/maskable-icon.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };
   return Response.json(manifest, { headers: { 'Content-Type': 'application/manifest+json' } });

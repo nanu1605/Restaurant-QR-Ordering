@@ -7,8 +7,8 @@ import type { Metadata } from 'next';
  */
 export const APP_NAME = 'MenuMesh';
 
-/** The brand colour (globals.css --brand): browser chrome and app icons. */
-export const BRAND_COLOR = '#3B4BA8';
+/** Browser and installed-app bar colour: the header surface (globals.css --surface). */
+export const THEME_COLOR = '#FFFFFF';
 
 /**
  * The staff and admin layouts' install manifest and home screen name (spec §19

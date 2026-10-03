@@ -2,6 +2,7 @@ import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { LogoMark } from '@/components/shared/logo';
 import { Button } from '@/components/ui/button';
 
 type PanelHeaderProps = {
@@ -32,6 +33,7 @@ export function PanelHeader({
     <header className="flex items-center justify-between gap-4 border-b border-line bg-surface px-4 py-3 print:hidden">
       <div className="flex min-w-0 items-center gap-2">
         {leading}
+        <LogoMark className="hidden size-7 sm:block" />
         <div className="flex min-w-0 flex-col">
           <span className="text-xs font-semibold text-brand">{panel}</span>
           <span className="truncate text-base font-semibold text-ink">{title}</span>

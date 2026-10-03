@@ -1,13 +1,13 @@
 import { cn } from 'cn';
 import Link from 'next/link';
 
+import { Wordmark } from '@/components/shared/logo';
 import { buttonVariants } from '@/components/ui/button';
 import { APP_NAME } from '@/lib/config';
 
 import { SITE_NAV } from '../content';
 import { siteCta } from '../signup';
 import { SiteLink } from './site-link';
-import { SiteLogo } from './site-logo';
 import { SiteMobileNav } from './site-mobile-nav';
 
 /** The website's top bar: logo, sections, log in and the main call to action. */
@@ -21,7 +21,7 @@ export function SiteHeader() {
           aria-label={`${APP_NAME} home`}
           className="inline-flex h-11 items-center rounded-lg"
         >
-          <SiteLogo />
+          <Wordmark />
         </Link>
         <nav aria-label="Main" className="hidden lg:block">
           <ul className="flex items-center gap-1">

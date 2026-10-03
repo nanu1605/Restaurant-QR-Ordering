@@ -2,7 +2,10 @@ import { ImageResponse } from 'next/og';
 
 import { AppIcon } from '@/lib/app-icon';
 
-/** Icons for browsers and the install manifest (docs/DECISIONS.md P9-6): /icon/192, /icon/512. */
+/**
+ * Icons for browsers and the install manifest (docs/DECISIONS.md P9-6, B-1):
+ * /icon/192, /icon/512. The maskable one is /maskable-icon.png.
+ */
 const SIZES = [192, 512];
 
 export function generateImageMetadata() {
@@ -15,5 +18,5 @@ export function generateImageMetadata() {
 
 export default async function Icon({ id }: { id: Promise<string> }) {
   const size = Number(await id);
-  return new ImageResponse(<AppIcon />, { width: size, height: size });
+  return new ImageResponse(<AppIcon size={size} />, { width: size, height: size });
 }

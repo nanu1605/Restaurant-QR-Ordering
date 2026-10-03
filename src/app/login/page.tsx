@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { Wordmark } from '@/components/shared/logo';
 import { LegalLinks } from '@/features/ordering/components/legal-links';
 import { allowedPanelsFor, homePathFor, safeNextPath } from '@/lib/auth/redirects';
 import { getAccessSummary, getCurrentUser } from '@/lib/auth/session';
-import { APP_NAME } from '@/lib/config';
 
 import { LoginForm } from './login-form';
 
@@ -33,7 +33,7 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
     <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-sm">
         <div className="mb-6 flex flex-col gap-1">
-          <p className="text-sm font-semibold text-brand">{APP_NAME}</p>
+          <Wordmark className="mb-3 h-7 self-start" />
           <h1 className="text-xl font-bold text-ink">Log in</h1>
           <p className="text-sm text-ink-muted">
             Staff: use your restaurant code and username. Owners can also use their email.
