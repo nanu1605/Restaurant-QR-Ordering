@@ -20,9 +20,9 @@ export function GET() {
     background_color: '#FAF8F5',
     theme_color: THEME_COLOR,
     icons: [
-      { src: '/icon/192', sizes: '192x192', type: 'image/png' },
-      { src: '/icon/512', sizes: '512x512', type: 'image/png' },
-      { src: '/maskable-icon.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/icon/192?v=2', sizes: '192x192', type: 'image/png' },
+      { src: '/icon/512?v=2', sizes: '512x512', type: 'image/png' },
+      { src: '/maskable-icon.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };
   return Response.json(manifest, { headers: { 'Content-Type': 'application/manifest+json' } });
