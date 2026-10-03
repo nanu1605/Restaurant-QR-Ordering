@@ -1447,6 +1447,7 @@ export type Database = {
           expires_at: string
           id: string
           ip_hash: string | null
+          sends: number
           tries: number
           verified_at: string | null
         }
@@ -1458,6 +1459,7 @@ export type Database = {
           expires_at?: string
           id?: string
           ip_hash?: string | null
+          sends?: number
           tries?: number
           verified_at?: string | null
         }
@@ -1469,6 +1471,7 @@ export type Database = {
           expires_at?: string
           id?: string
           ip_hash?: string | null
+          sends?: number
           tries?: number
           verified_at?: string | null
         }
@@ -2077,6 +2080,11 @@ export type Database = {
         Args: { p_ip_hash?: string; p_lead: Json }
         Returns: string
       }
+      site_signup_finish: { Args: { p_id: string }; Returns: undefined }
+      site_signup_resend: {
+        Args: { p_code_hash: string; p_id: string }
+        Returns: string
+      }
       site_signup_start: {
         Args: {
           p_code_hash: string
@@ -2090,6 +2098,7 @@ export type Database = {
         Args: { p_code_hash: string; p_id: string }
         Returns: Json
       }
+      site_signups_cleanup: { Args: never; Returns: number }
       staff_approve_order: { Args: { p_order_id: string }; Returns: Json }
       staff_close_session_unbilled: {
         Args: { p_reason: string; p_session_id: string }

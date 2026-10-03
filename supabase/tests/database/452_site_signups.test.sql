@@ -1,6 +1,7 @@
 -- Self-serve signups from the website (spec §24 W3, docs/DECISIONS.md W-9):
--- only the server starts and verifies them, one email or network can't flood
--- the table, and a code allows five wrong tries before it locks.
+-- only the server starts, resends, verifies and finishes them, one email or
+-- network can't flood the table, a code allows five wrong tries before it
+-- locks, and a signup gets at most three codes.
 begin;
 
 create extension if not exists pgtap with schema extensions;
@@ -15,8 +16,20 @@ select tests.create_user('visitor@signups.test') as visitor \gset
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 select ok(
   has_function_privilege('service_role', 'public.site_signup_start(text, jsonb, text, text)', 'execute')
-    and has_function_privilege('service_role', 'public.site_signup_verify(uuid, text)', 'execute'),
-  'the server starts and verifies signups'
+    and has_function_privilege('service_role', 'public.site_signup_resend(uuid, text)', 'execute')
+    and has_function_privilege('service_role', 'public.site_signup_verify(uuid, text)', 'execute')
+    and has_function_privilege('service_role', 'public.site_signup_finish(uuid)', 'execute')
+    and has_function_privilege('service_role', 'public.site_signups_cleanup()', 'execute'),
+  'the server starts, resends, verifies, finishes and cleans up signups'
+);
+select ok(
+  not has_function_privilege('anon', 'public.site_signup_resend(uuid, text)', 'execute')
+    and not has_function_privilege('authenticated', 'public.site_signup_resend(uuid, text)', 'execute')
+    and not has_function_privilege('anon', 'public.site_signup_finish(uuid)', 'execute')
+    and not has_function_privilege('authenticated', 'public.site_signup_finish(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.site_signups_cleanup()', 'execute')
+    and not has_function_privilege('authenticated', 'public.site_signups_cleanup()', 'execute'),
+  'nobody else can resend, finish or clean up'
 );
 
 select tests.as_anon();
@@ -133,6 +146,11 @@ select results_eq(
   $$values ('week@example.com')$$,
   'signups older than a week are deleted, younger ones kept'
 );
+select tests.clear_auth();
+update public.site_signups set created_at = now() - interval '8 days' where id = :'week';
+select tests.as_service_role();
+select is(public.site_signups_cleanup(), 1, 'the daily cleanup deletes them too, and says how many');
+select is(public.site_signups_cleanup(), 0, 'and finds nothing left the second time');
 
 -- ─── Verifying ──────────────────────────────────────────────────────────────
 select is(
@@ -151,12 +169,24 @@ select is(
   'the right code returns the email and details'
 );
 select ok(
+  (select verified_at is null from public.site_signups where id = :'asha'),
+  'the right code alone doesn''t use the signup up'
+);
+select is(
+  public.site_signup_verify(:'asha', repeat('a', 64)) ->> 'status', 'ok',
+  'so creating the restaurant can be tried again with it'
+);
+select lives_ok(format($$select public.site_signup_finish(%L)$$, :'asha'), 'the signup is finished');
+select ok(
   (select verified_at is not null from public.site_signups where id = :'asha'),
-  'the signup is marked verified'
+  'a finished signup is marked verified'
 );
 select is(
   public.site_signup_verify(:'asha', repeat('a', 64)), '{"status": "gone"}'::jsonb,
-  'a code works once'
+  'the code stops working once the signup is finished'
+);
+select lives_ok(
+  format($$select public.site_signup_finish(%L)$$, :'asha'), 'finishing twice changes nothing'
 );
 select is(
   public.site_signup_verify(gen_random_uuid(), repeat('a', 64)), '{"status": "gone"}'::jsonb,
@@ -186,6 +216,54 @@ select is(
 select is(
   public.site_signup_verify(:'lock', repeat('a', 64)), '{"status": "locked"}'::jsonb,
   'the right code no longer works once locked'
+);
+
+-- ─── New codes ──────────────────────────────────────────────────────────────
+select is(
+  public.site_signup_resend(:'lock', repeat('c', 64)), 'lock@example.com',
+  'a new code for a locked signup goes to its email'
+);
+select results_eq(
+  format($$select tries, sends from public.site_signups where id = %L$$, :'lock'),
+  $$values (0::smallint, 2::smallint)$$,
+  'the new code comes with fresh tries'
+);
+select is(
+  public.site_signup_verify(:'lock', repeat('a', 64)) ->> 'status', 'wrong',
+  'the old code stops working'
+);
+select is(
+  public.site_signup_verify(:'lock', repeat('c', 64)) ->> 'status', 'ok', 'the new code works'
+);
+select lives_ok(
+  format($$select public.site_signup_resend(%L, repeat('d', 64))$$, :'lock'), 'a third code'
+);
+select throws_ok(
+  format($$select public.site_signup_resend(%L, repeat('e', 64))$$, :'lock'),
+  'P0001', 'RATE_LIMITED', 'a fourth code for one signup is refused'
+);
+
+select tests.clear_auth();
+update public.site_signups
+set expires_at = now() + interval '15 minutes', created_at = now() - interval '61 minutes'
+where id = :'late';
+select tests.as_service_role();
+select throws_ok(
+  format($$select public.site_signup_resend(%L, repeat('c', 64))$$, :'late'),
+  'P0001', 'NOT_FOUND', 'no new codes an hour after starting'
+);
+select throws_ok(
+  format($$select public.site_signup_resend(%L, repeat('c', 64))$$, :'asha'),
+  'P0001', 'NOT_FOUND', 'no new codes for a finished signup'
+);
+select throws_ok(
+  $$select public.site_signup_resend(gen_random_uuid(), repeat('c', 64))$$,
+  'P0001', 'NOT_FOUND', 'no new codes for an unknown signup'
+);
+select public.site_signup_start('fresh@example.com', '{}', repeat('a', 64)) as fresh \gset
+select throws_ok(
+  format($$select public.site_signup_resend(%L, 'not-a-hash')$$, :'fresh'),
+  'P0001', 'INVALID_INPUT', 'a new code needs a proper hash'
 );
 
 select tests.clear_auth();
