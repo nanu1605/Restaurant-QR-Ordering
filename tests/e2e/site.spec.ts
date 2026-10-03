@@ -139,14 +139,36 @@ test('the policies are linked from every page footer', async ({ page }) => {
   }
 });
 
-test('nothing scrolls sideways on a 320px screen', async ({ page }) => {
+test('the features page shows each role on the real app', async ({ page }) => {
+  await page.goto('/features');
+  for (const name of [
+    'Guests order from their own phone',
+    'Waiters see every table at a glance',
+    'The kitchen sees what to cook next',
+    'Bills in one tap',
+    'Owners and managers stay in charge',
+  ]) {
+    await expect(page.getByRole('heading', { level: 2, name: new RegExp(name) })).toBeAttached();
+  }
+  await expect(page.getByRole('img', { name: /The waiters’ live board/ })).toBeAttached();
+  await page
+    .getByRole('navigation', { name: 'On this page' })
+    .getByRole('link', { name: 'Billing' })
+    .click();
+  await expect(page).toHaveURL(/#billing$/);
+  await expect(page.getByRole('heading', { name: 'Bills in one tap' })).toBeInViewport();
+});
+
+test('nothing scrolls sideways on a 320px screen', async ({ page, context }) => {
+  const violations = await watchCspViolations(context);
   // 320 CSS px: the narrowest phones, or a desktop at 400% zoom (WCAG 1.4.10).
   await page.setViewportSize({ width: 320, height: 700 });
-  for (const path of ['/', '/pricing', '/contact', '/terms']) {
+  for (const path of ['/', '/features', '/pricing', '/demo', '/contact', '/terms']) {
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
+  expect(violations).toEqual([]);
 });
