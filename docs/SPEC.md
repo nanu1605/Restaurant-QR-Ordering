@@ -317,6 +317,19 @@ Conventions for every table unless stated otherwise:
 | ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
 | created_at | timestamptz | |
 
+**`site_signups`** (website self-serve signups waiting for their email code; service role only, through `site_signup_start` / `site_signup_verify`; kept 7 days at most)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | kept in an httpOnly cookie between the two steps |
+| email | text | lower-cased |
+| details | jsonb | restaurant name, city, cuisine, owner name, mobile, chosen plan and cycle |
+| code_hash | text | HMAC of the 6-digit code |
+| ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
+| tries | smallint | wrong codes so far; 5 locks the code |
+| expires_at | timestamptz | 15 minutes after the code was sent |
+| verified_at | timestamptz null | set once, when the right code is entered |
+| created_at | timestamptz | |
+
 ### 8.2 Restaurants and members
 
 **`restaurants`**
@@ -1537,7 +1550,6 @@ Clean, printed, flat menus photographed straight on read well; the usual failure
 - WhatsApp bills and marketing (WhatsApp Business API)
 - Customer accounts, loyalty, feedback collection
 - Multi-outlet dashboard for chains
-- Self-serve restaurant signup (onboarding is sales-led via super-admin for now; planned as the website's phase W3, §24)
 - Custom GST invoices for subscription fees
 - Table reservations, takeaway/delivery ordering
 

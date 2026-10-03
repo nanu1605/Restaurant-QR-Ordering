@@ -2086,3 +2086,34 @@ of 16 findings were confirmed and fixed.
 - **Pricing:** a hidden "Plans" heading keeps the outline in order; the sliders' visible numbers
   are hidden from screen readers (the slider already announces its value); a plan that adds no
   features to the one before reads "Everything in …" without "plus".
+
+### W3: self-serve signup
+
+- **W-9 · Signup with an emailed code:** `/signup` asks for the restaurant's name, city and menu
+  style, the owner's name, email and mobile, and agreement to the terms, behind Cloudflare
+  Turnstile. `site_signup_start` (service role only) stores them in `site_signups` with an HMAC of
+  a random 6-digit code, and the code is emailed through Resend before the visitor moves on;
+  the signup's id lives in an httpOnly cookie on `/signup`. `/signup/verify` takes the code and a
+  password: `site_signup_verify` answers ok once, or wrong (the try is counted, so it never
+  raises), expired (15 minutes) or locked (5 wrong tries); "Send a new code" stores the same
+  details again under the same limits (3 codes an hour per email, 10 a day per network,
+  `RATE_LIMITED`, with advisory locks as in W-6). Unfinished signups are deleted after 7 days.
+  The right code then creates the restaurant with `onboardRestaurant` (owner username `owner`,
+  the email as the login, restaurant code from the name, with a 4-character suffix when taken),
+  on the platform's default trial (Growth), signs the owner in and opens
+  `/admin/subscription?welcome=1` with the plan and cycle chosen on `/pricing` preselected;
+  autopay can be set up at once (no charge until the trial ends) or skipped. The welcome email
+  gives the restaurant code staff log in with and the first steps. An email that already has an
+  account is told so only after its code is entered, so the form never reveals which emails
+  exist. Signup is open when Turnstile and Resend are both set up; until then every call to
+  action stays "Book a demo". The owner's dashboard lists first steps (menu, tables, staff
+  logins, address and GST, autopay when Razorpay is set up), read from the data and gone once
+  all are done.
+- **W-10 · No setup fee for self-serve:** owners who sign up themselves set up their own menu,
+  tables and QR codes, so they pay no setup fee; the one-time fee stays for restaurants we set up
+  (with printed QR codes), and `/pricing` says both once signup is open. Charging it at signup
+  would also mean a payment before the trial, which the trial-first flow avoids.
+- **W-11 · Prices exclude GST:** the owner confirmed that plan prices are before GST; `/pricing`,
+  its FAQ and the home page's "Plans from …" say so. Razorpay plans are still created from the
+  plan price as it is: charging GST on top means Razorpay plans priced with GST (or Razorpay's
+  tax settings), which is the owner's call with their GST registration.
