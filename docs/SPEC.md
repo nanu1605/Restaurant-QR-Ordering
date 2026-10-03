@@ -317,17 +317,18 @@ Conventions for every table unless stated otherwise:
 | ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
 | created_at | timestamptz | |
 
-**`site_signups`** (website self-serve signups waiting for their email code; service role only, through `site_signup_start` / `site_signup_verify`; kept 7 days at most)
+**`site_signups`** (website self-serve signups waiting for their email code; service role only, through `site_signup_start`, `site_signup_resend`, `site_signup_verify` and `site_signup_finish`; deleted after 7 days by `site_signups_cleanup()` in the daily cron)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | kept in an httpOnly cookie between the two steps |
 | email | text | lower-cased |
 | details | jsonb | restaurant name, city, cuisine, owner name, mobile, chosen plan and cycle |
-| code_hash | text | HMAC of the 6-digit code |
+| code_hash | text | HMAC of the latest 6-digit code |
 | ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
-| tries | smallint | wrong codes so far; 5 locks the code |
+| tries | smallint | wrong codes so far; 5 locks the code until a new one is sent |
+| sends | smallint | codes sent, at most 3, within the signup's first hour |
 | expires_at | timestamptz | 15 minutes after the code was sent |
-| verified_at | timestamptz null | set once, when the right code is entered |
+| verified_at | timestamptz null | set once the restaurant exists; the code then stops working |
 | created_at | timestamptz | |
 
 ### 8.2 Restaurants and members
@@ -1120,7 +1121,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing.
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, and deletes website signups older than a week (§8.1 `site_signups`).
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 

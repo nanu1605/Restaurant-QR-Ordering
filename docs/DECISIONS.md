@@ -2093,11 +2093,15 @@ of 16 findings were confirmed and fixed.
   style, the owner's name, email and mobile, and agreement to the terms, behind Cloudflare
   Turnstile. `site_signup_start` (service role only) stores them in `site_signups` with an HMAC of
   a random 6-digit code, and the code is emailed through Resend before the visitor moves on;
-  the signup's id lives in an httpOnly cookie on `/signup`. `/signup/verify` takes the code and a
-  password: `site_signup_verify` answers ok once, or wrong (the try is counted, so it never
-  raises), expired (15 minutes) or locked (5 wrong tries); "Send a new code" stores the same
-  details again under the same limits (3 codes an hour per email, 10 a day per network,
-  `RATE_LIMITED`, with advisory locks as in W-6). Unfinished signups are deleted after 7 days.
+  the signup's id lives in an httpOnly cookie on `/signup`. Limits: 3 signups an hour per email
+  and 10 a day per network (`RATE_LIMITED`, with advisory locks as in W-6). `/signup/verify` takes
+  the code and a password: `site_signup_verify` answers ok, or wrong (the try is counted, so it
+  never raises), expired (15 minutes) or locked (5 wrong tries). The right code doesn't use the
+  signup up: `site_signup_finish` does, once the restaurant exists, so a failure in between (Auth
+  refusing the password, a timeout) can simply be tried again. "Send a new code"
+  (`site_signup_resend`) replaces the code on the same signup, with fresh tries, at most 3 codes
+  per signup and only within its first hour, since it takes no new bot check. Signups older than
+  7 days are deleted by `site_signups_cleanup()`, from the daily cron and from each new signup.
   The right code then creates the restaurant with `onboardRestaurant` (owner username `owner`,
   the email as the login, restaurant code from the name, with a 4-character suffix when taken),
   on the platform's default trial (Growth), signs the owner in and opens
@@ -2117,3 +2121,28 @@ of 16 findings were confirmed and fixed.
   its FAQ and the home page's "Plans from …" say so. Razorpay plans are still created from the
   plan price as it is: charging GST on top means Razorpay plans priced with GST (or Razorpay's
   tax settings), which is the owner's call with their GST registration.
+
+### Review fixes (website W3)
+
+Three reviewers (security, correctness and claims, accessibility and layout) and a verifier; 12
+of 15 findings were confirmed (two were duplicates, one was wrong) and all 12 are fixed.
+
+- **Resend chains:** "Send a new code" used to start a new signup from the stored details, so one
+  bot check could keep code emails going for as long as the chain was resumed. It now replaces the
+  code on the same signup, at most 3 codes and only within the signup's first hour.
+- **Code used up too early:** the right code no longer finishes the signup; a failure while
+  creating the restaurant can be retried with it. Passwords are capped at 72 bytes, as Supabase
+  Auth reads them (fewer than 72 characters in Hindi), and Auth's weak-password answer shows on
+  the password field. When the signup is over (already used, or the email has an account) the
+  form gives way to the message and its one link.
+- **Retention:** the daily cron deletes signups older than a week, so the privacy page's "at most
+  7 days" holds on a quiet site too.
+- **Forms:** the verify form posts through the server action before hydration too (never a GET
+  with the password in the URL), keeping the code and password after a wrong code with
+  controlled inputs; a new code clears the old errors; the terms and privacy links open in a new
+  tab so the half-filled form survives; "Start again" and "Use a different email" keep the plan
+  chosen on `/pricing`; a long email wraps at 320 px; one rate-limit message covers both limits.
+- **Pricing and dashboard:** the plan finder's button also leads to the free trial when signup
+  is open (a plan that doesn't exist yet still says "Let's talk"); first steps count only dishes
+  on the menu, offer autopay only when a plan can be paid online, and no longer dim finished
+  steps below readable contrast.
