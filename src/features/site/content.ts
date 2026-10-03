@@ -227,7 +227,7 @@ export const PRICING = {
     'Menu import from a photo, PDF or CSV',
     'Today’s sales and a daily report',
   ],
-  gst: 'All prices are before GST.',
+  gst: 'All prices are before GST: 18% is added to each payment.',
   noCommission:
     'No commission on your sales. Guests pay you directly, by cash, your UPI or your card machine; MenuMesh never touches that money.',
 } as const;
