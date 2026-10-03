@@ -1399,6 +1399,45 @@ export type Database = {
           },
         ]
       }
+      site_leads: {
+        Row: {
+          city: string
+          created_at: string
+          email: string | null
+          id: string
+          ip_hash: string | null
+          message: string | null
+          name: string
+          phone: string
+          plan_code: string | null
+          restaurant_name: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash?: string | null
+          message?: string | null
+          name: string
+          phone: string
+          plan_code?: string | null
+          restaurant_name: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash?: string | null
+          message?: string | null
+          name?: string
+          phone?: string
+          plan_code?: string | null
+          restaurant_name?: string
+        }
+        Relationships: []
+      }
       subscription_payments: {
         Row: {
           amount_paise: number
@@ -1997,6 +2036,10 @@ export type Database = {
           plan_code: string
           plan_name: string
         }[]
+      }
+      site_create_lead: {
+        Args: { p_ip_hash?: string; p_lead: Json }
+        Returns: string
       }
       staff_approve_order: { Args: { p_order_id: string }; Returns: Json }
       staff_close_session_unbilled: {
