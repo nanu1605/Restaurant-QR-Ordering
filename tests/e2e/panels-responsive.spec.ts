@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import { createOrderingTable } from './customer-fixtures';
 import { DEMO_PASSWORD, logInWithCode } from './helpers';
 import { createLiveRestaurant, openLiveScreen, placeCustomerOrder } from './live-fixtures';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
@@ -99,6 +100,18 @@ test('the customer menu fits a phone', async ({ page }) => {
   expect(await sweep(page, [table, `${table}/cart`, `${table}/orders`], phone)).toEqual([]);
 });
 
+test('calling a waiter keeps the menu header as it was, at a two-digit table', async ({ page }) => {
+  const ordering = await createOrderingTable({ prefix: 'header', labels: ['12'] });
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(ordering.tables['12']!.url);
+  const header = page.getByRole('banner');
+  const height = (await header.boundingBox())!.height;
+
+  await header.getByRole('button', { name: 'Call waiter' }).click();
+  await expect(header.getByRole('button', { name: 'Waiter called' })).toBeVisible();
+  expect((await header.boundingBox())!.height).toBe(height);
+});
+
 test('admin sections are in a menu sheet below laptop width', async ({ page }) => {
   await logIn(page, 'owner');
   const nav = page.getByRole('navigation', { name: 'Admin sections' });
@@ -120,26 +133,36 @@ test('on a phone the kitchen shows one column at a time, a tap away', async ({
   baseURL,
 }) => {
   const r = await createLiveRestaurant({ approval: false });
-  for (const label of ['3', '4']) {
+  const labels = ['3', '4', '5'];
+  for (const label of labels) {
     await placeCustomerOrder(r.tables[label]!.token, [
       { menu_item_id: r.item.paneer, quantity: 2 },
+      { menu_item_id: r.item.chicken65, quantity: 1 },
     ]);
   }
   const { context, page } = await openLiveScreen(browser, r, 'kitchen', '/staff/kitchen', baseURL!);
-  await page.getByRole('button', { name: /^Start all for Table 3/ }).click();
+  // Three tickets make the Preparing column taller than a phone screen.
+  for (const label of labels) {
+    await page.getByRole('button', { name: new RegExp(`^Start all for Table ${label}`) }).click();
+  }
   await page.setViewportSize({ width: 360, height: 740 });
   const column = (name: RegExp) => page.getByRole('heading', { name, level: 2 });
   const jump = page.getByRole('group', { name: 'Go to column' });
-  await expect(jump.getByRole('button', { name: 'Preparing 1' })).toBeVisible();
-  await expect(column(/^Ready/)).not.toBeInViewport();
+  await expect(jump.getByRole('button', { name: 'Preparing 3' })).toBeVisible();
+  // The next column peeks in from the side.
+  await expect(column(/^Preparing/)).not.toBeInViewport({ ratio: 1 });
+
+  // Only the columns move, not the page, and focus goes to the column.
+  await jump.getByRole('button', { name: /^Preparing/ }).click();
+  await expect(column(/^Preparing/)).toBeInViewport({ ratio: 1 });
+  await expect(column(/^Preparing/)).toBeFocused();
+  await expect(column(/^New/)).not.toBeInViewport();
+  expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
 
   await jump.getByRole('button', { name: /^Ready/ }).click();
-  await expect(column(/^Ready/)).toBeInViewport();
-  await expect(column(/^New/)).not.toBeInViewport();
-  // The page itself stays put: only the columns move.
-  expect(await page.evaluate(() => [window.scrollX, document.documentElement.scrollWidth])).toEqual(
-    [0, 360],
-  );
+  await expect(column(/^Ready/)).toBeInViewport({ ratio: 1 });
+  await expect(column(/^Ready/)).toBeFocused();
 
   // Tablets and up show the three columns side by side.
   await page.setViewportSize({ width: 768, height: 1024 });
