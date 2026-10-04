@@ -66,7 +66,7 @@ export default async function SuperSubscriptionsPage({
         <EmptyState icon={CreditCard} title="No subscriptions here" />
       ) : (
         <div className="rounded-lg border border-line bg-surface">
-          <Table>
+          <Table label="Subscriptions">
             <TableHeader>
               <TableRow>
                 <TableHead>Restaurant</TableHead>

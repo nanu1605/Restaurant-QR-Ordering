@@ -2,7 +2,7 @@ import { Money } from '@/components/shared/money';
 import { tableHeading } from '@/features/ordering/format';
 
 import { minutesLabel, type TablesReport } from '../report';
-import { ScrollRegion } from './scroll-region';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /** Table turnover (spec §19 Phase 6): how often each table filled and for how long. */
 export function TablesReportView({ report }: { report: TablesReport }) {

@@ -9,7 +9,7 @@ import { Money } from '@/components/shared/money';
 import { addDays, daysBetween } from '@/lib/date-range';
 
 import { minutesLabel, type WaiterReport, type WaiterRow } from '../report';
-import { ScrollRegion } from './scroll-region';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /**
  * Waiter report (spec §19 Phase 6, feature waiter_reports): the tables each

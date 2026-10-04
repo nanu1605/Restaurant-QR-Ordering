@@ -109,36 +109,34 @@ export function WaitersManager({
           description="Add the people who serve tables, so managers can assign them and bills show who served."
         />
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>On duty</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Login</TableHead>
-                <TableHead className="text-right">Tables today</TableHead>
-                <TableHead className="w-12">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {waiters.map((waiter) => (
-                <WaiterRow
-                  key={waiter.id}
-                  waiter={waiter}
-                  maxTablesPerWaiter={maxTablesPerWaiter}
-                  readOnly={readOnly}
-                  onEdit={() => setEditing({ waiter })}
-                  onDelete={() => setDeleting(waiter)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <Table label="Waiters">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>On duty</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Login</TableHead>
+              <TableHead className="text-right">Tables today</TableHead>
+              <TableHead className="w-12">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {waiters.map((waiter) => (
+              <WaiterRow
+                key={waiter.id}
+                waiter={waiter}
+                maxTablesPerWaiter={maxTablesPerWaiter}
+                readOnly={readOnly}
+                onEdit={() => setEditing({ waiter })}
+                onDelete={() => setDeleting(waiter)}
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>

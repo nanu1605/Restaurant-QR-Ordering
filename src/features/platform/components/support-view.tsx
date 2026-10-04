@@ -2,6 +2,7 @@ import { EyeOff } from 'lucide-react';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { Badge } from '@/components/ui/badge';
 
 import { formatDateTime, type SupportMenu, type SupportTables } from '../platform';
@@ -85,7 +86,7 @@ export function SupportTablesList({ tables }: { tables: SupportTables }) {
     return <p className="text-sm text-ink-muted">No tables yet.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+    <ScrollRegion label="Tables" className="rounded-lg border border-line bg-surface">
       <table className="w-full text-left text-sm text-ink">
         <caption className="sr-only">Tables</caption>
         <thead className="border-b border-line text-ink-muted">
@@ -115,6 +116,6 @@ export function SupportTablesList({ tables }: { tables: SupportTables }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollRegion>
   );
 }

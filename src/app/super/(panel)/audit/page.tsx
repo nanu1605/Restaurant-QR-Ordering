@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pager } from '@/components/shared/pager';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { AuditFiltersForm } from '@/features/platform/components/audit-filters';
 import { filterParams, readAuditFilters, type AuditFilters } from '@/features/platform/params';
 import { ACTOR_TYPE_LABELS, formatDateTime, type AuditRow } from '@/features/platform/platform';
@@ -47,7 +48,7 @@ export default async function SuperAuditPage({ searchParams }: PageProps<'/super
       {list.rows.length === 0 ? (
         <EmptyState icon={ScrollText} title="Nothing logged for these filters" />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <ScrollRegion label="Audit log" className="rounded-lg border border-line bg-surface">
           <table className="w-full min-w-[48rem] text-left text-sm text-ink">
             <caption className="sr-only">Audit log</caption>
             <thead className="border-b border-line text-ink-muted">
@@ -65,7 +66,7 @@ export default async function SuperAuditPage({ searchParams }: PageProps<'/super
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       )}
       <Pager
         page={list.page}
@@ -123,7 +124,7 @@ function AuditTableRow({ row }: { row: AuditRow }) {
         {changes && (
           <details>
             <summary className="cursor-pointer text-xs text-brand">Changes</summary>
-            <pre className="mt-1 max-w-md overflow-x-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+            <pre className="mt-1 max-w-md rounded bg-muted p-2 text-xs wrap-anywhere whitespace-pre-wrap">
               {JSON.stringify({ before: row.before, after: row.after }, null, 2)}
             </pre>
           </details>

@@ -63,7 +63,7 @@ export default async function SuperRestaurantsPage({
         />
       ) : (
         <div className="rounded-lg border border-line bg-surface">
-          <Table>
+          <Table label="Restaurants">
             <TableHeader>
               <TableRow>
                 <TableHead>Restaurant</TableHead>

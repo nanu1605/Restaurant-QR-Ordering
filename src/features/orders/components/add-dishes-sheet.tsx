@@ -291,7 +291,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
                     value={line.note}
                     maxLength={MAX_LINE_NOTE}
                     onChange={(event) => setCart(setLineNote(cart, key, event.target.value))}
-                    className="h-10 text-sm"
+                    className="h-11 text-sm"
                   />
                 </li>
               );

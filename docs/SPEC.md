@@ -1177,7 +1177,7 @@ Check text/background contrast ≥ 4.5:1 in both themes (white or ink text on li
 
 Typography: **Noto Sans** (with Noto Sans Devanagari for Hindi in Phase 9) via `next/font`, chosen for Latin + Devanagari coverage and clear numerals. Use `font-variant-numeric: tabular-nums` for all prices, totals and timers. Scale: 12 / 14 / 16 / 20 / 24 / 32 px; staff board labels ≥ 16 px; table labels on cards 24–32 px bold.
 
-Layout: customer — single column, max width 560 px, left-aligned text; staff board — responsive grid of table cards (min 160 px wide); admin — left sidebar navigation + content area, tables for data.
+Layout: customer — single column, max width 560 px, left-aligned text; staff board — responsive grid of table cards (min 160 px wide); kitchen view — three columns from 768 px, one swipeable column at a time on phones; admin and platform — left sidebar navigation from 1024 px (a menu sheet below) + content area, tables for data that scroll sideways in a focusable region on narrow screens (docs/DECISIONS.md B-6). Touch targets in the panel headers, the worker panel and the customer menu are at least 44 px.
 
 Motion: only in response to actions (drawer open, status change pulse ~300 ms) plus a single subtle pulse on "Needs approval" badges. Respect `prefers-reduced-motion`.
 

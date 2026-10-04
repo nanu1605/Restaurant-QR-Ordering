@@ -95,38 +95,67 @@ export function KitchenBoard() {
     });
   };
 
+  /** Scrolls the columns (not the page) to one, and moves focus there so Tab carries on in it. */
+  const jumpTo = (status: KitchenColumn) => {
+    const heading = document.getElementById(`kitchen-${status}`);
+    const column = heading?.closest('section');
+    column?.parentElement?.scrollTo({ left: column.offsetLeft - 16 });
+    heading?.focus({ preventScroll: true });
+  };
+
   return (
-    <div className="grid items-start gap-4 md:grid-cols-3">
+    <div className="flex flex-col gap-3">
       <p role="status" className="sr-only">
         {announcement}
       </p>
-      {KITCHEN_COLUMNS.map(({ status, label }) => (
-        <section key={status} aria-labelledby={`kitchen-${status}`} className="flex flex-col gap-3">
-          <h2
-            id={`kitchen-${status}`}
-            tabIndex={-1}
-            className="flex items-center gap-2 text-lg font-semibold text-ink focus-visible:outline-none"
+      {/* Phones show one column at a time: every count stays in sight, a tap jumps to it. */}
+      <div role="group" aria-label="Go to column" className="flex gap-2 md:hidden">
+        {KITCHEN_COLUMNS.map(({ status, label }) => (
+          <Button
+            key={status}
+            variant="outline"
+            size="touch"
+            className="flex-1 px-2"
+            onClick={() => jumpTo(status)}
           >
-            {label}
-            <span className="rounded-full bg-surface px-2 text-base text-ink-muted tabular-nums">
-              {columns[status].length}
-            </span>
-          </h2>
-          {columns[status].length === 0 ? (
-            <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
-              {COLUMN_EMPTY[status]}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {columns[status].map((ticket) => (
-                <li key={ticket.key}>
-                  <Ticket ticket={ticket} nowMs={nowMs} onMove={move} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ))}
+            {label} <span className="tabular-nums">{columns[status].length}</span>
+          </Button>
+        ))}
+      </div>
+      {/* Relative, so screen-reader text in a column off to the side can't widen the page. */}
+      <div className="relative -mx-4 flex snap-x snap-mandatory scroll-px-4 items-start gap-4 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0 md:pb-0">
+        {KITCHEN_COLUMNS.map(({ status, label }) => (
+          <section
+            key={status}
+            aria-labelledby={`kitchen-${status}`}
+            className="flex w-[85%] shrink-0 snap-start flex-col gap-3 md:w-auto"
+          >
+            <h2
+              id={`kitchen-${status}`}
+              tabIndex={-1}
+              className="flex items-center gap-2 text-lg font-semibold text-ink focus-visible:outline-none"
+            >
+              {label}
+              <span className="rounded-full bg-surface px-2 text-base text-ink-muted tabular-nums">
+                {columns[status].length}
+              </span>
+            </h2>
+            {columns[status].length === 0 ? (
+              <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
+                {COLUMN_EMPTY[status]}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {columns[status].map((ticket) => (
+                  <li key={ticket.key}>
+                    <Ticket ticket={ticket} nowMs={nowMs} onMove={move} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
@@ -161,14 +190,16 @@ function Ticket({
         late ? 'border-l-attention' : EDGE[ticket.status],
       )}
     >
-      <header className="flex items-baseline justify-between gap-2">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-2">
         <h3 className="text-xl font-bold text-ink">
           {heading}{' '}
-          <span className="text-base font-medium text-ink-muted">· Round {ticket.roundNumber}</span>
+          <span className="text-base font-medium whitespace-nowrap text-ink-muted">
+            · Round {ticket.roundNumber}
+          </span>
         </h3>
         <span
           className={cn(
-            'inline-flex items-center gap-1 text-sm tabular-nums',
+            'inline-flex items-center gap-1 text-sm whitespace-nowrap tabular-nums',
             late ? 'font-semibold text-attention' : 'text-ink-muted',
           )}
         >

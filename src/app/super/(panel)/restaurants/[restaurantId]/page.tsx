@@ -289,7 +289,7 @@ export default async function SuperRestaurantPage({
         {detail.payments.length === 0 ? (
           <p className="text-sm text-ink-muted">No payments yet.</p>
         ) : (
-          <Table aria-label="Payments">
+          <Table label="Payments">
             <TableHeader>
               <TableRow>
                 <TableHead>Recorded</TableHead>
@@ -324,7 +324,7 @@ export default async function SuperRestaurantPage({
         {imports.length === 0 ? (
           <p className="text-sm text-ink-muted">No menu imports yet.</p>
         ) : (
-          <Table aria-label="Menu imports">
+          <Table label="Menu imports">
             <TableHeader>
               <TableRow>
                 <TableHead>Started</TableHead>

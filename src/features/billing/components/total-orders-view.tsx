@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { buttonVariants } from '@/components/ui/button';
 import { formatBillDate, formatClockTime } from '@/features/ordering/format';
 import { formatElapsed } from '@/features/orders/board-view';
@@ -84,13 +85,16 @@ export function TotalOrdersResults({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <ScrollRegion
+        label={data.view === 'bills' ? 'Bills' : 'Tables closed without a bill'}
+        className="rounded-lg border border-line bg-surface"
+      >
         {data.view === 'bills' ? (
           <BillsTable rows={data.rows} timezone={timezone} range={range} linkBills={linkBills} />
         ) : (
           <ClosedTable rows={data.rows} timezone={timezone} range={range} />
         )}
-      </div>
+      </ScrollRegion>
       <Pagination data={data} filters={filters} basePath={basePath} />
     </div>
   );

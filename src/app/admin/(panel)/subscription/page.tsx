@@ -205,7 +205,7 @@ export default async function SubscriptionPage({ searchParams }: PageProps<'/adm
         {payments.length === 0 ? (
           <p className="text-sm text-ink-muted">No payments yet.</p>
         ) : (
-          <Table aria-label="Payments">
+          <Table label="Payments">
             <TableHeader>
               <TableRow>
                 <TableHead>Paid on</TableHead>
