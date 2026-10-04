@@ -2331,3 +2331,51 @@ All 6 are fixed.
   table.
 - **SPEC §16.2's 44 px line** didn't yet hold for the customer menu's Terms and Privacy links or
   the add-dishes note box; both are 44 px now.
+
+### B4 · Installed app
+
+- **B-7 · Installing the panels:**
+  - **Install app item.** The staff and admin account menus have an "Install app" item, which
+    appears only when this device can install the panel:
+    - Where the browser offers its own prompt (Chrome and Edge, on Android and on laptops), the
+      item opens that prompt. `beforeinstallprompt` is caught when the menu's module loads, so
+      a prompt fired before React hydrates isn't lost. A prompt can be shown only once, so the
+      item then goes away.
+    - In Safari on an iPhone or iPad (`navigator.standalone === false`), the item explains:
+      tap Share (under ••• in the compact layout iOS 26 uses by default), then Add to Home
+      Screen. The steps stay on screen until closed. Apps' own in-app browsers, which leave
+      "Safari/" out of their user agent and can't add to the Home Screen, don't get the item.
+    - Once the app is installed there is nothing to offer, and the platform admin panel, which
+      has no manifest, never shows the item.
+    - The layouts pass `installable` to the header rather than the menu looking for the
+      manifest link: after the client-side navigation from login, Next adds that link to the
+      head after the menu has rendered.
+  - **Safe areas.** The viewport keeps the default `viewport-fit=auto` and does not switch to
+    `cover`. With `auto`, iOS and Android keep the page inside the safe area themselves: clear
+    of the notch, the home indicator and the camera cut-out. That is why the safe-area insets
+    read 0. `cover` would only draw under those areas, and in return every element along a
+    screen edge would have to pad itself: the sheets, the table drawer's footer, the website's
+    sticky call to action. The cart bar's and options sheet's `env()` padding stays and takes
+    effect if `cover` is ever turned on.
+  - **Status bar.** iOS keeps the default status bar style: `black-translucent` would draw
+    white text over the light header.
+  - **Left out of the manifest.** No shortcuts (they depend on the role), no screenshots, no
+    orientation (any is the default).
+  - **Tests.** The colour-contrast sweep now also runs on the tablet and phone projects. That
+    caught the website still fading in under the OS "reduce motion" setting: the hero jumps to
+    its last scene, and its parts faded in, so axe read text mid-fade. `SiteMotion` now also
+    gives the whole site a zero-length default transition on reduce motion, so scenes appear at
+    once. The demo's tickets and the how-it-works pictures keep their own short fades, which
+    follow a click or a scroll.
+  - **To check on real devices** (not automated): install on an Android tablet in Chrome and
+    on an iPhone or iPad with Add to Home Screen. Check the icon, the splash screen, the theme,
+    the edges of the screen and the status bar.
+
+### Review fixes (B4)
+
+Three reviewers (install logic, UX and accessibility, tests and docs) and a verifier. Of 10
+findings, 2 were confirmed and they were the same problem, now fixed. The Safari steps said "tap
+Share", but iOS 26's default layout keeps Share under •••. The steps now say so and stay on
+screen until closed, and in-app browsers that can't install no longer offer it. The verifier
+also noted, and B-7 accepts, that catching `beforeinstallprompt` hides Chrome's mini-infobar on
+Android. Chrome's own menu still offers Install.

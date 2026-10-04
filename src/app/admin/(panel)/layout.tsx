@@ -39,6 +39,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
           userName={membership.displayName}
           roleLabel={ROLE_LABELS[membership.role]}
           switchTo={{ href: '/staff', label: 'Worker panel' }}
+          installable
           leading={<AdminMobileNav role={membership.role} />}
         >
           <LiveStatus />
