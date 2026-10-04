@@ -40,11 +40,31 @@ test('Safari on an iPhone or iPad gets the Add to Home Screen steps', async ({ p
   await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: false }));
   await openAccountMenu(page);
   await installItem(page).click();
-  await expect(page.getByText('To install, tap Share, then Add to Home Screen.')).toBeVisible();
+  await expect(
+    page.getByText(
+      /^To install, tap Share \(under ••• if you don’t see it\), then Add to Home Screen\.$/,
+    ),
+  ).toBeVisible();
 });
 
 test('the installed app doesn’t offer to install itself', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
   await openAccountMenu(page);
   await expect(installItem(page)).toHaveCount(0);
+});
+
+test('an app’s in-app browser, which can’t add to the Home Screen, gets no steps', async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    baseURL,
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram',
+  });
+  const page = await context.newPage();
+  await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: false }));
+  await openAccountMenu(page);
+  await expect(installItem(page)).toHaveCount(0);
+  await context.close();
 });
