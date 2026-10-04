@@ -2331,3 +2331,37 @@ All 6 are fixed.
   table.
 - **SPEC §16.2's 44 px line** didn't yet hold for the customer menu's Terms and Privacy links or
   the add-dishes note box; both are 44 px now.
+
+### B4 · Installed app
+
+- **B-7 · Installing the panels:**
+  - **Install app item.** The staff and admin account menus have an "Install app" item, which
+    appears only when this device can install the panel:
+    - Where the browser offers its own prompt (Chrome and Edge, on Android and on laptops), the
+      item opens that prompt. `beforeinstallprompt` is caught when the menu's module loads, so
+      a prompt fired before React hydrates isn't lost. A prompt can be shown only once, so the
+      item then goes away.
+    - In Safari on an iPhone or iPad (`navigator.standalone === false`), the item explains:
+      tap Share, then Add to Home Screen.
+    - Once the app is installed there is nothing to offer, and the platform admin panel, which
+      has no manifest, never shows the item.
+    - The layouts pass `installable` to the header rather than the menu looking for the
+      manifest link: after the client-side navigation from login, Next adds that link to the
+      head after the menu has rendered.
+  - **Safe areas.** The viewport keeps the default `viewport-fit=auto` and does not switch to
+    `cover`. With `auto`, iOS and Android keep the page inside the safe area themselves: clear
+    of the notch, the home indicator and the camera cut-out. That is why the safe-area insets
+    read 0. `cover` would only draw under those areas, and in return every element along a
+    screen edge would have to pad itself: the sheets, the table drawer's footer, the website's
+    sticky call to action. The cart bar's and options sheet's `env()` padding stays and takes
+    effect if `cover` is ever turned on.
+  - **Status bar.** iOS keeps the default status bar style: `black-translucent` would draw
+    white text over the light header.
+  - **Left out of the manifest.** No shortcuts (they depend on the role), no screenshots, no
+    orientation (any is the default).
+  - **Tests.** The colour-contrast sweep now also runs on the tablet and phone projects. It
+    waits for entrance animations to finish first: on reduced motion the website's hero jumps to
+    its last scene but still fades in, and axe was reading text mid-fade.
+  - **To check on real devices** (not automated): install on an Android tablet in Chrome and
+    on an iPhone or iPad with Add to Home Screen. Check the icon, the splash screen, the theme,
+    the edges of the screen and the status bar.
