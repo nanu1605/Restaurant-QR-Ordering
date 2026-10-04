@@ -2359,9 +2359,12 @@ All 6 are fixed.
     white text over the light header.
   - **Left out of the manifest.** No shortcuts (they depend on the role), no screenshots, no
     orientation (any is the default).
-  - **Tests.** The colour-contrast sweep now also runs on the tablet and phone projects. It
-    waits for entrance animations to finish first: on reduced motion the website's hero jumps to
-    its last scene but still fades in, and axe was reading text mid-fade.
+  - **Tests.** The colour-contrast sweep now also runs on the tablet and phone projects. That
+    caught the website still fading in under the OS "reduce motion" setting: the hero jumps to
+    its last scene, and its parts faded in, so axe read text mid-fade. `SiteMotion` now also
+    gives the whole site a zero-length default transition on reduce motion, so scenes appear at
+    once. The demo's tickets and the how-it-works pictures keep their own short fades, which
+    follow a click or a scroll.
   - **To check on real devices** (not automated): install on an Android tablet in Chrome and
     on an iPhone or iPad with Add to Home Screen. Check the icon, the splash screen, the theme,
     the edges of the screen and the status bar.

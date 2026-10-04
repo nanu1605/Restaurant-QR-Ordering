@@ -6,11 +6,13 @@ import { useSyncExternalStore } from 'react';
 /**
  * The website's animations (docs/DECISIONS.md W-3): `m` components with the
  * small dom-animation bundle only (`strict` refuses the full `motion` ones).
- * With the OS "reduce motion" setting, movement becomes instant.
+ * With the OS "reduce motion" setting nothing moves, and scenes appear without fading in
+ * (docs/DECISIONS.md B-7); only fades that set their own timing stay.
  */
 export function SiteMotion({ children }: { children: React.ReactNode }) {
+  const reduced = usePrefersReducedMotion();
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion="user" transition={reduced ? { duration: 0 } : undefined}>
       <LazyMotion features={domAnimation} strict>
         {children}
       </LazyMotion>
