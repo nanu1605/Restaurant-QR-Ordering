@@ -50,7 +50,8 @@ function useInstall(installable: boolean): 'prompt' | 'safari' | null {
       if (!installable) return null;
       if (installPrompt) return 'prompt';
       const { standalone } = navigator as Navigator & { standalone?: boolean };
-      return standalone === false ? 'safari' : null;
+      // Apps' own in-app browsers leave "Safari/" out and can't add to the Home Screen.
+      return standalone === false && /Safari\//.test(navigator.userAgent) ? 'safari' : null;
     },
     () => null,
   );
@@ -58,7 +59,10 @@ function useInstall(installable: boolean): 'prompt' | 'safari' | null {
 
 function install(how: 'prompt' | 'safari') {
   if (how === 'safari') {
-    toast('To install, tap Share, then Add to Home Screen.', { duration: 10_000 });
+    // It stays until closed, while the steps are followed.
+    toast('To install, tap Share (under ••• if you don’t see it), then Add to Home Screen.', {
+      duration: Infinity,
+    });
     return;
   }
   // A prompt can only be shown once.
