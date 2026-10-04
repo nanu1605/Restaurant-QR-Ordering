@@ -21,6 +21,13 @@ async function sweep(page: Page, paths: string[]) {
     for (const path of paths) {
       // The website keeps loading in the background (demo, analytics): 'load' is enough.
       await page.goto(path, { waitUntil: 'load' });
+      // Text mid-fade isn't what people read: let entrance animations finish (looping ones
+      // never do).
+      await page.waitForFunction(() =>
+        document
+          .getAnimations()
+          .every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+      );
       const { violations } = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
       for (const node of violations.flatMap((v) => v.nodes)) {
         failures.push(`${theme} ${path} ${node.target.join(' ')}: ${node.any[0]?.message}`);

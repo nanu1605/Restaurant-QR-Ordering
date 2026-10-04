@@ -30,12 +30,12 @@ export default defineConfig({
       // The customer panel is mobile-first (spec §13.1): it runs on the phone only.
       testIgnore: /customer-.*\.spec\.ts/,
     },
-    // The public website and the admin menu sheet are checked on a tablet too
-    // (docs/DECISIONS.md W-4, B-6).
+    // The public website, the admin menu sheet and colour contrast are checked on a tablet
+    // too (docs/DECISIONS.md W-4, B-6, B-7).
     {
       name: 'tablet',
       use: { ...devices['iPad Mini'], browserName: 'chromium' },
-      testMatch: /(site|site-demo|admin-nav)\.spec\.ts/,
+      testMatch: /(site|site-demo|admin-nav|contrast)\.spec\.ts/,
     },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.
@@ -45,7 +45,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|contrast|panels-responsive)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|billing|reports|super-admin|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
       ],
     },
   ],
