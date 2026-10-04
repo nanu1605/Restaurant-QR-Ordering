@@ -43,6 +43,7 @@ export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
             userName={membership.displayName}
             roleLabel={ROLE_LABELS[membership.role]}
             switchTo={canOpenAdmin ? { href: '/admin', label: 'Admin panel' } : undefined}
+            installable
           >
             <LiveStatus />
           </PanelHeader>

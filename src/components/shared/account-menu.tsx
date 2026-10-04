@@ -1,8 +1,9 @@
 'use client';
 
-import { ArrowLeftRight, ChevronDown, CircleUser, LogOut } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, CircleUser, Download, LogOut } from 'lucide-react';
 import Link from 'next/link';
-import { useRef } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -17,16 +18,72 @@ import { ThemeRadioGroup } from '@/features/theme/theme-switch';
 
 const ITEM = 'min-h-11 px-2';
 
+type InstallPrompt = Event & { prompt: () => Promise<unknown> };
+
+// Chrome offers the install once per page load, perhaps before React hydrates, so it is kept
+// from the moment this module loads.
+let installPrompt: InstallPrompt | null = null;
+const installListeners = new Set<() => void>();
+function setInstallPrompt(prompt: InstallPrompt | null) {
+  installPrompt = prompt;
+  installListeners.forEach((listener) => listener());
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    setInstallPrompt(event as InstallPrompt);
+  });
+  window.addEventListener('appinstalled', () => setInstallPrompt(null));
+}
+
+/**
+ * How this device can install the panel (docs/DECISIONS.md B-7): the browser's own prompt, or
+ * Safari's Share → Add to Home Screen on an iPhone or iPad. Nothing once it is installed.
+ */
+function useInstall(installable: boolean): 'prompt' | 'safari' | null {
+  return useSyncExternalStore(
+    (onChange) => {
+      installListeners.add(onChange);
+      return () => installListeners.delete(onChange);
+    },
+    () => {
+      if (!installable) return null;
+      if (installPrompt) return 'prompt';
+      const { standalone } = navigator as Navigator & { standalone?: boolean };
+      return standalone === false ? 'safari' : null;
+    },
+    () => null,
+  );
+}
+
+function install(how: 'prompt' | 'safari') {
+  if (how === 'safari') {
+    toast('To install, tap Share, then Add to Home Screen.', { duration: 10_000 });
+    return;
+  }
+  // A prompt can only be shown once.
+  installPrompt?.prompt().catch(() => {});
+  setInstallPrompt(null);
+}
+
 type AccountMenuProps = {
   userName: string;
   roleLabel: string;
   /** Link to another panel the user can open. */
   switchTo?: { href: string; label: string };
+  /** The panel has the install manifest (the staff and admin panels). */
+  installable?: boolean;
 };
 
-/** Who is signed in, the other panel, the theme and Log out, in one menu. */
-export function AccountMenu({ userName, roleLabel, switchTo }: AccountMenuProps) {
+/** Who is signed in, the other panel, the theme, installing the app and Log out, in one menu. */
+export function AccountMenu({
+  userName,
+  roleLabel,
+  switchTo,
+  installable = false,
+}: AccountMenuProps) {
   const logout = useRef<HTMLFormElement>(null);
+  const canInstall = useInstall(installable);
   return (
     <>
       <form ref={logout} action="/logout" method="post" hidden />
@@ -61,6 +118,12 @@ export function AccountMenu({ userName, roleLabel, switchTo }: AccountMenuProps)
           )}
           <ThemeRadioGroup itemClassName={ITEM} />
           <DropdownMenuSeparator />
+          {canInstall && (
+            <DropdownMenuItem className={ITEM} onClick={() => install(canInstall)}>
+              <Download aria-hidden />
+              Install app
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem className={ITEM} onClick={() => logout.current?.requestSubmit()}>
             <LogOut aria-hidden />
             Log out

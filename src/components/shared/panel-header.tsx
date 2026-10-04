@@ -12,6 +12,8 @@ type PanelHeaderProps = {
   roleLabel: string;
   /** Link to another panel the user can open. */
   switchTo?: { href: string; label: string };
+  /** Offer "Install app": the panel links the install manifest (lib/config.ts INSTALLABLE). */
+  installable?: boolean;
   /** Before the title, e.g. the navigation button on narrow screens. */
   leading?: ReactNode;
   /** Extra controls, e.g. the connection indicator on live screens. */
@@ -24,6 +26,7 @@ export function PanelHeader({
   userName,
   roleLabel,
   switchTo,
+  installable,
   leading,
   children,
 }: PanelHeaderProps) {
@@ -40,7 +43,12 @@ export function PanelHeader({
 
       <div className="flex items-center gap-3">
         {children}
-        <AccountMenu userName={userName} roleLabel={roleLabel} switchTo={switchTo} />
+        <AccountMenu
+          userName={userName}
+          roleLabel={roleLabel}
+          switchTo={switchTo}
+          installable={installable}
+        />
       </div>
     </header>
   );
