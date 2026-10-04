@@ -2342,7 +2342,9 @@ All 6 are fixed.
       a prompt fired before React hydrates isn't lost. A prompt can be shown only once, so the
       item then goes away.
     - In Safari on an iPhone or iPad (`navigator.standalone === false`), the item explains:
-      tap Share, then Add to Home Screen.
+      tap Share (under ••• in the compact layout iOS 26 uses by default), then Add to Home
+      Screen. The steps stay on screen until closed. Apps' own in-app browsers, which leave
+      "Safari/" out of their user agent and can't add to the Home Screen, don't get the item.
     - Once the app is installed there is nothing to offer, and the platform admin panel, which
       has no manifest, never shows the item.
     - The layouts pass `installable` to the header rather than the menu looking for the
@@ -2368,3 +2370,12 @@ All 6 are fixed.
   - **To check on real devices** (not automated): install on an Android tablet in Chrome and
     on an iPhone or iPad with Add to Home Screen. Check the icon, the splash screen, the theme,
     the edges of the screen and the status bar.
+
+### Review fixes (B4)
+
+Three reviewers (install logic, UX and accessibility, tests and docs) and a verifier. Of 10
+findings, 2 were confirmed and they were the same problem, now fixed. The Safari steps said "tap
+Share", but iOS 26's default layout keeps Share under •••. The steps now say so and stay on
+screen until closed, and in-app browsers that can't install no longer offer it. The verifier
+also noted, and B-7 accepts, that catching `beforeinstallprompt` hides Chrome's mini-infobar on
+Android. Chrome's own menu still offers Install.
