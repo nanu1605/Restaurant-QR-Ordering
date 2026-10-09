@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 
 import { withDeviceCookie } from '@/features/ordering/device';
+import { APP_DOMAIN } from '@/lib/config';
 import { contentSecurityPolicy } from '@/lib/csp';
 import { getPublicEnv } from '@/lib/env';
 import { updateSession } from '@/lib/supabase/proxy';
@@ -28,14 +29,17 @@ export async function proxy(request: NextRequest) {
     ? await withDeviceCookie(request)
     : await updateSession(request);
   response.headers.set('Content-Security-Policy', csp);
+  // Only menumesh.in is for search engines: not staging, Vercel's own addresses or local runs
+  // (docs/DECISIONS.md W-12).
+  if (request.nextUrl.hostname !== APP_DOMAIN) response.headers.set('X-Robots-Tag', 'noindex');
   return response;
 }
 
 export const config = {
   matcher: [
-    // Everything except static assets, the install files and API routes (they
-    // authenticate themselves).
+    // Everything except static assets, the install and search-engine files and API routes
+    // (they authenticate themselves).
     // Server actions post to their page's path, so /t/* actions pass through here too.
-    '/((?!_next/static|_next/image|favicon.ico|icon/|apple-icon|sw\\.js|app\\.webmanifest|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon/|apple-icon|sw\\.js|app\\.webmanifest|robots\\.txt|sitemap\\.xml|opengraph-image|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
