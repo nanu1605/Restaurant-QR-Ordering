@@ -8,6 +8,7 @@ import { STRINGS } from '@/features/ordering/strings';
 import { parseTheme, THEME_COOKIE } from '@/features/theme/theme';
 import { ThemeProvider } from '@/features/theme/theme-switch';
 import { APP_NAME, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
+import { getPublicEnv } from '@/lib/env';
 
 import './globals.css';
 
@@ -18,6 +19,8 @@ const notoSans = Noto_Sans({
 });
 
 export const metadata: Metadata = {
+  // Absolute link-preview and canonical URLs on this environment's host (docs/DECISIONS.md W-12).
+  metadataBase: new URL(getPublicEnv().NEXT_PUBLIC_APP_URL),
   title: {
     default: APP_NAME,
     template: `%s · ${APP_NAME}`,

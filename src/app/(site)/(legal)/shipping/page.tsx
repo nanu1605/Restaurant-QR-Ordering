@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 
 import { APP_NAME } from '@/lib/config';
 
-export const metadata: Metadata = { title: 'Shipping and delivery' };
+export const metadata: Metadata = {
+  title: 'Shipping and delivery',
+  description:
+    'MenuMesh is used in the browser: nothing is shipped, and an account is ready as soon as it is created.',
+};
 
 export default function ShippingPage() {
   return (

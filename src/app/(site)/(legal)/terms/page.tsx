@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 
 import { APP_NAME } from '@/lib/config';
 
-export const metadata: Metadata = { title: 'Terms of service' };
+export const metadata: Metadata = {
+  title: 'Terms of service',
+  description: 'The terms for restaurants using MenuMesh and for their guests.',
+};
 
 export default function TermsPage() {
   return (
