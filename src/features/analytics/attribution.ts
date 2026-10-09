@@ -20,6 +20,16 @@ export function landingSource(url: string, referrer: string): Source {
   return source;
 }
 
+/** A stored source as short lines for the platform team ("newsletter / email", …). */
+export function describeSource(source: unknown): string[] {
+  const tags = (typeof source === 'object' && source !== null ? source : {}) as Source;
+  return [
+    [tags.utm_source, tags.utm_medium].filter(Boolean).join(' / '),
+    tags.utm_campaign ? `Campaign: ${tags.utm_campaign}` : '',
+    tags.referrer ? `From ${tags.referrer}` : '',
+  ].filter(Boolean);
+}
+
 let landing: Source | undefined;
 let visitorId: string | undefined;
 
