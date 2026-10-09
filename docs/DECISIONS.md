@@ -1625,8 +1625,9 @@ devices; Sentry on every page, errors only.
   `SENTRY_AUTH_TOKEN` is set. One public DSN (`NEXT_PUBLIC_SENTRY_DSN`) serves both sides; the
   unused `SENTRY_DSN` is gone. `NEXT_PUBLIC_SENTRY_ENVIRONMENT` names staging and production,
   which are both Vercel "production" deployments.
-- **P10-4 · PostHog, panels only:** `PanelAnalytics` in the staff, admin and super layouts
-  imports `posthog-js` after the page, only with a key: pageviews and autocapture with all text
+- **P10-4 · PostHog, panels only** (and the website since W-13)**:** `PanelAnalytics` in the
+  staff, admin and super layouts imports `posthog-js` after the page, only with a key: pageviews
+  and autocapture with all text
   and element attributes masked (waiters' names are in button labels), no session recording or
   surveys, and people identified by member (or admin) id with their role and restaurant id, never
   names or emails; a different login on the same device starts a new person. The customer panel
@@ -2200,6 +2201,72 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     against the prices shown, the canonical of a link with a plan, and the not-found page. The
     smoke suite checks robots and the sitemap after every deploy, and that the noindex header is
     present on staging and absent on menumesh.in.
+- **W-13 · Website analytics:**
+  - **PostHog on the website, with nothing kept on the device.** `SiteAnalytics` in the `(site)`
+    layout loads `posthog-js` once the page is idle, and only when a key is set:
+    - persistence `memory`, so a visit lasts until the page is reloaded and a visit on another
+      day counts as new; no cookie, no storage and no consent banner;
+    - anonymous: no person profiles;
+    - a pageview on each route change, but no autocapture, since with everything masked it can't
+      tell buttons apart;
+    - no recordings, surveys, product tours or chat;
+    - ad-click ids (gclid, fbclid and others) masked in page addresses;
+    - `debug: false`, because `?__posthog_debug=true` would otherwise write a flag to
+      localStorage.
+
+    Under Do Not Track or Global Privacy Control it doesn't load at all. One leftover: at load,
+    posthog-js checks that localStorage works by writing a test key and removing it at once, so
+    nothing stays. Diners never load it, since the customer pages are outside the group. The
+    panels are unchanged (P10-4). The only client-side moves from the website into a panel are
+    logging in and finishing a signup. There the website's instance carries on until a reload,
+    and the panel's reset and identify start the member's own person.
+
+  - **Calls to action.** Links to `/signup` and `/contact` send
+    `cta_clicked {target, location, plan, cycle}`, through one click listener. The location comes
+    from the nearest `data-cta`: header, menu, hero, sticky, plan_card, plan_finder, final, demo,
+    footer, or `page` when there is none.
+  - **Where a visit came from.**
+    - **What:** `utm_source`, `utm_medium` and `utm_campaign` from the landing link, plus the
+      referring site's host when it isn't this site. They are noted on the first website page of
+      the visit and kept in module memory, not storage. Ad-click ids are not kept.
+    - **How it reaches the server:** the demo-request and sign-up forms send one hidden
+      `attribution` field. It holds the tags, the visit's PostHog id and the Do Not Track flag.
+    - **Where it is stored:** `private.site_source` cleans it, keeping the known keys only, each
+      up to 100 characters.
+      - Demo requests keep it in `site_leads.source`.
+      - Signups keep it in `details.source`. `site_signup_finish(id, restaurant_id)` copies it to
+        `restaurants.signup_source`, because signups are purged after 7 days.
+    - **Where it shows:** a Source column in /super/leads.
+    - **Under Do Not Track:** it is still kept, since it is first-party and sent with the visitor's
+      own form.
+  - **Conversions are sent from the server.**
+    - **Events:** `lead_submitted`, `signup_started` and `signup_completed`.
+    - **How:** the server actions send them in `after()`, with a plain fetch to the region's
+      `/batch/` endpoint. There is no posthog-node, and ad blockers can't drop them.
+    - **Properties:**
+      - the plan and cycle, plus the restaurant id on `signup_completed`;
+      - the campaign tags and `$referring_domain`;
+      - `$host`, since staging and production share one project;
+      - `$process_person_profile: false`;
+      - `$geoip_disable`, since the location would otherwise be the server's.
+
+      Never a name, email, phone or message.
+
+    - **Distinct id:** the visit's own id, so the funnel joins up; a fresh id when there is none.
+    - Skipped under Do Not Track or Global Privacy Control. A failure is only logged.
+  - **Automated browsers.** posthog-js drops events from headless and webdriver browsers, though
+    it still loads its settings. End-to-end and smoke runs therefore never count as visits.
+  - **Not done:**
+    - joining a website visit to the owner's person (the panels' reset and identify are
+      unchanged);
+    - a separate staging project, which is the owner's choice (filter by `$host` meanwhile);
+    - "came from" on the super-admin restaurant page (the data is in the database).
+  - **Tests:**
+    - unit: `website-analytics.test.ts`;
+    - pgTAP: the source in 450 and 452;
+    - end-to-end: the demo request and the signup keep their campaign tags;
+    - smoke, on deployed sites: PostHog loads on /pricing (each request is noted and dropped),
+      no PostHog cookie or storage is left, and none of it loads on `/t`.
 
 ## Brand refresh (after launch, from 2026-10-03)
 

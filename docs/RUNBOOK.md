@@ -61,7 +61,9 @@ and the version check. Re-run the workflow instead.
    with IP addresses not stored and the data scrubber on, and an organization token for
    `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded. Both talk to their own
    domains, so a browser with an ad blocker sends them nothing: allow the app's domain in the
-   blocker on restaurant tablets if their usage should count.
+   blocker on restaurant tablets if their usage should count. The website uses the same project
+   without cookies (docs/DECISIONS.md W-13). Its server-sent sign-up and demo events carry
+   `$host`, so filter staging out of funnels, or give staging its own PostHog project and key.
 5. **Backups** (production, while on Supabase's free plan): the secret `BACKUP_PASSPHRASE`, a
    long random passphrase also kept in the owner's password manager, and, once production exists,
    the variable `BACKUP_PRODUCTION` = `true` (see Backups and restore).

@@ -145,7 +145,7 @@ The user's original wording calls the staff panel the **Worker panel**; use "Wor
 | Email | Resend (+ react-email) | Phase 8: invites, trial/payment reminders |
 | PWA | Serwist (or the currently maintained Next.js PWA option) | Phase 9, staff panel installable |
 | Errors | Sentry | |
-| Product analytics | PostHog | Staff/admin usage only; no customer tracking beyond anonymous page events |
+| Product analytics | PostHog | Staff/admin usage, and website visits without cookies (docs/DECISIONS.md W-13); never diners' phones |
 | Unit tests | Vitest | |
 | DB tests | pgTAP via `supabase test db` | RLS isolation, business functions, billing math |
 | E2E tests | Playwright | Multi-context flows (customer + waiter + admin) |
@@ -1196,7 +1196,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Reliability | Staff screens recover automatically after network loss; no double orders on retry (idempotency); no lost status updates (Phase 9 offline queue) |
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
 | Security | §9; cross-tenant isolation tested |
-| Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Privacy policy and terms pages (content supplied by the user) |
+| Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Website analytics keep nothing on the device; campaign tags are kept with leads and signups (W-13). Privacy policy and terms pages (content supplied by the user) |
 | Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00) |
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
