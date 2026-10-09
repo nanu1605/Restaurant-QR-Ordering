@@ -62,8 +62,11 @@ and the version check. Re-run the workflow instead.
    `SENTRY_AUTH_TOKEN`; a PostHog project with client IP data discarded. Both talk to their own
    domains, so a browser with an ad blocker sends them nothing: allow the app's domain in the
    blocker on restaurant tablets if their usage should count. The website uses the same project
-   without cookies (docs/DECISIONS.md W-13). Its server-sent sign-up and demo events carry
-   `$host`, so filter staging out of funnels, or give staging its own PostHog project and key.
+   without cookies (docs/DECISIONS.md W-13). Staging shares the project too (PostHog's free plan
+   has one), so keep it out of the numbers: in PostHog, Settings → Project → Filter out internal
+   and test users, add the event property `$host` equals `menumesh.in`, turn on Enable this
+   filter on all new insights, then Turn on for existing insights. Every event, from the browser
+   or the server, carries `$host`. Staging events still show in Activity.
 5. **Backups** (production, while on Supabase's free plan): the secret `BACKUP_PASSPHRASE`, a
    long random passphrase also kept in the owner's password manager, and, once production exists,
    the variable `BACKUP_PRODUCTION` = `true` (see Backups and restore).
