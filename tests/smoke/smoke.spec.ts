@@ -37,6 +37,20 @@ test('the staff app can be installed', async ({ request }) => {
   expect(icon.headers()['content-type']).toBe('image/png');
 });
 
+test('search engines find the sitemap, and only menumesh.in may be indexed', async ({
+  request,
+  baseURL,
+}) => {
+  const robots = await request.get('/robots.txt');
+  expect(robots.status()).toBe(200);
+  expect(await robots.text()).toMatch(/Sitemap: \S+\/sitemap\.xml/);
+  expect((await request.get('/sitemap.xml')).status()).toBe(200);
+  // docs/DECISIONS.md W-12: staging and every other host send noindex.
+  const robotsTag = (await request.get('/')).headers()['x-robots-tag'];
+  if (new URL(baseURL!).hostname === 'menumesh.in') expect(robotsTag).toBeUndefined();
+  else expect(robotsTag).toBe('noindex');
+});
+
 test('the terms and privacy pages are up', async ({ request }) => {
   for (const path of ['/terms', '/privacy']) {
     expect((await request.get(path)).status(), path).toBe(200);
