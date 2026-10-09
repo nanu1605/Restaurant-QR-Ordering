@@ -1,16 +1,37 @@
 'use client';
 
+import type { CaptureResult, PostHog } from 'posthog-js';
 import { useEffect } from 'react';
 
 import { posthogHosts } from '@/lib/posthog-hosts';
 
 import { doNotTrack, rememberLanding, setVisitorId } from './attribution';
 
+/** The website's own pages: the home page, its sections, sign-up and the policies. */
+export function isWebsitePath(pathname: string) {
+  return /^\/(features|pricing|demo|contact|signup(\/verify)?|terms|privacy|refund|shipping)?$/.test(
+    pathname,
+  );
+}
+
 /**
- * PostHog on the website (docs/DECISIONS.md W-13): nothing kept in cookies or storage, so a
- * visit lasts until the page is reloaded and no consent banner is needed. No automatic click
- * capture (with everything masked it can't tell buttons apart): the calls to action send
- * `cta_clicked` instead. No recordings, surveys, tours or chat.
+ * Only website pages are counted: a diner can reach the policies from the menu, and a visitor
+ * can log in, by a client-side link, and the instance lives on after it. Full referrer URLs go
+ * too (a menu address holds its table's code); the referring domain stays.
+ */
+function websiteOnly(event: CaptureResult | null): CaptureResult | null {
+  if (!event || !isWebsitePath(window.location.pathname)) return null;
+  delete event.properties.$referrer;
+  delete event.properties.$initial_referrer;
+  return event;
+}
+
+/**
+ * PostHog on the website (docs/DECISIONS.md W-13), in its own instance so the panels' (P10-4)
+ * is never shared: nothing kept in cookies or storage, so a visit lasts until the page is
+ * reloaded and no consent banner is needed. No automatic click capture (with everything masked
+ * it can't tell buttons apart): the calls to action send `cta_clicked` instead. No recordings,
+ * surveys, tours or chat.
  */
 export const SITE_POSTHOG_OPTIONS = {
   api_host: posthogHosts(process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined).api,
@@ -29,7 +50,10 @@ export const SITE_POSTHOG_OPTIONS = {
   disable_conversations: true,
   // ?__posthog_debug=true would otherwise turn on a debug flag kept in localStorage.
   debug: false,
+  before_send: websiteOnly,
 } as const;
+
+let site: PostHog | undefined;
 
 /** A click on a link to sign-up or a demo request, as a `cta_clicked` event; else null. */
 export function ctaClick(href: string, location: string | undefined) {
@@ -60,13 +84,15 @@ export function SiteAnalytics() {
     const load = () =>
       void import('posthog-js').then(({ default: posthog }) => {
         if (stopped) return;
-        if (!posthog.__loaded) posthog.init(key, SITE_POSTHOG_OPTIONS);
-        setVisitorId(posthog.get_distinct_id());
+        site ??= posthog.init(key, SITE_POSTHOG_OPTIONS, 'website');
+        if (!site) return;
+        const instance = site;
+        setVisitorId(instance.get_distinct_id());
         const onClick = (event: MouseEvent) => {
           const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
           if (!(link instanceof HTMLAnchorElement)) return;
           const click = ctaClick(link.href, link.closest<HTMLElement>('[data-cta]')?.dataset.cta);
-          if (click) posthog.capture('cta_clicked', click);
+          if (click) instance.capture('cta_clicked', click);
         };
         document.addEventListener('click', onClick, { capture: true });
         stopListening = () => document.removeEventListener('click', onClick, { capture: true });

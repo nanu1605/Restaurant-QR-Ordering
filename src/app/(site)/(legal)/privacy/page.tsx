@@ -75,11 +75,11 @@ export default function PrivacyPage() {
         <h2>Service providers</h2>
         <p>
           Supabase (database, Mumbai, India), Vercel (hosting), Sentry (error reports), PostHog (EU;
-          how this website and the staff and admin screens are used, never diners’ phones), Razorpay
-          (subscription payments by restaurants), Resend (sign-up codes, welcome and billing emails
-          to owners, and demo requests to our team) and Cloudflare Turnstile (a bot check on the
-          website’s forms, which sees your network address and browser signals). [Confirm the list
-          and their regions.]
+          how this website and the staff and admin screens are used, never the menu diners order
+          from), Razorpay (subscription payments by restaurants), Resend (sign-up codes, welcome and
+          billing emails to owners, and demo requests to our team) and Cloudflare Turnstile (a bot
+          check on the website’s forms, which sees your network address and browser signals).
+          [Confirm the list and their regions.]
         </p>
       </section>
       <section>

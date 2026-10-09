@@ -1,3 +1,4 @@
+import type { CaptureResult } from 'posthog-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -7,7 +8,7 @@ import {
   setVisitorId,
 } from '@/features/analytics/attribution';
 import { captureServerEvent, parseAttribution } from '@/features/analytics/server';
-import { ctaClick, SITE_POSTHOG_OPTIONS } from '@/features/analytics/site-analytics';
+import { ctaClick, isWebsitePath, SITE_POSTHOG_OPTIONS } from '@/features/analytics/site-analytics';
 
 // Website analytics and where a visit came from (docs/DECISIONS.md W-13).
 
@@ -167,6 +168,59 @@ describe('PostHog on the website', () => {
       disable_conversations: true,
       debug: false,
     });
+  });
+
+  it('knows the website’s own pages', () => {
+    for (const path of [
+      '/',
+      '/features',
+      '/pricing',
+      '/demo',
+      '/contact',
+      '/signup',
+      '/signup/verify',
+      '/terms',
+      '/privacy',
+      '/refund',
+      '/shipping',
+    ]) {
+      expect(isWebsitePath(path), path).toBe(true);
+    }
+    for (const path of [
+      '/t/DEMO0000TABLE001',
+      '/admin',
+      '/staff',
+      '/super',
+      '/login',
+      '/signups',
+      '/privacy/x',
+      '/no-such-page',
+    ]) {
+      expect(isWebsitePath(path), path).toBe(false);
+    }
+  });
+
+  it('sends nothing from other pages, and no full referrer address', () => {
+    const event = (): CaptureResult => ({
+      uuid: 'u',
+      event: '$pageview',
+      properties: {
+        $referrer: 'https://menumesh.in/t/DEMO0000TABLE001',
+        $initial_referrer: 'https://menumesh.in/t/DEMO0000TABLE001',
+        $referring_domain: 'menumesh.in',
+      },
+    });
+    try {
+      // A diner back on the menu after reading the policy, with the instance still loaded.
+      vi.stubGlobal('window', { location: { pathname: '/t/DEMO0000TABLE001' } });
+      expect(SITE_POSTHOG_OPTIONS.before_send(event())).toBeNull();
+      vi.stubGlobal('window', { location: { pathname: '/privacy' } });
+      expect(SITE_POSTHOG_OPTIONS.before_send(event())?.properties).toEqual({
+        $referring_domain: 'menumesh.in',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('counts clicks on links to sign-up or a demo request, with where they sit', () => {

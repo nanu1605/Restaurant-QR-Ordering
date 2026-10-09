@@ -2216,10 +2216,15 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
 
     Under Do Not Track or Global Privacy Control it doesn't load at all. One leftover: at load,
     posthog-js checks that localStorage works by writing a test key and removing it at once, so
-    nothing stays. Diners never load it, since the customer pages are outside the group. The
-    panels are unchanged (P10-4). The only client-side moves from the website into a panel are
-    logging in and finishing a signup. There the website's instance carries on until a reload,
-    and the panel's reset and identify start the member's own person.
+    nothing stays.
+
+  - **Only website pages, in their own instance.** An instance outlives client-side moves: a
+    diner can open the policies from the menu, and a visitor logs in or finishes a signup from
+    the website. So the website uses a named instance (`website`) apart from the panels' (P10-4),
+    and each drops events from the other's pages (`before_send`, `isWebsitePath`). A diner who
+    reads the policy is counted on that page only; nothing is sent from the menu, before or
+    after. Full referrer addresses are dropped too, since a menu address holds its table's code;
+    the referring domain stays.
 
   - **Calls to action.** Links to `/signup` and `/contact` send
     `cta_clicked {target, location, plan, cycle}`, through one click listener. The location comes
@@ -2237,6 +2242,10 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
       - Signups keep it in `details.source`. `site_signup_finish(id, restaurant_id)` copies it to
         `restaurants.signup_source`, because signups are purged after 7 days.
     - **Where it shows:** a Source column in /super/leads.
+    - While signups are closed, `/signup` sends visitors to `/contact` with the plan and the
+      campaign tags.
+    - `site_signup_finish`'s restaurant argument defaults to null, so builds from before it can
+      still finish signups during the 7 days (RUNBOOK "Database migrations").
     - **Under Do Not Track:** it is still kept, since it is first-party and sent with the visitor's
       own form.
   - **Conversions are sent from the server.**
@@ -2253,6 +2262,8 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
       Never a name, email, phone or message.
 
     - **Distinct id:** the visit's own id, so the funnel joins up; a fresh id when there is none.
+      The restaurant id on `signup_completed` lets the funnel be followed into the panels, where
+      members are identified with their restaurant id (P10-4).
     - Skipped under Do Not Track or Global Privacy Control. A failure is only logged.
   - **Automated browsers.** posthog-js drops events from headless and webdriver browsers, though
     it still loads its settings. End-to-end and smoke runs therefore never count as visits.
@@ -2267,6 +2278,10 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     - end-to-end: the demo request and the signup keep their campaign tags;
     - smoke, on deployed sites: PostHog loads on /pricing (each request is noted and dropped),
       no PostHog cookie or storage is left, and none of it loads on `/t`.
+    - by hand, on a build with a dummy key and every PostHog request answered locally: the
+      pageview and `cta_clicked` with the campaign tags, the same id on the next page, nothing
+      stored, and for a diner only the policy page counted. posthog-js drops events from
+      automated browsers, so the check hid the automation flags.
 
 ## Brand refresh (after launch, from 2026-10-03)
 
