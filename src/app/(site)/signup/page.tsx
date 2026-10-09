@@ -41,7 +41,13 @@ export default async function SignupPage({ searchParams }: PageProps<'/signup'>)
   const requested = firstParam(params, 'plan');
   const turnstile = turnstileConfig();
   if (!turnstile || !signupOpen()) {
-    redirect(requested ? `/contact?plan=${encodeURIComponent(requested)}` : '/contact');
+    // The plan and the campaign tags carry over to the demo request (W-13).
+    const query = new URLSearchParams();
+    for (const key of ['plan', 'utm_source', 'utm_medium', 'utm_campaign']) {
+      const value = firstParam(params, key);
+      if (value) query.set(key, value);
+    }
+    redirect(query.size ? `/contact?${query}` : '/contact');
   }
   const cycle = firstParam(params, 'cycle') === 'yearly' ? 'yearly' : 'monthly';
   const { trialDays, plan } = await chosenPlan(requested, cycle);
