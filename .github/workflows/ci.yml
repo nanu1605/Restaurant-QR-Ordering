@@ -81,6 +81,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # First-load JavaScript per page against its area's ceiling (docs/DECISIONS.md W-14).
+      - name: Check the JavaScript budget
+        run: pnpm budget
+
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
