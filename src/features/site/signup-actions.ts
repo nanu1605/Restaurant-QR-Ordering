@@ -283,7 +283,10 @@ export async function completeSignup(
     return { error: FAILED };
   }
 
-  const finished = await admin.rpc('site_signup_finish', { p_id: id });
+  const finished = await admin.rpc('site_signup_finish', {
+    p_id: id,
+    p_restaurant_id: restaurant.restaurantId,
+  });
   if (finished.error) console.error('[signup] could not finish a signup', finished.error);
   await clearSignupCookie();
   const config = emailConfig();
