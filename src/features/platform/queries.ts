@@ -145,9 +145,10 @@ export async function listSiteLeads(page: number) {
     const from = (at - 1) * LEADS_PAGE_SIZE;
     return supabase
       .from('site_leads')
-      .select('id, name, restaurant_name, city, phone, email, plan_code, message, created_at', {
-        count: 'exact',
-      })
+      .select(
+        'id, name, restaurant_name, city, phone, email, plan_code, message, source, created_at',
+        { count: 'exact' },
+      )
       .order('created_at', { ascending: false })
       .range(from, from + LEADS_PAGE_SIZE - 1);
   };

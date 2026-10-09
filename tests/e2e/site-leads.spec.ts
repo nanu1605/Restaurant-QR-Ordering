@@ -33,7 +33,13 @@ test('a demo request reaches the platform team', async ({ page, context, request
 
   try {
     // Plans link to the signup on this server; a link from elsewhere can still pick one.
-    await page.goto('/contact?plan=growth');
+    // The link's campaign tags and the site it came from go with the request (W-13).
+    await page.goto(
+      '/contact?plan=growth&utm_source=newsletter&utm_medium=email&utm_campaign=launch',
+      {
+        referer: 'https://www.google.com/',
+      },
+    );
     const form = page.getByRole('form', { name: 'Book a demo' });
     await expect(form.getByLabel('Plan you’re interested in')).toHaveValue('growth');
 
@@ -70,6 +76,9 @@ test('a demo request reaches the platform team', async ({ page, context, request
     await expect(row).toContainText(`+91 ${phone}`);
     await expect(row).toContainText('growth');
     await expect(row).toContainText('Twelve tables.');
+    await expect(row).toContainText('newsletter / email');
+    await expect(row).toContainText('Campaign: launch');
+    await expect(row).toContainText('From www.google.com');
   } finally {
     await admin
       .from('platform_settings')

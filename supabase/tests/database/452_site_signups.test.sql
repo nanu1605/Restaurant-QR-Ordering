@@ -9,6 +9,8 @@ create extension if not exists pgtap with schema extensions;
 select no_plan();
 
 select tests.create_user('visitor@signups.test') as visitor \gset
+select tests.create_restaurant('signup-one') as rest_one \gset
+select tests.create_restaurant('signup-two') as rest_two \gset
 
 \set ip '''aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'''
 \set net '''cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'''
@@ -18,15 +20,15 @@ select ok(
   has_function_privilege('service_role', 'public.site_signup_start(text, jsonb, text, text)', 'execute')
     and has_function_privilege('service_role', 'public.site_signup_resend(uuid, text)', 'execute')
     and has_function_privilege('service_role', 'public.site_signup_verify(uuid, text)', 'execute')
-    and has_function_privilege('service_role', 'public.site_signup_finish(uuid)', 'execute')
+    and has_function_privilege('service_role', 'public.site_signup_finish(uuid, uuid)', 'execute')
     and has_function_privilege('service_role', 'public.site_signups_cleanup()', 'execute'),
   'the server starts, resends, verifies, finishes and cleans up signups'
 );
 select ok(
   not has_function_privilege('anon', 'public.site_signup_resend(uuid, text)', 'execute')
     and not has_function_privilege('authenticated', 'public.site_signup_resend(uuid, text)', 'execute')
-    and not has_function_privilege('anon', 'public.site_signup_finish(uuid)', 'execute')
-    and not has_function_privilege('authenticated', 'public.site_signup_finish(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.site_signup_finish(uuid, uuid)', 'execute')
+    and not has_function_privilege('authenticated', 'public.site_signup_finish(uuid, uuid)', 'execute')
     and not has_function_privilege('anon', 'public.site_signups_cleanup()', 'execute')
     and not has_function_privilege('authenticated', 'public.site_signups_cleanup()', 'execute'),
   'nobody else can resend, finish or clean up'
@@ -176,21 +178,60 @@ select is(
   public.site_signup_verify(:'asha', repeat('a', 64)) ->> 'status', 'ok',
   'so creating the restaurant can be tried again with it'
 );
-select lives_ok(format($$select public.site_signup_finish(%L)$$, :'asha'), 'the signup is finished');
+select lives_ok(format($$select public.site_signup_finish(%L, %L)$$, :'asha', :'rest_one'), 'the signup is finished');
 select ok(
   (select verified_at is not null from public.site_signups where id = :'asha'),
   'a finished signup is marked verified'
+);
+select is(
+  (select signup_source from public.restaurants where id = :'rest_one'), null::jsonb,
+  'a signup without campaign tags leaves the restaurant without a source'
 );
 select is(
   public.site_signup_verify(:'asha', repeat('a', 64)), '{"status": "gone"}'::jsonb,
   'the code stops working once the signup is finished'
 );
 select lives_ok(
-  format($$select public.site_signup_finish(%L)$$, :'asha'), 'finishing twice changes nothing'
+  format($$select public.site_signup_finish(%L, %L)$$, :'asha', :'rest_one'), 'finishing twice changes nothing'
 );
 select is(
   public.site_signup_verify(gen_random_uuid(), repeat('a', 64)), '{"status": "gone"}'::jsonb,
   'an unknown signup is gone'
+);
+
+-- ─── Where a signup came from (docs/DECISIONS.md W-13) ──────────────────────
+select public.site_signup_start(
+  'meera@example.com',
+  '{"restaurantName": "Dosa Corner", "source": {"utm_source": " newsletter ",
+    "utm_campaign": "launch", "gclid": "abc", "referrer": 7}}',
+  repeat('d', 64)
+) as meera \gset
+select lives_ok(
+  format($$select public.site_signup_finish(%L, %L)$$, :'meera', :'rest_two'),
+  'a signup with campaign tags is finished'
+);
+select is(
+  (select signup_source from public.restaurants where id = :'rest_two'),
+  '{"utm_source": "newsletter", "utm_campaign": "launch"}'::jsonb,
+  'its restaurant keeps the known tags, tidied'
+);
+select lives_ok(
+  format($$select public.site_signup_finish(%L, %L)$$, :'meera', :'rest_one'),
+  'finishing it again'
+);
+select is(
+  (select signup_source from public.restaurants where id = :'rest_one'), null::jsonb,
+  'doesn''t give the source to another restaurant'
+);
+select public.site_signup_start('old@example.com', '{"restaurantName": "Old Build"}', repeat('e', 64))
+  as old_build \gset
+select lives_ok(
+  format($$select public.site_signup_finish(%L)$$, :'old_build'),
+  'a build from before sources were kept can still finish a signup'
+);
+select ok(
+  (select verified_at is not null from public.site_signups where id = :'old_build'),
+  'and it is marked verified'
 );
 
 select public.site_signup_start('late@example.com', '{}', repeat('a', 64)) as late \gset

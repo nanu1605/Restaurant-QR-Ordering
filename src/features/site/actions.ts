@@ -3,6 +3,7 @@
 import { after } from 'next/server';
 import { headers } from 'next/headers';
 
+import { captureServerEvent, parseAttribution } from '@/features/analytics/server';
 import { dbErrorCode } from '@/lib/db-errors';
 import { emailConfig } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
@@ -62,6 +63,7 @@ export async function submitLead(
   }
 
   const lead = parsed.data;
+  const attribution = parseAttribution(formData.get('attribution'));
   const admin = createAdminClient();
   const { data: leadId, error } = await admin.rpc('site_create_lead', {
     p_lead: {
@@ -72,6 +74,7 @@ export async function submitLead(
       email: lead.email,
       plan_code: lead.planCode,
       message: lead.message,
+      source: attribution.source,
     },
     p_ip_hash: ip ? hashIp(ip) : undefined,
   });
@@ -81,6 +84,7 @@ export async function submitLead(
     return { ok: false, error: FAILED, values };
   }
 
+  after(() => captureServerEvent('lead_submitted', attribution, { plan: lead.planCode }));
   const email = emailConfig();
   if (email) {
     after(() => notifyLead(admin, email, leadId, lead, getPublicEnv().NEXT_PUBLIC_APP_URL));

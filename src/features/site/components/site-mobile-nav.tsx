@@ -59,6 +59,7 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
       <SheetContent
         side="right"
         showCloseButton={false}
+        data-cta="menu"
         finalFocus={() => section.current === null}
         className="gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
       >

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { SiteAnalytics } from '@/features/analytics/site-analytics';
 import { SiteMotion } from '@/features/site/components/motion';
 import { SiteFooter } from '@/features/site/components/site-footer';
 import { SiteHeader } from '@/features/site/components/site-header';
@@ -35,6 +36,7 @@ export default function SiteLayout({ children }: LayoutProps<'/'>) {
           {children}
         </main>
         <SiteFooter />
+        <SiteAnalytics />
       </div>
     </SiteMotion>
   );

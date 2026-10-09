@@ -50,6 +50,29 @@ select results_eq(
   'an unknown plan and a blank message are dropped'
 );
 
+-- Where the lead came from (docs/DECISIONS.md W-13).
+select lives_ok(
+  $$select public.site_create_lead('{"name": "Meena", "restaurant_name": "Dosa Corner",
+      "city": "Chennai", "phone": "9000000003", "source": {"utm_source": " google ",
+      "utm_medium": "cpc", "referrer": "google.com", "gclid": "x1", "utm_campaign": 7}}')$$,
+  'a lead can say where it came from'
+);
+select is(
+  (select source from public.site_leads where phone = '9000000003'),
+  '{"utm_source": "google", "utm_medium": "cpc", "referrer": "google.com"}'::jsonb,
+  'only the known campaign tags and the referrer are kept, tidied'
+);
+select lives_ok(
+  $$select public.site_create_lead('{"name": "Meena", "restaurant_name": "Dosa Corner",
+      "city": "Chennai", "phone": "9000000004", "source": {"utm_source": "   ", "x": "y"}}')$$,
+  'a lead with nothing usable in its source'
+);
+select results_eq(
+  $$select source from public.site_leads where phone in ('9876543210', '9000000004')$$,
+  $$values (null::jsonb), (null::jsonb)$$,
+  'has no source, like a lead without one'
+);
+
 select throws_ok(
   $$select public.site_create_lead('{"name": "Ravi", "restaurant_name": "Chai Point", "city": "Agra",
       "phone": "+91 90000 00002"}')$$,

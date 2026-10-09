@@ -1174,6 +1174,7 @@ export type Database = {
           service_charge_bps: number
           service_charge_enabled: boolean
           show_upi_qr_on_bill: boolean
+          signup_source: Json | null
           slug: string
           staff_can_remove_served_items: boolean
           state: string | null
@@ -1213,6 +1214,7 @@ export type Database = {
           service_charge_bps?: number
           service_charge_enabled?: boolean
           show_upi_qr_on_bill?: boolean
+          signup_source?: Json | null
           slug: string
           staff_can_remove_served_items?: boolean
           state?: string | null
@@ -1252,6 +1254,7 @@ export type Database = {
           service_charge_bps?: number
           service_charge_enabled?: boolean
           show_upi_qr_on_bill?: boolean
+          signup_source?: Json | null
           slug?: string
           staff_can_remove_served_items?: boolean
           state?: string | null
@@ -1411,6 +1414,7 @@ export type Database = {
           phone: string
           plan_code: string | null
           restaurant_name: string
+          source: Json | null
         }
         Insert: {
           city: string
@@ -1423,6 +1427,7 @@ export type Database = {
           phone: string
           plan_code?: string | null
           restaurant_name: string
+          source?: Json | null
         }
         Update: {
           city?: string
@@ -1435,6 +1440,7 @@ export type Database = {
           phone?: string
           plan_code?: string | null
           restaurant_name?: string
+          source?: Json | null
         }
         Relationships: []
       }
@@ -2080,7 +2086,10 @@ export type Database = {
         Args: { p_ip_hash?: string; p_lead: Json }
         Returns: string
       }
-      site_signup_finish: { Args: { p_id: string }; Returns: undefined }
+      site_signup_finish: {
+        Args: { p_id: string; p_restaurant_id?: string }
+        Returns: undefined
+      }
       site_signup_resend: {
         Args: { p_code_hash: string; p_id: string }
         Returns: string

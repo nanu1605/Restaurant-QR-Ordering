@@ -28,7 +28,11 @@ export default function DemoPage() {
         <p className="text-base text-ink sm:text-lg">
           Want to see it with your own menu and tables?
         </p>
-        <Link href="/contact" className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
+        <Link
+          href="/contact"
+          data-cta="demo"
+          className={cn(buttonVariants({ size: 'touch' }), 'px-6')}
+        >
           Book a demo
         </Link>
       </div>

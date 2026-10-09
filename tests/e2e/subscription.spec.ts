@@ -233,7 +233,10 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
     return ((await response.json()) as { emails: { subject: string; text: string }[] }).emails;
   };
 
-  await page.goto('/pricing');
+  // The visit's campaign tags outlive the moves inside the site (W-13).
+  await page.goto('/pricing?utm_source=ads&utm_campaign=autumn', {
+    referer: 'https://partner.example/',
+  });
   await page.getByRole('link', { name: 'Start free trial, then the Growth plan' }).click();
   await expect(page).toHaveURL(/\/signup\?plan=growth&cycle=monthly$/);
   await expect(
@@ -297,10 +300,15 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   // The welcome email names the restaurant code staff log in with.
   const { data: restaurant } = await adminClient()
     .from('restaurants')
-    .select('slug, city, phone, email')
+    .select('slug, city, phone, email, signup_source')
     .eq('name', `Signup Café ${unique}`)
     .single();
-  expect(restaurant).toMatchObject({ city: 'Pune', phone: '+91 9876543210', email });
+  expect(restaurant).toMatchObject({
+    city: 'Pune',
+    phone: '+91 9876543210',
+    email,
+    signup_source: { utm_source: 'ads', utm_campaign: 'autumn', referrer: 'partner.example' },
+  });
   expect(restaurant!.slug).toBe(`signup-cafe-${unique}`);
   await expect.poll(async () => (await inbox()).length).toBe(3);
   const welcome = (await inbox()).find((item) => item.subject.startsWith('Welcome to MenuMesh'));

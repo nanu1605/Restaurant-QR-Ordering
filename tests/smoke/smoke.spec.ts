@@ -51,6 +51,38 @@ test('search engines find the sitemap, and only menumesh.in may be indexed', asy
   else expect(robotsTag).toBe('noindex');
 });
 
+test('the website counts visits without cookies or storage, and diners never load PostHog', async ({
+  page,
+  context,
+}) => {
+  // docs/DECISIONS.md W-13. Nothing reaches PostHog from here: each request is noted, then dropped.
+  const sent: string[] = [];
+  await context.route(/\.i\.posthog\.com\//, (route) => {
+    sent.push(route.request().url());
+    return route.abort();
+  });
+  const response = await page.goto('/pricing');
+  // PostHog is only in the policy where it has a key. It sends no events from an automated
+  // browser, so its first request (its settings) shows it loaded.
+  if (/posthog\.com/.test(response!.headers()['content-security-policy'] ?? '')) {
+    await expect.poll(() => sent.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  }
+  const kept = await page.evaluate(() => [
+    ...Object.keys(localStorage),
+    ...Object.keys(sessionStorage),
+    ...document.cookie.split(';').map((cookie) => cookie.split('=')[0]!.trim()),
+  ]);
+  expect(kept.filter((name) => /^ph_|posthog|^__ph/i.test(name))).toEqual([]);
+  expect((await context.cookies()).filter((cookie) => /^ph_|posthog/i.test(cookie.name))).toEqual(
+    [],
+  );
+
+  sent.length = 0;
+  await page.goto('/t/ZZZZZZZZZZZZZZZZ');
+  await page.waitForTimeout(5_000);
+  expect(sent).toEqual([]);
+});
+
 test('the terms and privacy pages are up', async ({ request }) => {
   for (const path of ['/terms', '/privacy']) {
     expect((await request.get(path)).status(), path).toBe(200);

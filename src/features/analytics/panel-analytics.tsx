@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 
 import { posthogHosts } from '@/lib/posthog-hosts';
 
+import { isWebsitePath } from './site-analytics';
+
 type PanelAnalyticsProps = {
   /** The member (or platform admin) using the panel: an id, never a name or email. */
   userId: string;
@@ -32,6 +34,9 @@ export function PanelAnalytics({ userId, role, restaurantId }: PanelAnalyticsPro
           mask_all_element_attributes: true,
           disable_session_recording: true,
           disable_surveys: true,
+          // The website has its own instance, without cookies (W-13): nothing from its pages
+          // here, after a client-side move from a panel.
+          before_send: (event) => (event && isWebsitePath(window.location.pathname) ? null : event),
         });
       }
       // Another login on this device: start a new person, not a merged one.

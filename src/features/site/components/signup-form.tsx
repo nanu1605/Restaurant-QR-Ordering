@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { attributionField } from '@/features/analytics/attribution';
 import { CUISINE_LABELS, CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/default-categories';
 
 import { startSignup, type SignupFormState } from '../signup-actions';
@@ -24,7 +25,7 @@ export function SignupForm({
 }) {
   const [{ result, round }, action, pending] = useActionState(
     async (previous: State, formData: FormData): Promise<State> => ({
-      result: await startSignup(previous.result, formData),
+      result: await startSignup(previous.result, attributionField(formData)),
       round: previous.round + 1,
     }),
     { result: null, round: 0 },

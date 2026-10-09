@@ -79,7 +79,7 @@ export function Hero() {
             {HERO.title}
           </h1>
           <p className="max-w-xl text-base text-ink-muted sm:text-lg">{HERO.lead}</p>
-          <div id="hero-cta" className="flex flex-wrap gap-3">
+          <div id="hero-cta" data-cta="hero" className="flex flex-wrap gap-3">
             <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
               {cta.label}
             </Link>
@@ -388,7 +388,7 @@ export function FinalCta() {
         <p className="max-w-2xl text-base sm:text-lg">
           {cta.href === '/signup' ? FINAL_CTA.signupBody : FINAL_CTA.body}
         </p>
-        <div className="flex flex-wrap justify-center gap-3">
+        <div data-cta="final" className="flex flex-wrap justify-center gap-3">
           <Link
             href={cta.href}
             className={cn(
