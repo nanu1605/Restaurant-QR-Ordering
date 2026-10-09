@@ -147,6 +147,7 @@ export function DemoSimulator() {
             size="touch"
             variant={auto ? 'default' : 'outline'}
             hidden={reduced}
+            className="motion-reduce:hidden"
             // Keeps focus when the last step disables it.
             disabled={!hint}
             focusableWhenDisabled

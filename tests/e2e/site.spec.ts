@@ -132,6 +132,20 @@ test('with reduced motion the scene shows the finished order', async ({ page }) 
   );
   await expect(scene.getByText('Paid · UPI').filter({ visible: true })).toBeVisible();
   await expect(scene.getByRole('button', { name: /the animation$/ })).toBeHidden();
+  // The page holds still while the scene jumps to its end (docs/DECISIONS.md W-14).
+  const shift = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        let total = 0;
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries() as (PerformanceEntry & { value: number })[]) {
+            total += entry.value;
+          }
+        }).observe({ type: 'layout-shift', buffered: true });
+        setTimeout(() => resolve(total), 1000);
+      }),
+  );
+  expect(shift).toBeLessThan(0.01);
 });
 
 test('the policies are linked from every page footer', async ({ page }) => {

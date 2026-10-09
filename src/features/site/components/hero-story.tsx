@@ -108,7 +108,8 @@ export function HeroStory({ className }: { className?: string }) {
           onClick={() => setPaused((value) => !value)}
           aria-label={paused ? 'Play the animation' : 'Pause the animation'}
           hidden={reduced}
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          // Hidden from the first paint too: the server can't know, and a late hide shifts the hero.
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:hidden"
         >
           {paused ? (
             <Play aria-hidden className="size-4" />
@@ -287,17 +288,22 @@ function BoardScreen({ step }: { step: number }) {
   );
 }
 
+// The ref lets AnimatePresence's popLayout lift a leaving card out of the grid, instead of
+// both cards sharing it for a frame and pushing the others along.
 function TableCard({
   label,
   edge,
   children,
+  ref,
 }: {
   label: string;
   edge: string;
   children: React.ReactNode;
+  ref?: React.Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={ref}
       className={cn(
         'flex flex-col gap-[0.4em] rounded-md border border-l-[0.35em] border-line bg-surface p-[0.5em]',
         edge,
