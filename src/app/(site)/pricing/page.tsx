@@ -8,6 +8,7 @@ import { PlanHelper } from '@/features/site/components/plan-helper';
 import { Faq, FinalCta, Section } from '@/features/site/components/sections';
 import { getSitePricing } from '@/features/site/queries';
 import { signupOpen } from '@/features/site/signup';
+import { faqPage, JsonLd, softwareApplication } from '@/features/site/structured-data';
 import { APP_NAME } from '@/lib/config';
 
 export const metadata: Metadata = {
@@ -67,6 +68,7 @@ export default async function PricingPage() {
       </Section>
       <Faq items={PRICING_FAQ} title="Pricing questions" />
       <FinalCta />
+      <JsonLd nodes={[softwareApplication(pricing), faqPage(PRICING_FAQ)]} />
     </>
   );
 }

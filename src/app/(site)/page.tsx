@@ -12,8 +12,10 @@ import {
   Roles,
 } from '@/features/site/components/sections';
 import { StickyCta } from '@/features/site/components/sticky-cta';
+import { FAQ } from '@/features/site/content';
 import { getSitePricing } from '@/features/site/queries';
 import { siteCta } from '@/features/site/signup';
+import { faqPage, JsonLd, organization, website } from '@/features/site/structured-data';
 import { APP_NAME } from '@/lib/config';
 
 export const metadata: Metadata = {
@@ -47,6 +49,7 @@ export default async function HomePage() {
       <Faq />
       <FinalCta />
       <StickyCta cta={siteCta()} />
+      <JsonLd nodes={[organization(), website(), faqPage(FAQ)]} />
     </>
   );
 }
