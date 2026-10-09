@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
+import { attributionField } from '@/features/analytics/attribution';
+
 import { submitLead, type LeadFormState } from '../actions';
 import { TurnstileWidget } from './turnstile-widget';
 
@@ -28,7 +30,7 @@ export function ContactForm({
 }) {
   const [{ result, round }, action, pending] = useActionState(
     async (previous: State, formData: FormData): Promise<State> => ({
-      result: await submitLead(previous.result, formData),
+      result: await submitLead(previous.result, attributionField(formData)),
       round: previous.round + 1,
     }),
     { result: null, round: 0 },

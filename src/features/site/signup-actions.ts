@@ -6,6 +6,11 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 
+import {
+  captureServerEvent,
+  parseAttribution,
+  type Attribution,
+} from '@/features/analytics/server';
 import { OnboardError, onboardRestaurant } from '@/features/platform/onboard';
 import { dbErrorCode } from '@/lib/db-errors';
 import { emailConfig, sendEmail } from '@/lib/email/resend';
@@ -128,10 +133,22 @@ export async function startSignup(
   if (!(await verifyTurnstile(turnstile, token, ip))) return { error: CHECK_FAILED, values };
 
   const { email, restaurantName, city, cuisine, ownerName, phone, planCode, cycle } = parsed.data;
+  const { source, visitor, dnt } = parseAttribution(formData.get('attribution'));
   const code = newCode();
   const { data: id, error } = await createAdminClient().rpc('site_signup_start', {
     p_email: email,
-    p_details: { restaurantName, city, cuisine, ownerName, phone, planCode, cycle },
+    p_details: {
+      restaurantName,
+      city,
+      cuisine,
+      ownerName,
+      phone,
+      planCode,
+      cycle,
+      source,
+      visitor,
+      dnt,
+    },
     p_code_hash: hashCode(code),
     p_ip_hash: ip ? hashIp(ip) : undefined,
   });
@@ -142,6 +159,9 @@ export async function startSignup(
   }
   if (!(await sendCode(email, code, `signup/${id}/1`))) return { error: NOT_SENT, values };
   await setSignupCookie(id);
+  after(() =>
+    captureServerEvent('signup_started', { source, visitor, dnt }, { plan: planCode, cycle }),
+  );
   redirect('/signup/verify');
 }
 
@@ -188,7 +208,8 @@ export async function resendSignupCode(previous: ResendState): Promise<ResendSta
   };
 }
 
-type StoredDetails = Omit<Signup, 'email' | 'terms'>;
+// Where the visit came from is missing on signups started before it was kept.
+type StoredDetails = Omit<Signup, 'email' | 'terms'> & Partial<Attribution>;
 
 /** Creates the restaurant, trying a code with a suffix when the plain one is taken. */
 async function createRestaurant(email: string, details: StoredDetails, password: string) {
@@ -289,6 +310,13 @@ export async function completeSignup(
   });
   if (finished.error) console.error('[signup] could not finish a signup', finished.error);
   await clearSignupCookie();
+  after(() =>
+    captureServerEvent(
+      'signup_completed',
+      { source: details.source ?? {}, visitor: details.visitor, dnt: details.dnt ?? false },
+      { plan: details.planCode, cycle: details.cycle, restaurant_id: restaurant.restaurantId },
+    ),
+  );
   const config = emailConfig();
   if (config) {
     after(() =>
