@@ -1502,7 +1502,7 @@ banner's live region was hidden while empty, so screen readers could miss its fi
   Server actions answer in the phone's language: the customer refusal messages moved from
   `db-errors.ts` into the dictionaries. The add-on rules (`groupRule`, `selectionError`) and
   `listNames` take their words as a parameter. Both dictionaries ship, a few KB. No new font: Noto
-  Sans's Devanagari subset loads only when Hindi text appears. The Hindi is written here; the
+  Sans's Devanagari subset loads only when Hindi text appears (W-14: and, until then, with any ₹). The Hindi is written here; the
   owner reviews it before the pilot.
 - **P9-8 · Lighthouse:** mobile, production build, the demo menu (`/t/DEMO0000TABLE001`),
   Lighthouse 12.8 with its default simulated throttling. English and Hindi alike: performance
@@ -2282,6 +2282,54 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
       pageview and `cta_clicked` with the campaign tags, the same id on the next page, nothing
       stored, and for a diner only the policy page counted. posthog-js drops events from
       automated browsers, so the check hid the automation flags.
+- **W-14 · Budgets and the launch checklist:**
+  - **First-load JavaScript per page.** `pnpm budget` runs in CI after the build.
+    - **What it adds up:** the gzipped chunks `next build` lists for each page in
+      `.next/diagnostics/route-bundle-stats.json`. Turbopack writes that file on every build. The
+      format is undocumented, so if a Next upgrade changes it the script fails loudly.
+    - **Ceilings,** about 8% above each area's largest page at W4c:
+      - the customer menu: 275 KiB (247 to 252 today);
+      - the panels: 565 KiB (up to 520);
+      - the website, login and not-found: 325 KiB (221 to 297).
+    - **Not counted:** chunks loaded later, such as `next/dynamic` parts and posthog-js on idle.
+    - Raise a ceiling only on purpose, with a note here.
+  - **Accessibility.** axe runs all its WCAG 2.2 A and AA rules over the website (with the four
+    policies), login and the customer menu. It covers both themes on desktop, tablet and phone,
+    and blocks CI. The panels keep the colour-contrast rule only. `/signup/verify` is left out:
+    without a signup in progress it sends the visitor to `/signup`. SPEC §17 now asks WCAG 2.2 AA
+    of these pages.
+  - **Speed.** `site-perf.spec.ts` is opt-in like `customer-perf.spec.ts`
+    (`PERF=1 pnpm e2e site-perf`). It loads each website page on the same throttled phone profile
+    and expects the largest paint within 2.5 s and layout shift under 0.1. It isn't in CI, since
+    timings on shared runners are too noisy to block a merge.
+  - **The ₹ font.** P9-7 was wrong about fonts:
+    - **The cost:** Noto Sans has ₹ (U+20B9) in its latin-ext (168 KB) and devanagari (99 KB)
+      files, not in latin, so any price downloaded both. Devanagari is needed anyway wherever
+      Hindi shows (`/`, `/pricing`, `/features`, and every `/t` page through its "हिन्दी" link),
+      but latin-ext was pure waste.
+    - **The fix:** `withRupee` (in `money.tsx`) draws each ₹ in the system font, which has it on
+      Android, iOS and Windows. `Money` uses it, and so do the customer menu's and the demo's
+      price strings. `fonts.spec.ts` checks that `/`, `/pricing` and `/t` never load latin-ext.
+    - **Not done:** the panels' plain-string prices (toasts, chart axes, labels). Staff devices
+      download the file once and keep it.
+    - **Weighed and dropped:**
+      - a ₹-only font face, which fails because Chrome still loads every face whose range
+        covers ₹;
+      - `subsets: ['latin-ext']`, which preloads 168 KB on every page;
+      - self-hosting Noto with edited ranges, which means font files kept up to date by hand.
+  - **The hero's shift under reduced motion** (CLS 0.076 on desktop):
+    - **First cause:** the server can't know the preference, so the pause button disappeared
+      only after hydration. That shrank the caption and moved the text column.
+    - **Second cause:** AnimatePresence's `popLayout` couldn't lift the leaving T5 card (it had
+      no ref), so the board held seven cards for a frame.
+    - **Fix:** the button also has `motion-reduce:hidden` (as does the demo's "Show me"), and
+      `TableCard` takes a ref. The opening scene is unchanged. `site.spec.ts` checks the shift
+      stays under 0.01.
+  - **Smoke** also checks the home page's heading, the plans and prices on `/pricing`, and that
+    `/refund` and `/shipping` answer. It drops PostHog requests.
+  - **Launching:** RUNBOOK "Launching the website" lists what only the owner can do: texts,
+    production variables, the support email, DMARC and Search Console in DNS, the Release and
+    the checks after it.
 
 ## Brand refresh (after launch, from 2026-10-03)
 
