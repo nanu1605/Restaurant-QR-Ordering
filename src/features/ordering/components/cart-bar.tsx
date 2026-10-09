@@ -3,6 +3,7 @@
 import { ChevronRight, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 
+import { withRupee } from '@/components/shared/money';
 import { formatINR } from '@/lib/money';
 
 import { useStrings } from './lang-provider';
@@ -21,7 +22,10 @@ export function CartBar({ href, count, totalPaise }: CartBarProps) {
         >
           <span className="flex items-center gap-2 text-base font-semibold tabular-nums">
             <ShoppingBag aria-hidden className="size-5" />
-            {t.cartBar.items(count)} · {formatINR(totalPaise, { fraction: 'auto' })}
+            {/* One flex item, so the ₹ stays next to its amount. */}
+            <span>
+              {t.cartBar.items(count)} · {withRupee(formatINR(totalPaise, { fraction: 'auto' }))}
+            </span>
           </span>
           <span className="flex items-center gap-1 text-base font-semibold">
             {t.cartBar.view}

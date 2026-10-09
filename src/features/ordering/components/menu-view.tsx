@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
+import { withRupee } from '@/components/shared/money';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatINR } from '@/lib/money';
@@ -295,7 +296,7 @@ function MenuItemRow({ item, canOrder, cart, onAdd, onQuantity }: MenuItemRowPro
           </h3>
         </div>
         <p className="text-sm font-medium text-ink tabular-nums">
-          {item.variants.length > 0 ? t.menu.from(price) : price}
+          {withRupee(item.variants.length > 0 ? t.menu.from(price) : price)}
         </p>
         {item.description && (
           <p className="line-clamp-2 text-sm text-ink-muted">{item.description}</p>
