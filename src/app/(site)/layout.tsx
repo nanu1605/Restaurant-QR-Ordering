@@ -1,6 +1,19 @@
+import type { Metadata } from 'next';
+
 import { SiteMotion } from '@/features/site/components/motion';
 import { SiteFooter } from '@/features/site/components/site-footer';
 import { SiteHeader } from '@/features/site/components/site-header';
+import { APP_NAME } from '@/lib/config';
+
+/**
+ * Every page is its own canonical, without ?plan or ?cycle, and shares the site's link preview
+ * (opengraph-image.tsx; docs/DECISIONS.md W-12). Titles and descriptions come from each page.
+ */
+export const metadata: Metadata = {
+  alternates: { canonical: './' },
+  openGraph: { type: 'website', siteName: APP_NAME, locale: 'en_IN', url: './' },
+  twitter: { card: 'summary_large_image' },
+};
 
 /**
  * The public website (docs/DECISIONS.md W-1): home, contact and the policies.

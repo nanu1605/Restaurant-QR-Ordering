@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 
 import { APP_NAME } from '@/lib/config';
 
-export const metadata: Metadata = { title: 'Privacy policy' };
+export const metadata: Metadata = {
+  title: 'Privacy policy',
+  description: 'What MenuMesh keeps about restaurants, their staff and their guests, and why.',
+};
 
 export default function PrivacyPage() {
   return (

@@ -2156,6 +2156,51 @@ of 15 findings were confirmed (two were duplicates, one was wrong) and all 12 ar
   on the menu, offer autopay only when a plan can be paid online, and no longer dim finished
   steps below readable contrast.
 
+### Website W4 · Search engines, analytics, budgets and launch
+
+The owner chose (2026-10-04): PostHog on the website without cookies, staging kept out of search
+by a header, the full set of structured data, and a launch that prepares everything while the
+production Release still waits for the legal texts and contact details. W4 ships as three PRs:
+W4a search engines, W4b analytics, W4c budgets and the launch checklist.
+
+- **W-12 · Search engines:**
+  - **Only menumesh.in is indexed.** The proxy sends `X-Robots-Tag: noindex` on every other host:
+    staging, Vercel's own addresses and local runs. Staging stays public, so the smoke tests,
+    Razorpay's test webhooks and device tests keep working, and nothing new is needed on Vercel.
+    Robots never says `Disallow: /` on staging, since a crawler that may not fetch a page never
+    sees its noindex.
+  - **robots.txt** lets crawlers in except for `/admin`, `/staff`, `/super`, `/api/`,
+    `/logout` and `/signup/verify`, and names the sitemap. The login page stays indexable, so
+    "MenuMesh login" finds it. Customer pages (`/t/…`) stay crawlable so their own noindex is
+    seen.
+  - **sitemap.xml** lists the home, features, pricing, demo and contact pages and the four
+    policies, on this environment's address. Sign-up isn't listed: the pages link to it, and
+    while it is closed it redirects to contact.
+  - **Canonical and link previews.** The root layout's `metadataBase` is the environment's
+    `NEXT_PUBLIC_APP_URL`, so URLs are absolute on each host. The site layout makes every page
+    its own canonical (`./`, so `?plan` and `?cycle` drop away). It also sets Open Graph
+    (`website`, `en_IN`) and a large Twitter card. Titles and descriptions come from each page,
+    and the four policies and the login page now have their own descriptions.
+  - **The link preview** is one static English card drawn with `next/og`: the logo, the name and
+    one line, on the light paper. It sits in the `(site)` group, so a shared customer-menu link
+    shows the restaurant rather than MenuMesh.
+  - **Structured data** is JSON-LD in one script per page, with `<` escaped:
+    - the home page has Organization (name, web address and logo; contact details once the real
+      ones are published), WebSite and FAQPage;
+    - the pricing page has SoftwareApplication, with each plan monthly and yearly as an Offer
+      before GST (W-11) and read from the same plans the page shows, plus FAQPage;
+    - no ratings or reviews (W-2). Google shows few rich results for these now; they are for
+      understanding, not for stars.
+  - **A branded not-found page** replaces Next's default for unknown addresses. It is neutral,
+    since mistyped panel addresses land there too, and Next adds noindex to it.
+  - **The proxy skips** robots.txt, sitemap.xml and the preview image, so they don't touch the
+    session.
+  - **Tests.** `seo.spec.ts` checks robots, the sitemap, the noindex header, the home page's
+    canonical, preview and structured data (the FAQ matches the page), the pricing offers
+    against the prices shown, the canonical of a link with a plan, and the not-found page. The
+    smoke suite checks robots and the sitemap after every deploy, and that the noindex header is
+    present on staging and absent on menumesh.in.
+
 ## Brand refresh (after launch, from 2026-10-03)
 
 The owner finalized the logo: a white "M" in an orange hexagon (`#FF6606`), with a wordmark

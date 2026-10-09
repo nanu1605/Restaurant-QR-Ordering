@@ -1598,7 +1598,7 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | W1 | Header, footer, phone call-to-action bar; the home page (animated hero scene, problems, how it works, roles, highlights, Hindi, FAQ, final call to action); contact page; terms, privacy, refunds and shipping pages |
 | W2 | Features page with screenshots of the real app; pricing page (plans read from the database, monthly/yearly, plan finder, comparison); an interactive demo in the browser; a "Book a demo" form behind Cloudflare Turnstile, stored as leads for super-admin and emailed to the support address |
 | W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial, then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
-| W4 | SEO (sitemap, robots, Open Graph, structured data), funnel analytics, performance and accessibility budgets, launch |
+| W4 | SEO (sitemap, robots, Open Graph, structured data; only menumesh.in is indexed), funnel analytics (PostHog without cookies on the site only), performance and accessibility budgets, launch (docs/DECISIONS.md W-12 onwards) |
 | W5 | The website in Hindi |
 
 Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels.

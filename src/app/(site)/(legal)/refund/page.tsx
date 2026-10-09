@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Refunds and cancellation' };
+export const metadata: Metadata = {
+  title: 'Refunds and cancellation',
+  description: 'How the free trial, cancelling a plan and refunds work.',
+};
 
 export default function RefundPage() {
   return (
