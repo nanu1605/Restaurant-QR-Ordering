@@ -131,6 +131,7 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
                 ))}
               </ul>
               <Link
+                data-cta="plan_card"
                 href={
                   signup ? `/signup?plan=${plan.code}&cycle=${cycle}` : `/contact?plan=${plan.code}`
                 }

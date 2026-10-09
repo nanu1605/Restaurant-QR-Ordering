@@ -92,6 +92,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
         )}
         {/* "Let's talk" stays a conversation, even when visitors can sign up. */}
         <Link
+          data-cta="plan_finder"
           href={
             plan
               ? signup

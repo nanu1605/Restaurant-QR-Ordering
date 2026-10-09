@@ -34,7 +34,7 @@ const COLUMNS = [
 export function SiteFooter() {
   return (
     // Room for the phone's sticky call to action.
-    <footer className="border-t border-line bg-surface pb-28 md:pb-0">
+    <footer data-cta="footer" className="border-t border-line bg-surface pb-28 md:pb-0">
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.5fr_repeat(3,1fr)]">
         <div className="flex flex-col gap-3">
           <Wordmark className="self-start" />

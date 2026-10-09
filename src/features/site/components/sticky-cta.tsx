@@ -24,6 +24,7 @@ export function StickyCta({ cta }: { cta: { href: string; label: string } }) {
   return (
     <div
       inert={!shown}
+      data-cta="sticky"
       className={cn(
         'fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 p-3 backdrop-blur-md transition-transform duration-300 md:hidden',
         shown ? 'translate-y-0' : 'translate-y-full',
