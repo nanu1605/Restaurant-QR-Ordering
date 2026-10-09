@@ -2188,9 +2188,9 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     - the home page has Organization (name, web address and logo; contact details once the real
       ones are published), WebSite and FAQPage;
     - the pricing page has SoftwareApplication, with each plan monthly and yearly as an Offer
-      before GST (W-11) and read from the same plans the page shows, plus FAQPage.
-    Google shows few rich results for these now. They are for understanding, not for stars, so
-    there are no ratings or reviews (W-2).
+      before GST (W-11) and read from the same plans the page shows, plus FAQPage;
+    - no ratings or reviews (W-2). Google shows few rich results for these now; they are for
+      understanding, not for stars.
   - **A branded not-found page** replaces Next's default for unknown addresses. It is neutral,
     since mistyped panel addresses land there too, and Next adds noindex to it.
   - **The proxy skips** robots.txt, sitemap.xml and the preview image, so they don't touch the
