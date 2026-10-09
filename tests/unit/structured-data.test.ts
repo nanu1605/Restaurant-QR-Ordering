@@ -21,7 +21,6 @@ describe('JsonLd', () => {
     const html = renderToStaticMarkup(
       createElement(JsonLd, { nodes: [faqPage([{ q: 'Is </script> safe?', a: '<b>yes</b>' }])] }),
     );
-    expect(html).not.toContain('</script>"');
     expect(html.match(/<\/script>/g)).toHaveLength(1);
     const json = html.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '');
     const data = JSON.parse(json);
