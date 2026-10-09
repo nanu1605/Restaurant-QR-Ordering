@@ -88,9 +88,10 @@ end;
 $$;
 
 -- Marks a signup finished once its restaurant exists (its code then stops working) and
--- keeps where the signup came from on that restaurant.
+-- keeps where the signup came from on that restaurant. The restaurant is optional while builds
+-- from before this migration may still finish signups (7 days; RUNBOOK "Database migrations").
 drop function public.site_signup_finish(uuid);
-create function public.site_signup_finish(p_id uuid, p_restaurant_id uuid)
+create function public.site_signup_finish(p_id uuid, p_restaurant_id uuid default null)
 returns void
 language sql
 volatile

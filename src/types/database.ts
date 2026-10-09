@@ -2087,7 +2087,7 @@ export type Database = {
         Returns: string
       }
       site_signup_finish: {
-        Args: { p_id: string; p_restaurant_id: string }
+        Args: { p_id: string; p_restaurant_id?: string }
         Returns: undefined
       }
       site_signup_resend: {

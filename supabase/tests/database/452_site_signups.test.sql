@@ -223,6 +223,16 @@ select is(
   (select signup_source from public.restaurants where id = :'rest_one'), null::jsonb,
   'doesn''t give the source to another restaurant'
 );
+select public.site_signup_start('old@example.com', '{"restaurantName": "Old Build"}', repeat('e', 64))
+  as old_build \gset
+select lives_ok(
+  format($$select public.site_signup_finish(%L)$$, :'old_build'),
+  'a build from before sources were kept can still finish a signup'
+);
+select ok(
+  (select verified_at is not null from public.site_signups where id = :'old_build'),
+  'and it is marked verified'
+);
 
 select public.site_signup_start('late@example.com', '{}', repeat('a', 64)) as late \gset
 select tests.clear_auth();
