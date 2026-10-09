@@ -83,8 +83,15 @@ test('the website counts visits without cookies or storage, and diners never loa
   expect(sent).toEqual([]);
 });
 
-test('the terms and privacy pages are up', async ({ request }) => {
-  for (const path of ['/terms', '/privacy']) {
+test('the website shows its plans, and the policies are up', async ({ page, context, request }) => {
+  // Nothing reaches PostHog from here (docs/DECISIONS.md W-13).
+  await context.route(/\.i\.posthog\.com\//, (route) => route.abort());
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.goto('/pricing');
+  const plans = page.getByRole('list', { name: 'Plans' }).getByRole('listitem');
+  await expect(plans.first()).toContainText('₹');
+  for (const path of ['/terms', '/privacy', '/refund', '/shipping']) {
     expect((await request.get(path)).status(), path).toBe(200);
   }
 });
