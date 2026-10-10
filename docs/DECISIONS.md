@@ -2300,8 +2300,10 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     of these pages.
   - **Speed.** `site-perf.spec.ts` is opt-in like `customer-perf.spec.ts`
     (`PERF=1 pnpm e2e site-perf`). It loads each website page on the same throttled phone profile
-    and expects the largest paint within 2.5 s and layout shift under 0.1. It isn't in CI, since
-    timings on shared runners are too noisy to block a merge.
+    and expects the largest paint within 2.5 s and layout shift under 0.1. Each page loads cold,
+    without the previous page's scripts cached. It isn't in CI, since timings on shared runners are
+    too noisy to block a merge. At W4c, on a local production build: largest paint 0.92 to 1.32 s,
+    layout shift at most 0.004.
   - **The ₹ font.** P9-7 was wrong about fonts:
     - **The cost:** Noto Sans has ₹ (U+20B9) in its latin-ext (168 KB) and devanagari (99 KB)
       files, not in latin, so any price downloaded both. Devanagari is needed anyway wherever

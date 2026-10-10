@@ -11,6 +11,8 @@ test('each website page paints within 2.5 s and holds still', async ({ page }) =
   test.setTimeout(PATHS.length * 30_000);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Network.enable');
+  // Each page as a first visit, not with the previous page's scripts cached.
+  await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
   await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
     latency: 150,
