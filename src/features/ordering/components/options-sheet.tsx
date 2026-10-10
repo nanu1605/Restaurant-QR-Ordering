@@ -4,6 +4,7 @@ import { XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
+import { withRupee } from '@/components/shared/money';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -34,7 +35,7 @@ type OptionsSheetProps = {
   addLabel?: string;
 };
 
-const price = (paise: number) => formatINR(paise, { fraction: 'auto' });
+const price = (paise: number) => withRupee(formatINR(paise, { fraction: 'auto' }));
 
 // The ring colour (3:1 on white) marks a chosen option on any accent.
 const CHOICE_CLASS =

@@ -84,6 +84,7 @@ and the version check. Re-run the workflow instead.
 | `RAZORPAY_KEY_ID`, `_SECRET`, `_WEBHOOK_SECRET` | test keys                       | live keys                  |
 | `CRON_SECRET`                                   | random                          | different random           |
 | `RESEND_API_KEY`, `EMAIL_FROM`                  | optional                        | required before charging   |
+| `TURNSTILE_SITE_KEY`, `_SECRET_KEY`             | optional                        | required for the demo form |
 | `MENU_IMPORT_API_KEY`, `_FALLBACK_API_KEY`      | optional                        | as needed                  |
 | `NEXT_PUBLIC_SENTRY_DSN`                        | the project's DSN               | the same DSN               |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT`                | `staging`                       | `production`               |
@@ -239,3 +240,49 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
    `insert into public.platform_admins (user_id) select id from auth.users where email = '…';`
 3. Log in at `https://menumesh.in/login`; the first visit to `/super` asks to enrol an
    authenticator app.
+
+## Launching the website
+
+Production keeps its current build until the owner's legal texts and contact details are ready
+(docs/DECISIONS.md W-2). Then, in this order:
+
+1. **Texts** (a normal PR): replace the placeholders.
+   - The four policies in `src/app/(site)/(legal)/`, and the placeholder banner in its
+     `layout.tsx` (`tests/e2e/legal.spec.ts` checks for the banner, so update it too).
+   - The support email, phone and WhatsApp in `src/app/(site)/contact/page.tsx`, and its
+     placeholder note.
+   - The Organization's contact details in `src/features/site/structured-data.tsx` (W-12).
+2. **Production Vercel variables:**
+   - `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, from a Cloudflare Turnstile widget whose
+     hostnames include `menumesh.in`. Without both, the demo form is hidden and signup stays
+     closed.
+   - `RESEND_API_KEY` and `EMAIL_FROM`, with `menumesh.in` verified in Resend. They send each
+     demo request to the support email, and together with Turnstile they open self-serve signup
+     (W-9). Without them the site launches with "Book a demo" only, and requests are kept in
+     `/super/leads` without an email.
+   - `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST`: the same project as staging (W-13).
+3. **Support email** (production SQL editor), where each demo request is emailed when Resend is
+   set; without it, requests are only kept in `/super/leads`:
+   `update public.platform_settings set support_email = '…' where id = 1;`
+4. **DNS** (GoDaddy, for `menumesh.in`):
+   - DMARC: a TXT record `_dmarc` with `v=DMARC1; p=none; rua=mailto:dmarc@menumesh.in`. The
+     domain has SPF and Resend's DKIM but no DMARC record, which mailbox providers look for
+     (Gmail and Yahoo require it of bulk senders). The report address must be at `menumesh.in`
+     (a GoDaddy forward to any inbox is enough): providers only send reports to another domain
+     when that domain allows it. Move to `p=quarantine` once the reports look clean.
+   - Google Search Console: add a Domain property for `menumesh.in` and the TXT record it asks
+     for. It covers `www` and staging too.
+5. **Release:** Actions → Release, typing `production`. Smoke then checks the version, the home
+   page, the plans and prices, the policies, robots and the sitemap, that `menumesh.in` may be
+   indexed, and that PostHog loads without keeping anything (on `menumesh.in` it fails without
+   the PostHog key).
+6. **After the Release:**
+   - In a normal browser, open `https://menumesh.in`, `/pricing` and `/contact`. Send one demo
+     request, then find it in `/super/leads` and, when Resend is set, the support inbox.
+   - If signup is open, sign up once with a real address, then suspend that restaurant from
+     `/super`.
+   - Search Console: submit `https://menumesh.in/sitemap.xml`. Bing Webmaster Tools: import the
+     site from Search Console.
+   - If Google lists staging pages, use Search Console → Removals for `staging.menumesh.in`
+     (staging already sends noindex).
+   - PostHog: pageviews from `menumesh.in` show with the internal and test users filter on.

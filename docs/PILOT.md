@@ -95,6 +95,8 @@ Before charging anyone (Phase 8):
 - [ ] With Turnstile and Resend both set, self-serve signup opens on the website: on staging, sign
       up once with a real address, check the code and welcome emails arrive, and suspend the test
       restaurant from `/super` afterwards.
+- [ ] Launch the website on production: docs/RUNBOOK.md "Launching the website" (texts, production
+      variables, the support email, DMARC and Search Console, the Release, the checks after it).
 
 ## Setting a restaurant up
 

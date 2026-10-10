@@ -1191,7 +1191,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 
 | Area | Requirement |
 |---|---|
-| Performance | Customer menu LCP < 2.5 s on mid-range Android over 4G; order placement round trip < 1.5 s; staff screen update < 2 s after an order |
+| Performance | Customer menu LCP < 2.5 s on mid-range Android over 4G; order placement round trip < 1.5 s; staff screen update < 2 s after an order; website pages LCP < 2.5 s and layout shift < 0.1 on the same profile; first-load JavaScript per page within its area's budget, checked in CI (docs/DECISIONS.md W-14) |
 | Scale target (v1) | 500 restaurants, 50 concurrent active tables per restaurant |
 | Reliability | Staff screens recover automatically after network loss; no double orders on retry (idempotency); no lost status updates (Phase 9 offline queue) |
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
@@ -1201,7 +1201,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
 | Browser support | Latest Chrome (Android + desktop), Safari iOS 16+, Edge; staff panel optimised for Android tablets and Chrome |
-| Accessibility | WCAG 2.1 AA for colour contrast and keyboard use |
+| Accessibility | WCAG 2.2 AA for the website, login and customer menu (axe's WCAG 2.2 A and AA rules in CI, docs/DECISIONS.md W-14); WCAG 2.1 AA for colour contrast and keyboard use in the panels |
 
 ---
 

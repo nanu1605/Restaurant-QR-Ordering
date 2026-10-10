@@ -6,24 +6,32 @@ import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 
 /**
  * Every screen reads in both themes (spec §16.2, docs/DECISIONS.md B-3): axe's
- * colour-contrast rule over the website, the customer menu and each panel.
+ * colour-contrast rule over each panel, and all of WCAG 2.2 A and AA over the website
+ * and the customer menu (W-14).
  */
 
 test.use({ reducedMotion: 'reduce' });
 
 const THEMES = ['light', 'dark'] as const;
+const WCAG_22_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-/** Visits each path in both themes; returns the contrast failures, if any. */
-async function sweep(page: Page, paths: string[]) {
+/** Visits each path in both themes; returns axe's failures, if any. */
+async function sweep(page: Page, paths: string[], { wcag = false } = {}) {
   const failures: string[] = [];
   for (const theme of THEMES) {
     await page.emulateMedia({ colorScheme: theme });
     for (const path of paths) {
       // The website keeps loading in the background (demo, analytics): 'load' is enough.
       await page.goto(path, { waitUntil: 'load' });
-      const { violations } = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
-      for (const node of violations.flatMap((v) => v.nodes)) {
-        failures.push(`${theme} ${path} ${node.target.join(' ')}: ${node.any[0]?.message}`);
+      const axe = new AxeBuilder({ page });
+      const { violations } = await (
+        wcag ? axe.withTags(WCAG_22_AA) : axe.withRules(['color-contrast'])
+      ).analyze();
+      for (const violation of violations) {
+        for (const node of violation.nodes) {
+          const why = node.any[0]?.message ?? violation.help;
+          failures.push(`${theme} ${path} ${violation.id} ${node.target.join(' ')}: ${why}`);
+        }
       }
     }
   }
@@ -38,9 +46,10 @@ async function logIn(page: Page, username: string) {
 
 test('website and customer menu', async ({ page }) => {
   test.slow();
-  const paths = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/terms', '/login'];
+  const paths = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/login'];
+  paths.push('/terms', '/privacy', '/refund', '/shipping');
   paths.push('/t/DEMO0000TABLE001', '/t/DEMO0000TABLE001/cart', '/t/DEMO0000TABLE001/orders');
-  expect(await sweep(page, paths)).toEqual([]);
+  expect(await sweep(page, paths, { wcag: true })).toEqual([]);
 });
 
 test('worker panel', async ({ page }) => {

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
-import { Money } from '@/components/shared/money';
+import { Money, withRupee } from '@/components/shared/money';
 import { StatusChip } from '@/components/shared/status-chip';
 import { ORDER_ITEM_STATUSES, ORDER_ITEM_STATUS_LABELS } from '@/lib/order-status';
 
@@ -26,8 +26,18 @@ describe('FoodTypeMark', () => {
 
 describe('Money', () => {
   it('renders paise as rupees with tabular digits', () => {
-    render(<Money paise={66200} />);
-    const amount = screen.getByText('₹662.00');
+    const { container } = render(<Money paise={66200} />);
+    const amount = container.firstElementChild;
+    expect(amount).toHaveTextContent('₹662.00');
     expect(amount).toHaveClass('tabular-nums');
+  });
+
+  it('draws the ₹ in the system font, so the extra Noto files never load', () => {
+    render(<Money paise={-150} signDisplay="exceptZero" />);
+    expect(screen.getByText('₹')).toHaveClass('[font-family:system-ui,sans-serif]');
+    const { container } = render(<p>{withRupee('2 items · ₹1,040 and ₹5')}</p>);
+    expect(container).toHaveTextContent('2 items · ₹1,040 and ₹5');
+    expect(container.querySelectorAll('span')).toHaveLength(2);
+    expect(withRupee('no rupees')).toBe('no rupees');
   });
 });

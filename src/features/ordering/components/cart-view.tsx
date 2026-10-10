@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
-import { Money } from '@/components/shared/money';
+import { Money, withRupee } from '@/components/shared/money';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -252,7 +252,7 @@ function CartLineRow({ line, onQuantity, onNote }: CartLineRowProps) {
             ) : null}
           </p>
           <p className="text-sm text-ink-muted tabular-nums">
-            {t.cart.each(formatINR(line.unitPricePaise, { fraction: 'auto' }))}
+            {withRupee(t.cart.each(formatINR(line.unitPricePaise, { fraction: 'auto' })))}
           </p>
         </div>
         <Money

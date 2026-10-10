@@ -62,9 +62,12 @@ test('the website counts visits without cookies or storage, and diners never loa
     return route.abort();
   });
   const response = await page.goto('/pricing');
+  const csp = response!.headers()['content-security-policy'] ?? '';
+  // Production always has a key (docs/RUNBOOK.md "Launching the website").
+  if (new URL(page.url()).hostname === 'menumesh.in') expect(csp).toMatch(/posthog\.com/);
   // PostHog is only in the policy where it has a key. It sends no events from an automated
   // browser, so its first request (its settings) shows it loaded.
-  if (/posthog\.com/.test(response!.headers()['content-security-policy'] ?? '')) {
+  if (/posthog\.com/.test(csp)) {
     await expect.poll(() => sent.length, { timeout: 15_000 }).toBeGreaterThan(0);
   }
   const kept = await page.evaluate(() => [
@@ -83,8 +86,15 @@ test('the website counts visits without cookies or storage, and diners never loa
   expect(sent).toEqual([]);
 });
 
-test('the terms and privacy pages are up', async ({ request }) => {
-  for (const path of ['/terms', '/privacy']) {
+test('the website shows its plans, and the policies are up', async ({ page, context, request }) => {
+  // Nothing reaches PostHog from here (docs/DECISIONS.md W-13).
+  await context.route(/\.i\.posthog\.com\//, (route) => route.abort());
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.goto('/pricing');
+  const plans = page.getByRole('list', { name: 'Plans' }).getByRole('listitem');
+  await expect(plans.first()).toContainText('₹');
+  for (const path of ['/terms', '/privacy', '/refund', '/shipping']) {
     expect((await request.get(path)).status(), path).toBe(200);
   }
 });

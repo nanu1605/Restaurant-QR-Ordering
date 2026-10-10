@@ -18,7 +18,7 @@ import { m, useInView, usePageInView } from 'motion/react';
 import { useEffect, useReducer, useRef, useState, type RefObject } from 'react';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
-import { Money } from '@/components/shared/money';
+import { Money, withRupee } from '@/components/shared/money';
 import { StatusChip } from '@/components/shared/status-chip';
 import { Button } from '@/components/ui/button';
 import { formatClockTime } from '@/features/ordering/format';
@@ -147,6 +147,7 @@ export function DemoSimulator() {
             size="touch"
             variant={auto ? 'default' : 'outline'}
             hidden={reduced}
+            className="motion-reduce:hidden"
             // Keeps focus when the last step disables it.
             disabled={!hint}
             focusableWhenDisabled
@@ -171,7 +172,7 @@ export function DemoSimulator() {
       </div>
 
       <p role="status" className="sr-only">
-        {state.message}
+        {withRupee(state.message)}
       </p>
 
       <div role="group" aria-label="Device to show" className="grid grid-cols-3 gap-2 lg:hidden">
@@ -360,7 +361,10 @@ function GuestMenu({ state, t, act, go, titleRef }: ViewProps) {
           >
             <span className="flex items-center gap-2 tabular-nums">
               <ShoppingBag aria-hidden className="size-5 shrink-0" />
-              {t.cartBar.items(count)} · {formatINR(cartTotal(state), { fraction: 'auto' })}
+              <span>
+                {t.cartBar.items(count)} ·{' '}
+                {withRupee(formatINR(cartTotal(state), { fraction: 'auto' }))}
+              </span>
             </span>
             <span className="flex shrink-0 items-center gap-0.5">
               {t.cartBar.view}
