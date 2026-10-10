@@ -62,9 +62,12 @@ test('the website counts visits without cookies or storage, and diners never loa
     return route.abort();
   });
   const response = await page.goto('/pricing');
+  const csp = response!.headers()['content-security-policy'] ?? '';
+  // Production always has a key (docs/RUNBOOK.md "Launching the website").
+  if (new URL(page.url()).hostname === 'menumesh.in') expect(csp).toMatch(/posthog\.com/);
   // PostHog is only in the policy where it has a key. It sends no events from an automated
   // browser, so its first request (its settings) shows it loaded.
-  if (/posthog\.com/.test(response!.headers()['content-security-policy'] ?? '')) {
+  if (/posthog\.com/.test(csp)) {
     await expect.poll(() => sent.length, { timeout: 15_000 }).toBeGreaterThan(0);
   }
   const kept = await page.evaluate(() => [

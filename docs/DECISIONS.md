@@ -1502,8 +1502,8 @@ banner's live region was hidden while empty, so screen readers could miss its fi
   Server actions answer in the phone's language: the customer refusal messages moved from
   `db-errors.ts` into the dictionaries. The add-on rules (`groupRule`, `selectionError`) and
   `listNames` take their words as a parameter. Both dictionaries ship, a few KB. No new font: Noto
-  Sans's Devanagari subset loads only when Hindi text appears (W-14: and, until then, with any ₹). The Hindi is written here; the
-  owner reviews it before the pilot.
+  Sans's Devanagari subset loads only when Hindi text appears (W-14: and, until then, with any
+  ₹). The Hindi is written here; the owner reviews it before the pilot.
 - **P9-8 · Lighthouse:** mobile, production build, the demo menu (`/t/DEMO0000TABLE001`),
   Lighthouse 12.8 with its default simulated throttling. English and Hindi alike: performance
   92–93, accessibility 100, best practices 100 (with the policy below: no console errors, the CSP
@@ -2304,8 +2304,8 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     (`PERF=1 pnpm e2e site-perf`). It loads each website page on the same throttled phone profile
     and expects the largest paint within 2.5 s and layout shift under 0.1. Each page loads cold,
     without the previous page's scripts cached. It isn't in CI, since timings on shared runners are
-    too noisy to block a merge. At W4c, on a local production build: largest paint 0.92 to 1.32 s,
-    layout shift at most 0.004.
+    too noisy to block a merge. Only the phone project runs it. At W4c, on a local production
+    build: largest paint 0.92 to 1.33 s, no layout shift.
   - **The ₹ font.** P9-7 was wrong about fonts:
     - **The cost:** Noto Sans has ₹ (U+20B9) in its latin-ext (168 KB) and devanagari (99 KB)
       files, not in latin, so any price downloaded both. Devanagari is needed anyway wherever
@@ -2316,6 +2316,9 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
       price strings. `fonts.spec.ts` checks that `/`, `/pricing` and `/t` never load latin-ext.
     - **Not done:** the panels' plain-string prices (toasts, chart axes, labels). Staff devices
       download the file once and keep it.
+    - **Accepted:** VoiceOver on iOS may stop on the ₹ and the amount separately, as it does at
+      any inline element. Both are read, in order. Giving screen readers a second, hidden copy of
+      every price would double the page's text for that.
     - **Weighed and dropped:**
       - a ₹-only font face, which fails because Chrome still loads every face whose range
         covers ₹;
@@ -2330,7 +2333,8 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
       `TableCard` takes a ref. The opening scene is unchanged. `site.spec.ts` checks the shift
       stays under 0.01.
   - **Smoke** also checks the home page's heading, the plans and prices on `/pricing`, and that
-    `/refund` and `/shipping` answer. It drops PostHog requests.
+    `/refund` and `/shipping` answer. It drops PostHog requests. On `menumesh.in` it also fails
+    when PostHog is missing from the content security policy, so a missing key can't pass unseen.
   - **Launching:** RUNBOOK "Launching the website" lists what only the owner can do: texts,
     production variables, the support email, DMARC and Search Console in DNS, the Release and
     the checks after it.

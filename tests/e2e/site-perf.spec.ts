@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 // The website on customer-perf.spec.ts's throttled phone profile (docs/DECISIONS.md W-14):
 // the largest paint within 2.5 s and layout shift under 0.1 on each page.
 test.skip(!process.env.PERF, 'Set PERF=1 to measure the website on a throttled phone profile.');
+test.skip(({ isMobile }) => !isMobile, 'The phone profile only.');
 
 const PATHS = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/terms'];
 
