@@ -12,16 +12,17 @@ import {
   Roles,
 } from '@/features/site/components/sections';
 import { StickyCta } from '@/features/site/components/sticky-cta';
-import { FAQ } from '@/features/site/content';
+import { SITE } from '@/features/site/content';
 import { getSitePricing } from '@/features/site/queries';
 import { siteCta } from '@/features/site/signup';
 import { faqPage, JsonLd, organization, website } from '@/features/site/structured-data';
 import { APP_NAME } from '@/lib/config';
 
+const { meta } = SITE.en.home;
+
 export const metadata: Metadata = {
-  title: { absolute: `${APP_NAME} · QR table ordering for restaurants` },
-  description:
-    'Guests order from their phone by scanning the table QR code. Kitchen and waiter screens update live, and bills print in one tap. Made for restaurants in India.',
+  title: { absolute: `${APP_NAME} · ${meta.title}` },
+  description: meta.description,
 };
 
 /** The lowest monthly price, or null if the plans can't be read (the page still renders). */
@@ -39,17 +40,17 @@ export default async function HomePage() {
   const fromPaise = await lowestMonthlyPaise();
   return (
     <>
-      <Hero />
-      <Problems />
-      <How />
-      <Roles />
-      <Highlights />
-      <Hindi />
-      <NextSteps fromPaise={fromPaise} />
-      <Faq />
-      <FinalCta />
-      <StickyCta cta={siteCta()} />
-      <JsonLd nodes={[organization(), website(), faqPage(FAQ)]} />
+      <Hero lang="en" />
+      <Problems lang="en" />
+      <How lang="en" />
+      <Roles lang="en" />
+      <Highlights lang="en" />
+      <Hindi lang="en" />
+      <NextSteps lang="en" fromPaise={fromPaise} />
+      <Faq lang="en" />
+      <FinalCta lang="en" />
+      <StickyCta cta={siteCta('en')} />
+      <JsonLd nodes={[organization(), website(), faqPage(SITE.en.faq.items)]} />
     </>
   );
 }

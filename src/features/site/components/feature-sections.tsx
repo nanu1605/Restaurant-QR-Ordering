@@ -2,7 +2,7 @@ import { cn } from 'cn';
 import { Check } from 'lucide-react';
 import Image, { type StaticImageData } from 'next/image';
 
-import { FEATURE_SECTIONS } from '../content';
+import { SITE, type SiteContent, type SiteLang } from '../content';
 import bill from '../shots/bill.jpg';
 import guestMenuHindi from '../shots/guest-menu-hindi.jpg';
 import guestMenu from '../shots/guest-menu.jpg';
@@ -37,68 +37,49 @@ const PHONE_SIZES = '(min-width: 1024px) 192px, (min-width: 640px) 176px, 144px'
 const LAPTOP = 'mx-auto w-[89%]';
 const WIDE_SIZES = '(min-width: 1024px) 560px, 92vw';
 
-const PICTURES: Record<string, React.ReactNode> = {
-  guests: (
-    <div className="flex justify-center gap-3 sm:gap-5">
-      <PhoneFrame className={PHONE}>
-        <Shot
-          src={guestMenu}
-          alt="The guest menu on a phone, with three dishes in the cart"
-          sizes={PHONE_SIZES}
-        />
-      </PhoneFrame>
-      <PhoneFrame className={cn(PHONE, 'mt-8 max-sm:hidden')}>
-        <Shot src={guestMenuHindi} alt="The same menu in Hindi" sizes={PHONE_SIZES} />
-      </PhoneFrame>
-      <PhoneFrame className={cn(PHONE, 'sm:mt-16')}>
-        <Shot
-          src={guestOrders}
-          alt="The guest’s order, each dish showing placed, preparing or ready"
-          sizes={PHONE_SIZES}
-        />
-      </PhoneFrame>
-    </div>
-  ),
-  waiters: (
-    <TabletFrame>
-      <Shot
-        src={staffBoard}
-        alt="The waiters’ live board: eight tables, coloured by status, one calling a waiter"
-        sizes={WIDE_SIZES}
-      />
-    </TabletFrame>
-  ),
-  kitchen: (
-    <TabletFrame>
-      <Shot
-        src={kitchen}
-        alt="The kitchen view: tickets in columns for new, preparing and ready"
-        sizes={WIDE_SIZES}
-      />
-    </TabletFrame>
-  ),
-  billing: (
-    <LaptopFrame className={LAPTOP}>
-      <Shot
-        src={bill}
-        alt="A paid bill with CGST and SGST, the payment by UPI and the table’s history"
-        sizes={WIDE_SIZES}
-      />
-    </LaptopFrame>
-  ),
-  owners: (
-    <LaptopFrame className={LAPTOP}>
-      <Shot
-        src={reports}
-        alt="Today’s sales report: bills, gross and net sales, GST and how it was paid"
-        sizes={WIDE_SIZES}
-      />
-    </LaptopFrame>
-  ),
-};
+/** Each section's picture, by section id. */
+function pictures(alt: SiteContent['featuresPage']['alts']): Record<string, React.ReactNode> {
+  return {
+    guests: (
+      <div className="flex justify-center gap-3 sm:gap-5">
+        <PhoneFrame className={PHONE}>
+          <Shot src={guestMenu} alt={alt.guestMenu} sizes={PHONE_SIZES} />
+        </PhoneFrame>
+        <PhoneFrame className={cn(PHONE, 'mt-8 max-sm:hidden')}>
+          <Shot src={guestMenuHindi} alt={alt.guestMenuHindi} sizes={PHONE_SIZES} />
+        </PhoneFrame>
+        <PhoneFrame className={cn(PHONE, 'sm:mt-16')}>
+          <Shot src={guestOrders} alt={alt.guestOrders} sizes={PHONE_SIZES} />
+        </PhoneFrame>
+      </div>
+    ),
+    waiters: (
+      <TabletFrame>
+        <Shot src={staffBoard} alt={alt.staffBoard} sizes={WIDE_SIZES} />
+      </TabletFrame>
+    ),
+    kitchen: (
+      <TabletFrame>
+        <Shot src={kitchen} alt={alt.kitchen} sizes={WIDE_SIZES} />
+      </TabletFrame>
+    ),
+    billing: (
+      <LaptopFrame className={LAPTOP}>
+        <Shot src={bill} alt={alt.bill} sizes={WIDE_SIZES} />
+      </LaptopFrame>
+    ),
+    owners: (
+      <LaptopFrame className={LAPTOP}>
+        <Shot src={reports} alt={alt.reports} sizes={WIDE_SIZES} />
+      </LaptopFrame>
+    ),
+  };
+}
 
-export function FeatureSections() {
-  return FEATURE_SECTIONS.map((section, index) => (
+export function FeatureSections({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].featuresPage;
+  const picture = pictures(t.alts);
+  return t.sections.map((section, index) => (
     <section
       key={section.id}
       id={section.id}
@@ -115,7 +96,7 @@ export function FeatureSections() {
             className="text-2xl font-bold text-ink outline-none sm:text-3xl"
           >
             {section.title}
-            {section.plan && <GrowthBadge />}
+            {section.plan && <GrowthBadge lang={lang} />}
           </h2>
           <p className="text-base text-ink-muted sm:text-lg">{section.lead}</p>
           <ul className="flex flex-col gap-2.5">
@@ -124,13 +105,13 @@ export function FeatureSections() {
                 <Check aria-hidden className="mt-1 size-4 shrink-0 text-status-served" />
                 <span>
                   <WithHindi text={point.text} />
-                  {point.plan && <GrowthBadge />}
+                  {point.plan && <GrowthBadge lang={lang} />}
                 </span>
               </li>
             ))}
           </ul>
         </div>
-        <div className="site-reveal min-w-0">{PICTURES[section.id]}</div>
+        <div className="site-reveal min-w-0">{picture[section.id]}</div>
       </div>
     </section>
   ));

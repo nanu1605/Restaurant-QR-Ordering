@@ -1,6 +1,8 @@
 import { APP_NAME } from '@/lib/config';
 import { getPublicEnv } from '@/lib/env';
 
+import { SITE, type SiteLang } from './content';
+import { fill } from './i18n';
 import type { SitePricing } from './pricing';
 
 /**
@@ -47,7 +49,8 @@ export function faqPage(items: readonly { q: string; a: string }[]): Node {
 }
 
 /** The product, with each plan monthly and yearly, before GST like the pricing page (W-11). */
-export function softwareApplication({ plans }: SitePricing): Node {
+export function softwareApplication({ plans }: SitePricing, lang: SiteLang = 'en'): Node {
+  const t = SITE[lang];
   const offer = (name: string, paise: number, billingDuration: 'P1M' | 'P1Y') => ({
     '@type': 'Offer',
     name,
@@ -68,11 +71,10 @@ export function softwareApplication({ plans }: SitePricing): Node {
     url: url(),
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
-    description:
-      'QR table ordering, kitchen and waiter screens, and billing for restaurants in India.',
+    description: t.tagline,
     offers: plans.flatMap((plan) => [
-      offer(`${plan.name}, monthly`, plan.monthlyPaise, 'P1M'),
-      offer(`${plan.name}, yearly`, plan.yearlyPaise, 'P1Y'),
+      offer(fill(t.offers.monthly, { plan: plan.name }), plan.monthlyPaise, 'P1M'),
+      offer(fill(t.offers.yearly, { plan: plan.name }), plan.yearlyPaise, 'P1Y'),
     ]),
   };
 }

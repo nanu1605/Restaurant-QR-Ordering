@@ -23,9 +23,10 @@ import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 
-import { FAQ, FINAL_CTA, HERO, HIGHLIGHTS, PROBLEMS, ROLES, type HighlightIcon } from '../content';
-import { PhoneFrame } from './device-frames';
+import { SITE, type SiteLang } from '../content';
+import { fillNodes } from '../i18n';
 import { siteCta } from '../signup';
+import { PhoneFrame } from './device-frames';
 import { HeroStory } from './hero-story';
 import { HowItWorks } from './how-it-works';
 import { WithHindi } from './with-hindi';
@@ -69,16 +70,17 @@ export function Section({
   );
 }
 
-export function Hero() {
-  const cta = siteCta();
+export function Hero({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang];
+  const cta = siteCta(lang);
   return (
     <section className="site-dots relative overflow-hidden px-4 pt-10 pb-16 sm:px-6 sm:pt-16 lg:pt-20">
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-[1fr_1.15fr]">
         <div className="flex flex-col gap-6">
           <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-4xl lg:text-5xl">
-            {HERO.title}
+            {t.hero.title}
           </h1>
-          <p className="max-w-xl text-base text-ink-muted sm:text-lg">{HERO.lead}</p>
+          <p className="max-w-xl text-base text-ink-muted sm:text-lg">{t.hero.lead}</p>
           <div id="hero-cta" data-cta="hero" className="flex flex-wrap gap-3">
             <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
               {cta.label}
@@ -88,14 +90,17 @@ export function Hero() {
               href="#how"
               className={cn(buttonVariants({ variant: 'outline', size: 'touch' }), 'px-6')}
             >
-              {HERO.secondary}
+              {t.hero.secondary}
             </a>
           </div>
           <p className="text-sm text-ink-muted">
-            Already using MenuMesh?{' '}
-            <Link href="/login" className="font-semibold text-brand hover:underline">
-              Log in
-            </Link>
+            {fillNodes(t.hero.customers, {
+              login: (
+                <Link href="/login" className="font-semibold text-brand hover:underline">
+                  {t.login}
+                </Link>
+              ),
+            })}
           </p>
         </div>
         <HeroStory />
@@ -104,25 +109,22 @@ export function Hero() {
   );
 }
 
-export function GrowthBadge() {
+export function GrowthBadge({ lang }: { lang: SiteLang }) {
   return (
     <span className="ml-1.5 inline-flex rounded-full bg-accent px-2 py-0.5 align-middle text-xs font-semibold whitespace-nowrap text-brand">
-      Growth plan
+      {SITE[lang].growthBadge}
     </span>
   );
 }
 
 const PROBLEM_ICONS: LucideIcon[] = [ClipboardX, Clock3, EyeOff];
 
-export function Problems() {
+export function Problems({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].problems;
   return (
-    <Section
-      title="Running a busy floor on paper is hard"
-      lead="Orders, the kitchen and the bill all depend on slips and memory. MenuMesh puts them on one screen everyone shares."
-      className="bg-surface"
-    >
+    <Section title={t.title} lead={t.lead} className="bg-surface">
       <ul className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {PROBLEMS.map((problem, index) => {
+        {t.items.map((problem, index) => {
           const Icon = PROBLEM_ICONS[index]!;
           return (
             <li
@@ -140,13 +142,10 @@ export function Problems() {
   );
 }
 
-export function How() {
+export function How({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].how;
   return (
-    <Section
-      id="how"
-      title="How it works"
-      lead="From the first scan to a free table, in four steps your staff already know."
-    >
+    <Section id="how" title={t.title} lead={t.lead}>
       <HowItWorks />
     </Section>
   );
@@ -154,16 +153,12 @@ export function How() {
 
 const ROLE_ACCENTS = ['bg-status-ready', 'bg-status-preparing', 'bg-primary'];
 
-export function Roles() {
+export function Roles({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].roles;
   return (
-    <Section
-      id="features"
-      title="One system for the whole restaurant"
-      lead="Guests, the floor, the kitchen and the counter each get a screen made for what they do."
-      className="bg-surface"
-    >
+    <Section id="features" title={t.title} lead={t.lead} className="bg-surface">
       <ul className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {ROLES.map((role, index) => (
+        {t.items.map((role, index) => (
           <li
             key={role.id}
             className="site-reveal relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-line bg-paper p-6"
@@ -182,7 +177,7 @@ export function Roles() {
                   />
                   <span>
                     <WithHindi text={point.text} />
-                    {point.plan && <GrowthBadge />}
+                    {point.plan && <GrowthBadge lang={lang} />}
                   </span>
                 </li>
               ))}
@@ -194,26 +189,25 @@ export function Roles() {
   );
 }
 
-const HIGHLIGHT_ICONS: Record<HighlightIcon, LucideIcon> = {
-  camera: Camera,
-  languages: Languages,
-  activity: Activity,
-  'wifi-off': WifiOff,
-  printer: Printer,
-  receipt: ReceiptText,
-  'qr-code': QrCode,
-  chart: ChartColumn,
-};
+/** By position in the dictionary's highlights. */
+const HIGHLIGHT_ICONS: LucideIcon[] = [
+  Camera,
+  Languages,
+  Activity,
+  WifiOff,
+  Printer,
+  ReceiptText,
+  QrCode,
+  ChartColumn,
+];
 
-export function Highlights() {
+export function Highlights({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].highlights;
   return (
-    <Section
-      title="Made for restaurants in India"
-      lead="The details that matter on a real service."
-    >
+    <Section title={t.title} lead={t.lead}>
       <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {HIGHLIGHTS.map((highlight) => {
-          const Icon = HIGHLIGHT_ICONS[highlight.icon];
+        {t.items.map((highlight, index) => {
+          const Icon = HIGHLIGHT_ICONS[index]!;
           return (
             <li
               key={highlight.title}
@@ -224,7 +218,7 @@ export function Highlights() {
               </span>
               <h3 className="text-base font-semibold text-ink">
                 <WithHindi text={highlight.title} />
-                {'plan' in highlight && <GrowthBadge />}
+                {highlight.plan && <GrowthBadge lang={lang} />}
               </h3>
               <p className="text-sm text-ink-muted">{highlight.body}</p>
             </li>
@@ -270,7 +264,8 @@ function MiniMenu({ lang }: { lang: 'en' | 'hi' }) {
   );
 }
 
-export function Hindi() {
+export function Hindi({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang].hindi;
   return (
     <section
       aria-labelledby="hindi-title"
@@ -279,12 +274,10 @@ export function Hindi() {
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
         <div className="site-reveal flex flex-col gap-4">
           <h2 id="hindi-title" className="text-2xl font-bold sm:text-3xl">
-            Your menu, in your guests’ language
+            {t.title}
           </h2>
           <p className="text-base text-paper/80 sm:text-lg dark:text-ink-muted">
-            One tap switches the whole menu to <span lang="hi">हिन्दी</span>: buttons, the cart,
-            order status, and your dish names. MenuMesh writes each dish name in Hindi for you, and
-            you can change any of them in the menu editor.
+            <WithHindi text={t.body} />
           </p>
         </div>
         <div aria-hidden className="site-reveal flex justify-center gap-4 sm:gap-8">
@@ -301,32 +294,23 @@ export function Hindi() {
 }
 
 /** Two ways on from the home page: the demo, and the plans with the lowest price. */
-export function NextSteps({ fromPaise }: { fromPaise: number | null }) {
+export function NextSteps({ lang, fromPaise }: { lang: SiteLang; fromPaise: number | null }) {
+  const t = SITE[lang].nextSteps;
   const cards = [
-    {
-      href: '/demo',
-      icon: MousePointerClick,
-      title: 'Try it in your browser',
-      body: 'Order as a guest, cook in the kitchen and bill at the counter, all on one page. Nothing to sign up for.',
-      link: 'Open the demo',
-    },
+    { href: '/demo', icon: MousePointerClick, ...t.demo },
     {
       href: '/pricing',
       icon: Tags,
       title:
-        fromPaise === null ? (
-          'Plans and pricing'
-        ) : (
-          <>
-            Plans from <Money paise={fromPaise} fraction="auto" /> a month + GST
-          </>
-        ),
-      body: 'Every plan has QR ordering, the staff board, bills and the Hindi menu. No commission on your sales.',
-      link: 'Compare plans',
+        fromPaise === null
+          ? t.pricing.title
+          : fillNodes(t.pricing.from, { price: <Money paise={fromPaise} fraction="auto" /> }),
+      body: t.pricing.body,
+      link: t.pricing.link,
     },
   ];
   return (
-    <section aria-label="Next steps" className="px-4 py-16 sm:px-6 sm:py-24">
+    <section aria-label={t.label} className="px-4 py-16 sm:px-6 sm:py-24">
       <ul className="mx-auto grid max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
         {cards.map(({ href, icon: Icon, title, body, link }) => (
           <li key={href} className="site-reveal">
@@ -353,9 +337,11 @@ export function NextSteps({ fromPaise }: { fromPaise: number | null }) {
 }
 
 export function Faq({
-  items = FAQ,
-  title = 'Questions owners ask',
+  lang,
+  items = SITE[lang].faq.items,
+  title = SITE[lang].faq.title,
 }: {
+  lang: SiteLang;
   items?: ReadonlyArray<{ q: string; a: string }>;
   title?: string;
 }) {
@@ -379,14 +365,15 @@ export function Faq({
   );
 }
 
-export function FinalCta() {
-  const cta = siteCta();
+export function FinalCta({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang];
+  const cta = siteCta(lang);
   return (
     <section className="px-4 py-16 sm:px-6 sm:py-24">
       <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground sm:px-12">
-        <h2 className="text-2xl font-bold sm:text-3xl">{FINAL_CTA.title}</h2>
+        <h2 className="text-2xl font-bold sm:text-3xl">{t.finalCta.title}</h2>
         <p className="max-w-2xl text-base sm:text-lg">
-          {cta.href === '/signup' ? FINAL_CTA.signupBody : FINAL_CTA.body}
+          {cta.href === '/signup' ? t.finalCta.signupBody : t.finalCta.body}
         </p>
         <div data-cta="final" className="flex flex-wrap justify-center gap-3">
           <Link
@@ -405,7 +392,7 @@ export function FinalCta() {
               'px-6 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground dark:hover:bg-primary-foreground/10',
             )}
           >
-            Log in
+            {t.login}
           </Link>
         </div>
       </div>

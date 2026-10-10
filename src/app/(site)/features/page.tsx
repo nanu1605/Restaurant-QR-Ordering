@@ -1,30 +1,30 @@
 import type { Metadata } from 'next';
 
-import { FEATURE_SECTIONS, FEATURES_PAGE } from '@/features/site/content';
 import { FeatureSections } from '@/features/site/components/feature-sections';
 import { FinalCta } from '@/features/site/components/sections';
+import { SITE } from '@/features/site/content';
 import { APP_NAME } from '@/lib/config';
 
+const { meta } = SITE.en.featuresPage;
+
 export const metadata: Metadata = {
-  title: { absolute: `${APP_NAME} · Features` },
-  description:
-    'QR ordering for guests, a live board for waiters, a kitchen view, one-tap bills and reports for owners. See each screen of MenuMesh.',
+  title: { absolute: `${APP_NAME} · ${meta.title}` },
+  description: meta.description,
 };
 
 export default function FeaturesPage() {
+  const t = SITE.en.featuresPage;
   return (
     <>
       <section className="site-dots px-4 pt-12 pb-10 sm:px-6 sm:pt-16">
         <div className="mx-auto flex max-w-6xl flex-col gap-6">
           <div className="flex max-w-2xl flex-col gap-4">
-            <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-              {FEATURES_PAGE.title}
-            </h1>
-            <p className="text-base text-ink-muted sm:text-lg">{FEATURES_PAGE.lead}</p>
+            <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-4xl">{t.title}</h1>
+            <p className="text-base text-ink-muted sm:text-lg">{t.lead}</p>
           </div>
-          <nav aria-label="On this page">
+          <nav aria-label={t.onThisPage}>
             <ul className="flex flex-wrap gap-2">
-              {FEATURE_SECTIONS.map((section) => (
+              {t.sections.map((section) => (
                 <li key={section.id}>
                   <a
                     href={`#${section.id}`}
@@ -38,8 +38,8 @@ export default function FeaturesPage() {
           </nav>
         </div>
       </section>
-      <FeatureSections />
-      <FinalCta />
+      <FeatureSections lang="en" />
+      <FinalCta lang="en" />
     </>
   );
 }

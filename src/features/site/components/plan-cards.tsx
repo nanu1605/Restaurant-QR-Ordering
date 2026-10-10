@@ -7,16 +7,10 @@ import { useState } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
-import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
+import { FEATURE_KEYS } from '@/features/plans/plan-features';
 
-import { HERO, PRICING, SIGNUP_CTA } from '../content';
-import {
-  monthsFreeYearly,
-  staffLabel,
-  tablesLabel,
-  yearlySavingPaise,
-  type SitePricing,
-} from '../pricing';
+import { CTA, LABELS, PRICING } from '../content';
+import { limitLabel, monthsFreeYearly, yearlySavingPaise, type SitePricing } from '../pricing';
 import { WithHindi } from './with-hindi';
 
 type Cycle = 'monthly' | 'yearly';
@@ -116,8 +110,10 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
                 )}
               </p>
               <ul className="flex flex-col gap-2 text-sm text-ink">
-                <li className="font-semibold">{tablesLabel(plan.maxTables)}</li>
-                <li className="font-semibold">{staffLabel(plan.maxStaff)}</li>
+                <li className="font-semibold">
+                  {limitLabel(plan.maxTables, PRICING.limits.tables)}
+                </li>
+                <li className="font-semibold">{limitLabel(plan.maxStaff, PRICING.limits.staff)}</li>
                 {builds ? (
                   <li className="pt-1 text-ink-muted">
                     Everything in {previous.name}
@@ -127,7 +123,7 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
                   PRICING.everyPlan.map((text) => <Feature key={text} text={text} />)
                 )}
                 {shown.map((key) => (
-                  <Feature key={key} text={FEATURE_LABELS[key]} />
+                  <Feature key={key} text={LABELS.features[key]} />
                 ))}
               </ul>
               <Link
@@ -137,15 +133,15 @@ export function PlanCards({ pricing, signup }: { pricing: SitePricing; signup: b
                 }
                 aria-label={
                   signup
-                    ? `${SIGNUP_CTA}, then the ${plan.name} plan`
-                    : `${HERO.primary} for the ${plan.name} plan`
+                    ? `${CTA.signup}, then the ${plan.name} plan`
+                    : `${CTA.demo} for the ${plan.name} plan`
                 }
                 className={cn(
                   buttonVariants({ variant: trial ? 'default' : 'outline', size: 'touch' }),
                   'mt-auto',
                 )}
               >
-                {signup ? SIGNUP_CTA : HERO.primary}
+                {signup ? CTA.signup : CTA.demo}
               </Link>
             </li>
           );

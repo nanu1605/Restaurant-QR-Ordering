@@ -6,14 +6,16 @@ import { buttonVariants } from '@/components/ui/button';
 import { ThemeMenu } from '@/features/theme/theme-switch';
 import { APP_NAME } from '@/lib/config';
 
-import { SITE_NAV } from '../content';
+import { SITE, type SiteLang } from '../content';
+import { fill } from '../i18n';
 import { siteCta } from '../signup';
 import { SiteLink } from './site-link';
 import { SiteMobileNav } from './site-mobile-nav';
 
 /** The website's top bar: logo, sections, log in and the main call to action. */
-export function SiteHeader() {
-  const cta = siteCta();
+export function SiteHeader({ lang }: { lang: SiteLang }) {
+  const t = SITE[lang];
+  const cta = siteCta(lang);
   return (
     <header
       data-cta="header"
@@ -22,14 +24,14 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
         <Link
           href="/"
-          aria-label={`${APP_NAME} home`}
+          aria-label={fill(t.header.home, { app: APP_NAME })}
           className="inline-flex h-11 items-center rounded-lg"
         >
           <Wordmark />
         </Link>
-        <nav aria-label="Main" className="hidden lg:block">
+        <nav aria-label={t.header.main} className="hidden lg:block">
           <ul className="flex items-center gap-1">
-            {SITE_NAV.map((item) => (
+            {t.nav.map((item) => (
               <li key={item.href}>
                 <SiteLink
                   href={item.href}
@@ -51,7 +53,7 @@ export function SiteHeader() {
               'hidden h-11 px-4 text-base sm:inline-flex',
             )}
           >
-            Log in
+            {t.login}
           </Link>
           {/* On the narrowest phones the menu and the hero carry it instead. */}
           <Link

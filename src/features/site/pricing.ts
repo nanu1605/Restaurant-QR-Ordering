@@ -1,6 +1,8 @@
 import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 import type { Paise } from '@/lib/money';
 
+import { fill } from './i18n';
+
 /**
  * The pricing page's plans (docs/DECISIONS.md W-5): read from the `plans`
  * table, so the site always shows what /super set. Pure helpers, shared by
@@ -84,10 +86,7 @@ export function recommendPlan(plans: PricingPlan[], needs: PlanNeeds): PricingPl
   );
 }
 
-export function tablesLabel(max: number | null): string {
-  return max === null ? 'Unlimited tables' : `Up to ${max} tables`;
-}
-
-export function staffLabel(max: number | null): string {
-  return max === null ? 'Unlimited staff logins' : `Up to ${max} staff logins`;
+/** A plan limit in words: "Up to 8 tables", or "Unlimited tables" for null. */
+export function limitLabel(max: number | null, words: { unlimited: string; upTo: string }) {
+  return max === null ? words.unlimited : fill(words.upTo, { n: max });
 }

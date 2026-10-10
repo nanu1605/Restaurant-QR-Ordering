@@ -7,7 +7,7 @@ import { emailConfig, escapeHtml } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
 import { turnstileConfig } from '@/lib/turnstile';
 
-import { HERO, SIGNUP_CTA } from './content';
+import { SITE, type SiteLang } from './content';
 
 /**
  * The self-serve signup (docs/DECISIONS.md W-9): when it is open, and the
@@ -20,10 +20,11 @@ export function signupOpen(): boolean {
 }
 
 /** The website's main call to action. */
-export function siteCta(): { href: string; label: string } {
+export function siteCta(lang: SiteLang): { href: string; label: string } {
+  const { cta } = SITE[lang];
   return signupOpen()
-    ? { href: '/signup', label: SIGNUP_CTA }
-    : { href: '/contact', label: HERO.primary };
+    ? { href: '/signup', label: cta.signup }
+    : { href: '/contact', label: cta.demo };
 }
 
 /**

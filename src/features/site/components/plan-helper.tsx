@@ -6,10 +6,10 @@ import { useId, useState } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
-import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from '@/features/plans/plan-features';
+import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 
-import { HERO, SIGNUP_CTA } from '../content';
-import { recommendPlan, staffLabel, tablesLabel, type PricingPlan } from '../pricing';
+import { CTA, LABELS, PRICING } from '../content';
+import { limitLabel, recommendPlan, type PricingPlan } from '../pricing';
 
 const MAX_TABLES = 60;
 const MAX_STAFF = 40;
@@ -58,7 +58,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
                   onChange={(event) => toggle(key, event.target.checked)}
                   className="size-5 shrink-0 accent-brand"
                 />
-                {FEATURE_LABELS[key]}
+                {LABELS.features[key]}
               </label>
             ))}
           </div>
@@ -78,7 +78,8 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
               a month
             </p>
             <p className="text-sm text-ink-muted">
-              {tablesLabel(plan.maxTables)} · {staffLabel(plan.maxStaff)}
+              {limitLabel(plan.maxTables, PRICING.limits.tables)} ·{' '}
+              {limitLabel(plan.maxStaff, PRICING.limits.staff)}
             </p>
           </>
         ) : (
@@ -102,7 +103,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
           }
           className={cn(buttonVariants({ size: 'touch' }), 'self-center px-6')}
         >
-          {plan && signup ? SIGNUP_CTA : HERO.primary}
+          {plan && signup ? CTA.signup : CTA.demo}
         </Link>
       </div>
     </div>
