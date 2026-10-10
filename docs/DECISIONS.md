@@ -2270,7 +2270,9 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
   - **Not done:**
     - joining a website visit to the owner's person (the panels' reset and identify are
       unchanged);
-    - a separate staging project, which is the owner's choice (filter by `$host` meanwhile);
+    - a separate staging project: PostHog's free plan has one, so staging shares it and the
+      project's internal-and-test-users filter keeps only `$host` = `menumesh.in` (RUNBOOK
+      step 4; the owner's choice, 2026-10-10);
     - "came from" on the super-admin restaurant page (the data is in the database).
   - **Tests:**
     - unit: `website-analytics.test.ts`;
