@@ -6,7 +6,17 @@ import { expect, test } from '@playwright/test';
 test.skip(!process.env.PERF, 'Set PERF=1 to measure the website on a throttled phone profile.');
 test.skip(({ isMobile }) => !isMobile, 'The phone profile only.');
 
-const PATHS = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/terms'];
+const PATHS = [
+  '/',
+  '/features',
+  '/pricing',
+  '/demo',
+  '/contact',
+  '/signup',
+  '/terms',
+  '/hi',
+  '/hi/pricing',
+];
 
 test('each website page paints within 2.5 s and holds still', async ({ page }) => {
   test.setTimeout(PATHS.length * 30_000);
