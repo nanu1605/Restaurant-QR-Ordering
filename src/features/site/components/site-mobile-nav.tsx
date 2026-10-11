@@ -9,9 +9,11 @@ import { useRef, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeSwitch } from '@/features/theme/theme-switch';
+import type { ThemeLabels } from '@/features/theme/theme';
 
 import type { SiteContent, SiteLang } from '../content';
 import { sitePath } from '../i18n';
+import { LanguageSwitch } from './language-switch';
 import { SiteLink } from './site-link';
 
 /**
@@ -25,7 +27,11 @@ export function SiteMobileNav({
   cta,
 }: {
   siteLang: SiteLang;
-  t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & { main: string };
+  t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & {
+    main: string;
+    theme: ThemeLabels;
+    otherLanguage: string;
+  };
   cta: { href: string; label: string };
 }) {
   const pathname = usePathname();
@@ -105,7 +111,13 @@ export function SiteMobileNav({
             })}
           </ul>
         </nav>
-        <ThemeSwitch className="self-start" />
+        <div className="flex flex-wrap items-center gap-2">
+          <ThemeSwitch labels={t.theme} />
+          <LanguageSwitch
+            label={t.otherLanguage}
+            className="rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+          />
+        </div>
         <div className="mt-auto flex flex-col gap-3">
           <SiteLink
             siteLang={siteLang}

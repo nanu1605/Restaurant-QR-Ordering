@@ -2,19 +2,23 @@ import { cn } from 'cn';
 
 import { Wordmark } from '@/components/shared/logo';
 import { buttonVariants } from '@/components/ui/button';
+import { LANG_NAMES, STRINGS } from '@/features/ordering/strings';
 import { ThemeMenu } from '@/features/theme/theme-switch';
 import { APP_NAME } from '@/lib/config';
 
 import { SITE, type SiteLang } from '../content';
 import { fill } from '../i18n';
 import { siteCta } from '../signup';
+import { LanguageSwitch } from './language-switch';
 import { SiteLink } from './site-link';
 import { SiteMobileNav } from './site-mobile-nav';
 
-/** The website's top bar: logo, sections, log in and the main call to action. */
+/** The website's top bar: logo, sections, language, theme, log in and the main call to action. */
 export function SiteHeader({ lang }: { lang: SiteLang }) {
   const t = SITE[lang];
   const cta = siteCta(lang);
+  const { theme } = STRINGS[lang];
+  const otherLanguage = LANG_NAMES[lang === 'en' ? 'hi' : 'en'];
   return (
     <header
       data-cta="header"
@@ -45,8 +49,12 @@ export function SiteHeader({ lang }: { lang: SiteLang }) {
           </ul>
         </nav>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          {/* Below 1024px the menu sheet carries it. */}
-          <ThemeMenu className="hidden lg:inline-flex" />
+          {/* Below 1024px the menu sheet carries them. */}
+          <LanguageSwitch
+            label={otherLanguage}
+            className="hidden rounded-md px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-muted hover:text-ink lg:inline-flex"
+          />
+          <ThemeMenu labels={theme} className="hidden lg:inline-flex" />
           <SiteLink
             siteLang={lang}
             href="/login"
@@ -70,7 +78,14 @@ export function SiteHeader({ lang }: { lang: SiteLang }) {
           </SiteLink>
           <SiteMobileNav
             siteLang={lang}
-            t={{ nav: t.nav, login: t.login, menu: t.menu, main: t.header.main }}
+            t={{
+              nav: t.nav,
+              login: t.login,
+              menu: t.menu,
+              main: t.header.main,
+              theme,
+              otherLanguage,
+            }}
             cta={cta}
           />
         </div>
