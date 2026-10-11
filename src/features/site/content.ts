@@ -115,7 +115,7 @@ const en = {
   },
   how: {
     title: 'How it works',
-    lead: 'From the first scan to a free table, in four steps your staff already know.',
+    lead: 'From the first scan to the paid bill, every table follows four simple steps.',
     steps: [
       {
         title: 'Scan',
@@ -131,7 +131,7 @@ const en = {
       },
       {
         title: 'Bill and pay',
-        body: 'One tap makes the bill with your taxes and charges. Print it, take payment the way you already do, and the table is free for the next guests.',
+        body: 'One tap makes the bill with every dish the table ordered, your taxes, and any other charges that apply. Print it, take payment the way you already do, and the table is free for the next guests.',
       },
     ],
   },
