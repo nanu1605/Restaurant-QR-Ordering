@@ -99,6 +99,18 @@ test('the website shows its plans, and the policies are up', async ({ page, cont
   }
 });
 
+test('the website answers in Hindi under /hi', async ({ page, context }) => {
+  // Nothing reaches PostHog from here (docs/DECISIONS.md W-13).
+  await context.route(/\.i\.posthog\.com\//, (route) => route.abort());
+  await page.goto('/hi');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const english = await page
+    .locator('link[rel="alternate"][hreflang="en-IN"]')
+    .getAttribute('href');
+  expect(new URL(english!).pathname).toBe('/');
+});
+
 test('the cron and the payment webhook refuse strangers', async ({ request }) => {
   expect((await request.get('/api/cron/daily')).status()).toBe(401);
   const webhook = await request.post('/api/webhooks/razorpay', {

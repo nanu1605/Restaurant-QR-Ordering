@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   adminClient,
   createTestRestaurant,
+  DEVANAGARI,
   fakeTurnstile,
   logInAsOwner,
   watchCspViolations,
@@ -343,6 +344,63 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   await expect(taken).toContainText('This email already has a MenuMesh account. Log in instead.');
   await expect(taken.getByRole('link', { name: 'Go to log in' })).toBeVisible();
   await expect(verify).toHaveCount(0);
+});
+
+test('a Hindi visitor signs up from the Hindi pricing page, with emails in Hindi', async ({
+  page,
+  request,
+}) => {
+  await fakeTurnstile(page.context());
+  const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const email = `signup-hi-${unique}@e2e.test`;
+  const inbox = async () => {
+    const response = await request.get(`http://127.0.0.1:3190/resend/inbox?to=${email}`);
+    return ((await response.json()) as { emails: { subject: string; html: string }[] }).emails;
+  };
+
+  await page.goto('/hi/pricing');
+  await page.locator('a[href="/hi/signup?plan=growth&cycle=monthly"]').first().click();
+  await expect(page).toHaveURL(/\/hi\/signup\?plan=growth&cycle=monthly$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+
+  const form = page.getByRole('main').locator('form');
+  const field = (name: string) => form.locator(`[name="${name}"]`);
+  await field('restaurantName').fill(`हिन्दी ढाबा ${unique}`);
+  await field('city').fill('इंदौर');
+  await field('ownerName').fill('आशा राव');
+  await field('email').fill(email);
+  await field('phone').fill('98765 43210');
+  await field('terms').check();
+  await form.locator('button[type="submit"]').click();
+
+  await expect(page).toHaveURL(/\/hi\/signup\/verify$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(DEVANAGARI);
+  await expect.poll(async () => (await inbox()).length).toBe(1);
+  const [sent] = await inbox();
+  expect(sent!.subject).toMatch(DEVANAGARI);
+  expect(sent!.html).toContain('lang="hi"');
+  const code = /\d{6}/.exec(sent!.subject)![0];
+
+  const verify = page.getByRole('main').locator('form').first();
+  await verify.locator('[name="code"]').fill(code);
+  await verify.locator('[name="password"]').fill('signup-pass-123');
+  await verify.locator('button[type="submit"]').click();
+
+  // The admin panel is English, as for every owner.
+  await expect(page).toHaveURL(/\/admin\/subscription\?welcome=1&cycle=monthly&plan=growth$/);
+  await expect(page.getByRole('heading', { name: 'Your restaurant is ready' })).toBeVisible();
+  await expect.poll(async () => (await inbox()).length).toBe(2);
+  const [, welcome] = await inbox();
+  expect(welcome?.subject).toMatch(DEVANAGARI);
+  expect(welcome?.html).toContain('lang="hi"');
+  const { data: restaurant } = await adminClient()
+    .from('restaurants')
+    .select('slug, city')
+    .eq('email', email)
+    .single();
+  expect(restaurant?.city).toBe('इंदौर');
+  expect(welcome?.html).toContain(restaurant!.slug);
 });
 
 test('webhooks with a bad signature are refused and not stored', async ({ request }) => {
