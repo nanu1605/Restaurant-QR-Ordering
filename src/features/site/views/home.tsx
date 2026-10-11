@@ -40,7 +40,7 @@ export async function HomeView({ lang }: { lang: SiteLang }) {
       <Faq lang={lang} />
       <FinalCta lang={lang} />
       <StickyCta cta={siteCta(lang)} />
-      <JsonLd nodes={[organization(), website(), faqPage(SITE[lang].faq.items)]} />
+      <JsonLd nodes={[organization(), website(), faqPage(SITE[lang].faq.items, lang)]} />
     </>
   );
 }

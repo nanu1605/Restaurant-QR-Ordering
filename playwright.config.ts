@@ -35,7 +35,7 @@ export default defineConfig({
     {
       name: 'tablet',
       use: { ...devices['iPad Mini'], browserName: 'chromium' },
-      testMatch: /(site|site-demo|admin-nav|contrast)\.spec\.ts/,
+      testMatch: /(site|site-demo|site-hindi|admin-nav|contrast)\.spec\.ts/,
     },
     // Customers use phones; Pixel keeps the run on Chromium only. The admin
     // panel is desktop-first (spec §13.3): only its navigation runs on mobile.

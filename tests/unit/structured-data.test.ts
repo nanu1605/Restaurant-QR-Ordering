@@ -33,6 +33,14 @@ describe('JsonLd', () => {
   });
 });
 
+describe('faqPage', () => {
+  it('names the language of its questions', () => {
+    const items = [{ q: 'Q', a: 'A' }];
+    expect(faqPage(items)).toMatchObject({ '@type': 'FAQPage', inLanguage: 'en-IN' });
+    expect(faqPage(items, 'hi')).toMatchObject({ '@type': 'FAQPage', inLanguage: 'hi-IN' });
+  });
+});
+
 describe('softwareApplication', () => {
   it('lists each plan monthly and yearly in rupees, before GST', () => {
     const pricing: SitePricing = {
@@ -51,7 +59,7 @@ describe('softwareApplication', () => {
       trialPlanCode: 'starter',
       setupFeePaise: 0,
     };
-    const { offers } = softwareApplication(pricing) as { offers: Record<string, unknown>[] };
+    const { offers } = softwareApplication(pricing, 'en') as { offers: Record<string, unknown>[] };
     expect(offers).toHaveLength(2);
     expect(offers[0]).toMatchObject({
       name: 'Starter, monthly',

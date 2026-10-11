@@ -1,5 +1,4 @@
 import { Check } from 'lucide-react';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { Money } from '@/components/shared/money';
@@ -7,8 +6,9 @@ import { firstParam, type SearchParams } from '@/lib/date-range';
 import { turnstileConfig } from '@/lib/turnstile';
 
 import { SignupForm } from '../components/signup-form';
+import { SiteLink } from '../components/site-link';
 import { SITE, type SiteLang } from '../content';
-import { fill, fillNodes } from '../i18n';
+import { fill, fillNodes, sitePath } from '../i18n';
 import { getSitePricing } from '../queries';
 import { signupOpen } from '../signup';
 
@@ -50,7 +50,7 @@ export async function SignupView({
       const value = firstParam(params, key);
       if (value) query.set(key, value);
     }
-    redirect(query.size ? `/contact?${query}` : '/contact');
+    redirect(sitePath(lang, query.size ? `/contact?${query}` : '/contact'));
   }
   const cycle = firstParam(params, 'cycle') === 'yearly' ? 'yearly' : 'monthly';
   const { trialDays, plan } = await chosenPlan(requested, cycle);
@@ -96,9 +96,13 @@ export async function SignupView({
           <p className="text-sm text-ink-muted">
             {fillNodes(t.signup.haveAccount, {
               login: (
-                <Link href="/login" className="font-medium text-brand underline underline-offset-2">
+                <SiteLink
+                  siteLang={lang}
+                  href="/login"
+                  className="font-medium text-brand underline underline-offset-2"
+                >
                   {t.login}
-                </Link>
+                </SiteLink>
               ),
             })}
           </p>

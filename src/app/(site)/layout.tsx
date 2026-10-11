@@ -2,9 +2,6 @@ import type { Metadata } from 'next';
 
 import { SiteAnalytics } from '@/features/analytics/site-analytics';
 import { SiteMotion } from '@/features/site/components/motion';
-import { SiteFooter } from '@/features/site/components/site-footer';
-import { SiteHeader } from '@/features/site/components/site-header';
-import { SITE } from '@/features/site/content';
 import { APP_NAME } from '@/lib/config';
 
 /**
@@ -18,27 +15,14 @@ export const metadata: Metadata = {
 };
 
 /**
- * The public website (docs/DECISIONS.md W-1): home, contact and the policies.
- * Always English: a guest who chose Hindi on the menu may arrive here by a
- * client-side link, which keeps <html lang> from the menu.
+ * The public website (docs/DECISIONS.md W-1): home, contact and the policies, in English, and in
+ * Hindi under /hi. Each language's layout draws the header and footer (SiteChrome).
  */
 export default function SiteLayout({ children }: LayoutProps<'/'>) {
   return (
     <SiteMotion>
-      <div lang="en" className="site flex flex-1 flex-col">
-        <a
-          href="#main"
-          className="sr-only z-50 rounded-md bg-surface px-4 py-2 font-semibold text-brand focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
-        >
-          {SITE.en.skipToContent}
-        </a>
-        <SiteHeader lang="en" />
-        <main id="main" className="flex flex-1 flex-col">
-          {children}
-        </main>
-        <SiteFooter lang="en" />
-        <SiteAnalytics />
-      </div>
+      {children}
+      <SiteAnalytics />
     </SiteMotion>
   );
 }

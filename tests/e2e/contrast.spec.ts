@@ -48,6 +48,7 @@ test('website and customer menu', async ({ page }) => {
   test.slow();
   const paths = ['/', '/features', '/pricing', '/demo', '/contact', '/signup', '/login'];
   paths.push('/terms', '/privacy', '/refund', '/shipping');
+  paths.push('/hi', '/hi/features', '/hi/pricing', '/hi/demo', '/hi/contact', '/hi/signup');
   paths.push('/t/DEMO0000TABLE001', '/t/DEMO0000TABLE001/cart', '/t/DEMO0000TABLE001/orders');
   expect(await sweep(page, paths, { wcag: true })).toEqual([]);
 });

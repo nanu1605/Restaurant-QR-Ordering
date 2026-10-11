@@ -247,10 +247,13 @@ Production keeps its current build until the owner's legal texts and contact det
 (docs/DECISIONS.md W-2). Then, in this order:
 
 1. **Texts** (a normal PR): replace the placeholders.
-   - The four policies in `src/app/(site)/(legal)/`, and the placeholder banner in its
+   - The four policies in `src/app/(site)/(en)/(legal)/`, and the placeholder banner in its
      `layout.tsx` (`tests/e2e/legal.spec.ts` checks for the banner, so update it too).
-   - The support email, phone and WhatsApp in `src/app/(site)/contact/page.tsx`, and its
-     placeholder note.
+   - The support email, phone and WhatsApp in `contact.ways` of both dictionaries,
+     `src/features/site/content.ts` and `content-hi.ts`, and the `contact.placeholder` note.
+   - The owner's review of the Hindi website: `src/features/site/content-hi.ts`, `DEMO_WORDS.hi`
+     in `src/features/site/demo/machine.ts`, and the Hindi code and welcome emails (DECISIONS
+     W-20). Corrections go in the same PR.
    - The Organization's contact details in `src/features/site/structured-data.tsx` (W-12).
 2. **Production Vercel variables:**
    - `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, from a Cloudflare Turnstile widget whose

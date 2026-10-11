@@ -18,7 +18,8 @@ import { usePrefersReducedMotion } from './motion';
  * phone to the kitchen tablet and onto the bill. Steps: 0 menu, 1 dish added,
  * 2 placed, 3 preparing, 4 ready, 5 served, 6 bill, 7 paid. It plays only
  * while on screen and the tab is visible; with reduced motion it shows the
- * finished scene, and it can be paused (WCAG 2.2.2).
+ * finished scene, and it can be paused (WCAG 2.2.2). The guest's phone speaks
+ * the page's language; the kitchen board and the bill stay English, as in the app.
  */
 
 const DURATIONS = [1600, 1400, 1700, 1500, 1500, 1700, 1700, 2800] as const;
@@ -34,6 +35,20 @@ const MENU: Array<{ name: string; foodType: FoodType; paise: number }> = [
 ];
 const DISH = MENU[0]!;
 const GST_PAISE = 1400; // 5% of ₹280
+
+/** The guest phone's words, the menu's own (STRINGS) in the page's language, from the server. */
+export type GuestWords = {
+  table: string;
+  /** Dish names, by their English name. */
+  dishes: Record<string, string>;
+  add: string;
+  ordersTitle: string;
+  round: string;
+  status: Record<DishStatus, string>;
+  oneItem: string;
+  fourItems: string;
+  place: string;
+};
 
 function dishStatus(step: number): DishStatus | null {
   return step < 2 ? null : DISH_STATUSES[Math.min(step - 2, 3)]!;
@@ -53,7 +68,15 @@ const pop = {
   exit: { opacity: 0, scale: 0.8 },
 };
 
-export function HeroStory({ t, className }: { t: SiteContent['story']; className?: string }) {
+export function HeroStory({
+  t,
+  guest,
+  className,
+}: {
+  t: SiteContent['story'];
+  guest: GuestWords;
+  className?: string;
+}) {
   const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, { amount: 0.3 });
   const pageInView = usePageInView();
@@ -98,7 +121,7 @@ export function HeroStory({ t, className }: { t: SiteContent['story']; className
           </AnimatePresence>
         </TabletFrame>
         <PhoneFrame className="absolute right-0 bottom-0 z-10 w-[8.75rem] sm:w-[10.5rem] md:right-[13.5rem] md:w-[10.5rem] lg:right-[12rem] xl:right-[13.5rem]">
-          <GuestScreen step={shown} playing={playing} />
+          <GuestScreen t={guest} step={shown} playing={playing} />
         </PhoneFrame>
       </div>
 
@@ -147,13 +170,13 @@ export function HeroStory({ t, className }: { t: SiteContent['story']; className
  * The guest's phone: the menu, then their order and its status. The finger
  * tap pulses only while the scene plays, so pausing stops all movement.
  */
-function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
+function GuestScreen({ t, step, playing }: { t: GuestWords; step: number; playing: boolean }) {
   const status = dishStatus(step);
   return (
     <div className="flex h-full flex-col text-[0.5rem] sm:text-[0.6rem]">
       <div className="bg-primary px-[0.9em] pt-[2.4em] pb-[0.9em] text-primary-foreground">
         <p className="text-[1.15em] font-bold">Spice Route</p>
-        <p>Table 5</p>
+        <p>{t.table}</p>
       </div>
       <AnimatePresence mode="wait" initial={false}>
         {status === null ? (
@@ -165,7 +188,9 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
               >
                 <FoodTypeMark type={dish.foodType} className="size-[1.1em]" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-ink">{dish.name}</span>
+                  <span className="block truncate font-semibold text-ink">
+                    {t.dishes[dish.name] ?? dish.name}
+                  </span>
                   <Money paise={dish.paise} fraction="auto" className="text-ink-muted" />
                 </span>
                 {index === 0 && step === 1 ? (
@@ -178,7 +203,7 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
                   </m.span>
                 ) : (
                   <span className="relative rounded border border-brand px-[0.5em] py-[0.15em] font-semibold text-brand">
-                    Add
+                    {t.add}
                     {index === 0 && step === 0 && playing && <Tap />}
                   </span>
                 )}
@@ -187,20 +212,18 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
           </m.ul>
         ) : (
           <m.div key="orders" {...pop} className="flex flex-1 flex-col gap-[0.6em] p-[0.7em]">
-            <p className="font-bold text-ink">Your table’s orders</p>
+            <p className="font-bold text-ink">{t.ordersTitle}</p>
             <div className="flex flex-col gap-[0.5em] rounded-md bg-surface p-[0.6em] shadow-sm">
-              <p className="text-ink-muted">Round 1</p>
+              <p className="text-ink-muted">{t.round}</p>
               <div className="flex items-center gap-[0.4em]">
                 <FoodTypeMark type="veg" className="size-[1.1em]" />
-                <span className="flex-1 font-semibold text-ink">1 × {DISH.name}</span>
+                <span className="flex-1 font-semibold text-ink">
+                  1 × {t.dishes[DISH.name] ?? DISH.name}
+                </span>
               </div>
               <AnimatePresence mode="popLayout" initial={false}>
                 <m.span key={status} {...pop} className="self-start">
-                  <StatusChip
-                    status={status}
-                    label={status === 'placed' ? 'Placed' : undefined}
-                    className={chip}
-                  />
+                  <StatusChip status={status} label={t.status[status]} className={chip} />
                 </m.span>
               </AnimatePresence>
             </div>
@@ -216,10 +239,10 @@ function GuestScreen({ step, playing }: { step: number; playing: boolean }) {
             className="m-[0.6em] flex items-center justify-between rounded-md bg-primary px-[0.7em] py-[0.6em] font-semibold text-primary-foreground"
           >
             <span>
-              1 item · <Money paise={DISH.paise} fraction="auto" />
+              {t.oneItem} · <Money paise={DISH.paise} fraction="auto" />
             </span>
             <span className="relative">
-              Place order
+              {t.place}
               {playing && <Tap />}
             </span>
           </m.div>
@@ -239,7 +262,7 @@ function BoardScreen({ step }: { step: number }) {
     served: 'border-l-status-served',
   };
   return (
-    <div className="flex h-full flex-col text-[0.5rem] sm:text-[0.6rem]">
+    <div lang="en" className="flex h-full flex-col text-[0.5rem] sm:text-[0.6rem]">
       <div className="flex items-center justify-between border-b border-line bg-surface px-[0.9em] py-[0.6em]">
         <span className="font-bold text-ink">Tables</span>
         <span className="text-ink-muted">Kitchen · Live</span>
@@ -332,7 +355,7 @@ function MiniLine({ name, status }: { name: string; status: DishStatus }) {
 function BillScreen({ step }: { step: number }) {
   const ready = step >= 6;
   return (
-    <div className="flex h-full w-full text-[0.55rem] sm:text-[0.6rem] lg:text-[0.65rem]">
+    <div lang="en" className="flex h-full w-full text-[0.55rem] sm:text-[0.6rem] lg:text-[0.65rem]">
       <div className="hidden w-[18%] flex-col gap-[0.6em] bg-surface p-[0.8em] md:flex">
         <span className="font-bold text-brand">Admin</span>
         {['Live orders', 'Bills', 'Menu', 'Tables', 'Reports'].map((item, index) => (

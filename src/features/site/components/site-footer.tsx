@@ -1,8 +1,10 @@
 import { Wordmark } from '@/components/shared/logo';
+import { LANG_NAMES, STRINGS } from '@/features/ordering/strings';
 import { ThemeSwitch } from '@/features/theme/theme-switch';
 import { APP_NAME } from '@/lib/config';
 
 import { SITE, type SiteLang } from '../content';
+import { LanguageSwitch } from './language-switch';
 import { SiteLink } from './site-link';
 
 export function SiteFooter({ lang }: { lang: SiteLang }) {
@@ -22,6 +24,7 @@ export function SiteFooter({ lang }: { lang: SiteLang }) {
               {column.links.map((link) => (
                 <li key={link.href}>
                   <SiteLink
+                    siteLang={lang}
                     href={link.href}
                     className="inline-flex min-h-11 items-center text-sm text-ink-muted hover:text-brand"
                   >
@@ -37,7 +40,13 @@ export function SiteFooter({ lang }: { lang: SiteLang }) {
         <p className="text-xs text-ink-muted">
           © {new Date().getFullYear()} {APP_NAME}
         </p>
-        <ThemeSwitch />
+        <div className="flex flex-wrap items-center gap-2">
+          <LanguageSwitch
+            label={LANG_NAMES[lang === 'en' ? 'hi' : 'en']}
+            className="rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+          />
+          <ThemeSwitch labels={STRINGS[lang].theme} />
+        </div>
       </div>
     </footer>
   );

@@ -9,7 +9,11 @@ import { buttonVariants } from '@/components/ui/button';
  */
 export default function NotFound() {
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+    // English, also under /hi, whose <html lang> is Hindi.
+    <main
+      lang="en"
+      className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center"
+    >
       <LogoMark className="size-12" />
       <h1 className="text-2xl font-semibold text-ink">Page not found</h1>
       <p className="text-base text-ink-muted">The link may be old or mistyped.</p>
@@ -17,9 +21,11 @@ export default function NotFound() {
         <Link href="/" className={buttonVariants({ size: 'touch' })}>
           Go to the home page
         </Link>
-        <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'touch' })}>
+        {/* A full load: under /hi this page's <html lang> is Hindi, and the login page has no
+            website frame to set it back (the home page's does, W-16). */}
+        <a href="/login" className={buttonVariants({ variant: 'outline', size: 'touch' })}>
           Log in
-        </Link>
+        </a>
       </div>
     </main>
   );

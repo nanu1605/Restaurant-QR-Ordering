@@ -18,7 +18,14 @@ const meta = (page: Page, key: string) =>
 
 test('robots.txt keeps the panels out and points to the sitemap', async ({ request }) => {
   const robots = await (await request.get('/robots.txt')).text();
-  for (const path of ['/admin', '/staff', '/super', '/api/', '/signup/verify']) {
+  for (const path of [
+    '/admin',
+    '/staff',
+    '/super',
+    '/api/',
+    '/signup/verify',
+    '/hi/signup/verify',
+  ]) {
     expect(robots).toContain(`Disallow: ${path}`);
   }
   const sitemapUrl = /Sitemap: (\S+)/.exec(robots)?.[1];
@@ -31,6 +38,51 @@ test('robots.txt keeps the panels out and points to the sitemap', async ({ reque
   );
   // Every URL is on the same site as the sitemap itself.
   for (const url of urls) expect(new URL(url!).origin).toBe(new URL(sitemapUrl!).origin);
+});
+
+test('the sitemap pairs each page with its Hindi twin', async ({ request }) => {
+  const sitemap = await (await request.get('/sitemap.xml')).text();
+  const entries = [...sitemap.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((match) => match[1]!);
+  const path = (url: string) => new URL(url).pathname;
+  const locs = entries.map((entry) => path(/<loc>([^<]+)<\/loc>/.exec(entry)![1]!));
+  expect(locs).toEqual(
+    expect.arrayContaining(['/hi', '/hi/features', '/hi/pricing', '/hi/demo', '/hi/contact']),
+  );
+  // The policies are English only.
+  expect(locs).not.toContain('/hi/terms');
+
+  const hindiPricing = entries[locs.indexOf('/hi/pricing')]!;
+  const alternates = Object.fromEntries(
+    [
+      ...hindiPricing.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g),
+    ].map((match) => [match[1], path(match[2]!)]),
+  );
+  expect(alternates).toEqual({
+    'en-IN': '/pricing',
+    'hi-IN': '/hi/pricing',
+    'x-default': '/pricing',
+  });
+});
+
+test('a Hindi page and its English twin point to each other', async ({ page }) => {
+  const href = async (selector: string) =>
+    new URL((await page.locator(selector).getAttribute('href'))!).pathname;
+  const languages = async () => ({
+    'en-IN': await href('link[rel="alternate"][hreflang="en-IN"]'),
+    'hi-IN': await href('link[rel="alternate"][hreflang="hi-IN"]'),
+    'x-default': await href('link[rel="alternate"][hreflang="x-default"]'),
+  });
+  const twins = { 'en-IN': '/pricing', 'hi-IN': '/hi/pricing', 'x-default': '/pricing' };
+
+  await page.goto('/hi/pricing');
+  expect(await href('link[rel="canonical"]')).toBe('/hi/pricing');
+  expect(await languages()).toEqual(twins);
+  expect(await meta(page, 'og:locale')).toBe('hi_IN');
+
+  await page.goto('/pricing');
+  expect(await href('link[rel="canonical"]')).toBe('/pricing');
+  expect(await languages()).toEqual(twins);
+  expect(await meta(page, 'og:locale')).toBe('en_IN');
 });
 
 test('hosts other than menumesh.in tell search engines not to index', async ({ request }) => {

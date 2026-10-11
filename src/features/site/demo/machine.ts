@@ -188,7 +188,56 @@ const en = {
 
 export type DemoWords = typeof en;
 
-export const DEMO_WORDS: Record<SiteLang, DemoWords> = { en };
+/** Hindi: dish names and "टेबल 5" come from STRINGS.hi; the hints quote the English staff buttons. */
+const hi: DemoWords = {
+  nextStep: 'अगला कदम:',
+  allDone:
+    'सब हो गया। बिल का भुगतान हो गया और टेबल ख़ाली है। दोबारा चलाने के लिए फिर से शुरू करें।',
+  showMe: 'दिखाएँ',
+  stop: 'रोकें',
+  startAgain: 'फिर से शुरू करें',
+  devicesGroup: 'कौन-सा डिवाइस दिखाएँ',
+  tryNext: '(अब इसे आज़माएँ)',
+  devices: {
+    guest: { label: 'ग्राहक का फ़ोन', title: 'ग्राहक का फ़ोन' },
+    kitchen: { label: 'किचन', title: 'किचन टैबलेट' },
+    counter: { label: 'काउंटर', title: 'काउंटर लैपटॉप' },
+  },
+  says: {
+    phoneLang: (lang) => `ग्राहक का फ़ोन अब ${lang === 'hi' ? 'हिन्दी' : 'अंग्रेज़ी'} में है।`,
+    placed: 'ऑर्डर किचन को भेज दिया गया।',
+    // Worded so the verb doesn't take each dish name's gender.
+    moved: {
+      preparing: (names) => `किचन में ${listNames(names, 'और')} की तैयारी शुरू हो गई।`,
+      ready: (names) => `${listNames(names, 'और')} तैयार ${names.length === 1 ? 'है' : 'हैं'}।`,
+      served: (names) =>
+        `${listNames(names, 'और')} अब टेबल पर ${names.length === 1 ? 'है' : 'हैं'}।`,
+    },
+    request: {
+      call_waiter: (table) => `${table} ने वेटर को बुलाया है।`,
+      request_bill: (table) => `${table} ने बिल माँगा है।`,
+    },
+    resolved: {
+      call_waiter: 'वेटर की कॉल पूरी हुई।',
+      request_bill: 'बिल की माँग पूरी हुई।',
+    },
+    billMade: (table, total) => `${table} का बिल बन गया: ${total}।`,
+    paid: (mode, table) => `${mode} से भुगतान हो गया। ${table} अब ख़ाली है।`,
+    reset: 'डेमो फिर से शुरू हो गया है।',
+  },
+  hints: {
+    kitchen: (label) => `किचन टैबलेट पर “${label}” दबाएँ।`,
+    calling: (done) => `ग्राहक वेटर को बुला रहे हैं। काउंटर लैपटॉप पर “${done}” दबाएँ।`,
+    pay: ({ cash, upi, card }) => `काउंटर लैपटॉप पर भुगतान दर्ज करें: ${cash}, ${upi} या ${card}।`,
+    place: 'ग्राहक के फ़ोन पर ऑर्डर करें।',
+    openCart: 'ग्राहक के फ़ोन पर कार्ट खोलें।',
+    add: 'ग्राहक के फ़ोन पर एक-दो डिश जोड़ें।',
+    backToMenu: 'ग्राहक के फ़ोन पर मेन्यू पर वापस जाएँ।',
+    makeBill: (label) => `सारी डिश परोसी जा चुकी हैं। काउंटर लैपटॉप पर “${label}” दबाएँ।`,
+  },
+};
+
+export const DEMO_WORDS: Record<SiteLang, DemoWords> = { en, hi };
 
 export type DemoLine = { id: string; dishId: string; quantity: number; status: DishStatus };
 export type DemoRound = { number: number; at: string; lines: DemoLine[] };

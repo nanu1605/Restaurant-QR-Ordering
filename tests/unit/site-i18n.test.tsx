@@ -2,7 +2,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { WithHindi } from '@/features/site/components/with-hindi';
-import { fill, fillNodes, parseSiteLang, plural } from '@/features/site/i18n';
+import {
+  fill,
+  fillNodes,
+  otherLanguageHref,
+  pageMetadata,
+  parseSiteLang,
+  plural,
+  siteLangOf,
+  sitePath,
+} from '@/features/site/i18n';
 import { limitLabel } from '@/features/site/pricing';
 
 // The website's language helpers: words from the dictionary (content.ts), filled in.
@@ -40,9 +49,76 @@ describe('plural', () => {
 describe('parseSiteLang', () => {
   it('accepts a website language and falls back to English', () => {
     expect(parseSiteLang('en')).toBe('en');
+    expect(parseSiteLang('hi')).toBe('hi');
     expect(parseSiteLang('fr')).toBe('en');
     expect(parseSiteLang('constructor')).toBe('en');
     expect(parseSiteLang(undefined)).toBe('en');
+  });
+});
+
+describe('siteLangOf', () => {
+  it('is Hindi under /hi only', () => {
+    for (const path of ['/hi', '/hi/', '/hi/pricing', '/hi?plan=pro', '/hi#how']) {
+      expect(siteLangOf(path), path).toBe('hi');
+    }
+    for (const path of ['/', '/pricing', '/hindi', '/history', '/t/hi', '/login']) {
+      expect(siteLangOf(path), path).toBe('en');
+    }
+  });
+});
+
+describe('sitePath', () => {
+  it('moves the pages with a Hindi twin under /hi, keeping the query and section', () => {
+    expect(sitePath('hi', '/')).toBe('/hi');
+    expect(sitePath('hi', '/#how')).toBe('/hi#how');
+    expect(sitePath('hi', '/pricing')).toBe('/hi/pricing');
+    expect(sitePath('hi', '/signup?plan=pro&cycle=yearly')).toBe(
+      '/hi/signup?plan=pro&cycle=yearly',
+    );
+    expect(sitePath('hi', '/signup/verify')).toBe('/hi/signup/verify');
+  });
+
+  it('leaves English, Hindi and English-only addresses alone', () => {
+    expect(sitePath('en', '/pricing?plan=pro')).toBe('/pricing?plan=pro');
+    expect(sitePath('hi', '/hi/pricing')).toBe('/hi/pricing');
+    expect(sitePath('hi', sitePath('hi', '/#faq'))).toBe('/hi#faq');
+    for (const path of ['/login', '/terms', '/privacy', '/admin', '/signup/other']) {
+      expect(sitePath('hi', path), path).toBe(path);
+    }
+  });
+});
+
+describe('otherLanguageHref', () => {
+  it('leads to the same page in the other language', () => {
+    expect(otherLanguageHref('/')).toBe('/hi');
+    expect(otherLanguageHref('/pricing')).toBe('/hi/pricing');
+    expect(otherLanguageHref('/signup/verify')).toBe('/hi/signup/verify');
+    expect(otherLanguageHref('/hi')).toBe('/');
+    expect(otherLanguageHref('/hi/pricing')).toBe('/pricing');
+  });
+
+  it('leads from an English-only page to the Hindi home page', () => {
+    expect(otherLanguageHref('/terms')).toBe('/hi');
+    expect(otherLanguageHref('/no-such-page')).toBe('/hi');
+  });
+});
+
+describe('pageMetadata', () => {
+  it('gives each page its own canonical and its twin', () => {
+    const meta = { title: 'Pricing', description: 'Plans' };
+    const languages = { 'en-IN': '/pricing', 'hi-IN': '/hi/pricing', 'x-default': '/pricing' };
+    expect(pageMetadata('en', '/pricing', meta)).toEqual({
+      ...meta,
+      alternates: { canonical: '/pricing', languages },
+    });
+    expect(pageMetadata('hi', '/pricing', meta)).toEqual({
+      ...meta,
+      alternates: { canonical: '/hi/pricing', languages },
+    });
+    expect(pageMetadata('hi', '/', { title: { absolute: 'Home' } }).alternates).toEqual({
+      canonical: '/hi',
+      languages: { 'en-IN': '/', 'hi-IN': '/hi', 'x-default': '/' },
+    });
   });
 });
 

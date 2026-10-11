@@ -2,7 +2,7 @@ import { APP_NAME } from '@/lib/config';
 import { getPublicEnv } from '@/lib/env';
 
 import { SITE, type SiteLang } from './content';
-import { fill } from './i18n';
+import { fill, sitePath } from './i18n';
 import type { SitePricing } from './pricing';
 
 /**
@@ -37,9 +37,10 @@ export function website(): Node {
   return { '@type': 'WebSite', name: APP_NAME, url: url() };
 }
 
-export function faqPage(items: readonly { q: string; a: string }[]): Node {
+export function faqPage(items: readonly { q: string; a: string }[], lang: SiteLang = 'en'): Node {
   return {
     '@type': 'FAQPage',
+    inLanguage: `${lang}-IN`,
     mainEntity: items.map(({ q, a }) => ({
       '@type': 'Question',
       name: q,
@@ -48,13 +49,16 @@ export function faqPage(items: readonly { q: string; a: string }[]): Node {
   };
 }
 
-/** The product, with each plan monthly and yearly, before GST like the pricing page (W-11). */
-export function softwareApplication({ plans }: SitePricing, lang: SiteLang = 'en'): Node {
+/**
+ * The product, with each plan monthly and yearly, before GST like the pricing page (W-11), in
+ * the page's language.
+ */
+export function softwareApplication({ plans }: SitePricing, lang: SiteLang): Node {
   const t = SITE[lang];
   const offer = (name: string, paise: number, billingDuration: 'P1M' | 'P1Y') => ({
     '@type': 'Offer',
     name,
-    url: url('/pricing'),
+    url: url(sitePath(lang, '/pricing')),
     price: rupees(paise),
     priceCurrency: 'INR',
     priceSpecification: {
@@ -68,7 +72,7 @@ export function softwareApplication({ plans }: SitePricing, lang: SiteLang = 'en
   return {
     '@type': 'SoftwareApplication',
     name: APP_NAME,
-    url: url(),
+    url: url(sitePath(lang, '/')),
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
     description: t.tagline,

@@ -7,10 +7,13 @@ import { posthogHosts } from '@/lib/posthog-hosts';
 
 import { doNotTrack, rememberLanding, setVisitorId } from './attribution';
 
-/** The website's own pages: the home page, its sections, sign-up and the policies. */
+/** A website address without the /hi of a Hindi page. */
+const withoutHindi = (pathname: string) => pathname.replace(/^\/hi(?=\/|$)/, '') || '/';
+
+/** The website's own pages, also under /hi: home, its sections, sign-up and the policies. */
 export function isWebsitePath(pathname: string) {
   return /^\/(features|pricing|demo|contact|signup(\/verify)?|terms|privacy|refund|shipping)?$/.test(
-    pathname,
+    withoutHindi(pathname),
   );
 }
 
@@ -58,8 +61,8 @@ let site: PostHog | undefined;
 /** A click on a link to sign-up or a demo request, as a `cta_clicked` event; else null. */
 export function ctaClick(href: string, location: string | undefined) {
   const url = new URL(href);
-  const target =
-    url.pathname === '/signup' ? 'signup' : url.pathname === '/contact' ? 'contact' : null;
+  const path = withoutHindi(url.pathname);
+  const target = path === '/signup' ? 'signup' : path === '/contact' ? 'contact' : null;
   if (!target) return null;
   return {
     target,
@@ -90,7 +93,8 @@ export function SiteAnalytics() {
         setVisitorId(instance.get_distinct_id());
         const onClick = (event: MouseEvent) => {
           const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-          if (!(link instanceof HTMLAnchorElement)) return;
+          // The language switch and other links into the other language aren't calls to action.
+          if (!(link instanceof HTMLAnchorElement) || link.hreflang) return;
           const click = ctaClick(link.href, link.closest<HTMLElement>('[data-cta]')?.dataset.cta);
           if (click) instance.capture('cta_clicked', click);
         };

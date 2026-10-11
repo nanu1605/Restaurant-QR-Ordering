@@ -9,8 +9,12 @@ import { useRef, useState } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeSwitch } from '@/features/theme/theme-switch';
+import type { ThemeLabels } from '@/features/theme/theme';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
+import { sitePath } from '../i18n';
+import { LanguageSwitch } from './language-switch';
+import { SiteLink } from './site-link';
 
 /**
  * The sections and log in, in a sheet below 1024px. A section on this page is
@@ -18,10 +22,16 @@ import type { SiteContent } from '../content';
  * moves to the section's heading rather than back to the menu button.
  */
 export function SiteMobileNav({
+  siteLang,
   t,
   cta,
 }: {
-  t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & { main: string };
+  siteLang: SiteLang;
+  t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & {
+    main: string;
+    theme: ThemeLabels;
+    otherLanguage: string;
+  };
   cta: { href: string; label: string };
 }) {
   const pathname = usePathname();
@@ -84,35 +94,47 @@ export function SiteMobileNav({
         </div>
         <nav aria-label={t.main}>
           <ul className="flex flex-col gap-1">
-            {t.nav.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={(event) => goTo(event, item.href)}
-                  className="flex h-12 items-center rounded-lg px-3 text-base font-medium text-ink hover:bg-muted"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {t.nav.map((item) => {
+              // Each entry has a twin in both languages, so next/link never leaves the language.
+              const href = sitePath(siteLang, item.href);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={href}
+                    onClick={(event) => goTo(event, href)}
+                    className="flex h-12 items-center rounded-lg px-3 text-base font-medium text-ink hover:bg-muted"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
-        <ThemeSwitch className="self-start" />
+        <div className="flex flex-wrap items-center gap-2">
+          <ThemeSwitch labels={t.theme} />
+          <LanguageSwitch
+            label={t.otherLanguage}
+            className="rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
+          />
+        </div>
         <div className="mt-auto flex flex-col gap-3">
-          <Link
+          <SiteLink
+            siteLang={siteLang}
             href="/login"
             onClick={() => setOpen(false)}
             className={cn(buttonVariants({ variant: 'outline', size: 'touch' }), 'w-full')}
           >
             {t.login}
-          </Link>
-          <Link
+          </SiteLink>
+          <SiteLink
+            siteLang={siteLang}
             href={cta.href}
             onClick={() => setOpen(false)}
             className={cn(buttonVariants({ size: 'touch' }), 'w-full')}
           >
             {cta.label}
-          </Link>
+          </SiteLink>
         </div>
       </SheetContent>
     </Sheet>

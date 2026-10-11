@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // Prices don't pull in Noto Sans's latin-ext file (168 KB): every ₹ is drawn in the
 // system font (docs/DECISIONS.md W-14). The latin-ext face is the one covering U+100-2BA.
 
-for (const path of ['/', '/pricing', '/t/DEMO0000TABLE001']) {
+for (const path of ['/', '/pricing', '/hi', '/hi/pricing', '/t/DEMO0000TABLE001']) {
   test(`${path} shows prices without the latin-ext font`, async ({ page }) => {
     await page.goto(path, { waitUntil: 'load' });
     await expect(page.getByText('₹').first()).toBeVisible();

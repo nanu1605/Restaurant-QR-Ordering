@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { watchCspViolations } from './helpers';
+import { STRINGS } from '../../src/features/ordering/strings';
+import { DEMO_WORDS, dishById, STAFF_WORDS } from '../../src/features/site/demo/machine';
+import { DEVANAGARI, watchCspViolations } from './helpers';
 
 // The interactive demo at /demo: one table's order played on the guest phone,
 // the kitchen tablet and the counter laptop, in the browser only. From 1024px
@@ -100,6 +102,49 @@ test('a visitor plays one table’s order from the menu to a paid bill', async (
   phone = await open(page, 'Guest phone');
   await expect(phone.getByRole('button', { name: 'Add Paneer Tikka' })).toBeVisible();
   expect(violations).toEqual([]);
+});
+
+test('in Hindi the guest phone and the hints are Hindi, the staff screens English', async ({
+  page,
+}) => {
+  const words = DEMO_WORDS.hi;
+  const guest = STRINGS.hi;
+  await page.goto('/hi/demo');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+  const announced = page.getByRole('main').getByRole('status');
+  await expect(async () => {
+    await page.getByRole('button', { name: words.startAgain }).click();
+    await expect(announced).toHaveText(words.says.reset, { timeout: 500 });
+  }).toPass();
+  await expect(announced).toHaveText(DEVANAGARI);
+  await expect(page.getByText(words.hints.add)).toBeVisible();
+
+  const show = async (device: 'guest' | 'kitchen') => {
+    const switcher = page.getByRole('group', { name: words.devicesGroup });
+    if (await switcher.isVisible()) {
+      await switcher.getByRole('button', { name: words.devices[device].label }).click();
+    }
+    const screen = page.getByRole('region', { name: words.devices[device].title });
+    await expect(screen).toBeVisible();
+    return screen;
+  };
+
+  const phone = await show('guest');
+  await expect(phone.locator('[lang]').first()).toHaveAttribute('lang', 'hi');
+  await expect(phone.getByRole('heading', { name: guest.menu.heading })).toBeVisible();
+  await phone
+    .getByRole('button', { name: guest.menu.addDish(dishById('paneer-tikka').nameHi) })
+    .click();
+  await expect(announced).toHaveText(DEVANAGARI);
+  await phone.getByRole('button', { name: new RegExp(guest.cartBar.view) }).click();
+  await phone.getByRole('button', { name: guest.cart.place }).click();
+  await expect(announced).toHaveText(words.says.placed);
+
+  // The kitchen tablet is English, as in the app; the hint quotes its button.
+  const kitchen = await show('kitchen');
+  await expect(kitchen.locator('[lang]').first()).toHaveAttribute('lang', 'en');
+  await expect(kitchen.getByRole('button', { name: STAFF_WORDS.nextLabels.placed })).toBeVisible();
+  await expect(page.getByText(words.hints.kitchen(STAFF_WORDS.nextLabels.placed))).toBeVisible();
 });
 
 test('“Show me” plays the next steps and stops when asked', async ({ page }) => {

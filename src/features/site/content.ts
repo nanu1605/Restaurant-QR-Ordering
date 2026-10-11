@@ -3,6 +3,8 @@ import 'server-only';
 import type { CuisineSet } from '@/features/menu/default-categories';
 import type { FeatureKey } from '@/features/plans/plan-features';
 
+import { hi } from './content-hi';
+
 /**
  * The public website's words (docs/DECISIONS.md W-1 to W-4), one dictionary per
  * language. Every claim here is something the product does today; no invented
@@ -698,6 +700,6 @@ const en = {
 
 export type SiteContent = typeof en;
 
-export const SITE = { en };
+export const SITE = { en, hi };
 
 export type SiteLang = keyof typeof SITE;

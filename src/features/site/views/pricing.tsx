@@ -34,6 +34,7 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
             )}
           </div>
           <PlanCards
+            siteLang={lang}
             t={{ ...shared, cards: t.cards, blurbs: t.blurbs, everyPlan: t.everyPlan }}
             pricing={pricing}
             signup={signup}
@@ -53,14 +54,19 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
         </div>
       </section>
       <Section id="fit" title={t.fit.title} lead={t.fit.lead} className="bg-surface">
-        <PlanHelper t={{ ...shared, helper: t.helper }} plans={pricing.plans} signup={signup} />
+        <PlanHelper
+          siteLang={lang}
+          t={{ ...shared, helper: t.helper }}
+          plans={pricing.plans}
+          signup={signup}
+        />
       </Section>
       <Section id="compare" title={t.compare.title}>
         <PlanComparison lang={lang} plans={pricing.plans} />
       </Section>
       <Faq lang={lang} items={t.faq.items} title={t.faq.title} />
       <FinalCta lang={lang} />
-      <JsonLd nodes={[softwareApplication(pricing, lang), faqPage(t.faq.items)]} />
+      <JsonLd nodes={[softwareApplication(pricing, lang), faqPage(t.faq.items, lang)]} />
     </>
   );
 }

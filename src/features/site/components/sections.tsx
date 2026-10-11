@@ -17,18 +17,20 @@ import {
   WifiOff,
   type LucideIcon,
 } from 'lucide-react';
-import Link from 'next/link';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
+import { STRINGS } from '@/features/ordering/strings';
 
 import { SITE, type SiteLang } from '../content';
+import { DEMO_MENU, DEMO_TABLE, dishName } from '../demo/machine';
 import { fillNodes } from '../i18n';
-import { siteCta } from '../signup';
+import { siteCta, signupOpen } from '../signup';
 import { PhoneFrame } from './device-frames';
-import { HeroStory } from './hero-story';
+import { HeroStory, type GuestWords } from './hero-story';
 import { HowItWorks } from './how-it-works';
+import { SiteLink } from './site-link';
 import { WithHindi } from './with-hindi';
 
 /** The home page's sections (docs/DECISIONS.md W-1), top to bottom. */
@@ -70,6 +72,23 @@ export function Section({
   );
 }
 
+/** The guest phone's words in the hero and "how it works" pictures: the menu's own, as on /t. */
+function guestWords(lang: SiteLang): GuestWords {
+  const t = STRINGS[lang];
+  return {
+    table: t.table(DEMO_TABLE),
+    dishes: Object.fromEntries(DEMO_MENU.map((dish) => [dish.name, dishName(dish, lang)])),
+    add: t.menu.add,
+    ordersTitle: t.orders.title,
+    // The round without its time.
+    round: t.orders.round(1, '').split(' · ', 1)[0]!,
+    status: t.status,
+    oneItem: t.cartBar.items(1),
+    fourItems: t.cartBar.items(4),
+    place: t.cart.place,
+  };
+}
+
 export function Hero({ lang }: { lang: SiteLang }) {
   const t = SITE[lang];
   const cta = siteCta(lang);
@@ -82,9 +101,13 @@ export function Hero({ lang }: { lang: SiteLang }) {
           </h1>
           <p className="max-w-xl text-base text-ink-muted sm:text-lg">{t.hero.lead}</p>
           <div id="hero-cta" data-cta="hero" className="flex flex-wrap gap-3">
-            <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
+            <SiteLink
+              siteLang={lang}
+              href={cta.href}
+              className={cn(buttonVariants({ size: 'touch' }), 'px-6')}
+            >
               {cta.label}
-            </Link>
+            </SiteLink>
             {/* A plain anchor, so focus moves on to the section too. */}
             <a
               href="#how"
@@ -96,14 +119,18 @@ export function Hero({ lang }: { lang: SiteLang }) {
           <p className="text-sm text-ink-muted">
             {fillNodes(t.hero.customers, {
               login: (
-                <Link href="/login" className="font-semibold text-brand hover:underline">
+                <SiteLink
+                  siteLang={lang}
+                  href="/login"
+                  className="font-semibold text-brand hover:underline"
+                >
                   {t.login}
-                </Link>
+                </SiteLink>
               ),
             })}
           </p>
         </div>
-        <HeroStory t={t.story} />
+        <HeroStory t={t.story} guest={guestWords(lang)} />
       </div>
     </section>
   );
@@ -146,7 +173,7 @@ export function How({ lang }: { lang: SiteLang }) {
   const t = SITE[lang].how;
   return (
     <Section id="how" title={t.title} lead={t.lead}>
-      <HowItWorks t={t.steps} />
+      <HowItWorks t={t.steps} guest={guestWords(lang)} />
     </Section>
   );
 }
@@ -314,7 +341,8 @@ export function NextSteps({ lang, fromPaise }: { lang: SiteLang; fromPaise: numb
       <ul className="mx-auto grid max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
         {cards.map(({ href, icon: Icon, title, body, link }) => (
           <li key={href} className="site-reveal">
-            <Link
+            <SiteLink
+              siteLang={lang}
               href={href}
               className="group flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-black/5 sm:p-8"
             >
@@ -328,7 +356,7 @@ export function NextSteps({ lang, fromPaise }: { lang: SiteLang; fromPaise: numb
                   className="size-4 transition-transform group-hover:translate-x-1"
                 />
               </span>
-            </Link>
+            </SiteLink>
           </li>
         ))}
       </ul>
@@ -373,10 +401,11 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
       <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground sm:px-12">
         <h2 className="text-2xl font-bold sm:text-3xl">{t.finalCta.title}</h2>
         <p className="max-w-2xl text-base sm:text-lg">
-          {cta.href === '/signup' ? t.finalCta.signupBody : t.finalCta.body}
+          {signupOpen() ? t.finalCta.signupBody : t.finalCta.body}
         </p>
         <div data-cta="final" className="flex flex-wrap justify-center gap-3">
-          <Link
+          <SiteLink
+            siteLang={lang}
             href={cta.href}
             className={cn(
               buttonVariants({ size: 'touch' }),
@@ -384,8 +413,9 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
             )}
           >
             {cta.label}
-          </Link>
-          <Link
+          </SiteLink>
+          <SiteLink
+            siteLang={lang}
             href="/login"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'touch' }),
@@ -393,7 +423,7 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
             )}
           >
             {t.login}
-          </Link>
+          </SiteLink>
         </div>
       </div>
     </section>

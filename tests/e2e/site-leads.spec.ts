@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { adminClient, fakeTurnstile } from './helpers';
+import { adminClient, DEVANAGARI, fakeTurnstile } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 import { razorpayReady } from './razorpay-fixtures';
 
@@ -84,6 +84,46 @@ test('a demo request reaches the platform team', async ({ page, context, request
       .from('platform_settings')
       .update({ support_email: settings?.support_email ?? null })
       .eq('id', 1);
+    // Keeps the per-network rate limit clear for the next run.
+    await admin.from('site_leads').delete().eq('phone', phone);
+  }
+});
+
+test('a Hindi visitor books a demo in Hindi', async ({ page, context }) => {
+  await fakeTurnstile(context);
+  const admin = adminClient();
+  const phone = `9${Date.now().toString().slice(-9)}`;
+
+  try {
+    await page.goto('/hi/contact');
+    const form = page.getByRole('main').locator('form');
+    const field = (name: string) => form.locator(`[name="${name}"]`);
+    const submit = form.locator('button[type="submit"]');
+    await expect(field('lang')).toHaveValue('hi');
+
+    // Nothing filled in: each field says what's wrong, in Hindi.
+    await submit.click();
+    for (const name of ['name', 'restaurantName', 'city', 'phone']) {
+      await expect(field(name), name).toHaveAttribute('aria-invalid', 'true');
+      await expect(field(name), name).toHaveAccessibleDescription(DEVANAGARI);
+    }
+    await expect(form.getByRole('alert')).toContainText(DEVANAGARI);
+
+    await field('name').fill('आशा राव');
+    await field('restaurantName').fill('E2E हिन्दी ढाबा');
+    await field('city').fill('इंदौर');
+    await field('phone').fill(phone);
+    await submit.click();
+    await expect(page.locator('h2:focus')).toContainText(DEVANAGARI);
+
+    const { data: lead } = await admin
+      .from('site_leads')
+      .select('name, restaurant_name, city')
+      .eq('phone', phone)
+      .single()
+      .throwOnError();
+    expect(lead).toEqual({ name: 'आशा राव', restaurant_name: 'E2E हिन्दी ढाबा', city: 'इंदौर' });
+  } finally {
     // Keeps the per-network rate limit clear for the next run.
     await admin.from('site_leads').delete().eq('phone', phone);
   }

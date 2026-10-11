@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { Noto_Sans } from 'next/font/google';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
 import { STRINGS } from '@/features/ordering/strings';
+import { SITE_LANG_HEADER } from '@/features/site/i18n';
 import { parseTheme, THEME_COOKIE } from '@/features/theme/theme';
 import { ThemeProvider } from '@/features/theme/theme-switch';
 import { APP_NAME, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
@@ -47,9 +48,14 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
+/** The website's language from the proxy (Hindi under /hi), else the customer panel's choice. */
+async function getPageLang() {
+  // The customer panel's cookie is only sent to /t pages.
+  return (await headers()).get(SITE_LANG_HEADER) === 'hi' ? 'hi' : getLang();
+}
+
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
-  // The customer panel may be in Hindi; its cookie is only sent to /t pages.
-  const [lang, theme] = await Promise.all([getLang(), getTheme()]);
+  const [lang, theme] = await Promise.all([getPageLang(), getTheme()]);
   const { toasts } = STRINGS[lang];
   return (
     // data-scroll-behavior: page changes jump to the top even where the website

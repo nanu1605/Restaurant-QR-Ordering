@@ -127,7 +127,7 @@ export function ContactForm({
       </div>
       <MessageField t={t} defaultValue={value('message')} error={error('message')} />
       {/* Each submit renders a fresh check: tokens work once, and the form resets. */}
-      <TurnstileWidget t={t} siteKey={siteKey} round={round} onReady={setChecked} />
+      <TurnstileWidget t={t} lang={lang} siteKey={siteKey} round={round} onReady={setChecked} />
       {failed && (failed.error || failed.fieldErrors) && (
         <p role="alert" className="text-sm font-medium text-status-void">
           {failed.error ?? t.checkFields}

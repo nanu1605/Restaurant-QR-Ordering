@@ -15,6 +15,8 @@ if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 export const DEMO_PASSWORD = 'Password123!';
 /** Password for owners and staff the tests create. */
 export const TEST_PASSWORD = 'e2e-Password-1';
+/** Any Hindi letter: Hindi pages are checked by script, so edits to their copy don't break a run. */
+export const DEVANAGARI = /[\u0900-\u097F]/;
 
 /**
  * Records every Content-Security-Policy violation in the context's pages, from

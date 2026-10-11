@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 import { VerifyForm } from '../components/verify-form';
 import { SITE, type SiteLang } from '../content';
-import { fillNodes } from '../i18n';
+import { fillNodes, sitePath } from '../i18n';
 import { signupIdFromCookie } from '../signup';
 
 /** Step 2 of the self-serve signup (docs/DECISIONS.md W-9): the code from the email. */
@@ -18,7 +18,7 @@ export async function VerifyView({ lang }: { lang: SiteLang }) {
         .eq('id', id)
         .maybeSingle()
     : { data: null };
-  if (!signup || signup.verified_at) redirect('/signup');
+  if (!signup || signup.verified_at) redirect(sitePath(lang, '/signup'));
 
   // Starting again keeps the plan chosen on /pricing.
   const { planCode, cycle } = signup.details as { planCode?: string | null; cycle?: string };

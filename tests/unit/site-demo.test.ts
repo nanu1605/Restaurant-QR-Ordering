@@ -8,6 +8,7 @@ import {
   demoBill,
   demoReducer,
   INITIAL_DEMO,
+  initialDemo,
   nextHint,
   type DemoAction,
   type DemoState,
@@ -215,5 +216,32 @@ describe('the next step hint', () => {
         true,
       );
     }
+  });
+});
+
+describe('the Hindi demo', () => {
+  const hindi = (...actions: DemoAction[]) => actions.reduce(demoReducer, initialDemo('hi'));
+
+  it('starts the guest phone in Hindi', () => {
+    expect(initialDemo('hi')).toMatchObject({ site: 'hi', lang: 'hi' });
+  });
+
+  it('announces in Hindi, with the Hindi dish names', () => {
+    expect(hindi(add('paneer-tikka')).message).toBe('पनीर टिक्का जोड़ा गया। कार्ट में 1।');
+    const placed = hindi(add('paneer-tikka'), add('chicken-65'), place);
+    expect(placed.message).toBe('ऑर्डर किचन को भेज दिया गया।');
+    expect(demoReducer(placed, { type: 'advanceTicket', round: 1 }).message).toBe(
+      'किचन में पनीर टिक्का और चिकन 65 की तैयारी शुरू हो गई।',
+    );
+    expect(demoReducer(placed, { type: 'request', kind: 'call_waiter' }).message).toBe(
+      'टेबल 5 ने वेटर को बुलाया है।',
+    );
+  });
+
+  it('quotes the kitchen tablet’s English buttons', () => {
+    expect(nextHint(hindi(add('paneer-tikka'), place))).toMatchObject({
+      device: 'kitchen',
+      text: 'किचन टैबलेट पर “Start preparing” दबाएँ।',
+    });
   });
 });
