@@ -2374,9 +2374,14 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
   - **Emails:** `signupCodeEmail` and `welcomeEmail` take the language. The team's lead email
     stays English.
   - **The demo:** `DEMO_WORDS` in `demo/machine.ts` holds the demo's own words per language
-    (announcements, hints, controls), as `strings.ts` does for the menu. Both languages ship,
-    since it is small and client-only. `initialDemo(site)` starts the guest phone in the site's
-    language. The kitchen tablet and counter laptop are marked `lang="en"`.
+    (announcements, hints, controls), as `strings.ts` does for the menu. Unlike the site
+    dictionary it will ship every language, since it is small and client-only.
+    `initialDemo(site)` starts the guest phone in the site's language. The staff buttons and
+    labels the kitchen tablet and counter laptop show, which the hints quote, are one English
+    `STAFF_WORDS`, outside the per-language words, so no translation can reach them. Both
+    screens are marked `lang="en"`.
+  - **Left for W5b:** the guest-phone pictures in the hero and "how it works" still carry the
+    app's English words inline. W5b takes them from `STRINGS[lang]`.
   - **Also:** `ThemeMenu` and `ThemeRadioGroup` take `labels`, as `ThemeSwitch` does. `WithHindi`
     now wraps every हिन्दी (it used to drop the text after a second one). `limitLabel` replaces
     `tablesLabel` and `staffLabel`.

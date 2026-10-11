@@ -46,6 +46,7 @@ import {
   dishName,
   initialDemo,
   nextHint,
+  STAFF_WORDS,
   ticketStep,
   type DemoAction,
   type DemoDevice,
@@ -210,7 +211,7 @@ export function DemoSimulator({ site }: { site: SiteLang }) {
         </DeviceSection>
         <DeviceSection device="kitchen" words={words} shown={active === 'kitchen'}>
           <TabletFrame screenClassName="max-sm:aspect-auto max-sm:h-[34rem]">
-            <KitchenTablet state={state} staff={words.staff} act={act} />
+            <KitchenTablet state={state} act={act} />
           </TabletFrame>
         </DeviceSection>
         <DeviceSection
@@ -222,7 +223,7 @@ export function DemoSimulator({ site }: { site: SiteLang }) {
           {/* The laptop's base is wider than its screen: the padding keeps it on the page. */}
           <div className="mx-auto w-full max-w-3xl px-[6%] lg:px-0">
             <LaptopFrame screenClassName="max-lg:aspect-auto max-lg:h-[32rem]">
-              <CounterLaptop state={state} staff={words.staff} act={act} />
+              <CounterLaptop state={state} act={act} />
             </LaptopFrame>
           </div>
         </DeviceSection>
@@ -660,10 +661,7 @@ const EDGES = {
   served: 'border-l-status-served',
 } as const;
 
-/** The staff screens' words; English on every site, as in the app. */
-type StaffWords = DemoWords['staff'];
-
-function KitchenTablet({ state, staff, act }: { state: DemoState; staff: StaffWords; act: Act }) {
+function KitchenTablet({ state, act }: { state: DemoState; act: Act }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const free = state.rounds.length === 0 || state.paid !== null;
   const allServed = state.rounds.every((round) => !ticketStep(round));
@@ -697,7 +695,7 @@ function KitchenTablet({ state, staff, act }: { state: DemoState; staff: StaffWo
           </p>
         ) : (
           state.rounds.map((round) => (
-            <Ticket key={round.number} round={round} staff={staff} act={act} settle={settle} />
+            <Ticket key={round.number} round={round} act={act} settle={settle} />
           ))
         )}
       </div>
@@ -705,17 +703,7 @@ function KitchenTablet({ state, staff, act }: { state: DemoState; staff: StaffWo
   );
 }
 
-function Ticket({
-  round,
-  staff,
-  act,
-  settle,
-}: {
-  round: DemoRound;
-  staff: StaffWords;
-  act: Act;
-  settle: Act;
-}) {
+function Ticket({ round, act, settle }: { round: DemoRound; act: Act; settle: Act }) {
   const step = ticketStep(round);
   return (
     <m.article
@@ -751,7 +739,7 @@ function Ticket({
                     (line.status === 'ready' ? settle : act)({ type: 'advance', lineId: line.id })
                   }
                 >
-                  {staff.nextLabels[line.status]}
+                  {STAFF_WORDS.nextLabels[line.status]}
                   <span className="sr-only"> {dish.name}</span>
                 </Button>
               )}
@@ -767,7 +755,7 @@ function Ticket({
             (step.status === 'ready' ? settle : act)({ type: 'advanceTicket', round: round.number })
           }
         >
-          {staff.ticketAction[step.status]}
+          {STAFF_WORDS.ticketAction[step.status]}
           <span className="sr-only"> in round {round.number}</span>
         </Button>
       )}
@@ -779,7 +767,7 @@ function Ticket({
 
 const PAYMENT_MODES: PaymentMode[] = ['cash', 'upi', 'card'];
 
-function CounterLaptop({ state, staff, act }: { state: DemoState; staff: StaffWords; act: Act }) {
+function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const bill = demoBill(state);
   const ready = canMakeBill(state);
@@ -823,7 +811,8 @@ function CounterLaptop({ state, staff, act }: { state: DemoState; staff: StaffWo
               animate={{ opacity: 1, scale: 1 }}
               className="inline-flex items-center gap-1.5 rounded border-2 border-status-served px-2 py-0.5 text-base font-bold text-status-served"
             >
-              <CircleCheck aria-hidden className="size-4" /> Paid · {staff.payment[state.paid]}
+              <CircleCheck aria-hidden className="size-4" /> Paid ·{' '}
+              {STAFF_WORDS.payment[state.paid]}
             </m.span>
           )}
         </div>
@@ -837,7 +826,8 @@ function CounterLaptop({ state, staff, act }: { state: DemoState; staff: StaffWo
               {REQUESTS.call_waiter.line}
             </p>
             <Button size="touch" onClick={() => settle({ type: 'resolve', kind: 'call_waiter' })}>
-              Done<span className="sr-only">: {REQUESTS.call_waiter.line.toLowerCase()}</span>
+              {STAFF_WORDS.done}
+              <span className="sr-only">: {REQUESTS.call_waiter.line.toLowerCase()}</span>
             </Button>
           </section>
         )}
@@ -857,7 +847,7 @@ function CounterLaptop({ state, staff, act }: { state: DemoState; staff: StaffWo
               onClick={() => settle({ type: 'makeBill' })}
             >
               <ReceiptText aria-hidden />
-              Make bill
+              {STAFF_WORDS.makeBill}
             </Button>
           </>
         ) : (
@@ -898,7 +888,7 @@ function CounterLaptop({ state, staff, act }: { state: DemoState; staff: StaffWo
                       className="px-2"
                       onClick={() => settle({ type: 'pay', mode })}
                     >
-                      {staff.payment[mode]}
+                      {STAFF_WORDS.payment[mode]}
                     </Button>
                   ))}
                 </div>

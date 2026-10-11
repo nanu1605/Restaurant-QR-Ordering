@@ -107,30 +107,33 @@ export type PaymentMode = 'cash' | 'upi' | 'card';
 export type DemoDevice = 'guest' | 'kitchen' | 'counter';
 
 /**
+ * The staff buttons the kitchen tablet and counter laptop show, and the hints quote:
+ * table-drawer's NEXT_LABELS, kitchen-board's TICKET_ACTION, the bill's payment modes,
+ * "Done" and "Make bill". English on every site, as in the app (docs/DECISIONS.md W-15),
+ * so they sit outside the per-language words.
+ */
+export const STAFF_WORDS = {
+  nextLabels: {
+    placed: 'Start preparing',
+    preparing: 'Mark ready',
+    ready: 'Mark served',
+  } satisfies Record<OpenStatus, string>,
+  ticketAction: {
+    placed: 'Start all',
+    preparing: 'Mark all ready',
+    ready: 'Mark all served',
+  } satisfies Record<OpenStatus, string>,
+  payment: { cash: 'Cash', upi: 'UPI', card: 'Card' } satisfies Record<PaymentMode, string>,
+  done: 'Done',
+  makeBill: 'Make bill',
+};
+
+/**
  * The demo's own words by website language: what the page says around the
  * three devices and in its live region. The guest phone speaks STRINGS in its
- * own language; the kitchen tablet and counter laptop stay English, as in the
- * app.
+ * own language; the staff screens' words are STAFF_WORDS.
  */
 const en = {
-  /**
-   * The staff buttons, which the hints quote: table-drawer's NEXT_LABELS,
-   * kitchen-board's TICKET_ACTION and the bill's payment modes. The staff
-   * screens are English on every site, so every language keeps these.
-   */
-  staff: {
-    nextLabels: {
-      placed: 'Start preparing',
-      preparing: 'Mark ready',
-      ready: 'Mark served',
-    } satisfies Record<OpenStatus, string>,
-    ticketAction: {
-      placed: 'Start all',
-      preparing: 'Mark all ready',
-      ready: 'Mark all served',
-    } satisfies Record<OpenStatus, string>,
-    payment: { cash: 'Cash', upi: 'UPI', card: 'Card' } satisfies Record<PaymentMode, string>,
-  },
   /** The simulator's controls. */
   nextStep: 'Next step:',
   allDone: 'All done. The bill is paid and the table is free. Start again to play once more.',
@@ -172,13 +175,14 @@ const en = {
   /** What to try next, on which device. */
   hints: {
     kitchen: (label: string) => `On the kitchen tablet, tap “${label}”.`,
-    calling: 'The guest is calling. On the counter laptop, tap “Done”.',
-    pay: 'On the counter laptop, record the payment: Cash, UPI or Card.',
+    calling: (done: string) => `The guest is calling. On the counter laptop, tap “${done}”.`,
+    pay: ({ cash, upi, card }: Record<PaymentMode, string>) =>
+      `On the counter laptop, record the payment: ${cash}, ${upi} or ${card}.`,
     place: 'On the guest phone, place the order.',
     openCart: 'On the guest phone, open the cart.',
     add: 'On the guest phone, add a dish or two.',
     backToMenu: 'On the guest phone, go back to the menu.',
-    makeBill: 'Every dish is served. On the counter laptop, tap “Make bill”.',
+    makeBill: (label: string) => `Every dish is served. On the counter laptop, tap “${label}”.`,
   },
 };
 
@@ -443,7 +447,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         ...state,
         paid: action.mode,
         requests: [],
-        message: says.paid(DEMO_WORDS[state.site].staff.payment[action.mode], table),
+        message: says.paid(STAFF_WORDS.payment[action.mode], table),
       };
     case 'reset':
       return { ...initialDemo(state.site), message: says.reset };
@@ -456,12 +460,14 @@ export type DemoHint = { device: DemoDevice; text: string; action: DemoAction };
 
 /** The kitchen's next button for the oldest unfinished round. */
 export function kitchenHint(state: DemoState): DemoHint | null {
-  const { staff, hints } = DEMO_WORDS[state.site];
+  const { hints } = DEMO_WORDS[state.site];
   for (const round of state.rounds) {
     const step = ticketStep(round);
     if (!step) continue;
     const ticket = step.lines.length > 1;
-    const label = ticket ? staff.ticketAction[step.status] : staff.nextLabels[step.status];
+    const label = ticket
+      ? STAFF_WORDS.ticketAction[step.status]
+      : STAFF_WORDS.nextLabels[step.status];
     return {
       device: 'kitchen',
       text: hints.kitchen(label),
@@ -481,14 +487,14 @@ export function nextHint(state: DemoState): DemoHint | null {
   if (state.requests.includes('call_waiter')) {
     return {
       device: 'counter',
-      text: hints.calling,
+      text: hints.calling(STAFF_WORDS.done),
       action: { type: 'resolve', kind: 'call_waiter' },
     };
   }
   if (state.billed) {
     return {
       device: 'counter',
-      text: hints.pay,
+      text: hints.pay(STAFF_WORDS.payment),
       action: { type: 'pay', mode: 'upi' },
     };
   }
@@ -518,7 +524,7 @@ export function nextHint(state: DemoState): DemoHint | null {
   }
   return {
     device: 'counter',
-    text: hints.makeBill,
+    text: hints.makeBill(STAFF_WORDS.makeBill),
     action: { type: 'makeBill' },
   };
 }
