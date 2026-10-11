@@ -21,9 +21,11 @@ export default function NotFound() {
         <Link href="/" className={buttonVariants({ size: 'touch' })}>
           Go to the home page
         </Link>
-        <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'touch' })}>
+        {/* A full load: under /hi this page's <html lang> is Hindi, and the login page has no
+            website frame to set it back (the home page's does, W-16). */}
+        <a href="/login" className={buttonVariants({ variant: 'outline', size: 'touch' })}>
           Log in
-        </Link>
+        </a>
       </div>
     </main>
   );
