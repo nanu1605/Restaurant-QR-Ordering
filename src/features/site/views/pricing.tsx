@@ -66,7 +66,7 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
       </Section>
       <Faq lang={lang} items={t.faq.items} title={t.faq.title} />
       <FinalCta lang={lang} />
-      <JsonLd nodes={[softwareApplication(pricing, lang), faqPage(t.faq.items)]} />
+      <JsonLd nodes={[softwareApplication(pricing, lang), faqPage(t.faq.items, lang)]} />
     </>
   );
 }

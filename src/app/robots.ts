@@ -13,7 +13,15 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/admin', '/staff', '/super', '/api/', '/logout', '/signup/verify'],
+      disallow: [
+        '/admin',
+        '/staff',
+        '/super',
+        '/api/',
+        '/logout',
+        '/signup/verify',
+        '/hi/signup/verify',
+      ],
     },
     sitemap: new URL('/sitemap.xml', getPublicEnv().NEXT_PUBLIC_APP_URL).href,
   };

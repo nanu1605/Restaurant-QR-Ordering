@@ -183,6 +183,10 @@ describe('PostHog on the website', () => {
       '/privacy',
       '/refund',
       '/shipping',
+      '/hi',
+      '/hi/features',
+      '/hi/pricing',
+      '/hi/signup/verify',
     ]) {
       expect(isWebsitePath(path), path).toBe(true);
     }
@@ -195,6 +199,9 @@ describe('PostHog on the website', () => {
       '/signups',
       '/privacy/x',
       '/no-such-page',
+      '/hindi',
+      '/hi/admin',
+      '/hi/t/DEMO0000TABLE001',
     ]) {
       expect(isWebsitePath(path), path).toBe(false);
     }
@@ -235,6 +242,13 @@ describe('PostHog on the website', () => {
       location: 'page',
       plan: undefined,
       cycle: undefined,
+    });
+    expect(ctaClick('https://menumesh.in/hi/signup?plan=pro', 'hero')).toMatchObject({
+      target: 'signup',
+      plan: 'pro',
+    });
+    expect(ctaClick('https://menumesh.in/hi/contact', 'final')).toMatchObject({
+      target: 'contact',
     });
     expect(ctaClick('https://menumesh.in/login', 'header')).toBeNull();
     expect(ctaClick('https://menumesh.in/#how', 'hero')).toBeNull();

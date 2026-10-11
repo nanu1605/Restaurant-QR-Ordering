@@ -33,6 +33,14 @@ describe('JsonLd', () => {
   });
 });
 
+describe('faqPage', () => {
+  it('names the language of its questions', () => {
+    const items = [{ q: 'Q', a: 'A' }];
+    expect(faqPage(items)).toMatchObject({ '@type': 'FAQPage', inLanguage: 'en-IN' });
+    expect(faqPage(items, 'hi')).toMatchObject({ '@type': 'FAQPage', inLanguage: 'hi-IN' });
+  });
+});
+
 describe('softwareApplication', () => {
   it('lists each plan monthly and yearly in rupees, before GST', () => {
     const pricing: SitePricing = {
