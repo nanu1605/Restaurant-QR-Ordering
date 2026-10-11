@@ -9,7 +9,7 @@ import type { SiteLang } from './content';
  */
 
 /** Every website language; the compiler keeps it in step with SITE. */
-const SITE_LANGS: Record<SiteLang, true> = { en: true };
+const SITE_LANGS: Record<SiteLang, true> = { en: true, hi: true };
 
 /** A language from a form field or header; English for anything else. */
 export function parseSiteLang(value: unknown): SiteLang {

@@ -40,6 +40,7 @@ describe('plural', () => {
 describe('parseSiteLang', () => {
   it('accepts a website language and falls back to English', () => {
     expect(parseSiteLang('en')).toBe('en');
+    expect(parseSiteLang('hi')).toBe('hi');
     expect(parseSiteLang('fr')).toBe('en');
     expect(parseSiteLang('constructor')).toBe('en');
     expect(parseSiteLang(undefined)).toBe('en');

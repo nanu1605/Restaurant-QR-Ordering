@@ -77,6 +77,7 @@ export function siteSchemas(m: SiteContent['errors']) {
 
 export const SITE_SCHEMAS: Record<SiteLang, ReturnType<typeof siteSchemas>> = {
   en: siteSchemas(SITE.en.errors),
+  hi: siteSchemas(SITE.hi.errors),
 };
 
 /** The English forms. */
