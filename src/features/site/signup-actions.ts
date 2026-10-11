@@ -20,8 +20,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { turnstileConfig, verifyTurnstile } from '@/lib/turnstile';
 
+import { SITE, type SiteLang } from './content';
+import { parseSiteLang, plural } from './i18n';
 import { hashIp } from './leads';
-import { signupSchema, verifySchema, type Signup } from './schemas';
+import { SITE_SCHEMAS, type Signup } from './schemas';
 import {
   clearSignupCookie,
   setSignupCookie,
@@ -73,13 +75,6 @@ export type ResendState = {
   sends: number;
 } | null;
 
-const CLOSED = 'Signing up isn’t open yet. Book a demo instead, and we’ll set you up.';
-const CHECK_FAILED =
-  'We couldn’t confirm you’re not a robot. Wait for the check above the button to finish, then try again.';
-const RATE_LIMITED = 'Too many codes asked for. Try again later.';
-const NOT_SENT = 'We couldn’t send the email. Check the address and try again.';
-const FAILED = 'Something went wrong. Please try again in a minute.';
-
 const hashCode = (code: string) =>
   createHmac('sha256', getServerEnv().CUSTOMER_COOKIE_SECRET)
     .update(`signup-code:${code}`)
@@ -97,11 +92,16 @@ async function clientIp(): Promise<string | null> {
 }
 
 /** Emails a code; false when email is off, or Resend refused or couldn't be reached. */
-async function sendCode(email: string, code: string, key: string): Promise<boolean> {
+async function sendCode(
+  email: string,
+  code: string,
+  key: string,
+  lang: SiteLang,
+): Promise<boolean> {
   const config = emailConfig();
   if (!config) return false;
   try {
-    await sendEmail(config, { ...signupCodeEmail(code), to: [email], idempotencyKey: key });
+    await sendEmail(config, { ...signupCodeEmail(code, lang), to: [email], idempotencyKey: key });
     return true;
   } catch (error) {
     console.error('[signup] could not send a code', error);
@@ -117,10 +117,12 @@ export async function startSignup(
   const values = Object.fromEntries(
     FIELDS.map((field) => [field, String(formData.get(field) ?? '')]),
   ) as Record<SignupField, string>;
+  const lang = parseSiteLang(formData.get('lang'));
+  const { checkFailed, signup: replies } = SITE[lang].replies;
   const turnstile = turnstileConfig();
-  if (!turnstile || !emailConfig()) return { error: CLOSED, values };
+  if (!turnstile || !emailConfig()) return { error: replies.closed, values };
 
-  const parsed = signupSchema.safeParse(values);
+  const parsed = SITE_SCHEMAS[lang].signup.safeParse(values);
   if (!parsed.success) {
     const fieldErrors: Partial<Record<SignupField, string>> = {};
     for (const issue of parsed.error.issues)
@@ -130,7 +132,7 @@ export async function startSignup(
 
   const ip = await clientIp();
   const token = String(formData.get('cf-turnstile-response') ?? '');
-  if (!(await verifyTurnstile(turnstile, token, ip))) return { error: CHECK_FAILED, values };
+  if (!(await verifyTurnstile(turnstile, token, ip))) return { error: checkFailed, values };
 
   const { email, restaurantName, city, cuisine, ownerName, phone, planCode, cycle } = parsed.data;
   const { source, visitor, dnt } = parseAttribution(formData.get('attribution'));
@@ -153,11 +155,13 @@ export async function startSignup(
     p_ip_hash: ip ? hashIp(ip) : undefined,
   });
   if (error) {
-    if (dbErrorCode(error) === 'RATE_LIMITED') return { error: RATE_LIMITED, values };
+    if (dbErrorCode(error) === 'RATE_LIMITED') return { error: replies.rateLimited, values };
     console.error('[signup] site_signup_start failed:', error.code, error.message);
-    return { error: FAILED, values };
+    return { error: replies.failed, values };
   }
-  if (!(await sendCode(email, code, `signup/${id}/1`))) return { error: NOT_SENT, values };
+  if (!(await sendCode(email, code, `signup/${id}/1`, lang))) {
+    return { error: replies.notSent, values };
+  }
   await setSignupCookie(id);
   after(() =>
     captureServerEvent('signup_started', { source, visitor, dnt }, { plan: planCode, cycle }),
@@ -170,8 +174,14 @@ export async function startSignup(
  * the database (3 codes per signup, within its first hour), since it takes
  * no new bot check.
  */
-export async function resendSignupCode(previous: ResendState): Promise<ResendState> {
+export async function resendSignupCode(
+  previous: ResendState,
+  formData: FormData,
+): Promise<ResendState> {
   const sends = previous?.sends ?? 0;
+  const lang = parseSiteLang(formData.get('lang'));
+  const { failed, notSent } = SITE[lang].replies.signup;
+  const t = SITE[lang].replies.resend;
   const id = await signupIdFromCookie();
   if (!id) redirect('/signup');
   const code = newCode();
@@ -186,26 +196,16 @@ export async function resendSignupCode(previous: ResendState): Promise<ResendSta
         ok: false,
         restart: true,
         sends,
-        message:
-          reason === 'NOT_FOUND'
-            ? 'This sign-up is too old for a new code.'
-            : 'That was the last new code for this sign-up. Check your spam folder too.',
+        message: reason === 'NOT_FOUND' ? t.tooOld : t.lastCode,
       };
     }
     console.error('[signup] site_signup_resend failed:', error.code, error.message);
-    return { ok: false, sends, message: FAILED };
+    return { ok: false, sends, message: failed };
   }
-  if (!(await sendCode(email, code, `signup/${id}/${hashCode(code).slice(0, 16)}`))) {
-    return { ok: false, sends, message: NOT_SENT };
+  if (!(await sendCode(email, code, `signup/${id}/${hashCode(code).slice(0, 16)}`, lang))) {
+    return { ok: false, sends, message: notSent };
   }
-  return {
-    ok: true,
-    sends: sends + 1,
-    message:
-      sends === 0
-        ? 'We sent a new code. Use it instead of the old one.'
-        : 'We sent another new code. Use the latest one.',
-  };
+  return { ok: true, sends: sends + 1, message: sends === 0 ? t.sent : t.sentAgain };
 }
 
 // Where the visit came from is missing on signups started before it was kept.
@@ -246,7 +246,10 @@ export async function completeSignup(
 ): Promise<VerifyFormState> {
   const id = await signupIdFromCookie();
   if (!id) redirect('/signup');
-  const parsed = verifySchema.safeParse({
+  const lang = parseSiteLang(formData.get('lang'));
+  const { failed } = SITE[lang].replies.signup;
+  const t = SITE[lang].replies.code;
+  const parsed = SITE_SCHEMAS[lang].verify.safeParse({
     code: String(formData.get('code') ?? ''),
     password: String(formData.get('password') ?? ''),
   });
@@ -264,7 +267,7 @@ export async function completeSignup(
   });
   if (error) {
     console.error('[signup] could not check a code', error);
-    return { error: FAILED };
+    return { error: failed };
   }
   const result = data as
     | { status: 'ok'; email: string; details: StoredDetails }
@@ -272,17 +275,13 @@ export async function completeSignup(
     | { status: 'expired' | 'locked' | 'gone' };
   switch (result.status) {
     case 'wrong':
-      return {
-        fieldErrors: {
-          code: `That code isn’t right. ${result.tries_left} ${result.tries_left === 1 ? 'try' : 'tries'} left.`,
-        },
-      };
+      return { fieldErrors: { code: plural(result.tries_left, t.wrong) } };
     case 'expired':
-      return { fieldErrors: { code: 'This code has expired. Send a new code below.' } };
+      return { fieldErrors: { code: t.expired } };
     case 'locked':
-      return { fieldErrors: { code: 'Too many wrong codes. Send a new code below.' } };
+      return { fieldErrors: { code: t.locked } };
     case 'gone':
-      return { error: 'This sign-up has already been used or is too old.', restart: 'signup' };
+      return { error: t.gone, restart: 'signup' };
   }
 
   // The right code doesn't use the signup up, so a failure here can be tried again.
@@ -292,16 +291,13 @@ export async function completeSignup(
     restaurant = await createRestaurant(email, details, parsed.data.password);
   } catch (error) {
     if (error instanceof OnboardError && error.code === 'EMAIL_TAKEN') {
-      return {
-        error: 'This email already has a MenuMesh account. Log in instead.',
-        restart: 'login',
-      };
+      return { error: t.emailTaken, restart: 'login' };
     }
     if (error instanceof OnboardError && error.code === 'weak_password') {
-      return { fieldErrors: { password: 'Choose a password that’s harder to guess.' } };
+      return { fieldErrors: { password: t.weakPassword } };
     }
     console.error('[signup] could not create the restaurant', error);
-    return { error: FAILED };
+    return { error: failed };
   }
 
   const finished = await admin.rpc('site_signup_finish', {
@@ -326,6 +322,7 @@ export async function completeSignup(
           restaurantName: details.restaurantName,
           slug: restaurant.slug,
           appUrl: getPublicEnv().NEXT_PUBLIC_APP_URL,
+          lang,
         }),
         to: [email],
         idempotencyKey: `welcome/${restaurant.restaurantId}`,

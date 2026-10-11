@@ -48,6 +48,7 @@ export async function ContactView({
         {turnstile && (
           <ContactForm
             t={{ ...site.form, ...t.form }}
+            lang={lang}
             siteKey={turnstile.siteKey}
             plans={plans}
             defaultPlan={defaultPlan}

@@ -588,6 +588,87 @@ const en = {
     retry: 'Try again',
   },
 
+  /** The forms' field checks (schemas.ts). */
+  errors: {
+    name: 'Enter your name.',
+    restaurantName: 'Enter your restaurant’s name.',
+    city: 'Enter your city.',
+    tooLong: 'Use {max} characters or fewer.',
+    phone: 'Enter a 10-digit mobile number.',
+    email: 'Enter a valid email address.',
+    emailOrEmpty: 'Enter a valid email address, or leave it empty.',
+    cuisine: 'Choose your menu style.',
+    terms: 'Agree to the terms to continue.',
+    code: 'Enter the 6-digit code from the email.',
+    passwordShort: 'Use at least 8 characters.',
+    passwordLong: 'Use 72 characters or fewer.',
+    /** Under 72 characters, but over Supabase Auth's 72 bytes. */
+    passwordBytes: 'Use a shorter password.',
+  },
+
+  /** What the forms' server actions answer. */
+  replies: {
+    checkFailed:
+      'We couldn’t confirm you’re not a robot. Wait for the check above the button to finish, then try again.',
+    lead: {
+      rateLimited:
+        'We already have a few requests from you. We’ll be in touch soon, or try again later.',
+      failed: 'Your request didn’t go through. Please try again in a minute.',
+    },
+    signup: {
+      closed: 'Signing up isn’t open yet. Book a demo instead, and we’ll set you up.',
+      rateLimited: 'Too many codes asked for. Try again later.',
+      notSent: 'We couldn’t send the email. Check the address and try again.',
+      failed: 'Something went wrong. Please try again in a minute.',
+    },
+    code: {
+      wrong: {
+        one: 'That code isn’t right. {n} try left.',
+        other: 'That code isn’t right. {n} tries left.',
+      },
+      expired: 'This code has expired. Send a new code below.',
+      locked: 'Too many wrong codes. Send a new code below.',
+      gone: 'This sign-up has already been used or is too old.',
+      emailTaken: 'This email already has a MenuMesh account. Log in instead.',
+      weakPassword: 'Choose a password that’s harder to guess.',
+    },
+    resend: {
+      tooOld: 'This sign-up is too old for a new code.',
+      lastCode: 'That was the last new code for this sign-up. Check your spam folder too.',
+      sent: 'We sent a new code. Use it instead of the old one.',
+      sentAgain: 'We sent another new code. Use the latest one.',
+    },
+  },
+
+  /** The visitor's emails (signup.ts); the team's lead email stays English. */
+  emails: {
+    code: {
+      subject: '{code} is your {app} code',
+      lines: [
+        'Your {app} code is {code}.',
+        'Enter it on the sign-up page to create your restaurant. It works for 15 minutes.',
+        'If you didn’t sign up for {app}, you can ignore this email.',
+      ],
+    },
+    welcome: {
+      subject: 'Welcome to {app}, {restaurant}',
+      intro: [
+        'Hi {owner},',
+        '{restaurant} is ready on {app}.',
+        'Log in at {url} with this email and your password.',
+        'Your restaurant code is {slug}. Your staff need it, with their own username and password, to log in.',
+      ],
+      firstSteps: 'First steps:',
+      /** By position: menu, tables, staff, subscription. */
+      steps: [
+        'Add your menu, or import it from a photo',
+        'Add your tables and print their QR codes',
+        'Give your staff their logins',
+        'Set up autopay before your free trial ends',
+      ],
+    },
+  },
+
   /** The plans in search results (structured-data.tsx), monthly and yearly. */
   offers: { monthly: '{plan}, monthly', yearly: '{plan}, yearly' },
 

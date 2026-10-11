@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { attributionField } from '@/features/analytics/attribution';
 import { CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/default-categories';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 import { fillNodes } from '../i18n';
 import { startSignup, type SignupFormState } from '../signup-actions';
 import { Field, SELECT_CLASS } from './contact-form';
@@ -18,12 +18,14 @@ type State = { result: SignupFormState; round: number };
 /** Step 1 of the self-serve signup (docs/DECISIONS.md W-9); a success moves on to /signup/verify. */
 export function SignupForm({
   t,
+  lang,
   siteKey,
   planCode,
   cycle,
 }: {
   t: SiteContent['form'] &
     SiteContent['signup']['form'] & { cuisines: SiteContent['labels']['cuisines'] };
+  lang: SiteLang;
   siteKey: string;
   planCode: string;
   cycle: string;
@@ -58,6 +60,7 @@ export function SignupForm({
       aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
+      <input type="hidden" name="lang" value={lang} />
       <input type="hidden" name="planCode" value={planCode} />
       <input type="hidden" name="cycle" value={cycle} />
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">

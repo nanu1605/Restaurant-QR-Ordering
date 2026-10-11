@@ -8,6 +8,7 @@ import { getPublicEnv } from '@/lib/env';
 import { turnstileConfig } from '@/lib/turnstile';
 
 import { SITE, type SiteLang } from './content';
+import { fill } from './i18n';
 
 /**
  * The self-serve signup (docs/DECISIONS.md W-9): when it is open, and the
@@ -50,14 +51,11 @@ const paragraphs = (lines: string[]) =>
   lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n');
 
 /** The email with the 6-digit code. */
-export function signupCodeEmail(code: string) {
-  const lines = [
-    `Your ${APP_NAME} code is ${code}.`,
-    'Enter it on the sign-up page to create your restaurant. It works for 15 minutes.',
-    `If you didn’t sign up for ${APP_NAME}, you can ignore this email.`,
-  ];
+export function signupCodeEmail(code: string, lang: SiteLang = 'en') {
+  const t = SITE[lang].emails.code;
+  const lines = t.lines.map((line) => fill(line, { app: APP_NAME, code }));
   return {
-    subject: `${code} is your ${APP_NAME} code`,
+    subject: fill(t.subject, { app: APP_NAME, code }),
     text: lines.join('\n\n'),
     html: paragraphs(lines).replace(
       escapeHtml(code),
@@ -66,37 +64,43 @@ export function signupCodeEmail(code: string) {
   };
 }
 
+/** Where each of the welcome email's first steps leads, by position. */
+const STEP_PATHS = ['/admin/menu', '/admin/tables', '/admin/staff', '/admin/subscription'];
+
 /** The welcome email: how to log in, the code staff need, and the first steps. */
 export function welcomeEmail(input: {
   ownerName: string;
   restaurantName: string;
   slug: string;
   appUrl: string;
+  lang?: SiteLang;
 }) {
+  const t = SITE[input.lang ?? 'en'].emails.welcome;
   const app = input.appUrl.replace(/\/+$/, '');
-  const steps: Array<[string, string]> = [
-    ['Add your menu, or import it from a photo', `${app}/admin/menu`],
-    ['Add your tables and print their QR codes', `${app}/admin/tables`],
-    ['Give your staff their logins', `${app}/admin/staff`],
-    ['Set up autopay before your free trial ends', `${app}/admin/subscription`],
-  ];
-  const intro = [
-    `Hi ${input.ownerName},`,
-    `${input.restaurantName} is ready on ${APP_NAME}.`,
-    `Log in at ${app}/login with this email and your password.`,
-    `Your restaurant code is ${input.slug}. Your staff need it, with their own username and password, to log in.`,
-  ];
+  const steps = t.steps.map((step, index): [string, string] => [
+    step,
+    `${app}${STEP_PATHS[index]}`,
+  ]);
+  const intro = t.intro.map((line) =>
+    fill(line, {
+      owner: input.ownerName,
+      restaurant: input.restaurantName,
+      app: APP_NAME,
+      url: `${app}/login`,
+      slug: input.slug,
+    }),
+  );
   return {
-    subject: `Welcome to ${APP_NAME}, ${input.restaurantName}`,
+    subject: fill(t.subject, { app: APP_NAME, restaurant: input.restaurantName }),
     text: [
       ...intro,
-      ['First steps:', ...steps.map(([step, url], index) => `${index + 1}. ${step}: ${url}`)].join(
+      [t.firstSteps, ...steps.map(([step, url], index) => `${index + 1}. ${step}: ${url}`)].join(
         '\n',
       ),
     ].join('\n\n'),
     html: [
       paragraphs(intro),
-      '<p>First steps:</p>',
+      `<p>${escapeHtml(t.firstSteps)}</p>`,
       '<ol>',
       ...steps.map(
         ([step, url]) => `<li><a href="${escapeHtml(url)}">${escapeHtml(step)}</a></li>`,

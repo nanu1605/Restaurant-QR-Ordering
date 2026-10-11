@@ -67,6 +67,7 @@ export async function SignupView({
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.6fr_1fr]">
         <SignupForm
           t={{ ...t.form, ...t.signup.form, cuisines: t.labels.cuisines }}
+          lang={lang}
           siteKey={turnstile.siteKey}
           planCode={plan?.code ?? ''}
           cycle={cycle}

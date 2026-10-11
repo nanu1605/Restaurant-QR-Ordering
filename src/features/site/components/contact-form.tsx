@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { attributionField } from '@/features/analytics/attribution';
 
 import { submitLead, type LeadFormState } from '../actions';
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 import { TurnstileWidget } from './turnstile-widget';
 
 type State = { result: LeadFormState; round: number };
@@ -23,11 +23,13 @@ export const SELECT_CLASS =
 /** "Book a demo" (docs/DECISIONS.md W-6): stored as a lead for the platform team. */
 export function ContactForm({
   t,
+  lang,
   siteKey,
   plans,
   defaultPlan,
 }: {
   t: Words;
+  lang: SiteLang;
   siteKey: string;
   plans: Array<{ code: string; name: string }>;
   defaultPlan?: string;
@@ -77,6 +79,7 @@ export function ContactForm({
       aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
+      <input type="hidden" name="lang" value={lang} />
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field
           name="name"

@@ -99,10 +99,15 @@ export function periodEnd(start: string, cycle: 'monthly' | 'yearly'): string {
 }
 
 // Supabase Auth hashes with bcrypt, which only reads the first 72 bytes.
-export const passwordSchema = z
-  .string()
-  .min(8, 'Use at least 8 characters.')
-  .max(72, 'Use 72 characters or fewer.');
+// The website's signup passes its own words.
+export function passwordRule(
+  short = 'Use at least 8 characters.',
+  long = 'Use 72 characters or fewer.',
+) {
+  return z.string().min(8, short).max(72, long);
+}
+
+export const passwordSchema = passwordRule();
 
 export const ownerPasswordSchema = z.object({ password: passwordSchema });
 export type OwnerPasswordInput = z.input<typeof ownerPasswordSchema>;

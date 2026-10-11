@@ -5,7 +5,7 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 import { completeSignup, resendSignupCode } from '../signup-actions';
 import { Field } from './contact-form';
 
@@ -17,7 +17,15 @@ type Words = SiteContent['verify']['form'];
  * Step 2 of the self-serve signup (docs/DECISIONS.md W-9): the emailed code
  * and a password. `restartHref` is /signup with the plan chosen on /pricing.
  */
-export function VerifyForm({ t, restartHref }: { t: Words; restartHref: string }) {
+export function VerifyForm({
+  t,
+  lang,
+  restartHref,
+}: {
+  t: Words;
+  lang: SiteLang;
+  restartHref: string;
+}) {
   const [resent, resend, resending] = useActionState(resendSignupCode, null);
   // Kept here, so neither a wrong code nor a new code makes the visitor type it again.
   const [password, setPassword] = useState('');
@@ -28,11 +36,13 @@ export function VerifyForm({ t, restartHref }: { t: Words; restartHref: string }
       <CodeForm
         key={resent?.sends ?? 0}
         t={t}
+        lang={lang}
         password={password}
         onPassword={setPassword}
         restartHref={restartHref}
       />
       <form action={resend} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <input type="hidden" name="lang" value={lang} />
         <Button type="submit" variant="link" className="h-11 px-0 text-sm" disabled={resending}>
           {resending ? t.sending : t.resend}
         </Button>
@@ -63,11 +73,13 @@ export function VerifyForm({ t, restartHref }: { t: Words; restartHref: string }
 
 function CodeForm({
   t,
+  lang,
   password,
   onPassword,
   restartHref,
 }: {
   t: Words;
+  lang: SiteLang;
   password: string;
   onPassword: (password: string) => void;
   restartHref: string;
@@ -109,6 +121,7 @@ function CodeForm({
       aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
+      <input type="hidden" name="lang" value={lang} />
       <Field
         name="code"
         label={t.code}

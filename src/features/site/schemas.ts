@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 import { CUISINE_SETS } from '@/features/menu/default-categories';
-import { passwordSchema } from '@/features/platform/schemas';
+import { passwordRule } from '@/features/platform/schemas';
+
+import { SITE, type SiteContent, type SiteLang } from './content';
+import { fill } from './i18n';
 
 /** Ten digits, without spaces, +91 or a leading 0 ("+91 98765-43210" → "9876543210"). */
 export function normalizePhone(text: string): string {
@@ -11,68 +14,75 @@ export function normalizePhone(text: string): string {
   return digits;
 }
 
-const text = (field: string, max: number) =>
-  z.string().trim().min(1, `Enter ${field}.`).max(max, `Use ${max} characters or fewer.`);
+/** The website's forms, with their messages in one language. */
+export function siteSchemas(m: SiteContent['errors']) {
+  const tooLong = (max: number) => fill(m.tooLong, { max });
+  const text = (missing: string, max: number) =>
+    z.string().trim().min(1, missing).max(max, tooLong(max));
 
-/** The "Book a demo" form (docs/DECISIONS.md W-6); site_leads checks the same. */
-export const leadSchema = z.object({
-  name: text('your name', 80),
-  restaurantName: text('your restaurant’s name', 120),
-  city: text('your city', 60),
-  phone: z
-    .string()
-    .transform(normalizePhone)
-    .pipe(z.string().regex(/^[0-9]{10}$/, 'Enter a 10-digit mobile number.')),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(254, 'Use 254 characters or fewer.')
-    .pipe(z.union([z.literal(''), z.email('Enter a valid email address, or leave it empty.')]))
-    .transform((value) => value || null),
-  planCode: z.string().transform((value) => (/^[a-z_]{2,30}$/.test(value) ? value : null)),
-  message: z
-    .string()
-    // Forms send line breaks as CRLF; the textarea counted each as one character.
-    .transform((value) => value.replace(/\r\n?/g, '\n'))
-    .pipe(z.string().trim().max(1000, 'Use 1000 characters or fewer.'))
-    .transform((value) => value || null),
-});
+  /** The "Book a demo" form (docs/DECISIONS.md W-6); site_leads checks the same. */
+  const lead = z.object({
+    name: text(m.name, 80),
+    restaurantName: text(m.restaurantName, 120),
+    city: text(m.city, 60),
+    phone: z
+      .string()
+      .transform(normalizePhone)
+      .pipe(z.string().regex(/^[0-9]{10}$/, m.phone)),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .max(254, tooLong(254))
+      .pipe(z.union([z.literal(''), z.email(m.emailOrEmpty)]))
+      .transform((value) => value || null),
+    planCode: z.string().transform((value) => (/^[a-z_]{2,30}$/.test(value) ? value : null)),
+    message: z
+      .string()
+      // Forms send line breaks as CRLF; the textarea counted each as one character.
+      .transform((value) => value.replace(/\r\n?/g, '\n'))
+      .pipe(z.string().trim().max(1000, tooLong(1000)))
+      .transform((value) => value || null),
+  });
+
+  /** Step 1 of the self-serve signup (docs/DECISIONS.md W-9). */
+  const signup = z.object({
+    restaurantName: text(m.restaurantName, 120),
+    city: text(m.city, 60),
+    cuisine: z.enum(CUISINE_SETS, { message: m.cuisine }),
+    ownerName: text(m.name, 80),
+    email: z.string().trim().toLowerCase().max(254, tooLong(254)).pipe(z.email(m.email)),
+    phone: lead.shape.phone,
+    terms: z.literal('on', { message: m.terms }),
+    /** The plan the visitor came from on /pricing, for autopay after signup. */
+    planCode: lead.shape.planCode,
+    cycle: z.string().transform((value) => (value === 'yearly' ? 'yearly' : 'monthly')),
+  });
+
+  /** Step 2: the emailed code and the owner's password. */
+  const verify = z.object({
+    code: z
+      .string()
+      .transform((value) => value.replace(/\D/g, ''))
+      .pipe(z.string().length(6, m.code)),
+    // Supabase Auth (bcrypt) reads 72 bytes, fewer characters in Hindi.
+    password: passwordRule(m.passwordShort, m.passwordLong).refine(
+      (password) => new TextEncoder().encode(password).length <= 72,
+      m.passwordBytes,
+    ),
+  });
+
+  return { lead, signup, verify };
+}
+
+export const SITE_SCHEMAS: Record<SiteLang, ReturnType<typeof siteSchemas>> = {
+  en: siteSchemas(SITE.en.errors),
+};
+
+/** The English forms. */
+export const { lead: leadSchema, signup: signupSchema, verify: verifySchema } = SITE_SCHEMAS.en;
 
 export type LeadInput = z.input<typeof leadSchema>;
 export type Lead = z.output<typeof leadSchema>;
-
-/** Step 1 of the self-serve signup (docs/DECISIONS.md W-9). */
-export const signupSchema = z.object({
-  restaurantName: text('your restaurant’s name', 120),
-  city: text('your city', 60),
-  cuisine: z.enum(CUISINE_SETS, { message: 'Choose your menu style.' }),
-  ownerName: text('your name', 80),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(254, 'Use 254 characters or fewer.')
-    .pipe(z.email('Enter a valid email address.')),
-  phone: leadSchema.shape.phone,
-  terms: z.literal('on', { message: 'Agree to the terms to continue.' }),
-  /** The plan the visitor came from on /pricing, for autopay after signup. */
-  planCode: leadSchema.shape.planCode,
-  cycle: z.string().transform((value) => (value === 'yearly' ? 'yearly' : 'monthly')),
-});
-
 export type SignupInput = z.input<typeof signupSchema>;
 export type Signup = z.output<typeof signupSchema>;
-
-/** Step 2: the emailed code and the owner's password. */
-export const verifySchema = z.object({
-  code: z
-    .string()
-    .transform((value) => value.replace(/\D/g, ''))
-    .pipe(z.string().length(6, 'Enter the 6-digit code from the email.')),
-  // Supabase Auth (bcrypt) reads 72 bytes, fewer characters in Hindi.
-  password: passwordSchema.refine(
-    (password) => new TextEncoder().encode(password).length <= 72,
-    'Use a shorter password.',
-  ),
-});
