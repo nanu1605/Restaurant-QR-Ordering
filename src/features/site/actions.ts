@@ -10,8 +10,10 @@ import { getPublicEnv } from '@/lib/env';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { turnstileConfig, verifyTurnstile } from '@/lib/turnstile';
 
+import { SITE } from './content';
+import { parseSiteLang } from './i18n';
 import { hashIp, notifyLead } from './leads';
-import { leadSchema } from './schemas';
+import { SITE_SCHEMAS } from './schemas';
 
 const FIELDS = ['name', 'restaurantName', 'city', 'phone', 'email', 'planCode', 'message'] as const;
 type LeadField = (typeof FIELDS)[number];
@@ -27,12 +29,6 @@ export type LeadFormState =
     }
   | null;
 
-const CHECK_FAILED =
-  'We couldn’t confirm you’re not a robot. Wait for the check above the button to finish, then try again.';
-const RATE_LIMITED =
-  'We already have a few requests from you. We’ll be in touch soon, or try again later.';
-const FAILED = 'Your request didn’t go through. Please try again in a minute.';
-
 /** The "Book a demo" form (docs/DECISIONS.md W-6): Turnstile, then site_create_lead. */
 export async function submitLead(
   _previous: LeadFormState,
@@ -41,10 +37,12 @@ export async function submitLead(
   const values = Object.fromEntries(
     FIELDS.map((field) => [field, String(formData.get(field) ?? '')]),
   ) as Record<LeadField, string>;
+  const lang = parseSiteLang(formData.get('lang'));
+  const { checkFailed, lead: replies } = SITE[lang].replies;
   const turnstile = turnstileConfig();
-  if (!turnstile) return { ok: false, error: FAILED, values };
+  if (!turnstile) return { ok: false, error: replies.failed, values };
 
-  const parsed = leadSchema.safeParse(values);
+  const parsed = SITE_SCHEMAS[lang].lead.safeParse(values);
   if (!parsed.success) {
     const fieldErrors: Partial<Record<LeadField, string>> = {};
     for (const issue of parsed.error.issues)
@@ -59,7 +57,7 @@ export async function submitLead(
     null;
   const token = String(formData.get('cf-turnstile-response') ?? '');
   if (!(await verifyTurnstile(turnstile, token, ip))) {
-    return { ok: false, error: CHECK_FAILED, values };
+    return { ok: false, error: checkFailed, values };
   }
 
   const lead = parsed.data;
@@ -79,9 +77,11 @@ export async function submitLead(
     p_ip_hash: ip ? hashIp(ip) : undefined,
   });
   if (error) {
-    if (dbErrorCode(error) === 'RATE_LIMITED') return { ok: false, error: RATE_LIMITED, values };
+    if (dbErrorCode(error) === 'RATE_LIMITED') {
+      return { ok: false, error: replies.rateLimited, values };
+    }
     console.error('site_create_lead failed:', error.code, error.message, error.details);
-    return { ok: false, error: FAILED, values };
+    return { ok: false, error: replies.failed, values };
   }
 
   after(() => captureServerEvent('lead_submitted', attribution, { plan: lead.planCode }));

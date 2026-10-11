@@ -4,6 +4,8 @@ import { MAX_LINE_QUANTITY } from '@/features/ordering/limits';
 import { STRINGS, type Lang } from '@/features/ordering/strings';
 import { formatINR, type Paise } from '@/lib/money';
 
+import type { SiteLang } from '../content';
+
 /**
  * The /demo simulator: one table's order played in the browser, from the
  * guest's phone through the kitchen to the counter. Nothing leaves the page;
@@ -99,31 +101,102 @@ const NEXT: Record<OpenStatus, MovedStatus> = {
   ready: 'served',
 };
 
-/** The staff wording: table-drawer's NEXT_LABELS and kitchen-board's TICKET_ACTION. */
-export const NEXT_LABELS: Record<OpenStatus, string> = {
-  placed: 'Start preparing',
-  preparing: 'Mark ready',
-  ready: 'Mark served',
-};
-export const TICKET_ACTION: Record<OpenStatus, string> = {
-  placed: 'Start all',
-  preparing: 'Mark all ready',
-  ready: 'Mark all served',
-};
-
 export type GuestView = 'menu' | 'cart' | 'orders';
 export type RequestKind = 'call_waiter' | 'request_bill';
 export type PaymentMode = 'cash' | 'upi' | 'card';
-export const PAYMENT_LABELS: Record<PaymentMode, string> = {
-  cash: 'Cash',
-  upi: 'UPI',
-  card: 'Card',
+export type DemoDevice = 'guest' | 'kitchen' | 'counter';
+
+/**
+ * The staff buttons the kitchen tablet and counter laptop show, and the hints quote:
+ * table-drawer's NEXT_LABELS, kitchen-board's TICKET_ACTION, the bill's payment modes,
+ * "Done" and "Make bill". English on every site, as in the app (docs/DECISIONS.md W-15),
+ * so they sit outside the per-language words.
+ */
+export const STAFF_WORDS = {
+  nextLabels: {
+    placed: 'Start preparing',
+    preparing: 'Mark ready',
+    ready: 'Mark served',
+  } satisfies Record<OpenStatus, string>,
+  ticketAction: {
+    placed: 'Start all',
+    preparing: 'Mark all ready',
+    ready: 'Mark all served',
+  } satisfies Record<OpenStatus, string>,
+  payment: { cash: 'Cash', upi: 'UPI', card: 'Card' } satisfies Record<PaymentMode, string>,
+  done: 'Done',
+  makeBill: 'Make bill',
 };
+
+/**
+ * The demo's own words by website language: what the page says around the
+ * three devices and in its live region. The guest phone speaks STRINGS in its
+ * own language; the staff screens' words are STAFF_WORDS.
+ */
+const en = {
+  /** The simulator's controls. */
+  nextStep: 'Next step:',
+  allDone: 'All done. The bill is paid and the table is free. Start again to play once more.',
+  showMe: 'Show me',
+  stop: 'Stop',
+  startAgain: 'Start again',
+  devicesGroup: 'Device to show',
+  tryNext: '(try this next)',
+  /** Each device's button below lg, and its heading. */
+  devices: {
+    guest: { label: 'Guest phone', title: 'Guest phone' },
+    kitchen: { label: 'Kitchen', title: 'Kitchen tablet' },
+    counter: { label: 'Counter', title: 'Counter laptop' },
+  } satisfies Record<DemoDevice, { label: string; title: string }>,
+  /** The live region; `table` is STRINGS' "Table 5" in the site's language. */
+  says: {
+    phoneLang: (lang: Lang) => `The guest phone is now in ${lang === 'hi' ? 'Hindi' : 'English'}.`,
+    placed: 'Order sent to the kitchen.',
+    /** A kitchen step, for one dish or more: "Paneer Tikka and Chicken 65 are ready." */
+    moved: {
+      preparing: (names: string[]) =>
+        `${listNames(names)} ${names.length === 1 ? 'is' : 'are'} being prepared.`,
+      ready: (names: string[]) => `${listNames(names)} ${names.length === 1 ? 'is' : 'are'} ready.`,
+      served: (names: string[]) =>
+        `${listNames(names)} ${names.length === 1 ? 'has' : 'have'} been served.`,
+    } satisfies Record<MovedStatus, (names: string[]) => string>,
+    request: {
+      call_waiter: (table: string) => `${table} is calling a waiter.`,
+      request_bill: (table: string) => `${table} asked for the bill.`,
+    } satisfies Record<RequestKind, (table: string) => string>,
+    resolved: {
+      call_waiter: 'Waiter call done.',
+      request_bill: 'Bill request done.',
+    } satisfies Record<RequestKind, string>,
+    billMade: (table: string, total: string) => `Bill made for ${table.toLowerCase()}: ${total}.`,
+    paid: (mode: string, table: string) => `Paid by ${mode}. ${table} is free.`,
+    reset: 'The demo has started again.',
+  },
+  /** What to try next, on which device. */
+  hints: {
+    kitchen: (label: string) => `On the kitchen tablet, tap “${label}”.`,
+    calling: (done: string) => `The guest is calling. On the counter laptop, tap “${done}”.`,
+    pay: ({ cash, upi, card }: Record<PaymentMode, string>) =>
+      `On the counter laptop, record the payment: ${cash}, ${upi} or ${card}.`,
+    place: 'On the guest phone, place the order.',
+    openCart: 'On the guest phone, open the cart.',
+    add: 'On the guest phone, add a dish or two.',
+    backToMenu: 'On the guest phone, go back to the menu.',
+    makeBill: (label: string) => `Every dish is served. On the counter laptop, tap “${label}”.`,
+  },
+};
+
+export type DemoWords = typeof en;
+
+export const DEMO_WORDS: Record<SiteLang, DemoWords> = { en };
 
 export type DemoLine = { id: string; dishId: string; quantity: number; status: DishStatus };
 export type DemoRound = { number: number; at: string; lines: DemoLine[] };
 
 export type DemoState = {
+  /** The website's language: the demo's words and the phone's first language. */
+  site: SiteLang;
+  /** The guest phone's language, which its switch changes. */
   lang: Lang;
   view: GuestView;
   /** Dish id → quantity; only dishes in the cart. */
@@ -151,16 +224,21 @@ export type DemoAction =
   | { type: 'pay'; mode: PaymentMode }
   | { type: 'reset' };
 
-export const INITIAL_DEMO: DemoState = {
-  lang: 'en',
-  view: 'menu',
-  cart: {},
-  rounds: [],
-  requests: [],
-  billed: false,
-  paid: null,
-  message: '',
-};
+export function initialDemo(site: SiteLang): DemoState {
+  return {
+    site,
+    lang: site,
+    view: 'menu',
+    cart: {},
+    rounds: [],
+    requests: [],
+    billed: false,
+    paid: null,
+    message: '',
+  };
+}
+
+export const INITIAL_DEMO = initialDemo('en');
 
 // ─── Derived ─────────────────────────────────────────────────────────────────
 
@@ -250,25 +328,12 @@ export function demoBill(state: DemoState) {
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 
-const en = STRINGS.en;
-const table = en.table(DEMO_TABLE);
-
-const DONE_PHRASE: Record<MovedStatus, [one: string, many: string]> = {
-  preparing: ['is being prepared', 'are being prepared'],
-  ready: ['is ready', 'are ready'],
-  served: ['has been served', 'have been served'],
-};
-
-function moved(lines: DemoLine[], status: MovedStatus): string {
-  const names = lines.map((line) => dishById(line.dishId).name);
-  return `${listNames(names)} ${DONE_PHRASE[status][names.length === 1 ? 0 : 1]}.`;
-}
-
 /** Moves the given dishes one step on; a ticket's dishes share one status. */
 function advanceLines(state: DemoState, ids: Set<string>): DemoState {
   const changed = allLines(state).filter((line) => ids.has(line.id) && line.status !== 'served');
   if (changed.length === 0) return state;
   const step = (line: DemoLine) => NEXT[line.status as OpenStatus];
+  const names = changed.map((line) => dishName(dishById(line.dishId), state.site));
   return {
     ...state,
     rounds: state.rounds.map((round) => ({
@@ -277,18 +342,17 @@ function advanceLines(state: DemoState, ids: Set<string>): DemoState {
         changed.includes(line) ? { ...line, status: step(line) } : line,
       ),
     })),
-    message: moved(changed, step(changed[0]!)),
+    message: DEMO_WORDS[state.site].says.moved[step(changed[0]!)](names),
   };
 }
 
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
+  const t = STRINGS[state.site];
+  const says = DEMO_WORDS[state.site].says;
+  const table = t.table(DEMO_TABLE);
   switch (action.type) {
     case 'lang':
-      return {
-        ...state,
-        lang: action.lang,
-        message: `The guest phone is now in ${action.lang === 'hi' ? 'Hindi' : 'English'}.`,
-      };
+      return { ...state, lang: action.lang, message: says.phoneLang(action.lang) };
     case 'view':
       if (action.view === 'orders' && state.rounds.length === 0) return state;
       if (action.view !== 'orders' && state.billed) return state;
@@ -300,7 +364,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       return {
         ...state,
         cart: { ...state.cart, [dish.id]: quantity },
-        message: en.menu.added(dish.name, quantity),
+        message: t.menu.added(dishName(dish, state.site), quantity),
       };
     }
     case 'remove': {
@@ -309,11 +373,11 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       if (quantity < 0) return state;
       const cart = { ...state.cart, [dish.id]: quantity };
       if (quantity === 0) delete cart[dish.id];
+      const name = dishName(dish, state.site);
       return {
         ...state,
         cart,
-        message:
-          quantity === 0 ? en.menu.removed(dish.name) : en.menu.inCartOf(dish.name, quantity),
+        message: quantity === 0 ? t.menu.removed(name) : t.menu.inCartOf(name, quantity),
       };
     }
     case 'place': {
@@ -337,7 +401,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
             })),
           },
         ],
-        message: 'Order sent to the kitchen.',
+        message: says.placed,
       };
     }
     case 'advance':
@@ -357,10 +421,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       return {
         ...state,
         requests: [...state.requests, action.kind],
-        message:
-          action.kind === 'call_waiter'
-            ? `${table} is calling a waiter.`
-            : `${table} asked for the bill.`,
+        message: says.request[action.kind](table),
       };
     }
     case 'resolve':
@@ -368,7 +429,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       return {
         ...state,
         requests: state.requests.filter((kind) => kind !== action.kind),
-        message: action.kind === 'call_waiter' ? 'Waiter call done.' : 'Bill request done.',
+        message: says.resolved[action.kind],
       };
     case 'makeBill': {
       if (!canMakeBill(state)) return state;
@@ -377,7 +438,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       return {
         ...billed,
         requests: state.requests.filter((kind) => kind !== 'request_bill'),
-        message: `Bill made for ${table.toLowerCase()}: ${formatINR(demoBill(billed).totalPaise)}.`,
+        message: says.billMade(table, formatINR(demoBill(billed).totalPaise)),
       };
     }
     case 'pay':
@@ -386,28 +447,30 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         ...state,
         paid: action.mode,
         requests: [],
-        message: `Paid by ${PAYMENT_LABELS[action.mode]}. ${table} is free.`,
+        message: says.paid(STAFF_WORDS.payment[action.mode], table),
       };
     case 'reset':
-      return { ...INITIAL_DEMO, message: 'The demo has started again.' };
+      return { ...initialDemo(state.site), message: says.reset };
   }
 }
 
 // ─── What to try next ────────────────────────────────────────────────────────
 
-export type DemoDevice = 'guest' | 'kitchen' | 'counter';
 export type DemoHint = { device: DemoDevice; text: string; action: DemoAction };
 
 /** The kitchen's next button for the oldest unfinished round. */
 export function kitchenHint(state: DemoState): DemoHint | null {
+  const { hints } = DEMO_WORDS[state.site];
   for (const round of state.rounds) {
     const step = ticketStep(round);
     if (!step) continue;
     const ticket = step.lines.length > 1;
-    const label = ticket ? TICKET_ACTION[step.status] : NEXT_LABELS[step.status];
+    const label = ticket
+      ? STAFF_WORDS.ticketAction[step.status]
+      : STAFF_WORDS.nextLabels[step.status];
     return {
       device: 'kitchen',
-      text: `On the kitchen tablet, tap “${label}”.`,
+      text: hints.kitchen(label),
       action: ticket
         ? { type: 'advanceTicket', round: round.number }
         : { type: 'advance', lineId: step.lines[0]!.id },
@@ -419,27 +482,28 @@ export function kitchenHint(state: DemoState): DemoHint | null {
 /** Which device and button the visitor should try next; null once paid. */
 export function nextHint(state: DemoState): DemoHint | null {
   if (state.paid) return null;
+  const { hints } = DEMO_WORDS[state.site];
   // Calls reach the waiters' board and the admin's live orders, not the kitchen view.
   if (state.requests.includes('call_waiter')) {
     return {
       device: 'counter',
-      text: 'The guest is calling. On the counter laptop, tap “Done”.',
+      text: hints.calling(STAFF_WORDS.done),
       action: { type: 'resolve', kind: 'call_waiter' },
     };
   }
   if (state.billed) {
     return {
       device: 'counter',
-      text: 'On the counter laptop, record the payment: Cash, UPI or Card.',
+      text: hints.pay(STAFF_WORDS.payment),
       action: { type: 'pay', mode: 'upi' },
     };
   }
   if (cartCount(state) > 0) {
     return state.view === 'cart'
-      ? { device: 'guest', text: 'On the guest phone, place the order.', action: { type: 'place' } }
+      ? { device: 'guest', text: hints.place, action: { type: 'place' } }
       : {
           device: 'guest',
-          text: 'On the guest phone, open the cart.',
+          text: hints.openCart,
           action: { type: 'view', view: 'cart' },
         };
   }
@@ -449,18 +513,18 @@ export function nextHint(state: DemoState): DemoHint | null {
     return state.view === 'menu'
       ? {
           device: 'guest',
-          text: 'On the guest phone, add a dish or two.',
+          text: hints.add,
           action: { type: 'add', dishId: DEMO_MENU[0]!.id },
         }
       : {
           device: 'guest',
-          text: 'On the guest phone, go back to the menu.',
+          text: hints.backToMenu,
           action: { type: 'view', view: 'menu' },
         };
   }
   return {
     device: 'counter',
-    text: 'Every dish is served. On the counter laptop, tap “Make bill”.',
+    text: hints.makeBill(STAFF_WORDS.makeBill),
     action: { type: 'makeBill' },
   };
 }

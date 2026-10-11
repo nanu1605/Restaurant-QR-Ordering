@@ -6,16 +6,28 @@ import { useId, useState } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
-import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from '@/features/plans/plan-features';
+import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 
-import { HERO, SIGNUP_CTA } from '../content';
-import { recommendPlan, staffLabel, tablesLabel, type PricingPlan } from '../pricing';
+import type { SiteContent } from '../content';
+import { fill } from '../i18n';
+import { limitLabel, recommendPlan, type PricingPlan } from '../pricing';
 
 const MAX_TABLES = 60;
 const MAX_STAFF = 40;
 
 /** "Which plan fits me?": a few questions, answered with the real plan limits. */
-export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: boolean }) {
+export function PlanHelper({
+  t,
+  plans,
+  signup,
+}: {
+  t: Pick<SiteContent, 'cta' | 'per'> &
+    Pick<SiteContent['pricing'], 'helper' | 'limits'> & {
+      features: SiteContent['labels']['features'];
+    };
+  plans: PricingPlan[];
+  signup: boolean;
+}) {
   const [tables, setTables] = useState(8);
   const [staff, setStaff] = useState(3);
   const [features, setFeatures] = useState<FeatureKey[]>([]);
@@ -31,21 +43,23 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
       <form className="flex min-w-0 flex-col gap-6" onSubmit={(event) => event.preventDefault()}>
         <Range
           id={`${id}-tables`}
-          label="Tables with a QR code"
+          label={t.helper.tables}
+          orMore={t.helper.orMore}
           value={tables}
           max={MAX_TABLES}
           onChange={setTables}
         />
         <Range
           id={`${id}-staff`}
-          label="Staff who sign in (not counting you)"
+          label={t.helper.staff}
+          orMore={t.helper.orMore}
           value={staff}
           min={0}
           max={MAX_STAFF}
           onChange={setStaff}
         />
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-semibold text-ink">I also want</legend>
+          <legend className="mb-2 text-sm font-semibold text-ink">{t.helper.features}</legend>
           <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
             {FEATURE_KEYS.map((key) => (
               <label
@@ -58,7 +72,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
                   onChange={(event) => toggle(key, event.target.checked)}
                   className="size-5 shrink-0 accent-brand"
                 />
-                {FEATURE_LABELS[key]}
+                {t.features[key]}
               </label>
             ))}
           </div>
@@ -66,28 +80,26 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
       </form>
       <div
         role="status"
-        aria-label="Recommended plan"
+        aria-label={t.helper.result}
         className="flex flex-col justify-center gap-4 rounded-2xl bg-surface p-6 text-center shadow-sm"
       >
         {plan ? (
           <>
-            <p className="text-sm font-semibold text-ink-muted">Your best fit</p>
+            <p className="text-sm font-semibold text-ink-muted">{t.helper.bestFit}</p>
             <p className="text-3xl font-bold text-ink">{plan.name}</p>
             <p className="text-ink-muted">
               <Money paise={plan.monthlyPaise} fraction="auto" className="font-semibold text-ink" />{' '}
-              a month
+              {t.per.monthly}
             </p>
             <p className="text-sm text-ink-muted">
-              {tablesLabel(plan.maxTables)} · {staffLabel(plan.maxStaff)}
+              {limitLabel(plan.maxTables, t.limits.tables)} ·{' '}
+              {limitLabel(plan.maxStaff, t.limits.staff)}
             </p>
           </>
         ) : (
           <>
-            <p className="text-xl font-bold text-ink">Let’s talk</p>
-            <p className="text-sm text-ink-muted">
-              That’s more than our plans cover today. Tell us about your restaurant and we’ll work
-              it out with you.
-            </p>
+            <p className="text-xl font-bold text-ink">{t.helper.talk}</p>
+            <p className="text-sm text-ink-muted">{t.helper.tooBig}</p>
           </>
         )}
         {/* "Let's talk" stays a conversation, even when visitors can sign up. */}
@@ -102,7 +114,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
           }
           className={cn(buttonVariants({ size: 'touch' }), 'self-center px-6')}
         >
-          {plan && signup ? SIGNUP_CTA : HERO.primary}
+          {plan && signup ? t.cta.signup : t.cta.demo}
         </Link>
       </div>
     </div>
@@ -112,6 +124,7 @@ export function PlanHelper({ plans, signup }: { plans: PricingPlan[]; signup: bo
 function Range({
   id,
   label,
+  orMore,
   value,
   min = 1,
   max,
@@ -119,6 +132,8 @@ function Range({
 }: {
   id: string;
   label: string;
+  /** "{n} or more", read out at the top of the scale. */
+  orMore: string;
   value: number;
   min?: number;
   max: number;
@@ -140,7 +155,7 @@ function Range({
         min={min}
         max={max}
         value={value}
-        aria-valuetext={value === max ? `${max} or more` : undefined}
+        aria-valuetext={value === max ? fill(orMore, { n: max }) : undefined}
         onChange={(event) => onChange(Number(event.target.value))}
         className="h-11 w-full cursor-pointer accent-brand"
       />

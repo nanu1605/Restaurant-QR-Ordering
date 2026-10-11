@@ -5,16 +5,27 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
+import type { SiteContent, SiteLang } from '../content';
 import { completeSignup, resendSignupCode } from '../signup-actions';
 import { Field } from './contact-form';
 
 const LINK_CLASS = 'font-semibold text-brand underline underline-offset-2';
 
+type Words = SiteContent['verify']['form'];
+
 /**
  * Step 2 of the self-serve signup (docs/DECISIONS.md W-9): the emailed code
  * and a password. `restartHref` is /signup with the plan chosen on /pricing.
  */
-export function VerifyForm({ restartHref }: { restartHref: string }) {
+export function VerifyForm({
+  t,
+  lang,
+  restartHref,
+}: {
+  t: Words;
+  lang: SiteLang;
+  restartHref: string;
+}) {
   const [resent, resend, resending] = useActionState(resendSignupCode, null);
   // Kept here, so neither a wrong code nor a new code makes the visitor type it again.
   const [password, setPassword] = useState('');
@@ -24,19 +35,22 @@ export function VerifyForm({ restartHref }: { restartHref: string }) {
       {/* A new code starts the form afresh: old errors no longer apply. */}
       <CodeForm
         key={resent?.sends ?? 0}
+        t={t}
+        lang={lang}
         password={password}
         onPassword={setPassword}
         restartHref={restartHref}
       />
       <form action={resend} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <input type="hidden" name="lang" value={lang} />
         <Button type="submit" variant="link" className="h-11 px-0 text-sm" disabled={resending}>
-          {resending ? 'Sending…' : 'Send a new code'}
+          {resending ? t.sending : t.resend}
         </Button>
         <Link
           href={restartHref}
           className="inline-flex h-11 items-center font-medium text-brand underline-offset-2 hover:underline"
         >
-          Use a different email
+          {t.otherEmail}
         </Link>
         <p
           aria-live="polite"
@@ -47,7 +61,7 @@ export function VerifyForm({ restartHref }: { restartHref: string }) {
             <>
               {' '}
               <Link href={restartHref} className={LINK_CLASS}>
-                Start again
+                {t.restart}
               </Link>
             </>
           )}
@@ -58,10 +72,14 @@ export function VerifyForm({ restartHref }: { restartHref: string }) {
 }
 
 function CodeForm({
+  t,
+  lang,
   password,
   onPassword,
   restartHref,
 }: {
+  t: Words;
+  lang: SiteLang;
   password: string;
   onPassword: (password: string) => void;
   restartHref: string;
@@ -89,7 +107,7 @@ function CodeForm({
       >
         {result.error}{' '}
         <Link href={result.restart === 'login' ? '/login' : restartHref} className={LINK_CLASS}>
-          {result.restart === 'login' ? 'Go to log in' : 'Start again'}
+          {result.restart === 'login' ? t.login : t.restart}
         </Link>
       </p>
     );
@@ -100,12 +118,13 @@ function CodeForm({
       ref={form}
       action={action}
       noValidate
-      aria-label="Create your restaurant"
+      aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
+      <input type="hidden" name="lang" value={lang} />
       <Field
         name="code"
-        label="6-digit code"
+        label={t.code}
         inputMode="numeric"
         autoComplete="one-time-code"
         maxLength={7}
@@ -115,7 +134,7 @@ function CodeForm({
       />
       <Field
         name="password"
-        label="Choose a password"
+        label={t.password}
         type="password"
         autoComplete="new-password"
         value={password}
@@ -124,7 +143,7 @@ function CodeForm({
         {...(result?.fieldErrors?.password ? {} : { 'aria-describedby': 'password-hint' })}
       />
       <p id="password-hint" className="-mt-3 text-sm text-ink-muted">
-        At least 8 characters. You’ll log in with your email and this password.
+        {t.passwordHint}
       </p>
       {result?.error && (
         <p role="alert" className="text-sm font-medium text-status-void">
@@ -132,7 +151,7 @@ function CodeForm({
         </p>
       )}
       <Button type="submit" size="touch" disabled={pending} className="sm:self-start sm:px-8">
-        {pending ? 'Creating your restaurant…' : 'Create my restaurant'}
+        {pending ? t.creating : t.submit}
       </Button>
     </form>
   );

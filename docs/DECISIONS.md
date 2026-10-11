@@ -2339,6 +2339,59 @@ W4a search engines, W4b analytics, W4c budgets and the launch checklist.
     production variables, the support email, DMARC and Search Console in DNS, the Release and
     the checks after it.
 
+### Website W5 · The website in Hindi
+
+The owner chose (2026-10-10):
+
+- Hindi under a `/hi` prefix, with English URLs unchanged;
+- a switch link, with no automatic redirects;
+- legal pages in English only;
+- the staff screens in the hero and the demo left in English, as in the real app.
+
+W5a moves the English words into one dictionary with no visible change; W5b adds Hindi.
+
+- **W-15 · One dictionary for the website's words:**
+  - **Where the words live:** `src/features/site/content.ts` holds `const en`, `SiteContent`
+    (its type), `SITE` and `SiteLang`. It covers the page copy, the words that were inline in
+    components and pages, the page titles and descriptions, the form errors and action replies,
+    the visitor emails, and the site's own copies of the plan feature and cuisine labels. The
+    panels keep using the originals.
+  - **Plain data only:** `{slot}` placeholders and `{ one, other }` plurals, filled by
+    `fill`, `fillNodes` and `plural` in `i18n.tsx`. Where a sentence wraps a price, a link or
+    `<strong>`, `fillNodes` places it, so each language can put it where its word order needs.
+    Icons and pictures stay with their components, by position.
+  - **Only one language reaches the browser:** `content.ts` is `server-only`, so a client import
+    fails the build. Server components read `SITE[lang]`; client components get exactly their
+    words as a `t` prop, typed with `import type`. No context provider, which would send the whole
+    dictionary with every page.
+  - **Pages:** each page body is a view in `src/features/site/views/` that takes `lang`. Route
+    files only set the metadata and render the view, so a Hindi route is a few lines.
+  - **Forms:** the contact, signup, code and resend forms send a hidden `lang` field. The actions
+    read it with `parseSiteLang` (English for anything else) and answer from `SITE_SCHEMAS[lang]`
+    and `SITE[lang]`. Field errors are a full sentence per field, since "Enter {field}" doesn't
+    fit Hindi word order. The signup password rule comes from `passwordRule()`, whose defaults
+    are the admin side's words, so the 8 to 72 limits stay in one place.
+  - **Emails:** `signupCodeEmail` and `welcomeEmail` take the language. The team's lead email
+    stays English.
+  - **The demo:** `DEMO_WORDS` in `demo/machine.ts` holds the demo's own words per language
+    (announcements, hints, controls), as `strings.ts` does for the menu. Unlike the site
+    dictionary it will ship every language, since it is small and client-only.
+    `initialDemo(site)` starts the guest phone in the site's language. The staff buttons and
+    labels the kitchen tablet and counter laptop show, which the hints quote, are one English
+    `STAFF_WORDS`, outside the per-language words, so no translation can reach them. Both
+    screens are marked `lang="en"`.
+  - **Left for W5b:** the guest-phone pictures in the hero and "how it works" still carry the
+    app's English words inline. W5b takes them from `STRINGS[lang]`.
+  - **Also:** `ThemeMenu` and `ThemeRadioGroup` take `labels`, as `ThemeSwitch` does. `WithHindi`
+    now wraps every हिन्दी (it used to drop the text after a second one). `limitLabel` replaces
+    `tablesLabel` and `staffLabel`.
+  - **No visible change, proven three ways:**
+    - every page's visible and hidden text (titles, meta, structured data, aria labels, alt
+      text, links, sitemap and robots) matched a snapshot from before, on desktop and phone;
+      the only difference is the two new `lang="en"` attributes on `/demo`;
+    - old and new server renders and client states were compared in throwaway tests;
+    - the existing unit and end-to-end tests pass unchanged.
+
 ## Brand refresh (after launch, from 2026-10-03)
 
 The owner finalized the logo: a white "M" in an orange hexagon (`#FF6606`), with a wordmark

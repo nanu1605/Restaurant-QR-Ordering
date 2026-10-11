@@ -1,12 +1,18 @@
-/** "हिन्दी" inside English copy, marked as Hindi for screen readers. */
+import { Fragment } from 'react';
+
+/** Each "हिन्दी" inside English copy, marked as Hindi for screen readers. */
 export function WithHindi({ text }: { text: string }) {
-  const [before, after] = text.split('हिन्दी');
-  if (after === undefined) return text;
+  const [first, ...rest] = text.split('हिन्दी');
+  if (!rest.length) return text;
   return (
     <>
-      {before}
-      <span lang="hi">हिन्दी</span>
-      {after}
+      {first}
+      {rest.map((part, index) => (
+        <Fragment key={index}>
+          <span lang="hi">हिन्दी</span>
+          {part}
+        </Fragment>
+      ))}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { SiteAnalytics } from '@/features/analytics/site-analytics';
 import { SiteMotion } from '@/features/site/components/motion';
 import { SiteFooter } from '@/features/site/components/site-footer';
 import { SiteHeader } from '@/features/site/components/site-header';
+import { SITE } from '@/features/site/content';
 import { APP_NAME } from '@/lib/config';
 
 /**
@@ -29,13 +30,13 @@ export default function SiteLayout({ children }: LayoutProps<'/'>) {
           href="#main"
           className="sr-only z-50 rounded-md bg-surface px-4 py-2 font-semibold text-brand focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
         >
-          Skip to content
+          {SITE.en.skipToContent}
         </a>
-        <SiteHeader />
+        <SiteHeader lang="en" />
         <main id="main" className="flex flex-1 flex-col">
           {children}
         </main>
-        <SiteFooter />
+        <SiteFooter lang="en" />
         <SiteAnalytics />
       </div>
     </SiteMotion>

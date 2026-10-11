@@ -29,6 +29,7 @@ import { TableStateBadge } from '@/features/orders/components/table-state-badge'
 import { DEFAULT_TIMEZONE } from '@/lib/config';
 import { formatINR } from '@/lib/money';
 
+import type { SiteLang } from '../content';
 import {
   allServed,
   canMakeBill,
@@ -38,21 +39,21 @@ import {
   DEMO_CATEGORIES,
   DEMO_MENU,
   DEMO_TABLE,
+  DEMO_WORDS,
   demoBill,
   demoReducer,
   dishById,
   dishName,
-  INITIAL_DEMO,
-  NEXT_LABELS,
+  initialDemo,
   nextHint,
-  PAYMENT_LABELS,
+  STAFF_WORDS,
   ticketStep,
-  TICKET_ACTION,
   type DemoAction,
   type DemoDevice,
   type DemoDish,
   type DemoRound,
   type DemoState,
+  type DemoWords,
   type PaymentMode,
   type RequestKind,
 } from '../demo/machine';
@@ -65,11 +66,7 @@ import { usePrefersReducedMotion } from './motion';
  * sent anywhere. From lg all three devices show; below it, one at a time.
  */
 
-const DEVICES: Array<{ id: DemoDevice; label: string; title: string }> = [
-  { id: 'guest', label: 'Guest phone', title: 'Guest phone' },
-  { id: 'kitchen', label: 'Kitchen', title: 'Kitchen tablet' },
-  { id: 'counter', label: 'Counter', title: 'Counter laptop' },
-];
+const DEVICES: DemoDevice[] = ['guest', 'kitchen', 'counter'];
 
 const STEP_MS = 1200;
 const TABLE = STRINGS.en.table(DEMO_TABLE);
@@ -102,8 +99,9 @@ function focusSoon(target: RefObject<HTMLElement | null>) {
   requestAnimationFrame(() => target.current?.focus());
 }
 
-export function DemoSimulator() {
-  const [state, dispatch] = useReducer(demoReducer, INITIAL_DEMO);
+export function DemoSimulator({ site }: { site: SiteLang }) {
+  const [state, dispatch] = useReducer(demoReducer, site, initialDemo);
+  const words = DEMO_WORDS[state.site];
   const [active, setActive] = useState<DemoDevice>('guest');
   const [auto, setAuto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -137,10 +135,8 @@ export function DemoSimulator() {
     <div ref={ref} className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:p-5">
         <p className="min-w-0 flex-1 text-base text-ink">
-          <span className="font-semibold text-brand">Next step: </span>
-          {hint
-            ? hint.text
-            : 'All done. The bill is paid and the table is free. Start again to play once more.'}
+          <span className="font-semibold text-brand">{words.nextStep} </span>
+          {hint ? hint.text : words.allDone}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -154,7 +150,7 @@ export function DemoSimulator() {
             onClick={() => setAuto((value) => !value)}
           >
             {auto ? <Square aria-hidden /> : <Play aria-hidden />}
-            {auto ? 'Stop' : 'Show me'}
+            {auto ? words.stop : words.showMe}
           </Button>
           <Button
             size="touch"
@@ -166,7 +162,7 @@ export function DemoSimulator() {
             }}
           >
             <RotateCcw aria-hidden />
-            Start again
+            {words.startAgain}
           </Button>
         </div>
       </div>
@@ -175,28 +171,32 @@ export function DemoSimulator() {
         {withRupee(state.message)}
       </p>
 
-      <div role="group" aria-label="Device to show" className="grid grid-cols-3 gap-2 lg:hidden">
+      <div
+        role="group"
+        aria-label={words.devicesGroup}
+        className="grid grid-cols-3 gap-2 lg:hidden"
+      >
         {DEVICES.map((device) => (
           <button
-            key={device.id}
+            key={device}
             type="button"
-            aria-pressed={active === device.id}
+            aria-pressed={active === device}
             onClick={() => {
               setAuto(false);
-              setActive(device.id);
+              setActive(device);
             }}
             className={cn(
               'inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-center text-sm leading-tight font-semibold transition-colors',
-              active === device.id
+              active === device
                 ? 'border-brand bg-primary text-primary-foreground'
                 : 'border-line bg-surface text-ink hover:border-brand',
             )}
           >
-            {device.label}
-            {dot === device.id && (
+            {words.devices[device].label}
+            {dot === device && (
               <>
                 <span aria-hidden className="size-2 shrink-0 rounded-full bg-attention" />
-                <span className="sr-only"> (try this next)</span>
+                <span className="sr-only"> {words.tryNext}</span>
               </>
             )}
           </button>
@@ -204,17 +204,22 @@ export function DemoSimulator() {
       </div>
 
       <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-[20rem_minmax(0,1fr)] lg:items-start">
-        <DeviceSection device="guest" shown={active === 'guest'}>
+        <DeviceSection device="guest" words={words} shown={active === 'guest'}>
           <PhoneFrame className="mx-auto w-full max-w-[20rem]">
             <GuestPhone state={state} act={act} />
           </PhoneFrame>
         </DeviceSection>
-        <DeviceSection device="kitchen" shown={active === 'kitchen'}>
+        <DeviceSection device="kitchen" words={words} shown={active === 'kitchen'}>
           <TabletFrame screenClassName="max-sm:aspect-auto max-sm:h-[34rem]">
             <KitchenTablet state={state} act={act} />
           </TabletFrame>
         </DeviceSection>
-        <DeviceSection device="counter" shown={active === 'counter'} className="lg:col-span-2">
+        <DeviceSection
+          device="counter"
+          words={words}
+          shown={active === 'counter'}
+          className="lg:col-span-2"
+        >
           {/* The laptop's base is wider than its screen: the padding keeps it on the page. */}
           <div className="mx-auto w-full max-w-3xl px-[6%] lg:px-0">
             <LaptopFrame screenClassName="max-lg:aspect-auto max-lg:h-[32rem]">
@@ -229,23 +234,24 @@ export function DemoSimulator() {
 
 function DeviceSection({
   device,
+  words,
   shown,
   className,
   children,
 }: {
   device: DemoDevice;
+  words: DemoWords;
   shown: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
-  const { title } = DEVICES.find((d) => d.id === device)!;
   return (
     <section
       aria-labelledby={`demo-${device}`}
       className={cn('flex min-w-0 flex-col gap-3', !shown && 'max-lg:hidden', className)}
     >
       <h2 id={`demo-${device}`} className="text-center text-base font-semibold text-ink-muted">
-        {title}
+        {words.devices[device].title}
       </h2>
       {children}
     </section>
@@ -666,7 +672,7 @@ function KitchenTablet({ state, act }: { state: DemoState; act: Act }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col text-sm">
+    <div lang="en" className="flex min-h-0 flex-1 flex-col text-sm">
       <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-2.5">
         <span className="text-base font-bold text-ink">Kitchen</span>
         <span className="inline-flex items-center gap-1.5 text-ink-muted">
@@ -733,7 +739,7 @@ function Ticket({ round, act, settle }: { round: DemoRound; act: Act; settle: Ac
                     (line.status === 'ready' ? settle : act)({ type: 'advance', lineId: line.id })
                   }
                 >
-                  {NEXT_LABELS[line.status]}
+                  {STAFF_WORDS.nextLabels[line.status]}
                   <span className="sr-only"> {dish.name}</span>
                 </Button>
               )}
@@ -749,7 +755,7 @@ function Ticket({ round, act, settle }: { round: DemoRound; act: Act; settle: Ac
             (step.status === 'ready' ? settle : act)({ type: 'advanceTicket', round: round.number })
           }
         >
-          {TICKET_ACTION[step.status]}
+          {STAFF_WORDS.ticketAction[step.status]}
           <span className="sr-only"> in round {round.number}</span>
         </Button>
       )}
@@ -771,7 +777,7 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 text-sm">
+    <div lang="en" className="flex min-h-0 flex-1 text-sm">
       <div aria-hidden className="hidden w-36 shrink-0 flex-col gap-1 bg-surface p-3 md:flex">
         <span className="px-2 pb-1 font-bold text-brand">Admin</span>
         {['Live orders', 'Bills', 'Menu', 'Tables', 'Reports'].map((item) => (
@@ -805,7 +811,8 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
               animate={{ opacity: 1, scale: 1 }}
               className="inline-flex items-center gap-1.5 rounded border-2 border-status-served px-2 py-0.5 text-base font-bold text-status-served"
             >
-              <CircleCheck aria-hidden className="size-4" /> Paid · {PAYMENT_LABELS[state.paid]}
+              <CircleCheck aria-hidden className="size-4" /> Paid ·{' '}
+              {STAFF_WORDS.payment[state.paid]}
             </m.span>
           )}
         </div>
@@ -819,7 +826,8 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
               {REQUESTS.call_waiter.line}
             </p>
             <Button size="touch" onClick={() => settle({ type: 'resolve', kind: 'call_waiter' })}>
-              Done<span className="sr-only">: {REQUESTS.call_waiter.line.toLowerCase()}</span>
+              {STAFF_WORDS.done}
+              <span className="sr-only">: {REQUESTS.call_waiter.line.toLowerCase()}</span>
             </Button>
           </section>
         )}
@@ -839,7 +847,7 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
               onClick={() => settle({ type: 'makeBill' })}
             >
               <ReceiptText aria-hidden />
-              Make bill
+              {STAFF_WORDS.makeBill}
             </Button>
           </>
         ) : (
@@ -880,7 +888,7 @@ function CounterLaptop({ state, act }: { state: DemoState; act: Act }) {
                       className="px-2"
                       onClick={() => settle({ type: 'pay', mode })}
                     >
-                      {PAYMENT_LABELS[mode]}
+                      {STAFF_WORDS.payment[mode]}
                     </Button>
                   ))}
                 </div>

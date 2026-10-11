@@ -4,6 +4,8 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
+import type { SiteContent } from '../content';
+
 /**
  * Cloudflare Turnstile's widget (docs/DECISIONS.md W-6). Rendered inside a
  * form, it adds the hidden `cf-turnstile-response` input the server checks.
@@ -45,10 +47,12 @@ function loadTurnstile(): Promise<Turnstile> {
 }
 
 export function TurnstileWidget({
+  t,
   siteKey,
   round,
   onReady,
 }: {
+  t: Pick<SiteContent['form'], 'checkFailed' | 'retry'>;
   siteKey: string;
   round: number;
   /** true with a token, false when it expired or failed. */
@@ -93,7 +97,7 @@ export function TurnstileWidget({
       <div ref={container} className="min-h-[65px] min-w-0" />
       {failed && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-status-void">
-          <p>The check that you’re not a robot didn’t load. Try again, or reach us directly.</p>
+          <p>{t.checkFailed}</p>
           <Button
             type="button"
             variant="outline"
@@ -103,7 +107,7 @@ export function TurnstileWidget({
               setAttempt((count) => count + 1);
             }}
           >
-            Try again
+            {t.retry}
           </Button>
         </div>
       )}
