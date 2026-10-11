@@ -15,7 +15,7 @@ export function DemoView({ lang }: { lang: SiteLang }) {
         <h1 className="text-2xl font-bold text-ink sm:text-3xl">{t.demo.title}</h1>
         <p className="text-base text-ink-muted sm:text-lg">{t.demo.lead}</p>
       </div>
-      <DemoSimulator />
+      <DemoSimulator site={lang} />
       <div className="flex flex-col items-start gap-4 rounded-2xl bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-base text-ink sm:text-lg">{t.demo.ownMenu}</p>
         <Link
