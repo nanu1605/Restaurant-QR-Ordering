@@ -2399,8 +2399,11 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       `/hi/demo`, `/hi/contact`, `/hi/signup`, `/hi/signup/verify`.
     - Each language has a layout that renders `SiteChrome` (skip link, header, footer) with its
       `lang`; `(site)/layout.tsx` keeps only what both share.
-    - Legal pages exist only in English. `/hi/terms` and any other unknown `/hi` path is the
-      root 404, whose `<main>` is marked English.
+    - Legal pages exist only in English. Their `/hi` addresses (`/hi/terms`, `/hi/privacy`,
+      `/hi/refund`, `/hi/shipping`) lead to the English policy, keeping the query: a redirect
+      in `next.config.ts`, as the owner asked in review (2026-10-11). It is temporary (307), so
+      the policies could still get Hindi twins. Any other unknown `/hi` path is the root 404,
+      whose `<main>` is marked English.
   - **Rejected alternatives:**
     - A `[lang]` segment with a proxy rewrite of English paths: every request rewritten, `/en`
       duplicates, and a segment that catches any first path part.
@@ -2424,20 +2427,27 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     the parent's image over in `generateMetadata`, since a child's `openGraph` replaces the
     parent's whole object.
 - **W-17 · The language switch:**
-  - **What it is:** `LanguageSwitch`, a link to the same page in the other language, named in
-    that language ("हिन्दी", "English"), with a 44 px target. It sits in the header next to the
-    theme menu (lg and up), in the phone menu, and in the footer.
+  - **What it is:** a language control beside each theme control, as the owner asked in review
+    (2026-10-11). Each is named "Language" / "भाषा" and lists the languages by their own names
+    (English, हिन्दी):
+    - `LanguageSwitch`: English / हिन्दी buttons next to the theme buttons in the footer and the
+      phone menu, with 44 px targets. The page's language is marked `aria-current`. The other
+      is a link to the same page in that language, so it works before the page's JavaScript.
+    - `LanguageMenu`: a language button next to the header's theme menu (lg and up). The two
+      languages are radio items; choosing the other one moves with `router.push`.
+    - It was one link naming the other language, which read as a stray word rather than a
+      setting.
   - **A client-side move that keeps the query:** the chosen plan and cycle and the campaign tags
     carry over. The visit's remembered source and its PostHog id (both kept in page memory,
     W-13) survive too, which a full page load would lose, splitting the funnel.
   - **Where it goes:** from a policy page (English only) it goes to `/hi`.
   - **No automatic redirects** (the owner's choice), so search engines and shared links always
     land where they point.
-  - **Font:** the word हिन्दी is drawn in the system font, as ₹ is (W-14). English pages without
+  - **Font:** the word हिन्दी in both controls is drawn in the system font, as ₹ is (W-14). English pages without
     Hindi text (`/contact`, `/signup`, the policies) then don't download Noto's 99 KB
     Devanagari file; `site-hindi.spec.ts` checks `/contact`.
   - **Policies:** on Hindi pages the footer marks them as English, and the theme menu and switch
-    labels are Hindi (`STRINGS.hi.theme`, awaiting the owner's check, B-3).
+    labels are Hindi (`STRINGS.hi.theme`, checked by the owner on 2026-10-11, B-3).
 - **W-18 · Forms, signup and emails in Hindi:**
   - **Replies:** each form's hidden `lang` field (W-15) picks the replies, field errors and
     emails, so `/hi/contact` and `/hi/signup` answer in Hindi.
@@ -2492,7 +2502,8 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       ₹ or latin-ext letters (W-14); and that the Hindi is in Devanagari with one spelling of
       हिन्दी.
   - **Tests:**
-    - `site-hindi.spec.ts`: each `/hi` page's `lang` and h1, the switch both ways, policies, the
+    - `site-hindi.spec.ts`: each `/hi` page's `lang` and h1, the switch both ways (the header
+      menu on laptops, the footer buttons below), the policies and their `/hi` redirects, the
       404, no sideways scroll from 320 px, and the fonts.
     - Hindi cases in the seo, leads, signup (both emails), demo, contrast, fonts and smoke
       specs. The tests check Devanagari and `lang`, not exact sentences, so copy edits don't
