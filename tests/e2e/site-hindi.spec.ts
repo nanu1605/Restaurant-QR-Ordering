@@ -68,6 +68,15 @@ test('the switch leads to the same page in the other language and back', async (
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
+test('the switch keeps the chosen plan and the campaign tags', async ({ page }) => {
+  // docs/DECISIONS.md W-17: a client-side move, so the visit's source carries over too.
+  await page.goto('/contact?plan=growth&utm_source=newsletter');
+  await switchArea(page).getByRole('link', { name: 'हिन्दी', exact: true }).click();
+  await expect(page).toHaveURL(/\/hi\/contact\?plan=growth&utm_source=newsletter$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+  await expect(page.locator('select[name="planCode"]')).toHaveValue('growth');
+});
+
 test('the policies are English only: their switch leads to the Hindi home page', async ({
   page,
 }) => {

@@ -1,4 +1,5 @@
 import { SITE, type SiteLang } from '../content';
+import { HtmlLang } from './language-switch';
 import { SiteFooter } from './site-footer';
 import { SiteHeader } from './site-header';
 
@@ -10,6 +11,7 @@ import { SiteHeader } from './site-header';
 export function SiteChrome({ lang, children }: { lang: SiteLang; children: React.ReactNode }) {
   return (
     <div lang={lang} className="site flex flex-1 flex-col">
+      <HtmlLang lang={lang} />
       <a
         href="#main"
         className="sr-only z-50 rounded-md bg-surface px-4 py-2 font-semibold text-brand focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
