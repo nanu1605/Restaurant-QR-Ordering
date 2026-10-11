@@ -13,7 +13,7 @@ import type { ThemeLabels } from '@/features/theme/theme';
 
 import type { SiteContent, SiteLang } from '../content';
 import { sitePath } from '../i18n';
-import { LanguageSwitch } from './language-switch';
+import { type LanguageLabels, LanguageSwitch } from './language-switch';
 import { SiteLink } from './site-link';
 
 /**
@@ -30,7 +30,7 @@ export function SiteMobileNav({
   t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & {
     main: string;
     theme: ThemeLabels;
-    otherLanguage: string;
+    language: LanguageLabels;
   };
   cta: { href: string; label: string };
 }) {
@@ -111,12 +111,9 @@ export function SiteMobileNav({
             })}
           </ul>
         </nav>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col items-start gap-3">
           <ThemeSwitch labels={t.theme} />
-          <LanguageSwitch
-            label={t.otherLanguage}
-            className="rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
-          />
+          <LanguageSwitch labels={t.language} />
         </div>
         <div className="mt-auto flex flex-col gap-3">
           <SiteLink

@@ -12,6 +12,7 @@ import type { SiteContent } from './content';
 export const hi: SiteContent = {
   skipToContent: 'सीधे मुख्य हिस्से पर जाएँ',
   login: 'लॉग इन',
+  language: 'भाषा',
   tagline: 'भारत के रेस्टोरेंट के लिए QR कोड से टेबल पर ऑर्डर, किचन और वेटर की स्क्रीन, और बिलिंग।',
   cta: { demo: 'डेमो बुक करें', signup: 'फ़्री ट्रायल शुरू करें' },
   growthBadge: 'Growth प्लान',

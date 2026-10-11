@@ -23,6 +23,7 @@ const en = {
   /** The link past the header, for keyboard users. */
   skipToContent: 'Skip to content',
   login: 'Log in',
+  language: 'Language',
   /** The product in one line: the footer and the structured data. */
   tagline: 'QR table ordering, kitchen and waiter screens, and billing for restaurants in India.',
   /** The website's main calls to action; `signup` once self-serve signup is open (W-9). */
