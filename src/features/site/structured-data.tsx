@@ -53,7 +53,7 @@ export function faqPage(items: readonly { q: string; a: string }[], lang: SiteLa
  * The product, with each plan monthly and yearly, before GST like the pricing page (W-11), in
  * the page's language.
  */
-export function softwareApplication({ plans }: SitePricing, lang: SiteLang = 'en'): Node {
+export function softwareApplication({ plans }: SitePricing, lang: SiteLang): Node {
   const t = SITE[lang];
   const offer = (name: string, paise: number, billingDuration: 'P1M' | 'P1Y') => ({
     '@type': 'Offer',

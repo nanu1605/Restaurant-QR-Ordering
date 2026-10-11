@@ -208,7 +208,7 @@ describe('the self-serve signup', () => {
   });
 
   it('emails the code and the welcome with everything escaped', () => {
-    const code = signupCodeEmail('042917');
+    const code = signupCodeEmail('042917', 'en');
     expect(code.subject).toBe('042917 is your MenuMesh code');
     expect(code.text).toContain('It works for 15 minutes.');
     expect(code.html).toContain('<strong');
@@ -218,6 +218,7 @@ describe('the self-serve signup', () => {
       restaurantName: 'Tom & Jerry',
       slug: 'tom-and-jerry',
       appUrl: 'https://menumesh.in/',
+      lang: 'en',
     });
     expect(welcome.subject).toBe('Welcome to MenuMesh, Tom & Jerry');
     expect(welcome.text).toContain('Your restaurant code is tom-and-jerry.');
@@ -226,6 +227,24 @@ describe('the self-serve signup', () => {
     );
     expect(welcome.html).toContain('Asha &lt;b&gt;');
     expect(welcome.html).not.toContain('<b>');
+    expect(code.html).toMatch(/^<div lang="en">/);
+    expect(welcome.html).toMatch(/^<div lang="en">/);
+  });
+
+  it('emails a Hindi visitor in Hindi', () => {
+    const code = signupCodeEmail('042917', 'hi');
+    expect(code.html).toMatch(/^<div lang="hi">[^]*042917<\/strong>[^]*<\/div>$/);
+    expect(code.text).toMatch(/\p{Script=Devanagari}/u);
+    const welcome = welcomeEmail({
+      ownerName: 'Asha',
+      restaurantName: 'Swad',
+      slug: 'swad',
+      appUrl: 'https://menumesh.in',
+      lang: 'hi',
+    });
+    expect(welcome.html).toMatch(/^<div lang="hi">/);
+    expect(welcome.text).toMatch(/\p{Script=Devanagari}/u);
+    expect(welcome.text).toContain('swad');
   });
 });
 

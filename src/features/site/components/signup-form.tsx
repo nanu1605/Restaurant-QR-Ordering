@@ -171,7 +171,7 @@ export function SignupForm({
         )}
       </div>
       {/* Each submit renders a fresh check: tokens work once. */}
-      <TurnstileWidget t={t} siteKey={siteKey} round={round} onReady={setChecked} />
+      <TurnstileWidget t={t} lang={lang} siteKey={siteKey} round={round} onReady={setChecked} />
       {result && (result.error || result.fieldErrors) && (
         <p role="alert" className="text-sm font-medium text-status-void">
           {result.error ?? t.checkFields}

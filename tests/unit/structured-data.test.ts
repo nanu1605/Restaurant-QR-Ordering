@@ -59,7 +59,7 @@ describe('softwareApplication', () => {
       trialPlanCode: 'starter',
       setupFeePaise: 0,
     };
-    const { offers } = softwareApplication(pricing) as { offers: Record<string, unknown>[] };
+    const { offers } = softwareApplication(pricing, 'en') as { offers: Record<string, unknown>[] };
     expect(offers).toHaveLength(2);
     expect(offers[0]).toMatchObject({
       name: 'Starter, monthly',

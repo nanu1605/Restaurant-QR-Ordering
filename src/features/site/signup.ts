@@ -50,16 +50,22 @@ export function slugFromName(name: string, suffix?: string): string {
 const paragraphs = (lines: string[]) =>
   lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n');
 
+/** Marks an email's language, so mail apps read and hyphenate it right. */
+const inLang = (lang: SiteLang, html: string) => `<div lang="${lang}">\n${html}\n</div>`;
+
 /** The email with the 6-digit code. */
-export function signupCodeEmail(code: string, lang: SiteLang = 'en') {
+export function signupCodeEmail(code: string, lang: SiteLang) {
   const t = SITE[lang].emails.code;
   const lines = t.lines.map((line) => fill(line, { app: APP_NAME, code }));
   return {
     subject: fill(t.subject, { app: APP_NAME, code }),
     text: lines.join('\n\n'),
-    html: paragraphs(lines).replace(
-      escapeHtml(code),
-      `<strong style="font-size:24px;letter-spacing:4px">${escapeHtml(code)}</strong>`,
+    html: inLang(
+      lang,
+      paragraphs(lines).replace(
+        escapeHtml(code),
+        `<strong style="font-size:24px;letter-spacing:4px">${escapeHtml(code)}</strong>`,
+      ),
     ),
   };
 }
@@ -73,9 +79,9 @@ export function welcomeEmail(input: {
   restaurantName: string;
   slug: string;
   appUrl: string;
-  lang?: SiteLang;
+  lang: SiteLang;
 }) {
-  const t = SITE[input.lang ?? 'en'].emails.welcome;
+  const t = SITE[input.lang].emails.welcome;
   const app = input.appUrl.replace(/\/+$/, '');
   const steps = t.steps.map((step, index): [string, string] => [
     step,
@@ -98,19 +104,25 @@ export function welcomeEmail(input: {
         '\n',
       ),
     ].join('\n\n'),
-    html: [
-      paragraphs(intro),
-      `<p>${escapeHtml(t.firstSteps)}</p>`,
-      '<ol>',
-      ...steps.map(
-        ([step, url]) => `<li><a href="${escapeHtml(url)}">${escapeHtml(step)}</a></li>`,
-      ),
-      '</ol>',
-    ].join('\n'),
+    html: inLang(
+      input.lang,
+      [
+        paragraphs(intro),
+        `<p>${escapeHtml(t.firstSteps)}</p>`,
+        '<ol>',
+        ...steps.map(
+          ([step, url]) => `<li><a href="${escapeHtml(url)}">${escapeHtml(step)}</a></li>`,
+        ),
+        '</ol>',
+      ].join('\n'),
+    ),
   };
 }
 
-/** The signup in progress, between /signup and /signup/verify. */
+/**
+ * The signup in progress, between /signup and /signup/verify. Path '/' so the Hindi verify
+ * page (/hi/signup/verify) gets it too.
+ */
 const SIGNUP_COOKIE = 'mm_signup';
 
 export async function setSignupCookie(id: string) {
@@ -118,13 +130,13 @@ export async function setSignupCookie(id: string) {
     httpOnly: true,
     sameSite: 'lax',
     secure: getPublicEnv().NEXT_PUBLIC_APP_URL.startsWith('https://'),
-    path: '/signup',
+    path: '/',
     maxAge: 60 * 60,
   });
 }
 
 export async function clearSignupCookie() {
-  (await cookies()).delete({ name: SIGNUP_COOKIE, path: '/signup' });
+  (await cookies()).delete({ name: SIGNUP_COOKIE, path: '/' });
 }
 
 /** The signup id from the cookie, if it looks like one. */

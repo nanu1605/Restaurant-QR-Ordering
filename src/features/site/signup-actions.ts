@@ -21,7 +21,7 @@ import { createClient } from '@/lib/supabase/server';
 import { turnstileConfig, verifyTurnstile } from '@/lib/turnstile';
 
 import { SITE, type SiteLang } from './content';
-import { parseSiteLang, plural } from './i18n';
+import { parseSiteLang, plural, sitePath } from './i18n';
 import { hashIp } from './leads';
 import { SITE_SCHEMAS, type Signup } from './schemas';
 import {
@@ -166,7 +166,7 @@ export async function startSignup(
   after(() =>
     captureServerEvent('signup_started', { source, visitor, dnt }, { plan: planCode, cycle }),
   );
-  redirect('/signup/verify');
+  redirect(sitePath(lang, '/signup/verify'));
 }
 
 /**
@@ -183,7 +183,7 @@ export async function resendSignupCode(
   const { failed, notSent } = SITE[lang].replies.signup;
   const t = SITE[lang].replies.resend;
   const id = await signupIdFromCookie();
-  if (!id) redirect('/signup');
+  if (!id) redirect(sitePath(lang, '/signup'));
   const code = newCode();
   const { data: email, error } = await createAdminClient().rpc('site_signup_resend', {
     p_id: id,
@@ -244,9 +244,9 @@ export async function completeSignup(
   _previous: VerifyFormState,
   formData: FormData,
 ): Promise<VerifyFormState> {
-  const id = await signupIdFromCookie();
-  if (!id) redirect('/signup');
   const lang = parseSiteLang(formData.get('lang'));
+  const id = await signupIdFromCookie();
+  if (!id) redirect(sitePath(lang, '/signup'));
   const { failed } = SITE[lang].replies.signup;
   const t = SITE[lang].replies.code;
   const parsed = SITE_SCHEMAS[lang].verify.safeParse({

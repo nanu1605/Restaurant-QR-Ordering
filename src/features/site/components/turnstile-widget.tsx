@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 
 /**
  * Cloudflare Turnstile's widget (docs/DECISIONS.md W-6). Rendered inside a
@@ -48,11 +48,13 @@ function loadTurnstile(): Promise<Turnstile> {
 
 export function TurnstileWidget({
   t,
+  lang,
   siteKey,
   round,
   onReady,
 }: {
   t: Pick<SiteContent['form'], 'checkFailed' | 'retry'>;
+  lang: SiteLang;
   siteKey: string;
   round: number;
   /** true with a token, false when it expired or failed. */
@@ -78,6 +80,8 @@ export function TurnstileWidget({
           sitekey: siteKey,
           action: 'lead',
           theme: 'light',
+          // Hindi pages ask for Cloudflare's Hindi; English keeps the browser's language.
+          language: lang === 'hi' ? 'hi' : 'auto',
           // "flexible" needs 300 px; narrow phones get the compact widget.
           size: container.current.clientWidth < 300 ? 'compact' : 'flexible',
           callback: () => report(true),
@@ -90,7 +94,7 @@ export function TurnstileWidget({
       cancelled = true;
       if (widgetId) window.turnstile?.remove(widgetId);
     };
-  }, [siteKey, round, attempt]);
+  }, [siteKey, lang, round, attempt]);
 
   return (
     <div className="flex flex-col gap-2">
