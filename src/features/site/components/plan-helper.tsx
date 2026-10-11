@@ -1,26 +1,28 @@
 'use client';
 
 import { cn } from 'cn';
-import Link from 'next/link';
 import { useId, useState } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 import { fill } from '../i18n';
 import { limitLabel, recommendPlan, type PricingPlan } from '../pricing';
+import { SiteLink } from './site-link';
 
 const MAX_TABLES = 60;
 const MAX_STAFF = 40;
 
 /** "Which plan fits me?": a few questions, answered with the real plan limits. */
 export function PlanHelper({
+  siteLang,
   t,
   plans,
   signup,
 }: {
+  siteLang: SiteLang;
   t: Pick<SiteContent, 'cta' | 'per'> &
     Pick<SiteContent['pricing'], 'helper' | 'limits'> & {
       features: SiteContent['labels']['features'];
@@ -103,7 +105,8 @@ export function PlanHelper({
           </>
         )}
         {/* "Let's talk" stays a conversation, even when visitors can sign up. */}
-        <Link
+        <SiteLink
+          siteLang={siteLang}
           data-cta="plan_finder"
           href={
             plan
@@ -115,7 +118,7 @@ export function PlanHelper({
           className={cn(buttonVariants({ size: 'touch' }), 'self-center px-6')}
         >
           {plan && signup ? t.cta.signup : t.cta.demo}
-        </Link>
+        </SiteLink>
       </div>
     </div>
   );

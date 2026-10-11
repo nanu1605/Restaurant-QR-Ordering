@@ -8,7 +8,7 @@ import { getPublicEnv } from '@/lib/env';
 import { turnstileConfig } from '@/lib/turnstile';
 
 import { SITE, type SiteLang } from './content';
-import { fill } from './i18n';
+import { fill, sitePath } from './i18n';
 
 /**
  * The self-serve signup (docs/DECISIONS.md W-9): when it is open, and the
@@ -20,12 +20,12 @@ export function signupOpen(): boolean {
   return turnstileConfig() !== null && emailConfig() !== null;
 }
 
-/** The website's main call to action. */
+/** The website's main call to action, in the page's language. */
 export function siteCta(lang: SiteLang): { href: string; label: string } {
   const { cta } = SITE[lang];
   return signupOpen()
-    ? { href: '/signup', label: cta.signup }
-    : { href: '/contact', label: cta.demo };
+    ? { href: sitePath(lang, '/signup'), label: cta.signup }
+    : { href: sitePath(lang, '/contact'), label: cta.demo };
 }
 
 /**

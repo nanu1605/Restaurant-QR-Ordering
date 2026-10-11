@@ -17,7 +17,6 @@ import {
   WifiOff,
   type LucideIcon,
 } from 'lucide-react';
-import Link from 'next/link';
 
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
@@ -25,10 +24,11 @@ import { buttonVariants } from '@/components/ui/button';
 
 import { SITE, type SiteLang } from '../content';
 import { fillNodes } from '../i18n';
-import { siteCta } from '../signup';
+import { siteCta, signupOpen } from '../signup';
 import { PhoneFrame } from './device-frames';
 import { HeroStory } from './hero-story';
 import { HowItWorks } from './how-it-works';
+import { SiteLink } from './site-link';
 import { WithHindi } from './with-hindi';
 
 /** The home page's sections (docs/DECISIONS.md W-1), top to bottom. */
@@ -82,9 +82,13 @@ export function Hero({ lang }: { lang: SiteLang }) {
           </h1>
           <p className="max-w-xl text-base text-ink-muted sm:text-lg">{t.hero.lead}</p>
           <div id="hero-cta" data-cta="hero" className="flex flex-wrap gap-3">
-            <Link href={cta.href} className={cn(buttonVariants({ size: 'touch' }), 'px-6')}>
+            <SiteLink
+              siteLang={lang}
+              href={cta.href}
+              className={cn(buttonVariants({ size: 'touch' }), 'px-6')}
+            >
               {cta.label}
-            </Link>
+            </SiteLink>
             {/* A plain anchor, so focus moves on to the section too. */}
             <a
               href="#how"
@@ -96,9 +100,13 @@ export function Hero({ lang }: { lang: SiteLang }) {
           <p className="text-sm text-ink-muted">
             {fillNodes(t.hero.customers, {
               login: (
-                <Link href="/login" className="font-semibold text-brand hover:underline">
+                <SiteLink
+                  siteLang={lang}
+                  href="/login"
+                  className="font-semibold text-brand hover:underline"
+                >
                   {t.login}
-                </Link>
+                </SiteLink>
               ),
             })}
           </p>
@@ -314,7 +322,8 @@ export function NextSteps({ lang, fromPaise }: { lang: SiteLang; fromPaise: numb
       <ul className="mx-auto grid max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
         {cards.map(({ href, icon: Icon, title, body, link }) => (
           <li key={href} className="site-reveal">
-            <Link
+            <SiteLink
+              siteLang={lang}
               href={href}
               className="group flex h-full flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition-shadow hover:shadow-lg hover:shadow-black/5 sm:p-8"
             >
@@ -328,7 +337,7 @@ export function NextSteps({ lang, fromPaise }: { lang: SiteLang; fromPaise: numb
                   className="size-4 transition-transform group-hover:translate-x-1"
                 />
               </span>
-            </Link>
+            </SiteLink>
           </li>
         ))}
       </ul>
@@ -373,10 +382,11 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
       <div className="site-reveal on-brand mx-auto flex max-w-4xl flex-col items-center gap-6 rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground sm:px-12">
         <h2 className="text-2xl font-bold sm:text-3xl">{t.finalCta.title}</h2>
         <p className="max-w-2xl text-base sm:text-lg">
-          {cta.href === '/signup' ? t.finalCta.signupBody : t.finalCta.body}
+          {signupOpen() ? t.finalCta.signupBody : t.finalCta.body}
         </p>
         <div data-cta="final" className="flex flex-wrap justify-center gap-3">
-          <Link
+          <SiteLink
+            siteLang={lang}
             href={cta.href}
             className={cn(
               buttonVariants({ size: 'touch' }),
@@ -384,8 +394,9 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
             )}
           >
             {cta.label}
-          </Link>
-          <Link
+          </SiteLink>
+          <SiteLink
+            siteLang={lang}
             href="/login"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'touch' }),
@@ -393,7 +404,7 @@ export function FinalCta({ lang }: { lang: SiteLang }) {
             )}
           >
             {t.login}
-          </Link>
+          </SiteLink>
         </div>
       </div>
     </section>

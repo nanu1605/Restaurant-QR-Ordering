@@ -22,6 +22,7 @@ export function SiteFooter({ lang }: { lang: SiteLang }) {
               {column.links.map((link) => (
                 <li key={link.href}>
                   <SiteLink
+                    siteLang={lang}
                     href={link.href}
                     className="inline-flex min-h-11 items-center text-sm text-ink-muted hover:text-brand"
                   >

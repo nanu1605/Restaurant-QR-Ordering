@@ -296,6 +296,12 @@ html:has(.site) {
 .site .on-brand :is(a, button):focus-visible {
   outline-color: var(--primary-foreground);
 }
+/* Devanagari letters hang from one joined top line, which tight tracking breaks, and its marks
+   need more height than a Latin heading leaves. Unlayered, so it beats the utilities. */
+.site :is(h1, h2, h3):lang(hi) {
+  letter-spacing: normal;
+  line-height: 1.4;
+}
 /* A quiet dot grid behind the website's hero. */
 .site-dots {
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1.5px);

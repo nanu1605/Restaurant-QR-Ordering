@@ -2,16 +2,16 @@
 
 import { cn } from 'cn';
 import { Check } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { FEATURE_KEYS } from '@/features/plans/plan-features';
 
-import type { SiteContent } from '../content';
+import type { SiteContent, SiteLang } from '../content';
 import { fill, fillNodes, plural } from '../i18n';
 import { limitLabel, monthsFreeYearly, yearlySavingPaise, type SitePricing } from '../pricing';
+import { SiteLink } from './site-link';
 import { WithHindi } from './with-hindi';
 
 type Cycle = 'monthly' | 'yearly';
@@ -29,10 +29,12 @@ function Feature({ text }: { text: string }) {
 
 /** The plans side by side, with a monthly / yearly switch. */
 export function PlanCards({
+  siteLang,
   t,
   pricing,
   signup,
 }: {
+  siteLang: SiteLang;
   t: Pick<SiteContent, 'cta' | 'per'> &
     Pick<SiteContent['pricing'], 'cards' | 'blurbs' | 'limits' | 'everyPlan'> & {
       features: SiteContent['labels']['features'];
@@ -135,7 +137,8 @@ export function PlanCards({
                   <Feature key={key} text={t.features[key]} />
                 ))}
               </ul>
-              <Link
+              <SiteLink
+                siteLang={siteLang}
                 data-cta="plan_card"
                 href={
                   signup ? `/signup?plan=${plan.code}&cycle=${cycle}` : `/contact?plan=${plan.code}`
@@ -151,7 +154,7 @@ export function PlanCards({
                 )}
               >
                 {signup ? t.cta.signup : t.cta.demo}
-              </Link>
+              </SiteLink>
             </li>
           );
         })}

@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { SiteContent, SiteLang } from '../content';
 import { completeSignup, resendSignupCode } from '../signup-actions';
 import { Field } from './contact-form';
+import { SiteLink } from './site-link';
 
 const LINK_CLASS = 'font-semibold text-brand underline underline-offset-2';
 
@@ -46,12 +46,13 @@ export function VerifyForm({
         <Button type="submit" variant="link" className="h-11 px-0 text-sm" disabled={resending}>
           {resending ? t.sending : t.resend}
         </Button>
-        <Link
+        <SiteLink
+          siteLang={lang}
           href={restartHref}
           className="inline-flex h-11 items-center font-medium text-brand underline-offset-2 hover:underline"
         >
           {t.otherEmail}
-        </Link>
+        </SiteLink>
         <p
           aria-live="polite"
           className={resent?.ok ? 'w-full text-ink' : 'w-full text-status-void'}
@@ -60,9 +61,9 @@ export function VerifyForm({
           {resent?.restart && (
             <>
               {' '}
-              <Link href={restartHref} className={LINK_CLASS}>
+              <SiteLink siteLang={lang} href={restartHref} className={LINK_CLASS}>
                 {t.restart}
-              </Link>
+              </SiteLink>
             </>
           )}
         </p>
@@ -106,9 +107,13 @@ function CodeForm({
         className="rounded-2xl border border-line bg-surface p-4 text-base font-medium text-ink outline-none sm:p-8"
       >
         {result.error}{' '}
-        <Link href={result.restart === 'login' ? '/login' : restartHref} className={LINK_CLASS}>
+        <SiteLink
+          siteLang={lang}
+          href={result.restart === 'login' ? '/login' : restartHref}
+          className={LINK_CLASS}
+        >
           {result.restart === 'login' ? t.login : t.restart}
-        </Link>
+        </SiteLink>
       </p>
     );
   }

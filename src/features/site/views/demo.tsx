@@ -1,9 +1,9 @@
 import { cn } from 'cn';
-import Link from 'next/link';
 
 import { buttonVariants } from '@/components/ui/button';
 
 import { DemoSimulator } from '../components/demo-simulator';
+import { SiteLink } from '../components/site-link';
 import { SITE, type SiteLang } from '../content';
 
 /** The interactive demo: one table's order, played on three devices in the browser. */
@@ -18,13 +18,14 @@ export function DemoView({ lang }: { lang: SiteLang }) {
       <DemoSimulator site={lang} />
       <div className="flex flex-col items-start gap-4 rounded-2xl bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-base text-ink sm:text-lg">{t.demo.ownMenu}</p>
-        <Link
+        <SiteLink
+          siteLang={lang}
           href="/contact"
           data-cta="demo"
           className={cn(buttonVariants({ size: 'touch' }), 'px-6')}
         >
           {t.cta.demo}
-        </Link>
+        </SiteLink>
       </div>
     </div>
   );

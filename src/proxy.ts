@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 
 import { withDeviceCookie } from '@/features/ordering/device';
+import { SITE_LANG_HEADER, siteLangOf } from '@/features/site/i18n';
 import { APP_DOMAIN } from '@/lib/config';
 import { contentSecurityPolicy } from '@/lib/csp';
 import { getPublicEnv } from '@/lib/env';
@@ -22,6 +23,9 @@ export async function proxy(request: NextRequest) {
     dev: process.env.NODE_ENV === 'development',
   });
   request.headers.set('Content-Security-Policy', csp);
+  // The website's language for <html lang>: Hindi under /hi. Always set, so a visitor's own
+  // header is never trusted.
+  request.headers.set(SITE_LANG_HEADER, siteLangOf(request.nextUrl.pathname));
 
   // Customer pages (/t/<qr token>/…) have no staff session: they only need the
   // signed device cookie, which keeps them fast.
