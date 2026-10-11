@@ -2411,9 +2411,11 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       replacing anything a client sends.
     - The root layout uses it, else the customer `lang` cookie, as before. So `/hi` pages,
       their portalled menus and their toasts are Hindi.
-    - The root layout doesn't re-render on a client-side move. So every link that crosses
-      languages is a full page load: `SiteLink` turns it into a plain `<a hrefLang>`, and the
-      switch is one too. That includes log in and the policies from a Hindi page.
+    - The root layout doesn't re-render on a client-side move, so `HtmlLang` in `SiteChrome`
+      sets `<html lang>` after one. Links that leave the website frame, or cross languages
+      outside the switch, are full page loads: `SiteLink` turns them into a plain
+      `<a hrefLang>`. That covers log in and the policies from a Hindi page, and the 404's log
+      in.
   - **Links:** `sitePath(lang, href)` maps the seven paths, keeping the query and hash; nothing
     else is mapped. `siteCta(lang)` and every site link go through it.
   - **Preview card:** `/hi` pages reuse the English card. `og:locale` is `hi_IN`, and the sharing
@@ -2422,9 +2424,12 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     the parent's image over in `generateMetadata`, since a child's `openGraph` replaces the
     parent's whole object.
 - **W-17 · The language switch:**
-  - **What it is:** `LanguageSwitch`, a plain link to the same page in the other language, named
-    in that language ("हिन्दी", "English"), with a 44 px target. It sits in the header next to the
+  - **What it is:** `LanguageSwitch`, a link to the same page in the other language, named in
+    that language ("हिन्दी", "English"), with a 44 px target. It sits in the header next to the
     theme menu (lg and up), in the phone menu, and in the footer.
+  - **A client-side move that keeps the query:** the chosen plan and cycle and the campaign tags
+    carry over. The visit's remembered source and its PostHog id (both kept in page memory,
+    W-13) survive too, which a full page load would lose, splitting the funnel.
   - **Where it goes:** from a policy page (English only) it goes to `/hi`.
   - **No automatic redirects** (the owner's choice), so search engines and shared links always
     land where they point.
@@ -2469,7 +2474,11 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     offer words.
   - **Analytics:** `isWebsitePath` accepts the `/hi` prefix, so the website's PostHog instance
     counts `/hi` pages and the panels' instance drops them (W-13). `ctaClick` counts `/hi` calls
-    to action.
+    to action. Links into the other language (they carry `hreflang`) aren't counted, so a click
+    on the switch from `/contact` isn't a "demo request" call to action.
+  - **Speed:** `site-perf.spec.ts` also measures `/hi` and `/hi/pricing`. Their largest paint is
+    1.04 to 1.15 s locally, with layout shift up to 0.015 as the Devanagari font swaps in, well
+    under the 0.1 budget.
   - **Typography:** an unlayered `.site :is(h1, h2, h3):lang(hi)` rule sets normal letter spacing
     and a 1.4 line height. Tailwind's tight tracking breaks the joined top line of Devanagari
     letters.
