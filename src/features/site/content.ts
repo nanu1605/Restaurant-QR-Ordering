@@ -1,3 +1,5 @@
+import 'server-only';
+
 import type { CuisineSet } from '@/features/menu/default-categories';
 import type { FeatureKey } from '@/features/plans/plan-features';
 
@@ -24,6 +26,8 @@ const en = {
   /** The website's main calls to action; `signup` once self-serve signup is open (W-9). */
   cta: { demo: 'Book a demo', signup: 'Start free trial' },
   growthBadge: 'Growth plan',
+  /** After a price. */
+  per: { monthly: 'a month', yearly: 'a year' },
 
   nav: [
     { href: '/#how', label: 'How it works' },
@@ -33,6 +37,8 @@ const en = {
     { href: '/contact', label: 'Contact' },
   ],
   header: { home: '{app} home', main: 'Main' },
+  /** The menu sheet on phones and tablets. */
+  menu: { open: 'Open menu', title: 'Menu', close: 'Close' },
   footer: {
     columns: [
       {
@@ -76,13 +82,17 @@ const en = {
     customers: 'Already using MenuMesh? {login}',
   },
   /** The hero animation's story, also read out as its text alternative. */
-  storySteps: [
-    'A guest at table 5 adds Paneer Tikka from their phone.',
-    'A waiter takes the table, and the order reaches the kitchen screen.',
-    'The kitchen marks it preparing, then ready.',
-    'The waiter serves it, and the guest sees it served.',
-    'The bill prints, and the payment is recorded.',
-  ],
+  story: {
+    steps: [
+      'A guest at table 5 adds Paneer Tikka from their phone.',
+      'A waiter takes the table, and the order reaches the kitchen screen.',
+      'The kitchen marks it preparing, then ready.',
+      'The waiter serves it, and the guest sees it served.',
+      'The bill prints, and the payment is recorded.',
+    ],
+    pause: 'Pause the animation',
+    play: 'Play the animation',
+  },
   problems: {
     title: 'Running a busy floor on paper is hard',
     lead: 'Orders, the kitchen and the bill all depend on slips and memory. MenuMesh puts them on one screen everyone shares.',
@@ -397,6 +407,21 @@ const en = {
       tables: { unlimited: 'Unlimited tables', upTo: 'Up to {n} tables' },
       staff: { unlimited: 'Unlimited staff logins', upTo: 'Up to {n} staff logins' },
     },
+    cards: {
+      cycle: 'Billing cycle',
+      monthly: 'Monthly',
+      yearly: 'Yearly',
+      monthsFree: { one: '{n} month free', other: '{n} months free' },
+      plans: 'Plans',
+      trialBadge: 'Free for {days} days',
+      save: 'You save {amount}',
+      /** A plan that has everything the one before it has. */
+      everything: 'Everything in {plan}',
+      everythingPlus: 'Everything in {plan}, plus:',
+      /** The plan buttons, read out with their plan. */
+      signupLabel: '{cta}, then the {plan} plan',
+      demoLabel: '{cta} for the {plan} plan',
+    },
     /** Self-serve signups set up for free (docs/DECISIONS.md W-10). */
     setupFee: {
       signup:
@@ -409,6 +434,17 @@ const en = {
     fit: {
       title: 'Which plan fits me?',
       lead: 'Tell us about your restaurant and we’ll pick the plan that covers it.',
+    },
+    helper: {
+      tables: 'Tables with a QR code',
+      staff: 'Staff who sign in (not counting you)',
+      orMore: '{n} or more',
+      features: 'I also want',
+      result: 'Recommended plan',
+      bestFit: 'Your best fit',
+      talk: 'Let’s talk',
+      tooBig:
+        'That’s more than our plans cover today. Tell us about your restaurant and we’ll work it out with you.',
     },
     compare: {
       title: 'Compare the plans',
@@ -473,6 +509,19 @@ const en = {
       { title: 'Phone', detail: '[Phone number and hours]' },
       { title: 'WhatsApp', detail: '[WhatsApp number]' },
     ],
+    form: {
+      label: 'Book a demo',
+      thanks: 'Thank you, we’ve got your request',
+      thanksBody: 'We’ll call you on the number you gave to find a time for your demo.',
+      email: 'Email (optional)',
+      plan: 'Plan you’re interested in',
+      noPlan: 'Not sure yet',
+      message: 'Anything we should know? (optional)',
+      messageHint: 'How many tables you have, when you’d like to start…',
+      sending: 'Sending…',
+      submit: 'Book a demo',
+      privacy: 'We use your details only to arrange your demo.',
+    },
   },
 
   signup: {
@@ -491,14 +540,52 @@ const en = {
       'Cancel any time: your data stays yours',
     ],
     afterTrial: 'After the trial: the {plan} plan at {price} {per} + GST, once you set up autopay.',
-    per: { monthly: 'a month', yearly: 'a year' },
     haveAccount: 'Already have an account? {login}',
+    form: {
+      label: 'Start your free trial',
+      cuisine: 'Menu style',
+      cuisineHint: 'Your menu starts with matching categories.',
+      email: 'Email',
+      terms: 'I agree to the {terms} and the {privacy}.',
+      termsLink: 'terms',
+      privacyLink: 'privacy policy',
+      newTab: '(opens in a new tab)',
+      sending: 'Sending your code…',
+      submit: 'Email me a code',
+      note: 'We’ll email you a 6-digit code to confirm the address.',
+    },
   },
 
   verify: {
     meta: { title: 'Check your email' },
     title: 'Check your email',
     sent: 'We sent a 6-digit code to {email}. Enter it below with a password to create your restaurant.',
+    form: {
+      label: 'Create your restaurant',
+      code: '6-digit code',
+      password: 'Choose a password',
+      passwordHint: 'At least 8 characters. You’ll log in with your email and this password.',
+      creating: 'Creating your restaurant…',
+      submit: 'Create my restaurant',
+      sending: 'Sending…',
+      resend: 'Send a new code',
+      otherEmail: 'Use a different email',
+      restart: 'Start again',
+      login: 'Go to log in',
+    },
+  },
+
+  /** What the contact and signup forms share. */
+  form: {
+    name: 'Your name',
+    restaurantName: 'Restaurant name',
+    city: 'City',
+    phone: 'Mobile number',
+    checkFields: 'Check the highlighted fields and try again.',
+    waitForCheck: 'The button turns on once the check above has finished.',
+    /** Cloudflare Turnstile, when its widget can't load. */
+    checkFailed: 'The check that you’re not a robot didn’t load. Try again, or reach us directly.',
+    retry: 'Try again',
   },
 
   /** The plans in search results (structured-data.tsx), monthly and yearly. */
@@ -533,11 +620,3 @@ export type SiteContent = typeof en;
 export const SITE = { en };
 
 export type SiteLang = keyof typeof SITE;
-
-// For the client components, until they take their words as props.
-export const SITE_NAV = en.nav;
-export const CTA = en.cta;
-export const STORY_STEPS = en.storySteps;
-export const STEPS = en.how.steps;
-export const PRICING = en.pricing;
-export const LABELS = en.labels;

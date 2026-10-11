@@ -5,8 +5,10 @@ import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { attributionField } from '@/features/analytics/attribution';
-import { CUISINE_LABELS, CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/default-categories';
+import { CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/default-categories';
 
+import type { SiteContent } from '../content';
+import { fillNodes } from '../i18n';
 import { startSignup, type SignupFormState } from '../signup-actions';
 import { Field, SELECT_CLASS } from './contact-form';
 import { TurnstileWidget } from './turnstile-widget';
@@ -15,10 +17,13 @@ type State = { result: SignupFormState; round: number };
 
 /** Step 1 of the self-serve signup (docs/DECISIONS.md W-9); a success moves on to /signup/verify. */
 export function SignupForm({
+  t,
   siteKey,
   planCode,
   cycle,
 }: {
+  t: SiteContent['form'] &
+    SiteContent['signup']['form'] & { cuisines: SiteContent['labels']['cuisines'] };
   siteKey: string;
   planCode: string;
   cycle: string;
@@ -50,7 +55,7 @@ export function SignupForm({
       ref={form}
       action={action}
       noValidate
-      aria-label="Start your free trial"
+      aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
       <input type="hidden" name="planCode" value={planCode} />
@@ -58,20 +63,20 @@ export function SignupForm({
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field
           name="restaurantName"
-          label="Restaurant name"
+          label={t.restaurantName}
           autoComplete="organization"
           defaultValue={value('restaurantName')}
           error={error('restaurantName')}
         />
         <Field
           name="city"
-          label="City"
+          label={t.city}
           autoComplete="address-level2"
           defaultValue={value('city')}
           error={error('city')}
         />
         <div className="flex min-w-0 flex-col gap-1.5">
-          <Label htmlFor={cuisineId}>Menu style</Label>
+          <Label htmlFor={cuisineId}>{t.cuisine}</Label>
           <select
             key={value('cuisine')}
             id={cuisineId}
@@ -82,24 +87,24 @@ export function SignupForm({
           >
             {CUISINE_SETS.map((cuisine) => (
               <option key={cuisine} value={cuisine}>
-                {CUISINE_LABELS[cuisine]}
+                {t.cuisines[cuisine]}
               </option>
             ))}
           </select>
           <p id={`${cuisineId}-hint`} className="text-sm text-ink-muted">
-            Your menu starts with matching categories.
+            {t.cuisineHint}
           </p>
         </div>
         <Field
           name="ownerName"
-          label="Your name"
+          label={t.name}
           autoComplete="name"
           defaultValue={value('ownerName')}
           error={error('ownerName')}
         />
         <Field
           name="email"
-          label="Email"
+          label={t.email}
           type="email"
           autoComplete="email"
           defaultValue={value('email')}
@@ -107,7 +112,7 @@ export function SignupForm({
         />
         <Field
           name="phone"
-          label="Mobile number"
+          label={t.phone}
           type="tel"
           inputMode="tel"
           autoComplete="tel-national"
@@ -129,27 +134,30 @@ export function SignupForm({
           />
           <Label htmlFor={termsId} className="text-base leading-snug font-normal">
             <span>
-              I agree to the{' '}
-              <a
-                href="/terms"
-                target="_blank"
-                rel="noopener"
-                className="font-medium text-brand underline underline-offset-2"
-              >
-                terms
-                <span className="sr-only"> (opens in a new tab)</span>
-              </a>{' '}
-              and the{' '}
-              <a
-                href="/privacy"
-                target="_blank"
-                rel="noopener"
-                className="font-medium text-brand underline underline-offset-2"
-              >
-                privacy policy
-                <span className="sr-only"> (opens in a new tab)</span>
-              </a>
-              .
+              {fillNodes(t.terms, {
+                terms: (
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener"
+                    className="font-medium text-brand underline underline-offset-2"
+                  >
+                    {t.termsLink}
+                    <span className="sr-only"> {t.newTab}</span>
+                  </a>
+                ),
+                privacy: (
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener"
+                    className="font-medium text-brand underline underline-offset-2"
+                  >
+                    {t.privacyLink}
+                    <span className="sr-only"> {t.newTab}</span>
+                  </a>
+                ),
+              })}
             </span>
           </Label>
         </div>
@@ -160,10 +168,10 @@ export function SignupForm({
         )}
       </div>
       {/* Each submit renders a fresh check: tokens work once. */}
-      <TurnstileWidget siteKey={siteKey} round={round} onReady={setChecked} />
+      <TurnstileWidget t={t} siteKey={siteKey} round={round} onReady={setChecked} />
       {result && (result.error || result.fieldErrors) && (
         <p role="alert" className="text-sm font-medium text-status-void">
-          {result.error ?? 'Check the highlighted fields and try again.'}
+          {result.error ?? t.checkFields}
         </p>
       )}
       <Button
@@ -172,13 +180,9 @@ export function SignupForm({
         disabled={pending || !checked}
         className="sm:self-start sm:px-8"
       >
-        {pending ? 'Sending your code…' : 'Email me a code'}
+        {pending ? t.sending : t.submit}
       </Button>
-      <p className="text-sm text-ink-muted">
-        {checked
-          ? 'We’ll email you a 6-digit code to confirm the address.'
-          : 'The button turns on once the check above has finished.'}
-      </p>
+      <p className="text-sm text-ink-muted">{checked ? t.note : t.waitForCheck}</p>
     </form>
   );
 }

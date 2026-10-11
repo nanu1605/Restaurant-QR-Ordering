@@ -11,19 +11,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { attributionField } from '@/features/analytics/attribution';
 
 import { submitLead, type LeadFormState } from '../actions';
+import type { SiteContent } from '../content';
 import { TurnstileWidget } from './turnstile-widget';
 
 type State = { result: LeadFormState; round: number };
+type Words = SiteContent['form'] & SiteContent['contact']['form'];
 
 export const SELECT_CLASS =
   'h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
 
 /** "Book a demo" (docs/DECISIONS.md W-6): stored as a lead for the platform team. */
 export function ContactForm({
+  t,
   siteKey,
   plans,
   defaultPlan,
 }: {
+  t: Words;
   siteKey: string;
   plans: Array<{ code: string; name: string }>;
   defaultPlan?: string;
@@ -54,11 +58,9 @@ export function ContactForm({
       <div className="flex flex-col items-start gap-3 rounded-2xl border border-status-served/40 bg-surface p-6 sm:p-8">
         <CircleCheck aria-hidden className="size-8 text-status-served" />
         <h2 ref={thanks} tabIndex={-1} className="text-xl font-bold text-ink outline-none">
-          Thank you, we’ve got your request
+          {t.thanks}
         </h2>
-        <p className="text-base text-ink-muted">
-          We’ll call you on the number you gave to find a time for your demo.
-        </p>
+        <p className="text-base text-ink-muted">{t.thanksBody}</p>
       </div>
     );
   }
@@ -72,34 +74,34 @@ export function ContactForm({
       ref={form}
       action={action}
       noValidate
-      aria-label="Book a demo"
+      aria-label={t.label}
       className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-4 sm:p-8"
     >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field
           name="name"
-          label="Your name"
+          label={t.name}
           autoComplete="name"
           defaultValue={value('name')}
           error={error('name')}
         />
         <Field
           name="restaurantName"
-          label="Restaurant name"
+          label={t.restaurantName}
           autoComplete="organization"
           defaultValue={value('restaurantName')}
           error={error('restaurantName')}
         />
         <Field
           name="city"
-          label="City"
+          label={t.city}
           autoComplete="address-level2"
           defaultValue={value('city')}
           error={error('city')}
         />
         <Field
           name="phone"
-          label="Mobile number"
+          label={t.phone}
           type="tel"
           inputMode="tel"
           autoComplete="tel-national"
@@ -108,20 +110,24 @@ export function ContactForm({
         />
         <Field
           name="email"
-          label="Email (optional)"
+          label={t.email}
           type="email"
           autoComplete="email"
           defaultValue={value('email')}
           error={error('email')}
         />
-        <PlanSelect plans={plans} defaultValue={failed ? value('planCode') : (defaultPlan ?? '')} />
+        <PlanSelect
+          t={t}
+          plans={plans}
+          defaultValue={failed ? value('planCode') : (defaultPlan ?? '')}
+        />
       </div>
-      <MessageField defaultValue={value('message')} error={error('message')} />
+      <MessageField t={t} defaultValue={value('message')} error={error('message')} />
       {/* Each submit renders a fresh check: tokens work once, and the form resets. */}
-      <TurnstileWidget siteKey={siteKey} round={round} onReady={setChecked} />
+      <TurnstileWidget t={t} siteKey={siteKey} round={round} onReady={setChecked} />
       {failed && (failed.error || failed.fieldErrors) && (
         <p role="alert" className="text-sm font-medium text-status-void">
-          {failed.error ?? 'Check the highlighted fields and try again.'}
+          {failed.error ?? t.checkFields}
         </p>
       )}
       <Button
@@ -130,13 +136,9 @@ export function ContactForm({
         disabled={pending || !checked}
         className="sm:self-start sm:px-8"
       >
-        {pending ? 'Sending…' : 'Book a demo'}
+        {pending ? t.sending : t.submit}
       </Button>
-      <p className="text-sm text-ink-muted">
-        {checked
-          ? 'We use your details only to arrange your demo.'
-          : 'The button turns on once the check above has finished.'}
-      </p>
+      <p className="text-sm text-ink-muted">{checked ? t.privacy : t.waitForCheck}</p>
     </form>
   );
 }
@@ -172,16 +174,18 @@ export function Field({ name, label, error, ...inputProps }: FieldProps) {
 }
 
 function PlanSelect({
+  t,
   plans,
   defaultValue,
 }: {
+  t: Words;
   plans: Array<{ code: string; name: string }>;
   defaultValue: string;
 }) {
   const id = useId();
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={id}>Plan you’re interested in</Label>
+      <Label htmlFor={id}>{t.plan}</Label>
       <select
         key={defaultValue}
         id={id}
@@ -189,7 +193,7 @@ function PlanSelect({
         defaultValue={defaultValue}
         className={SELECT_CLASS}
       >
-        <option value="">Not sure yet</option>
+        <option value="">{t.noPlan}</option>
         {plans.map((plan) => (
           <option key={plan.code} value={plan.code}>
             {plan.name}
@@ -200,11 +204,19 @@ function PlanSelect({
   );
 }
 
-function MessageField({ defaultValue, error }: { defaultValue: string; error?: string }) {
+function MessageField({
+  t,
+  defaultValue,
+  error,
+}: {
+  t: Words;
+  defaultValue: string;
+  error?: string;
+}) {
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>Anything we should know? (optional)</Label>
+      <Label htmlFor={id}>{t.message}</Label>
       <Textarea
         key={defaultValue}
         id={id}
@@ -212,7 +224,7 @@ function MessageField({ defaultValue, error }: { defaultValue: string; error?: s
         rows={4}
         maxLength={1000}
         defaultValue={defaultValue}
-        placeholder="How many tables you have, when you’d like to start…"
+        placeholder={t.messageHint}
         className="min-h-28 text-base md:text-base"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}

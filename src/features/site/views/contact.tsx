@@ -31,7 +31,8 @@ export async function ContactView({
   lang: SiteLang;
   searchParams: Promise<SearchParams>;
 }) {
-  const t = SITE[lang].contact;
+  const site = SITE[lang];
+  const t = site.contact;
   const turnstile = turnstileConfig();
   const plans = turnstile ? await planChoices() : [];
   const requested = firstParam(await searchParams, 'plan');
@@ -45,7 +46,12 @@ export async function ContactView({
       </div>
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.6fr_1fr]">
         {turnstile && (
-          <ContactForm siteKey={turnstile.siteKey} plans={plans} defaultPlan={defaultPlan} />
+          <ContactForm
+            t={{ ...site.form, ...t.form }}
+            siteKey={turnstile.siteKey}
+            plans={plans}
+            defaultPlan={defaultPlan}
+          />
         )}
         <section aria-labelledby="ways-title" className="flex flex-col gap-4">
           <h2 id="ways-title" className="text-lg font-semibold text-ink">

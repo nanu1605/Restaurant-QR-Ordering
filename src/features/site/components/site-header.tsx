@@ -65,7 +65,10 @@ export function SiteHeader({ lang }: { lang: SiteLang }) {
           >
             {cta.label}
           </Link>
-          <SiteMobileNav cta={cta} />
+          <SiteMobileNav
+            t={{ nav: t.nav, login: t.login, menu: t.menu, main: t.header.main }}
+            cta={cta}
+          />
         </div>
       </div>
     </header>

@@ -9,14 +9,14 @@ import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
 import { StatusChip } from '@/components/shared/status-chip';
 
-import { STEPS } from '../content';
+import type { SiteContent } from '../content';
 
 /**
  * The four steps. On laptops the picture stays in place while the steps
  * scroll past it, and follows the step in the middle of the screen; on
  * phones and tablets each step carries its own picture.
  */
-export function HowItWorks() {
+export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
   const [active, setActive] = useState(0);
   const items = useRef<Array<HTMLLIElement | null>>([]);
 
@@ -51,7 +51,7 @@ export function HowItWorks() {
         </div>
       </div>
       <ol className="flex flex-col gap-6 lg:gap-0">
-        {STEPS.map((step, index) => (
+        {t.map((step, index) => (
           <li
             key={step.title}
             ref={(node) => {

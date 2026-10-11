@@ -10,14 +10,20 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeSwitch } from '@/features/theme/theme-switch';
 
-import { SITE_NAV } from '../content';
+import type { SiteContent } from '../content';
 
 /**
  * The sections and log in, in a sheet below 1024px. A section on this page is
  * reached once the sheet has closed and released its scroll lock; focus then
  * moves to the section's heading rather than back to the menu button.
  */
-export function SiteMobileNav({ cta }: { cta: { href: string; label: string } }) {
+export function SiteMobileNav({
+  t,
+  cta,
+}: {
+  t: Pick<SiteContent, 'nav' | 'login' | 'menu'> & { main: string };
+  cta: { href: string; label: string };
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const section = useRef<string | null>(null);
@@ -51,7 +57,12 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
     >
       <SheetTrigger
         render={
-          <Button variant="ghost" size="icon-touch" className="lg:hidden" aria-label="Open menu" />
+          <Button
+            variant="ghost"
+            size="icon-touch"
+            className="lg:hidden"
+            aria-label={t.menu.open}
+          />
         }
       >
         <Menu aria-hidden className="size-6" />
@@ -64,14 +75,16 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
         className="gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
       >
         <div className="flex items-center justify-between">
-          <SheetTitle className="text-base font-semibold text-ink">Menu</SheetTitle>
-          <SheetClose render={<Button variant="ghost" size="icon-touch" aria-label="Close" />}>
+          <SheetTitle className="text-base font-semibold text-ink">{t.menu.title}</SheetTitle>
+          <SheetClose
+            render={<Button variant="ghost" size="icon-touch" aria-label={t.menu.close} />}
+          >
             <XIcon aria-hidden className="size-5" />
           </SheetClose>
         </div>
-        <nav aria-label="Main">
+        <nav aria-label={t.main}>
           <ul className="flex flex-col gap-1">
-            {SITE_NAV.map((item) => (
+            {t.nav.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
@@ -91,7 +104,7 @@ export function SiteMobileNav({ cta }: { cta: { href: string; label: string } })
             onClick={() => setOpen(false)}
             className={cn(buttonVariants({ variant: 'outline', size: 'touch' }), 'w-full')}
           >
-            Log in
+            {t.login}
           </Link>
           <Link
             href={cta.href}

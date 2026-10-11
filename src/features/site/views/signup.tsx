@@ -65,7 +65,12 @@ export async function SignupView({
         </p>
       </div>
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.6fr_1fr]">
-        <SignupForm siteKey={turnstile.siteKey} planCode={plan?.code ?? ''} cycle={cycle} />
+        <SignupForm
+          t={{ ...t.form, ...t.signup.form, cuisines: t.labels.cuisines }}
+          siteKey={turnstile.siteKey}
+          planCode={plan?.code ?? ''}
+          cycle={cycle}
+        />
         <section aria-labelledby="perks-title" className="flex flex-col gap-4">
           <h2 id="perks-title" className="text-lg font-semibold text-ink">
             {t.signup.perksTitle}
@@ -83,7 +88,7 @@ export async function SignupView({
               {fillNodes(t.signup.afterTrial, {
                 plan: plan.name,
                 price: <Money paise={plan.paise} fraction="auto" className="font-semibold" />,
-                per: t.signup.per[cycle],
+                per: t.per[cycle],
               })}
             </p>
           )}

@@ -9,7 +9,7 @@ import { FoodTypeMark, type FoodType } from '@/components/shared/food-type-mark'
 import { Money } from '@/components/shared/money';
 import { StatusChip } from '@/components/shared/status-chip';
 
-import { STORY_STEPS } from '../content';
+import type { SiteContent } from '../content';
 import { LaptopFrame, PhoneFrame, TabletFrame } from './device-frames';
 import { usePrefersReducedMotion } from './motion';
 
@@ -53,7 +53,7 @@ const pop = {
   exit: { opacity: 0, scale: 0.8 },
 };
 
-export function HeroStory({ className }: { className?: string }) {
+export function HeroStory({ t, className }: { t: SiteContent['story']; className?: string }) {
   const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, { amount: 0.3 });
   const pageInView = usePageInView();
@@ -106,7 +106,7 @@ export function HeroStory({ className }: { className?: string }) {
         <button
           type="button"
           onClick={() => setPaused((value) => !value)}
-          aria-label={paused ? 'Play the animation' : 'Pause the animation'}
+          aria-label={paused ? t.play : t.pause}
           hidden={reduced}
           // Hidden from the first paint too: the server can't know, and a late hide shifts the hero.
           className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:hidden"
@@ -119,7 +119,7 @@ export function HeroStory({ className }: { className?: string }) {
         </button>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div aria-hidden className="flex gap-1.5">
-            {STORY_STEPS.map((_, index) => (
+            {t.steps.map((_, index) => (
               <span
                 key={index}
                 className={cn(
@@ -130,10 +130,10 @@ export function HeroStory({ className }: { className?: string }) {
             ))}
           </div>
           <p aria-hidden className="text-sm text-ink-muted">
-            {STORY_STEPS[caption]}
+            {t.steps[caption]}
           </p>
           <ol className="sr-only">
-            {STORY_STEPS.map((text) => (
+            {t.steps.map((text) => (
               <li key={text}>{text}</li>
             ))}
           </ol>

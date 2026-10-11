@@ -37,7 +37,7 @@ export async function VerifyView({ lang }: { lang: SiteLang }) {
           })}
         </p>
       </div>
-      <VerifyForm restartHref={restartHref} />
+      <VerifyForm t={t.form} restartHref={restartHref} />
     </div>
   );
 }

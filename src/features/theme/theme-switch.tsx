@@ -103,18 +103,24 @@ export function ThemeSwitch({
 }
 
 /** The theme choice inside a dropdown menu. */
-export function ThemeRadioGroup({ itemClassName }: { itemClassName?: string }) {
+export function ThemeRadioGroup({
+  labels = THEME_LABELS,
+  itemClassName,
+}: {
+  labels?: ThemeLabels;
+  itemClassName?: string;
+}) {
   const [theme, change] = useTheme();
   return (
     <DropdownMenuGroup>
-      <DropdownMenuLabel>{THEME_LABELS.group}</DropdownMenuLabel>
+      <DropdownMenuLabel>{labels.group}</DropdownMenuLabel>
       <DropdownMenuRadioGroup value={theme} onValueChange={(v) => change(parseTheme(v))}>
         {THEMES.map((value) => {
           const Icon = ICONS[value];
           return (
             <DropdownMenuRadioItem key={value} value={value} className={itemClassName}>
               <Icon aria-hidden />
-              {THEME_LABELS[value]}
+              {labels[value]}
             </DropdownMenuRadioItem>
           );
         })}
@@ -124,7 +130,13 @@ export function ThemeRadioGroup({ itemClassName }: { itemClassName?: string }) {
 }
 
 /** A theme button for the website's top bar. */
-export function ThemeMenu({ className }: { className?: string }) {
+export function ThemeMenu({
+  labels = THEME_LABELS,
+  className,
+}: {
+  labels?: ThemeLabels;
+  className?: string;
+}) {
   const [theme] = useTheme();
   const Icon = ICONS[theme];
   return (
@@ -134,7 +146,7 @@ export function ThemeMenu({ className }: { className?: string }) {
           <Button
             variant="ghost"
             size="icon-touch"
-            aria-label={THEME_LABELS.group}
+            aria-label={labels.group}
             className={className}
           />
         }
@@ -142,7 +154,7 @@ export function ThemeMenu({ className }: { className?: string }) {
         <Icon aria-hidden className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        <ThemeRadioGroup itemClassName="min-h-11" />
+        <ThemeRadioGroup labels={labels} itemClassName="min-h-11" />
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -103,7 +103,7 @@ export function Hero({ lang }: { lang: SiteLang }) {
             })}
           </p>
         </div>
-        <HeroStory />
+        <HeroStory t={t.story} />
       </div>
     </section>
   );
@@ -146,7 +146,7 @@ export function How({ lang }: { lang: SiteLang }) {
   const t = SITE[lang].how;
   return (
     <Section id="how" title={t.title} lead={t.lead}>
-      <HowItWorks />
+      <HowItWorks t={t.steps} />
     </Section>
   );
 }

@@ -12,7 +12,10 @@ import { faqPage, JsonLd, softwareApplication } from '../structured-data';
 
 /** Plans, prices and limits straight from the database (docs/DECISIONS.md W-5). */
 export async function PricingView({ lang }: { lang: SiteLang }) {
-  const t = SITE[lang].pricing;
+  const site = SITE[lang];
+  const t = site.pricing;
+  // The words both client parts share.
+  const shared = { cta: site.cta, per: site.per, limits: t.limits, features: site.labels.features };
   const pricing = await getSitePricing();
   const trialPlan = pricing.plans.find((plan) => plan.code === pricing.trialPlanCode);
   const signup = signupOpen();
@@ -30,7 +33,11 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
               </p>
             )}
           </div>
-          <PlanCards pricing={pricing} signup={signup} />
+          <PlanCards
+            t={{ ...shared, cards: t.cards, blurbs: t.blurbs, everyPlan: t.everyPlan }}
+            pricing={pricing}
+            signup={signup}
+          />
           <div className="mx-auto flex max-w-3xl flex-col gap-2 text-center text-sm text-ink-muted">
             {/* Self-serve signups set up for free (docs/DECISIONS.md W-10). */}
             <p>
@@ -46,7 +53,7 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
         </div>
       </section>
       <Section id="fit" title={t.fit.title} lead={t.fit.lead} className="bg-surface">
-        <PlanHelper plans={pricing.plans} signup={signup} />
+        <PlanHelper t={{ ...shared, helper: t.helper }} plans={pricing.plans} signup={signup} />
       </Section>
       <Section id="compare" title={t.compare.title}>
         <PlanComparison lang={lang} plans={pricing.plans} />
