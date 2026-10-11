@@ -37,7 +37,8 @@ export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
     <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-16">
       <div aria-hidden className="hidden lg:block">
         <div className="sticky top-28 flex h-[26rem] items-center justify-center rounded-3xl border border-line bg-surface">
-          <AnimatePresence mode="wait">
+          {/* The first picture is there from the start; only a change of step fades. */}
+          <AnimatePresence mode="wait" initial={false}>
             <m.div
               key={active}
               initial={{ opacity: 0, y: 16 }}
