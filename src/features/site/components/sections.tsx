@@ -21,12 +21,14 @@ import {
 import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
+import { STRINGS } from '@/features/ordering/strings';
 
 import { SITE, type SiteLang } from '../content';
+import { DEMO_MENU, DEMO_TABLE, dishName } from '../demo/machine';
 import { fillNodes } from '../i18n';
 import { siteCta, signupOpen } from '../signup';
 import { PhoneFrame } from './device-frames';
-import { HeroStory } from './hero-story';
+import { HeroStory, type GuestWords } from './hero-story';
 import { HowItWorks } from './how-it-works';
 import { SiteLink } from './site-link';
 import { WithHindi } from './with-hindi';
@@ -70,6 +72,23 @@ export function Section({
   );
 }
 
+/** The guest phone's words in the hero and "how it works" pictures: the menu's own, as on /t. */
+function guestWords(lang: SiteLang): GuestWords {
+  const t = STRINGS[lang];
+  return {
+    table: t.table(DEMO_TABLE),
+    dishes: Object.fromEntries(DEMO_MENU.map((dish) => [dish.name, dishName(dish, lang)])),
+    add: t.menu.add,
+    ordersTitle: t.orders.title,
+    // The round without its time.
+    round: t.orders.round(1, '').split(' · ', 1)[0]!,
+    status: t.status,
+    oneItem: t.cartBar.items(1),
+    fourItems: t.cartBar.items(4),
+    place: t.cart.place,
+  };
+}
+
 export function Hero({ lang }: { lang: SiteLang }) {
   const t = SITE[lang];
   const cta = siteCta(lang);
@@ -111,7 +130,7 @@ export function Hero({ lang }: { lang: SiteLang }) {
             })}
           </p>
         </div>
-        <HeroStory t={t.story} />
+        <HeroStory t={t.story} guest={guestWords(lang)} />
       </div>
     </section>
   );
@@ -154,7 +173,7 @@ export function How({ lang }: { lang: SiteLang }) {
   const t = SITE[lang].how;
   return (
     <Section id="how" title={t.title} lead={t.lead}>
-      <HowItWorks t={t.steps} />
+      <HowItWorks t={t.steps} guest={guestWords(lang)} />
     </Section>
   );
 }

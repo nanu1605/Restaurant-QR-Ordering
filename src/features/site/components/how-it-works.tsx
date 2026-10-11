@@ -10,13 +10,18 @@ import { Money } from '@/components/shared/money';
 import { StatusChip } from '@/components/shared/status-chip';
 
 import type { SiteContent } from '../content';
+import type { GuestWords } from './hero-story';
+
+type Guest = Pick<GuestWords, 'dishes' | 'fourItems' | 'place'>;
 
 /**
  * The four steps. On laptops the picture stays in place while the steps
  * scroll past it, and follows the step in the middle of the screen; on
- * phones and tablets each step carries its own picture.
+ * phones and tablets each step carries its own picture. The guest's cart
+ * speaks the page's language; the QR card, the dish statuses as staff see
+ * them and the bill stay English, as the app prints and shows them.
  */
-export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
+export function HowItWorks({ t, guest }: { t: SiteContent['how']['steps']; guest: Guest }) {
   const [active, setActive] = useState(0);
   const items = useRef<Array<HTMLLIElement | null>>([]);
 
@@ -46,7 +51,7 @@ export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.3 }}
             >
-              <StepPicture step={active} large />
+              <StepPicture step={active} guest={guest} large />
             </m.div>
           </AnimatePresence>
         </div>
@@ -78,7 +83,7 @@ export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
                 aria-hidden
                 className="mt-2 flex justify-center rounded-xl bg-paper p-5 lg:hidden"
               >
-                <StepPicture step={index} />
+                <StepPicture step={index} guest={guest} />
               </div>
             </div>
           </li>
@@ -88,12 +93,20 @@ export function HowItWorks({ t }: { t: SiteContent['how']['steps'] }) {
   );
 }
 
-function StepPicture({ step, large = false }: { step: number; large?: boolean }) {
+function StepPicture({
+  step,
+  guest,
+  large = false,
+}: {
+  step: number;
+  guest: Guest;
+  large?: boolean;
+}) {
   const size = large ? 'text-base' : 'text-sm';
   switch (step) {
     case 0:
       return (
-        <div className={cn('flex items-end gap-4', size, large && 'gap-6')}>
+        <div lang="en" className={cn('flex items-end gap-4', size, large && 'gap-6')}>
           <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-ink bg-surface px-5 py-4">
             <QrCode aria-hidden className={large ? 'size-28' : 'size-20'} strokeWidth={1.4} />
             <span className="font-bold text-ink">Table 5</span>
@@ -114,21 +127,23 @@ function StepPicture({ step, large = false }: { step: number; large?: boolean })
               className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 shadow-sm ring-1 ring-line"
             >
               <FoodTypeMark type="veg" size="sm" />
-              <span className="flex-1 font-medium text-ink">{dish.name}</span>
+              <span className="flex-1 font-medium text-ink">
+                {guest.dishes[dish.name] ?? dish.name}
+              </span>
               <span className="rounded bg-primary px-1.5 font-bold text-primary-foreground">
                 {dish.count}
               </span>
             </div>
           ))}
           <div className="mt-1 flex justify-between rounded-lg bg-primary px-3 py-2.5 font-semibold text-primary-foreground">
-            <span>4 items</span>
-            <span>Place order</span>
+            <span>{guest.fourItems}</span>
+            <span>{guest.place}</span>
           </div>
         </div>
       );
     case 2:
       return (
-        <div className={cn('flex flex-col items-start gap-3', size)}>
+        <div lang="en" className={cn('flex flex-col items-start gap-3', size)}>
           {(['placed', 'preparing', 'ready', 'served'] as const).map((status, index) => (
             <div
               key={status}
@@ -144,6 +159,7 @@ function StepPicture({ step, large = false }: { step: number; large?: boolean })
     default:
       return (
         <div
+          lang="en"
           className={cn(
             'flex w-full max-w-64 flex-col gap-2 rounded-lg bg-surface p-4 shadow-md ring-1 ring-line',
             size,
