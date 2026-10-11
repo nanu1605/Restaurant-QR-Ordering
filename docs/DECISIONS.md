@@ -2096,7 +2096,7 @@ of 16 findings were confirmed and fixed.
   style, the owner's name, email and mobile, and agreement to the terms, behind Cloudflare
   Turnstile. `site_signup_start` (service role only) stores them in `site_signups` with an HMAC of
   a random 6-digit code, and the code is emailed through Resend before the visitor moves on;
-  the signup's id lives in an httpOnly cookie on `/signup`. Limits: 3 signups an hour per email
+  the signup's id lives in an httpOnly cookie on `/signup` (on `/` since W-18, for `/hi`). Limits: 3 signups an hour per email
   and 10 a day per network (`RATE_LIMITED`, with advisory locks as in W-6). `/signup/verify` takes
   the code and a password: `site_signup_verify` answers ok, or wrong (the try is counted, so it
   never raises), expired (15 minutes) or locked (5 wrong tries). The right code doesn't use the
@@ -2381,7 +2381,7 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     `STAFF_WORDS`, outside the per-language words, so no translation can reach them. Both
     screens are marked `lang="en"`.
   - **Left for W5b:** the guest-phone pictures in the hero and "how it works" still carry the
-    app's English words inline. W5b takes them from `STRINGS[lang]`.
+    app's English words inline. W5b takes them from `STRINGS[lang]` (W-19).
   - **Also:** `ThemeMenu` and `ThemeRadioGroup` take `labels`, as `ThemeSwitch` does. `WithHindi`
     now wraps every हिन्दी (it used to drop the text after a second one). `limitLabel` replaces
     `tablesLabel` and `staffLabel`.
@@ -2391,6 +2391,103 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       the only difference is the two new `lang="en"` attributes on `/demo`;
     - old and new server renders and client states were compared in throwaway tests;
     - the existing unit and end-to-end tests pass unchanged.
+- **W-16 · Hindi pages under `/hi`:**
+  - **Routes:**
+    - The English pages moved into the route group `src/app/(site)/(en)/`; their URLs are
+      unchanged.
+    - `src/app/(site)/hi/` has the seven Hindi twins: `/hi`, `/hi/features`, `/hi/pricing`,
+      `/hi/demo`, `/hi/contact`, `/hi/signup`, `/hi/signup/verify`.
+    - Each language has a layout that renders `SiteChrome` (skip link, header, footer) with its
+      `lang`; `(site)/layout.tsx` keeps only what both share.
+    - Legal pages exist only in English. `/hi/terms` and any other unknown `/hi` path is the
+      root 404, whose `<main>` is marked English.
+  - **Rejected alternatives:**
+    - A `[lang]` segment with a proxy rewrite of English paths: every request rewritten, `/en`
+      duplicates, and a segment that catches any first path part.
+    - Rewriting `/hi` onto the English routes: the language would be invisible in the route
+      tree.
+  - **`<html lang>`:**
+    - The proxy always sets the request header `x-site-lang` from the path (`siteLangOf`),
+      replacing anything a client sends.
+    - The root layout uses it, else the customer `lang` cookie, as before. So `/hi` pages,
+      their portalled menus and their toasts are Hindi.
+    - The root layout doesn't re-render on a client-side move. So every link that crosses
+      languages is a full page load: `SiteLink` turns it into a plain `<a hrefLang>`, and the
+      switch is one too. That includes log in and the policies from a Hindi page.
+  - **Links:** `sitePath(lang, href)` maps the seven paths, keeping the query and hash; nothing
+    else is mapped. `siteCta(lang)` and every site link go through it.
+  - **Preview card:** `/hi` pages reuse the English card. `og:locale` is `hi_IN`, and the sharing
+    app shows the Hindi title and description. A Hindi card would need a Devanagari font in
+    `ImageResponse`, and satori can't join Devanagari letters correctly. The `hi` layout carries
+    the parent's image over in `generateMetadata`, since a child's `openGraph` replaces the
+    parent's whole object.
+- **W-17 · The language switch:**
+  - **What it is:** `LanguageSwitch`, a plain link to the same page in the other language, named
+    in that language ("हिन्दी", "English"), with a 44 px target. It sits in the header next to the
+    theme menu (lg and up), in the phone menu, and in the footer.
+  - **Where it goes:** from a policy page (English only) it goes to `/hi`.
+  - **No automatic redirects** (the owner's choice), so search engines and shared links always
+    land where they point.
+  - **Font:** the word हिन्दी is drawn in the system font, as ₹ is (W-14). English pages without
+    Hindi text (`/contact`, `/signup`, the policies) then don't download Noto's 99 KB
+    Devanagari file; `site-hindi.spec.ts` checks `/contact`.
+  - **Policies:** on Hindi pages the footer marks them as English, and the theme menu and switch
+    labels are Hindi (`STRINGS.hi.theme`, awaiting the owner's check, B-3).
+- **W-18 · Forms, signup and emails in Hindi:**
+  - **Replies:** each form's hidden `lang` field (W-15) picks the replies, field errors and
+    emails, so `/hi/contact` and `/hi/signup` answer in Hindi.
+  - **Redirects:** a signup's redirects go through `sitePath`: to the code step, back to signup
+    when the cookie is gone, and to `/hi/contact` when signup is closed (with the plan and
+    campaign tags). Success still goes to the English admin panel.
+  - **Signup cookie:** `mm_signup` now sits on path `/` instead of `/signup` (W-9), so
+    `/hi/signup/verify` receives it. It is still httpOnly and lasts an hour, and a signup
+    started in one language can finish in the other.
+  - **Emails:** the code and welcome emails are wrapped in `<div lang>`. The language is
+    required in `signupCodeEmail`, `welcomeEmail` and `softwareApplication`, so a Hindi caller
+    can't silently get English.
+  - **Turnstile:** Hindi pages ask for `language: 'hi'`; English stays `auto`, its default.
+  - **Not in Hindi:** the team's lead email.
+- **W-19 · The demo and the hero in Hindi:**
+  - **What's Hindi:** on `/hi/demo` the guest phone starts in Hindi (`initialDemo('hi')`), and the
+    hints, announcements and controls come from `DEMO_WORDS.hi`.
+  - **What stays English** (marked `lang="en"`):
+    - the kitchen tablet and counter laptop (`STAFF_WORDS`), as in the app; the Hindi hints
+      quote their English buttons;
+    - in the hero, the board and bill;
+    - in "how it works", the printed QR card, the status ladder and the bill.
+  - **Guest phone:** in the hero and "how it works", it takes its words from `STRINGS[lang]` and
+    the demo's Hindi dish names, built on the server and passed as props.
+  - **Truthfulness:** the Hindi hero, features and demo copy say the staff and admin screens are
+    in English.
+- **W-20 · Search engines and analytics for two languages:**
+  - **hreflang:** every page pair gets `alternates` from `pageMetadata`: its own canonical plus
+    `en-IN`, `hi-IN` and `x-default` (English). The legal pages and both verify pages keep their
+    old metadata.
+  - **Sitemap:** it lists the `/hi` twins with `xhtml:link` alternates. Like the English
+    `/signup`, `/hi/signup` is left out. `robots.txt` also disallows `/hi/signup/verify`.
+  - **Structured data:** the FAQ carries `inLanguage`, and the Hindi pages use the Hindi FAQ and
+    offer words.
+  - **Analytics:** `isWebsitePath` accepts the `/hi` prefix, so the website's PostHog instance
+    counts `/hi` pages and the panels' instance drops them (W-13). `ctaClick` counts `/hi` calls
+    to action.
+  - **Typography:** an unlayered `.site :is(h1, h2, h3):lang(hi)` rule sets normal letter spacing
+    and a 1.4 line height. Tailwind's tight tracking breaks the joined top line of Devanagari
+    letters.
+  - **The Hindi copy:**
+    - **Who wrote it:** written here, in plain spoken Hindi, using the customer menu's choices
+      for shared words. Brand and plan names stay in Latin script, and digits are Western.
+    - **Review:** the owner reviews `content-hi.ts`, `DEMO_WORDS.hi` and the Hindi emails before
+      the Release (as in P9-7).
+    - **The parity test** (`site-dictionary.test.ts`) checks that both languages have the same
+      keys, list lengths and `{slots}`; that links and ids are equal; that neither language has
+      ₹ or latin-ext letters (W-14); and that the Hindi is in Devanagari with one spelling of
+      हिन्दी.
+  - **Tests:**
+    - `site-hindi.spec.ts`: each `/hi` page's `lang` and h1, the switch both ways, policies, the
+      404, no sideways scroll from 320 px, and the fonts.
+    - Hindi cases in the seo, leads, signup (both emails), demo, contrast, fonts and smoke
+      specs. The tests check Devanagari and `lang`, not exact sentences, so copy edits don't
+      break them.
 
 ## Brand refresh (after launch, from 2026-10-03)
 

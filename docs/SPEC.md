@@ -1197,7 +1197,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
 | Security | §9; cross-tenant isolation tested |
 | Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Website analytics keep nothing on the device; campaign tags are kept with leads and signups (W-13). Privacy policy and terms pages (content supplied by the user) |
-| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00) |
+| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00). The public website in English and in Hindi under `/hi` (docs/DECISIONS.md W-16 to W-20); staff and admin screens stay English |
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
 | Browser support | Latest Chrome (Android + desktop), Safari iOS 16+, Edge; staff panel optimised for Android tablets and Chrome |
@@ -1599,6 +1599,6 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | W2 | Features page with screenshots of the real app; pricing page (plans read from the database, monthly/yearly, plan finder, comparison); an interactive demo in the browser; a "Book a demo" form behind Cloudflare Turnstile, stored as leads for super-admin and emailed to the support address |
 | W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial, then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
 | W4 | SEO (sitemap, robots, Open Graph, structured data; only menumesh.in is indexed), funnel analytics (PostHog without cookies on the site only), performance and accessibility budgets, launch (docs/DECISIONS.md W-12 onwards) |
-| W5 | The website in Hindi |
+| W5 | The website in Hindi under `/hi`: every page except the policies (English only), a language switch, Hindi forms, errors and emails, the guest phone in the hero and demo in Hindi, hreflang and sitemap alternates (docs/DECISIONS.md W-15 to W-20) |
 
 Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels.
