@@ -93,7 +93,8 @@ export function SiteAnalytics() {
         setVisitorId(instance.get_distinct_id());
         const onClick = (event: MouseEvent) => {
           const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-          if (!(link instanceof HTMLAnchorElement)) return;
+          // The language switch and other links into the other language aren't calls to action.
+          if (!(link instanceof HTMLAnchorElement) || link.hreflang) return;
           const click = ctaClick(link.href, link.closest<HTMLElement>('[data-cta]')?.dataset.cta);
           if (click) instance.capture('cta_clicked', click);
         };
