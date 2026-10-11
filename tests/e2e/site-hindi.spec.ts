@@ -89,7 +89,7 @@ test('the switch keeps the chosen plan and the campaign tags', async ({ page }) 
   await expect(page.locator('select[name="planCode"]')).toHaveValue('growth');
 });
 
-test('the policies are English only: their switch leads to the Hindi home page', async ({
+test('the policies are English only: the switch leads to /hi, /hi/<policy> to the policy', async ({
   page,
 }) => {
   await page.goto('/terms');
@@ -106,7 +106,14 @@ test('the policies are English only: their switch leads to the Hindi home page',
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('heading', { level: 1, name: 'Terms of service' })).toBeVisible();
 
-  const response = await page.goto('/hi/terms');
+  // docs/DECISIONS.md W-16: a policy's /hi address leads to the English policy, query kept.
+  await page.goto('/hi/privacy?utm_source=newsletter');
+  await expect(page).toHaveURL(/:\d+\/privacy\?utm_source=newsletter$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('heading', { level: 1, name: 'Privacy policy' })).toBeVisible();
+
+  // Any other unknown /hi path is the 404, marked English.
+  const response = await page.goto('/hi/blog');
   expect(response?.status()).toBe(404);
   await expect(page.getByRole('main')).toHaveAttribute('lang', 'en');
 });
