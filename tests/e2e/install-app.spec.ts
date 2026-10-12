@@ -96,15 +96,20 @@ test('the installed app shows the launch screen until the page has loaded', asyn
       },
       true,
     );
-    // What the screen looks like just after the page has loaded: still showing, logo zooming.
+    // When the page loaded, and what the screen looks like just after the zoom begins: still
+    // showing, logo zooming.
+    let loadedAt = 0;
+    addEventListener('load', () => (loadedAt = performance.now()));
     new MutationObserver((_records, observer) => {
       const splash = document.querySelector('.app-splash');
       if (!splash?.hasAttribute('data-done')) return;
       observer.disconnect();
+      const heldAfterLoad = performance.now() - loadedAt;
       setTimeout(() => {
         const logo = splash.querySelector('.app-splash-logo')!;
         Object.assign(window, {
           splashAfterLoad: {
+            heldAfterLoad,
             opacity: Number(getComputedStyle(splash).opacity),
             zooming: logo
               .getAnimations()
@@ -136,8 +141,15 @@ test('the installed app shows the launch screen until the page has loaded', asyn
   await expect(page.locator('html')).toHaveAttribute('data-launched', '', { timeout: 15_000 });
   await expect(splash).toBeHidden();
   const afterLoad = await page.evaluate(
-    () => (window as { splashAfterLoad?: { opacity: number; zooming: boolean } }).splashAfterLoad,
+    () =>
+      (
+        window as {
+          splashAfterLoad?: { heldAfterLoad: number; opacity: number; zooming: boolean };
+        }
+      ).splashAfterLoad,
   );
+  // It stays long enough to be seen after the page has loaded (P11-4), then zooms.
+  expect(afterLoad?.heldAfterLoad).toBeGreaterThanOrEqual(650);
   expect(afterLoad?.zooming).toBe(true);
   expect(afterLoad?.opacity).toBeGreaterThan(0);
 
