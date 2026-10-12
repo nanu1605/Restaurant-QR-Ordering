@@ -190,7 +190,7 @@ export type DemoWords = typeof en;
 
 /** Hindi: dish names and "टेबल 5" come from STRINGS.hi; the hints quote the English staff buttons. */
 const hi: DemoWords = {
-  nextStep: 'अगला कदम:',
+  nextStep: 'अगला चरण:',
   allDone:
     'सब हो गया। बिल का भुगतान हो गया और टेबल ख़ाली है। दोबारा चलाने के लिए फिर से शुरू करें।',
   showMe: 'दिखाएँ',
