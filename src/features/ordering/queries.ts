@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { z } from 'zod';
 
+import { parsePrintableBill, type PrintableBill } from '@/features/billing/bill';
 import { publicImageUrl } from '@/features/menu/images';
 import { dbErrorCode } from '@/lib/db-errors';
 import { getPublicEnv } from '@/lib/env';
@@ -88,6 +89,7 @@ const sessionJson = z.object({
   cancel_window_seconds: z.number().int(),
   access_state: z.enum(['full', 'read_only']),
   last_session_billed: z.boolean(),
+  bill: z.unknown().nullable(),
   session: z
     .object({
       opened_at: z.string(),
@@ -189,14 +191,22 @@ export function toCustomerTable(json: unknown, lang: Lang = 'en'): CustomerTable
   };
 }
 
-export function toCustomerSession(json: unknown, lang: Lang = 'en'): CustomerSessionView {
+/** The orders page's data, and this phone's bill for the page to draw (never sent to the browser). */
+export type CustomerSession = { view: CustomerSessionView; bill: PrintableBill | null };
+
+export function toCustomerSession(json: unknown, lang: Lang = 'en'): CustomerSession {
   const data = sessionJson.parse(json);
-  return {
+  const bill = data.bill === null ? null : parsePrintableBill(data.bill);
+  const view: CustomerSessionView = {
     now: data.now,
     timezone: data.timezone,
     cancelWindowSeconds: data.cancel_window_seconds,
     canOrder: data.access_state === 'full',
     lastSessionBilled: data.last_session_billed,
+    bill: bill && {
+      invoiceNumber: bill.bill.invoiceNumber,
+      paid: bill.bill.paymentStatus === 'paid',
+    },
     rounds:
       data.session?.rounds.map((round) => ({
         id: round.id,
@@ -222,6 +232,7 @@ export function toCustomerSession(json: unknown, lang: Lang = 'en'): CustomerSes
         })),
       })) ?? null,
   };
+  return { view, bill };
 }
 
 /** The table and its menu, or null when the QR code doesn't work (unknown, off or regenerated). */
@@ -241,7 +252,7 @@ export const getCustomerTable = cache(async (qrToken: string): Promise<CustomerT
 export async function getCustomerSession(
   qrToken: string,
   deviceId: string | null,
-): Promise<CustomerSessionView | null> {
+): Promise<CustomerSession | null> {
   if (!QR_TOKEN_PATTERN.test(qrToken)) return null;
   const { data, error } = await createAdminClient().rpc('customer_get_session', {
     p_qr_token: qrToken,

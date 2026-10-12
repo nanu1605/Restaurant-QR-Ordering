@@ -99,6 +99,11 @@ export type CustomerSessionView = {
   canOrder: boolean;
   /** This phone's last session here was billed within the hour (spec §9.3). */
   lastSessionBilled: boolean;
+  /**
+   * That session's bill, unless voided. The orders page draws the bill itself on the server
+   * (docs/DECISIONS.md P11-2); a poll that brings a different one refreshes the page.
+   */
+  bill: { invoiceNumber: string; paid: boolean } | null;
   /** Rounds of the open session, or null while the table is free. */
   rounds: CustomerRound[] | null;
 };

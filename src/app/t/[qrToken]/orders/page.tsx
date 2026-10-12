@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { CustomerBill } from '@/features/ordering/components/customer-bill';
 import { OrdersView } from '@/features/ordering/components/orders-view';
 import { readDeviceId } from '@/features/ordering/device';
 import { getStrings } from '@/features/ordering/lang';
@@ -27,5 +28,11 @@ export default async function OrdersPage({ params }: PageProps<'/t/[qrToken]/ord
   const { qrToken } = await params;
   const session = await getCustomerSession(qrToken, await readDeviceId());
   if (!session) notFound();
-  return <OrdersView qrToken={qrToken} initial={session} />;
+  return (
+    <OrdersView
+      qrToken={qrToken}
+      initial={session.view}
+      bill={session.bill && <CustomerBill {...session.bill} />}
+    />
+  );
 }

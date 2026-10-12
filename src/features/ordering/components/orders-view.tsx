@@ -3,7 +3,8 @@
 import { cn } from 'cn';
 import { CircleCheck, Clock3, Plus, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { type ReactNode, useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/shared/empty-state';
@@ -30,14 +31,19 @@ import { useStrings } from './lang-provider';
 import { ServiceRequestButton } from './service-request-button';
 import { useNow } from '@/hooks/use-now';
 
-type OrdersViewProps = { qrToken: string; initial: CustomerSessionView };
+type OrdersViewProps = {
+  qrToken: string;
+  initial: CustomerSessionView;
+  /** The customer copy of this phone's bill, drawn on the server (docs/DECISIONS.md P11-2). */
+  bill?: ReactNode;
+};
 
 /**
  * The table's orders (spec §13.1 Orders page), polled every 10 s while the page
  * is visible. Every phone at the table sees every round; only the phone that
  * ordered a dish can cancel it, within the restaurant's window.
  */
-export function OrdersView({ qrToken, initial }: OrdersViewProps) {
+export function OrdersView({ qrToken, initial, bill }: OrdersViewProps) {
   const [session, setSession] = useState(initial);
   // A fresh server render (e.g. after switching language, which renames dishes)
   // replaces the polled copy without remounting the rest of the view.
@@ -53,8 +59,11 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
   const [cancelling, startCancel] = useTransition();
   const now = useNow();
   const t = useStrings();
+  const router = useRouter();
 
   const menuHref = `/t/${qrToken}`;
+  // The bill this server render drew; payment doesn't change it, only a new bill or a void.
+  const drawnInvoice = rendered.bill?.invoiceNumber ?? null;
 
   const refresh = useCallback(async () => {
     try {
@@ -67,13 +76,15 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const next = (await response.json()) as CustomerSessionView;
+      // A new or voided bill: the page draws the bill again.
+      if ((next.bill?.invoiceNumber ?? null) !== drawnInvoice) router.refresh();
       setSession(next);
       setClockSync({ server: Date.parse(next.now), client: Date.now() });
       setStale(false);
     } catch {
       setStale(true);
     }
-  }, [qrToken]);
+  }, [qrToken, drawnInvoice, router]);
 
   useEffect(() => {
     // The first poll runs straight away: it also syncs the clocks for the
@@ -120,6 +131,15 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
 
   const rounds = session.rounds ?? [];
   const orderedHere = rounds.some((round) => round.isMine);
+  const billed = session.lastSessionBilled && !orderedHere;
+  // No bill: voided, or none of this phone's dishes made it onto the bill.
+  const billMessage = !billed
+    ? ''
+    : !session.bill
+      ? t.orders.billClosed
+      : session.bill.paid
+        ? t.orders.billPaid
+        : t.orders.billed;
   const waiting = rounds.some(
     (round) =>
       round.status === 'pending_approval' && round.items.some((item) => item.status === 'placed'),
@@ -128,22 +148,36 @@ export function OrdersView({ qrToken, initial }: OrdersViewProps) {
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-10">
       <h1 className="text-xl font-semibold text-ink">{t.orders.title}</h1>
+      {/* Always present, so the bill arriving (or being paid) while the guest watches is
+          announced; the visible copy below is hidden from screen readers to avoid reading it twice. */}
+      <p role="status" className="sr-only">
+        {billMessage}
+      </p>
 
-      {session.lastSessionBilled && !orderedHere ? (
-        <div
-          role="status"
-          className="flex flex-col items-start gap-3 rounded-lg border border-status-served/40 bg-status-served/5 p-4"
-        >
-          <p className="flex items-start gap-2 text-base text-ink">
-            <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-status-served" />
-            {t.orders.billed}
-          </p>
-          {session.canOrder && (
-            <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
-              {t.orders.newOrder}
-            </Link>
+      {billed ? (
+        <>
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-status-served/40 bg-status-served/5 p-4">
+            <p aria-hidden className="flex items-start gap-2 text-base text-ink">
+              <CircleCheck className="mt-0.5 size-5 shrink-0 text-status-served" />
+              {billMessage}
+            </p>
+            {session.canOrder && (
+              <Link href={menuHref} className={buttonVariants({ size: 'touch' })}>
+                {t.orders.newOrder}
+              </Link>
+            )}
+          </div>
+          {/* Only the bill this render drew; a new one appears once the refresh lands. */}
+          {drawnInvoice !== null && session.bill?.invoiceNumber === drawnInvoice && bill && (
+            <section aria-labelledby="your-bill" className="flex flex-col gap-2">
+              {/* Not a heading: the bill's own title (Tax Invoice…) is the section's heading. */}
+              <p id="your-bill" className="text-base font-semibold text-ink">
+                {t.orders.yourBill}
+              </p>
+              {bill}
+            </section>
           )}
-        </div>
+        </>
       ) : rounds.length === 0 ? (
         <EmptyState
           icon={ReceiptText}
