@@ -2799,3 +2799,61 @@ trials, 11e worker panel in Hindi.
   - **No UPI QR.** It isn't shown on screen, because a phone can't scan its own screen.
   - **Paid.** Once a payment is recorded, the message changes to "Your bill is paid. Thank you
     for visiting!".
+
+### 11b · Launch screen in the installed app
+
+- **P11-4 · Only in the installed app, drawn with CSS:**
+  - **What it is.** `AppSplash` (`src/components/shared/app-splash.tsx`) is on the login page
+    (the app's `start_url`) and in the worker and admin layouts. It shows:
+    - the logo mark in the middle;
+    - "Powered by Jainav Infotech Pvt Ltd" at the bottom (`COMPANY_NAME` in
+      `src/lib/config.ts`).
+  - **When it shows.** `globals.css` shows it only under `@media (display-mode: standalone)` and
+    while `<html data-launched>` isn't set. So browser tabs, the customer menu and the website
+    never see it, and their speed budgets don't change. The owner chose the installed app
+    only.
+  - **Timing.** The screen is in the first HTML, so it covers the page from the first paint.
+    - **Page loaded.** Once the window's `load` event fires, it gets `data-done`. If 4.5 s have
+      passed since the screen appeared without one, it gets `data-done` anyway. The logo then
+      zooms in, growing to six times its size and fading out over 600 ms, while the screen
+      fades out after 300 ms.
+    - **Its own clock.** The 4.5 s is measured on the screen's own clock: the fallback
+      animation's `currentTime`, which starts when the screen is first painted. It isn't
+      measured from navigation start, because a slow server response would make that run
+      ahead.
+    - **A fade of its own.** The fade on `data-done` has its own keyframes name,
+      `app-splash-fade`. Given the fallback's name with a shorter delay, the browser would only
+      retime the fallback animation, which started at first paint. On any load slower than
+      600 ms that skips straight to the end, so the zoom was never seen. The review found this;
+      the e2e test now records the screen 150 ms after `data-done` and expects it still
+      showing, with the zoom running.
+    - **Animation ended.** `animationend` from either fade then sets `<html data-launched>`,
+      which removes the screen. React leaves that attribute alone, as it does `data-theme`.
+    - **Fallbacks.** If the page's JavaScript never runs, the CSS fades the screen after 5 s on
+      its own. If the component runs later than 4.5 s on that clock, it removes the screen
+      without the animation.
+  - **Never in the way.** It is `aria-hidden` and takes no focus.
+    - **Taps.** While it shows, it takes taps, so nobody taps a hidden button such as a
+      kitchen ticket. During the fade, taps pass through.
+    - **Reduced motion.** Under reduced motion, the global rule cuts the zoom to nothing.
+  - **A rule this breaks.** §16.1's "no decorative motion" gets this one exception, at the
+    owner's request.
+  - **Theme.** The screen uses the theme's paper colour. In dark mode, Android's own splash
+    (the manifest's light `background_color`) shows briefly before ours.
+- **P11-5 · On every full load, not once per launch:**
+  - **Why.** Knowing "first open" before the first paint would need an inline script, which
+    the CSP allows only with its nonce. So the screen comes back on every full page load in
+    the app: launch, pull-to-refresh, and logout's redirect. It never comes back on in-app
+    navigation, such as the move from login to the board, because `<html data-launched>`
+    stays set.
+  - **Upgrade path.** A one-line nonced script could set `data-launched` from `sessionStorage`
+    if the replays bother anyone.
+  - **Testing.** Chromium can't emulate `display-mode`. `install-app.spec.ts` therefore applies
+    the stylesheets' own standalone rules to the page as they load, slows the scripts, and
+    checks four things:
+    - the screen shows with the company line;
+    - once the page has loaded, the logo zooms while the screen still shows;
+    - the screen then goes;
+    - after logging in, it doesn't come back, in the same document.
+
+    A browser tab is checked never to show it. Real devices are checked by hand on staging.
