@@ -2441,11 +2441,19 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     carry over. The visit's remembered source and its PostHog id (both kept in page memory,
     W-13) survive too, which a full page load would lose, splitting the funnel.
   - **Where it goes:** from a policy page (English only) it goes to `/hi`.
-  - **No automatic redirects** (the owner's choice), so search engines and shared links always
-    land where they point.
-  - **Font:** the word हिन्दी in both controls is drawn in the system font, as ₹ is (W-14). English pages without
-    Hindi text (`/contact`, `/signup`, the policies) then don't download Noto's 99 KB
-    Devanagari file; `site-hindi.spec.ts` checks `/contact`.
+  - **No redirects by browser language or cookie** (the owner's choice), so search engines and
+    shared links land in the language they point to. The one redirect is a policy's `/hi`
+    address, which leads to the English policy (W-16).
+  - **Font:** on English pages the word हिन्दी in both controls is drawn in the system font, as
+    ₹ is (W-14). English pages without Hindi text (`/contact`, `/signup`, the policies) then
+    don't download Noto's 99 KB Devanagari file; `site-hindi.spec.ts` checks `/contact`. Hindi
+    pages have that file anyway, so there it matches the Hindi text around it.
+  - **Header button:** the language icon with the page's language written next to it ("English",
+    "हिन्दी"), so a reader sees the setting without hovering; its name is "Language: English".
+  - **Keyboard focus:** menu items get a brand outline on keyboard focus (`dropdown-menu.tsx`),
+    and the phone menu sheet carries `.site` for the site's focus ring. Both are portalled out of
+    `SiteChrome`, and the menus' accent fill alone was about 1.1:1 against the popover. This
+    also applies to the theme menu and the panels' account menu.
   - **Policies:** on Hindi pages the footer marks them as English, and the theme menu and switch
     labels are Hindi (`STRINGS.hi.theme`, checked by the owner on 2026-10-11, B-3).
 - **W-18 · Forms, signup and emails in Hindi:**
@@ -2581,7 +2589,7 @@ are fixed.
   near-black text). The orange buttons don't change. shadcn's own `dark:` classes now work.
   The choice is saved by a `setTheme` server action; with JavaScript the page repaints at once
   and goes back if saving fails (offline). The website's footer and menu sheet and the customer
-  menu (at its foot, in Hindi too; the Hindi words need the owner's check) use a plain form of
+  menu (at its foot, in Hindi too; the owner checked the Hindi words on 2026-10-11) use a plain form of
   System / Light / Dark buttons, which also works before the page's JavaScript, and shows the
   current choice from the server render. The panels have it in a new account menu in the
   header, which also holds the name and role, the other panel and Log out, and the website's
