@@ -80,7 +80,7 @@ test('a browser tab never shows the launch screen', async ({ page }) => {
 
 /**
  * As if opened from the home screen: Chromium can't emulate display-mode, so the stylesheets'
- * own "(display-mode: standalone)" rules are applied to the page as they load.
+ * own "(display-mode: standalone)" rules are added again as they load, without that condition.
  */
 function applyStandaloneRules() {
   document.addEventListener(
@@ -91,8 +91,8 @@ function applyStandaloneRules() {
       for (const rule of [...sheet.cssRules]) {
         if (!(rule instanceof CSSMediaRule)) continue;
         if (!rule.conditionText.includes('display-mode: standalone')) continue;
-        for (const inner of [...rule.cssRules])
-          sheet.insertRule(inner.cssText, sheet.cssRules.length);
+        const always = rule.cssText.replace('(display-mode: standalone)', '(min-width: 0px)');
+        sheet.insertRule(always, sheet.cssRules.length);
       }
     },
     true,
@@ -194,4 +194,15 @@ test('installing from the website gives the same app, and any page shows the lau
   await expect(splash).toContainText('Powered by Jainav Infotech Pvt Ltd');
   await expect(page.locator('html')).toHaveAttribute('data-launched', '', { timeout: 15_000 });
   await expect(splash).toBeHidden();
+});
+
+test('the launch screen is never printed', async ({ page }) => {
+  // A bill's print page prints as soon as it opens, maybe in a new app window (P11-4).
+  await page.emulateMedia({ media: 'print' });
+  await page.addInitScript(applyStandaloneRules);
+  await slowScripts(page);
+  await page.goto('/login');
+  await expect(page.locator('.app-splash')).toHaveCSS('display', 'none');
+  // Hidden by print itself, not because the app has launched.
+  await expect(page.locator('html')).not.toHaveAttribute('data-launched', '');
 });
