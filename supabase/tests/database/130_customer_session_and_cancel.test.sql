@@ -87,7 +87,7 @@ select is(
 select is(
   :'s1'::jsonb - 'session' - 'now',
   '{"timezone": "Asia/Kolkata", "cancel_window_seconds": 120, "access_state": "full",
-    "last_session_billed": false}'::jsonb,
+    "last_session_billed": false, "bill": null}'::jsonb,
   'settings for the page come along'
 );
 select is(
