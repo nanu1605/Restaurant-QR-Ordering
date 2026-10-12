@@ -2813,10 +2813,21 @@ trials, 11e worker panel in Hindi.
     never see it, and their speed budgets don't change. The owner chose the installed app
     only.
   - **Timing.** The screen is in the first HTML, so it covers the page from the first paint.
-    - **Page loaded.** Once the window's `load` event fires, it gets `data-done`. If 4.5 s have
-      passed since the screen appeared without one, it gets `data-done` anyway. The logo then
-      zooms in, growing to six times its size and fading out over 600 ms, while the screen
-      fades out after 300 ms.
+    - **Page loaded.** Once the window's `load` event fires, the screen holds a little longer,
+      then gets `data-done`:
+      - at least 0.7 s after the load;
+      - at least 1.5 s after it appeared;
+      - at the latest 4.5 s after it appeared, loaded or not.
+
+      The logo then zooms in, growing to six times its size and fading out over 600 ms, while
+      the screen fades out after 300 ms.
+
+    - **Why it holds.** At first it went as soon as the page loaded. The owner reported it
+      wasn't showing on staging (2026-10-12). Staging's `/login` loads 70–200 ms after the
+      first paint, so the whole screen lasted about 0.7 s, and on Android the phone's own
+      splash (the same icon on the same background) covers the first moments. Holding it
+      adds up to about 1.3 s to a fast launch; a slow one waits 0.7 s at most beyond its
+      load.
     - **Its own clock.** The 4.5 s is measured on the screen's own clock: the fallback
       animation's `currentTime`, which starts when the screen is first painted. It isn't
       measured from navigation start, because a slow server response would make that run
