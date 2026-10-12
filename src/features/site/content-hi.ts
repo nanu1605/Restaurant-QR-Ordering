@@ -19,7 +19,7 @@ export const hi: SiteContent = {
   per: { monthly: 'प्रति महीना', yearly: 'प्रति साल' },
 
   nav: [
-    { href: '/#how', label: 'कैसे काम करता है' },
+    { href: '/#how', label: 'यह कैसे काम करता है' },
     { href: '/features', label: 'फ़ीचर' },
     { href: '/pricing', label: 'कीमतें' },
     { href: '/demo', label: 'डेमो' },
@@ -32,7 +32,7 @@ export const hi: SiteContent = {
       {
         title: 'प्रोडक्ट',
         links: [
-          { href: '/#how', label: 'कैसे काम करता है' },
+          { href: '/#how', label: 'यह कैसे काम करता है' },
           { href: '/features', label: 'फ़ीचर' },
           { href: '/pricing', label: 'कीमतें' },
           { href: '/demo', label: 'डेमो आज़माएँ' },
@@ -66,7 +66,7 @@ export const hi: SiteContent = {
   hero: {
     title: 'हर टेबल पर आपका मेन्यू। ऑर्डर सीधे किचन तक।',
     lead: 'ग्राहक अपनी टेबल पर लगा QR कोड स्कैन करते हैं और अपने फ़ोन से ऑर्डर करते हैं। हर डिश आपके वेटर और किचन की स्क्रीन पर पहुँचती है, किचन से टेबल तक जाती है, और बिल एक टैप में तैयार हो जाता है। स्टाफ़ और एडमिन स्क्रीन अंग्रेज़ी में हैं।',
-    secondary: 'देखें कैसे काम करता है',
+    secondary: 'देखें यह कैसे काम करता है',
     customers: 'पहले से MenuMesh इस्तेमाल करते हैं? {login}',
   },
   story: {
@@ -99,8 +99,8 @@ export const hi: SiteContent = {
     ],
   },
   how: {
-    title: 'कैसे काम करता है',
-    lead: 'पहले स्कैन से बिल के भुगतान तक, हर टेबल का काम चार आसान कदमों में होता है।',
+    title: 'यह कैसे काम करता है',
+    lead: 'ग्राहक के QR स्कैन करने से लेकर बिल चुकाने तक, हर टेबल पर सब कुछ चार आसान कदमों में होता है।',
     steps: [
       {
         title: 'स्कैन',
