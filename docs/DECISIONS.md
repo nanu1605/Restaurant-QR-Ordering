@@ -2809,10 +2809,12 @@ trials, 11e worker panel in Hindi.
     - the logo mark in the middle;
     - "Powered by Jainav Infotech Pvt Ltd" at the bottom (`COMPANY_NAME` in
       `src/lib/config.ts`).
-  - **When it shows.** `globals.css` shows it only under `@media (display-mode: standalone)` and
-    while `<html data-launched>` isn't set. So browser tabs, the customer menu and the website
-    never see it, and their speed budgets don't change. The owner chose the installed app
-    only.
+  - **When it shows.** `globals.css` shows it only under
+    `@media screen and (display-mode: standalone)` and while `<html data-launched>` isn't set.
+    So a browser tab never sees it, on any page. The owner chose the installed app only.
+    - **Never printed.** A bill's print page prints as soon as it opens, and in a desktop app
+      that can be a new app window, still showing the screen. `screen` keeps the screen off
+      the paper. The review of the "any page" change found this.
   - **Timing.** The screen is in the first HTML, so it covers the page from the first paint.
     - **Page loaded.** Once the window's `load` event fires, the screen holds a little longer,
       then gets `data-done`:
@@ -2874,12 +2876,13 @@ trials, 11e worker panel in Hindi.
     if the replays bother anyone.
   - **Testing.** Chromium can't emulate `display-mode`. `install-app.spec.ts` therefore applies
     the stylesheets' own standalone rules to the page as they load, slows the scripts, and
-    checks five things:
+    checks six things:
     - the screen shows with the company line;
     - once the page has loaded, the logo zooms while the screen still shows;
     - the screen then goes;
     - after logging in, it doesn't come back, in the same document;
     - the website and the login page link the manifest, Chrome finds the home page installable,
-      and an app opened on the home page shows the screen.
+      and an app opened on the home page shows the screen;
+    - printing hides it before the app has launched.
 
     A browser tab is checked never to show it. Real devices are checked by hand on staging.
