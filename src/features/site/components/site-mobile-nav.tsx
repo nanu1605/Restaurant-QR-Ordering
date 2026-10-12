@@ -82,7 +82,8 @@ export function SiteMobileNav({
         showCloseButton={false}
         data-cta="menu"
         finalFocus={() => section.current === null}
-        className="gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
+        // .site: the website's focus ring reaches the sheet, which is portalled out of SiteChrome.
+        className="site gap-6 overflow-y-auto p-6 data-[side=right]:w-80"
       >
         <div className="flex items-center justify-between">
           <SheetTitle className="text-base font-semibold text-ink">{t.menu.title}</SheetTitle>
