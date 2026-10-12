@@ -8,7 +8,7 @@ import {
   type BillingSessions,
   fetchBillingSessions,
   parseBillDetail,
-  parseSampleBill,
+  parsePrintableBill,
   parseTotalOrders,
   type PrintableBill,
   type TotalOrders,
@@ -54,7 +54,7 @@ export async function getSampleBill(): Promise<PrintableBill> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('admin_sample_bill');
   if (error) throw new Error(`Could not build the sample bill: ${error.message}`);
-  return parseSampleBill(data);
+  return parsePrintableBill(data);
 }
 
 export async function getTotalOrders(filters: TotalOrdersFilters): Promise<TotalOrders> {

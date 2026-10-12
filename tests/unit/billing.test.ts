@@ -6,7 +6,7 @@ import {
   parseBillDetail,
   parseBillDraft,
   parseBillingSessions,
-  parseSampleBill,
+  parsePrintableBill,
   parseTotalOrders,
   percentLabel,
 } from '@/features/billing/bill';
@@ -363,7 +363,7 @@ describe('bill parsers', () => {
   });
 
   it('parses the sample bill', () => {
-    const sample = parseSampleBill({
+    const sample = parsePrintableBill({
       bill: { ...document, id: null, is_sample: true },
       print: { ...print, upi: null },
     });
