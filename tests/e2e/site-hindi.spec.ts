@@ -32,7 +32,8 @@ async function startSignup(context: BrowserContext, baseURL: string) {
   return () => admin.from('site_signups').delete().eq('id', data.id);
 }
 
-const LANGUAGE = /^(Language|भाषा)$/;
+/** The footer group's name; the header button adds the page's language to it. */
+const LANGUAGE = /^(Language|भाषा)/;
 
 /** The footer's English / हिन्दी buttons (the phone menu has them too). */
 const footerLanguages = (page: Page) =>

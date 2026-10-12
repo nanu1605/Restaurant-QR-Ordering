@@ -25,11 +25,8 @@ export type LanguageLabels = Record<SiteLang, string> & { group: string };
 
 const LANGS: SiteLang[] = ['en', 'hi'];
 
-/**
- * हिन्दी in the system font, so an English page doesn't download Noto's Devanagari file for
- * one word.
- */
-const SYSTEM_FONT = { en: undefined, hi: '[font-family:system-ui,sans-serif]' };
+/** For हिन्दी on an English page, which then doesn't download Noto's Devanagari file for one word. */
+const SYSTEM_FONT = '[font-family:system-ui,sans-serif]';
 
 /**
  * The page's language, and the same page in the other language keeping its query (plan, cycle,
@@ -40,9 +37,11 @@ const SYSTEM_FONT = { en: undefined, hi: '[font-family:system-ui,sans-serif]' };
 function useLanguages() {
   const pathname = usePathname();
   const search = useSearchParams().toString();
+  const current = siteLangOf(pathname);
   return {
-    current: siteLangOf(pathname),
+    current,
     other: otherLanguageHref(pathname) + (search ? `?${search}` : ''),
+    font: (value: SiteLang) => value === 'hi' && current === 'en' && SYSTEM_FONT,
   };
 }
 
@@ -54,7 +53,7 @@ export function LanguageSwitch({
   labels: LanguageLabels;
   className?: string;
 }) {
-  const { current, other } = useLanguages();
+  const { current, other, font } = useLanguages();
   return (
     <div
       role="group"
@@ -67,7 +66,7 @@ export function LanguageSwitch({
       {LANGS.map((value) => {
         const item = cn(
           'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2.5 text-sm font-medium',
-          SYSTEM_FONT[value],
+          font(value),
         );
         return value === current ? (
           <span
@@ -94,7 +93,7 @@ export function LanguageSwitch({
   );
 }
 
-/** A language button for the website's top bar, beside the theme one. */
+/** A language button for the website's top bar, beside the theme one, naming the page's language. */
 export function LanguageMenu({
   labels,
   className,
@@ -102,7 +101,7 @@ export function LanguageMenu({
   labels: LanguageLabels;
   className?: string;
 }) {
-  const { current, other } = useLanguages();
+  const { current, other, font } = useLanguages();
   const router = useRouter();
   return (
     <DropdownMenu>
@@ -110,13 +109,13 @@ export function LanguageMenu({
         render={
           <Button
             variant="ghost"
-            size="icon-touch"
-            aria-label={labels.group}
-            className={className}
+            className={cn('h-11 gap-1.5 px-3 text-sm font-medium', className)}
           />
         }
       >
         <Languages aria-hidden className="size-5" />
+        <span className="sr-only">{`${labels.group}: `}</span>
+        <span lang={current}>{labels[current]}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuGroup>
@@ -133,7 +132,7 @@ export function LanguageMenu({
                 value={value}
                 lang={value}
                 closeOnClick
-                className={cn('min-h-11', SYSTEM_FONT[value])}
+                className={cn('min-h-11', font(value))}
               >
                 {labels[value]}
               </DropdownMenuRadioItem>
