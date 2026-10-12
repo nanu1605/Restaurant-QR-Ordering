@@ -335,7 +335,7 @@ const en = {
         id: 'billing',
         nav: 'Billing',
         title: 'Bills in one tap',
-        lead: 'The counter makes the bill from everything the table ordered, with your taxes and charges.',
+        lead: 'The counter makes the bill from everything the table ordered, with your taxes and any other charges that apply.',
         points: [
           { text: 'GST and service charge added the same way on every bill' },
           { text: 'Prints on 80 mm and 58 mm receipt printers' },
