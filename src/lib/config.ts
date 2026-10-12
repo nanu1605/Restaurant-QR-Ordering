@@ -7,6 +7,9 @@ import type { Metadata } from 'next';
  */
 export const APP_NAME = 'MenuMesh';
 
+/** The company behind MenuMesh, on the installed app's launch screen (docs/DECISIONS.md P11-4). */
+export const COMPANY_NAME = 'Jainav Infotech Pvt Ltd';
+
 /** Browser and installed-app bar colour: the header surface (globals.css --surface), per theme. */
 export const THEME_COLOR = '#FFFFFF';
 export const THEME_COLOR_DARK = '#1C1A18';

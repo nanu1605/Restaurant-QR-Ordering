@@ -1154,7 +1154,7 @@ Two faces of one product:
 - **Customer menu**: calm, appetising, quick to scan; the restaurant's accent colour and logo lead, the platform stays in the background.
 - **Worker/Admin panels**: a working tool used under pressure in noisy kitchens and busy floors. High contrast, large touch targets, and the **status colours are the one memorable element** — everything around them stays quiet.
 
-Avoid generic SaaS styling: no gradient washes, no identical soft-shadow cards everywhere, no all-caps eyebrow labels, no decorative motion. Radius and elevation should encode hierarchy (e.g. drawers and dialogs elevated; table cards flat with a thick status edge).
+Avoid generic SaaS styling: no gradient washes, no identical soft-shadow cards everywhere, no all-caps eyebrow labels, no decorative motion (one exception: the installed app's launch screen, §19 Phase 9 task 2; docs/DECISIONS.md P11-4). Radius and elevation should encode hierarchy (e.g. drawers and dialogs elevated; table cards flat with a thick status edge).
 
 ### 16.2 Tokens
 
@@ -1183,7 +1183,7 @@ Typography: **Noto Sans** (with Noto Sans Devanagari for Hindi in Phase 9) via `
 
 Layout: customer — single column, max width 560 px, left-aligned text; staff board — responsive grid of table cards (min 160 px wide); kitchen view — three columns from 768 px, one swipeable column at a time on phones; admin and platform — left sidebar navigation from 1024 px (a menu sheet below) + content area, tables for data that scroll sideways in a focusable region on narrow screens (docs/DECISIONS.md B-6). Touch targets in the panel headers, the worker panel and the customer menu are at least 44 px.
 
-Motion: only in response to actions (drawer open, status change pulse ~300 ms) plus a single subtle pulse on "Needs approval" badges. Respect `prefers-reduced-motion`.
+Motion: only in response to actions (drawer open, status change pulse ~300 ms) plus a single subtle pulse on "Needs approval" badges, and the installed app's launch-screen zoom once the page has loaded (docs/DECISIONS.md P11-4). Respect `prefers-reduced-motion`.
 
 ### 16.3 Quality floor
 
@@ -1415,7 +1415,7 @@ Goal: behaves well in real restaurant conditions.
 
 Tasks:
 1. Offline handling for staff panel: offline banner, queue status updates in IndexedDB and replay on reconnect (status moves are idempotent by target status); billing requires online.
-2. PWA for staff/admin (manifest, icons, installable, app-shell caching), Screen Wake Lock on the board when supported. The account menu offers "Install app" where the device can install it (the browser's prompt, or Safari's Add to Home Screen steps; docs/DECISIONS.md B-7).
+2. PWA for staff/admin (manifest, icons, installable, app-shell caching), Screen Wake Lock on the board when supported. The account menu offers "Install app" where the device can install it (the browser's prompt, or Safari's Add to Home Screen steps; docs/DECISIONS.md B-7). When the installed app opens (login, worker or admin panel), a launch screen shows the MenuMesh logo with "Powered by Jainav Infotech Pvt Ltd" until the page has loaded; then the logo zooms in and the screen fades (docs/DECISIONS.md P11-4, P11-5). Browser tabs never show it.
 3. Customer "Call waiter" and "Request bill" buttons → `service_requests` → badge on table card + chime; acknowledge/resolve.
 4. Move session to another table (`staff_move_session`).
 5. Menu add-ons (groups, options, prices) with snapshots.
@@ -1605,4 +1605,4 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | W4 | SEO (sitemap, robots, Open Graph, structured data; only menumesh.in is indexed), funnel analytics (PostHog without cookies on the site only), performance and accessibility budgets, launch (docs/DECISIONS.md W-12 onwards) |
 | W5 | The website in Hindi under `/hi`: every page except the policies (English only), a language switch, Hindi forms, errors and emails, the guest phone in the hero and demo in Hindi, hreflang and sitemap alternates (docs/DECISIONS.md W-15 to W-20) |
 
-Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels.
+Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels, except the installed app's launch screen (P11-4).
