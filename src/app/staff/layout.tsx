@@ -1,7 +1,6 @@
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 import type { Metadata } from 'next';
 
-import { AppSplash } from '@/components/shared/app-splash';
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { LiveProvider } from '@/features/live/live-provider';
@@ -33,7 +32,6 @@ export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
     <LiveProvider restaurantId={membership.restaurant.id} memberId={membership.memberId}>
       <HydrationBoundary state={dehydrate(queryClient)}>
         <div className="flex flex-1 flex-col">
-          <AppSplash />
           <PanelAnalytics
             userId={membership.memberId}
             role={membership.role}

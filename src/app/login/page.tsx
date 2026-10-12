@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { AppSplash } from '@/components/shared/app-splash';
 import { Wordmark } from '@/components/shared/logo';
 import { LegalLinks } from '@/features/ordering/components/legal-links';
 import { allowedPanelsFor, homePathFor, safeNextPath } from '@/lib/auth/redirects';
 import { getAccessSummary, getCurrentUser } from '@/lib/auth/session';
+import { INSTALLABLE } from '@/lib/config';
 
 import { LoginForm } from './login-form';
 
 export const metadata: Metadata = {
+  ...INSTALLABLE,
   title: 'Log in',
   description: 'Log in to the MenuMesh worker, admin or platform panel.',
 };
@@ -33,8 +34,6 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-12">
-      {/* The installed app opens here (start_url); signed-in users go on to their panel. */}
-      <AppSplash />
       <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-sm">
         <div className="mb-6 flex flex-col gap-1">
           <Wordmark className="mb-3 h-7 self-start" />
