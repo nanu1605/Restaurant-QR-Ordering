@@ -1443,8 +1443,9 @@ names.
   served offline records the sync time as `served_at`; a change resent after a deploy that renamed
   its server action fails with an error instead of retrying.
 - **P9-6 · Installable panels:** the manifest is a route (`/app.webmanifest`, from `APP_NAME`)
-  linked only from the staff and admin layouts, so customer pages are never offered for install.
-  It opens on `/login`, which sends a signed-in user to their panel. Icons come from `next/og`
+  linked from the staff and admin layouts, so customer pages are never offered for install.
+  It opens on `/login`, which sends a signed-in user to their panel. Since P11-4's follow-up, the
+  website and the login page link it too, so installing from any of them gives the same app. Icons come from `next/og`
   (`/icon/192`, `/icon/512`, also maskable, and the Apple touch icon): a white "M" on the brand
   colour, no image files. The service worker is hand-written (about 30 lines, no Serwist): for
   page loads under `/login`, `/staff` and `/admin` it goes to the network and, only when that
@@ -2803,8 +2804,8 @@ trials, 11e worker panel in Hindi.
 ### 11b · Launch screen in the installed app
 
 - **P11-4 · Only in the installed app, drawn with CSS:**
-  - **What it is.** `AppSplash` (`src/components/shared/app-splash.tsx`) is on the login page
-    (the app's `start_url`) and in the worker and admin layouts. It shows:
+  - **What it is.** `AppSplash` (`src/components/shared/app-splash.tsx`) is in the root
+    layout, so every page has it. It shows:
     - the logo mark in the middle;
     - "Powered by Jainav Infotech Pvt Ltd" at the bottom (`COMPANY_NAME` in
       `src/lib/config.ts`).
@@ -2851,6 +2852,18 @@ trials, 11e worker panel in Hindi.
     owner's request.
   - **Theme.** The screen uses the theme's paper colour. In dark mode, Android's own splash
     (the manifest's light `background_color`) shows briefly before ours.
+  - **Installed from any page.** At first only the login page and the panels had the screen,
+    and only the panels linked the manifest. The owner installed the app from the website's
+    home page and saw no launch screen (2026-10-13): with no manifest there, the phone saved a
+    plain shortcut to `/`, which had no screen. Now:
+    - the website and the login page link the manifest (P9-6), so Chrome installs the real
+      app from any of them, opening on `/login`;
+    - the root layout draws the screen, so an app that opens on another page, as Safari's does
+      when added from that page, shows it too.
+
+    The customer menu still links no manifest. Its pages now carry the screen too, hidden in a
+    browser tab, and `/t` stays within its budget (254 of 275 KiB). An app saved before this
+    change is a plain shortcut: remove it and install again.
 - **P11-5 · On every full load, not once per launch:**
   - **Why.** Knowing "first open" before the first paint would need an inline script, which
     the CSP allows only with its nonce. So the screen comes back on every full page load in
@@ -2861,10 +2874,12 @@ trials, 11e worker panel in Hindi.
     if the replays bother anyone.
   - **Testing.** Chromium can't emulate `display-mode`. `install-app.spec.ts` therefore applies
     the stylesheets' own standalone rules to the page as they load, slows the scripts, and
-    checks four things:
+    checks five things:
     - the screen shows with the company line;
     - once the page has loaded, the logo zooms while the screen still shows;
     - the screen then goes;
-    - after logging in, it doesn't come back, in the same document.
+    - after logging in, it doesn't come back, in the same document;
+    - the website and the login page link the manifest, Chrome finds the home page installable,
+      and an app opened on the home page shows the screen.
 
     A browser tab is checked never to show it. Real devices are checked by hand on staging.
