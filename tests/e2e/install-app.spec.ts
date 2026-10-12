@@ -78,24 +78,38 @@ test('a browser tab never shows the launch screen', async ({ page }) => {
   await expect(page.locator('.app-splash')).toBeHidden();
 });
 
+/**
+ * As if opened from the home screen: Chromium can't emulate display-mode, so the stylesheets'
+ * own "(display-mode: standalone)" rules are applied to the page as they load.
+ */
+function applyStandaloneRules() {
+  document.addEventListener(
+    'load',
+    (event) => {
+      const sheet = event.target instanceof HTMLLinkElement ? event.target.sheet : null;
+      if (!sheet) return;
+      for (const rule of [...sheet.cssRules]) {
+        if (!(rule instanceof CSSMediaRule)) continue;
+        if (!rule.conditionText.includes('display-mode: standalone')) continue;
+        for (const inner of [...rule.cssRules])
+          sheet.insertRule(inner.cssText, sheet.cssRules.length);
+      }
+    },
+    true,
+  );
+}
+
+/** Slow scripts keep the page loading long enough to see the screen. */
+function slowScripts(page: Page) {
+  return page.route(/\/_next\/static\/chunks\/.*\.js/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+}
+
 test('the installed app shows the launch screen until the page has loaded', async ({ page }) => {
-  // As if opened from the home screen: Chromium can't emulate display-mode, so the stylesheets'
-  // own "(display-mode: standalone)" rules are applied to the page as they load.
+  await page.addInitScript(applyStandaloneRules);
   await page.addInitScript(() => {
-    document.addEventListener(
-      'load',
-      (event) => {
-        const sheet = event.target instanceof HTMLLinkElement ? event.target.sheet : null;
-        if (!sheet) return;
-        for (const rule of [...sheet.cssRules]) {
-          if (!(rule instanceof CSSMediaRule)) continue;
-          if (!rule.conditionText.includes('display-mode: standalone')) continue;
-          for (const inner of [...rule.cssRules])
-            sheet.insertRule(inner.cssText, sheet.cssRules.length);
-        }
-      },
-      true,
-    );
     // When the page loaded, and what the screen looks like just after the zoom begins: still
     // showing, logo zooming.
     let loadedAt = 0;
@@ -124,11 +138,7 @@ test('the installed app shows the launch screen until the page has loaded', asyn
       }, 150);
     }).observe(document, { attributes: true, subtree: true, attributeFilter: ['data-done'] });
   });
-  // Slow scripts keep the page loading long enough to see the screen.
-  await page.route(/\/_next\/static\/chunks\/.*\.js/, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    await route.continue();
-  });
+  await slowScripts(page);
 
   await page.goto('/login', { waitUntil: 'commit' });
   const splash = page.locator('.app-splash');
@@ -160,4 +170,28 @@ test('the installed app shows the launch screen until the page has loaded', asyn
   await expect(page).toHaveURL(/\/staff$/);
   expect(await page.evaluate(() => 'sameDocument' in window)).toBe(true);
   expect(await page.locator('.app-splash').isVisible()).toBe(false);
+});
+
+test('installing from the website gives the same app, and any page shows the launch screen', async ({
+  page,
+  context,
+}) => {
+  // The website and the login page offer the app itself, which opens on /login (P9-6).
+  for (const path of ['/', '/hi/pricing', '/login']) {
+    await page.goto(path);
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/app.webmanifest');
+  }
+  await page.goto('/');
+  const cdp = await context.newCDPSession(page);
+  expect((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors).toEqual([]);
+
+  // A home screen app that opens on a website page, as Safari's does when added from it.
+  await page.addInitScript(applyStandaloneRules);
+  await slowScripts(page);
+  await page.goto('/', { waitUntil: 'commit' });
+  const splash = page.locator('.app-splash');
+  await expect(splash).toBeVisible();
+  await expect(splash).toContainText('Powered by Jainav Infotech Pvt Ltd');
+  await expect(page.locator('html')).toHaveAttribute('data-launched', '', { timeout: 15_000 });
+  await expect(splash).toBeHidden();
 });
