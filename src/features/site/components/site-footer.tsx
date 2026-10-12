@@ -41,11 +41,8 @@ export function SiteFooter({ lang }: { lang: SiteLang }) {
           © {new Date().getFullYear()} {APP_NAME}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <LanguageSwitch
-            label={LANG_NAMES[lang === 'en' ? 'hi' : 'en']}
-            className="rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink-muted transition-colors hover:text-ink"
-          />
           <ThemeSwitch labels={STRINGS[lang].theme} />
+          <LanguageSwitch labels={{ group: t.language, ...LANG_NAMES }} />
         </div>
       </div>
     </footer>

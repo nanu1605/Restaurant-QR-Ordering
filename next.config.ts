@@ -50,6 +50,17 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }];
   },
+  // The policies are English only (src/app/(site)/(en)/(legal)/), so their /hi addresses lead
+  // there. Temporary, in case they get Hindi twins (docs/DECISIONS.md W-16).
+  async redirects() {
+    return [
+      {
+        source: '/hi/:policy(terms|privacy|refund|shipping)',
+        destination: '/:policy',
+        permanent: false,
+      },
+    ];
+  },
   images: {
     remotePatterns: images.patterns,
     // Next.js 16 refuses to optimise images from local addresses. Only the

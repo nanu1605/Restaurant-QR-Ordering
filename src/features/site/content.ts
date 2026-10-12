@@ -23,6 +23,7 @@ const en = {
   /** The link past the header, for keyboard users. */
   skipToContent: 'Skip to content',
   login: 'Log in',
+  language: 'Language',
   /** The product in one line: the footer and the structured data. */
   tagline: 'QR table ordering, kitchen and waiter screens, and billing for restaurants in India.',
   /** The website's main calls to action; `signup` once self-serve signup is open (W-9). */
@@ -115,7 +116,7 @@ const en = {
   },
   how: {
     title: 'How it works',
-    lead: 'From the first scan to a free table, in four steps your staff already know.',
+    lead: 'From the first scan to the paid bill, every table follows four simple steps.',
     steps: [
       {
         title: 'Scan',
@@ -131,7 +132,7 @@ const en = {
       },
       {
         title: 'Bill and pay',
-        body: 'One tap makes the bill with your taxes and charges. Print it, take payment the way you already do, and the table is free for the next guests.',
+        body: 'One tap makes the bill with every dish the table ordered, your taxes, and any other charges that apply. Print it, take payment the way you already do, and the table is free for the next guests.',
       },
     ],
   },
@@ -334,7 +335,7 @@ const en = {
         id: 'billing',
         nav: 'Billing',
         title: 'Bills in one tap',
-        lead: 'The counter makes the bill from everything the table ordered, with your taxes and charges.',
+        lead: 'The counter makes the bill from everything the table ordered, with your taxes and any other charges that apply.',
         points: [
           { text: 'GST and service charge added the same way on every bill' },
           { text: 'Prints on 80 mm and 58 mm receipt printers' },

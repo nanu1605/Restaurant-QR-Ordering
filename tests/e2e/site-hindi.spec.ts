@@ -32,11 +32,22 @@ async function startSignup(context: BrowserContext, baseURL: string) {
   return () => admin.from('site_signups').delete().eq('id', data.id);
 }
 
-/** Where the switch sits: the header from 1024px, the footer below (the menu sheet too). */
-const switchArea = (page: Page) =>
-  (page.viewportSize()?.width ?? 0) >= 1024
-    ? page.getByRole('banner')
-    : page.getByRole('contentinfo');
+/** The footer group's name; the header button adds the page's language to it. */
+const LANGUAGE = /^(Language|भाषा)/;
+
+/** The footer's English / हिन्दी buttons (the phone menu has them too). */
+const footerLanguages = (page: Page) =>
+  page.getByRole('contentinfo').getByRole('group', { name: LANGUAGE });
+
+/** Moves to the other language: the header's language menu from 1024px, the footer below. */
+async function switchTo(page: Page, name: 'English' | 'हिन्दी') {
+  if ((page.viewportSize()?.width ?? 0) >= 1024) {
+    await page.getByRole('banner').getByRole('button', { name: LANGUAGE }).click();
+    await page.getByRole('menuitemradio', { name, exact: true }).click();
+  } else {
+    await footerLanguages(page).getByRole('link', { name, exact: true }).click();
+  }
+}
 
 test('every Hindi page is marked Hindi and has a Hindi heading', async ({
   page,
@@ -58,30 +69,32 @@ test('every Hindi page is marked Hindi and has a Hindi heading', async ({
 
 test('the switch leads to the same page in the other language and back', async ({ page }) => {
   await page.goto('/pricing');
-  await switchArea(page).getByRole('link', { name: 'हिन्दी', exact: true }).click();
+  await switchTo(page, 'हिन्दी');
   await expect(page).toHaveURL(/\/hi\/pricing$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
   await expect(page.getByRole('heading', { level: 1 })).toContainText(DEVANAGARI);
+  await expect(footerLanguages(page).locator('[aria-current="true"]')).toHaveText('हिन्दी');
 
-  await switchArea(page).getByRole('link', { name: 'English', exact: true }).click();
+  await switchTo(page, 'English');
   await expect(page).toHaveURL(/:\d+\/pricing$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(footerLanguages(page).locator('[aria-current="true"]')).toHaveText('English');
 });
 
 test('the switch keeps the chosen plan and the campaign tags', async ({ page }) => {
   // docs/DECISIONS.md W-17: a client-side move, so the visit's source carries over too.
   await page.goto('/contact?plan=growth&utm_source=newsletter');
-  await switchArea(page).getByRole('link', { name: 'हिन्दी', exact: true }).click();
+  await switchTo(page, 'हिन्दी');
   await expect(page).toHaveURL(/\/hi\/contact\?plan=growth&utm_source=newsletter$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
   await expect(page.locator('select[name="planCode"]')).toHaveValue('growth');
 });
 
-test('the policies are English only: their switch leads to the Hindi home page', async ({
+test('the policies are English only: the switch leads to /hi, /hi/<policy> to the policy', async ({
   page,
 }) => {
   await page.goto('/terms');
-  await switchArea(page).getByRole('link', { name: 'हिन्दी', exact: true }).click();
+  await switchTo(page, 'हिन्दी');
   await expect(page).toHaveURL(/\/hi$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
 
@@ -94,7 +107,14 @@ test('the policies are English only: their switch leads to the Hindi home page',
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('heading', { level: 1, name: 'Terms of service' })).toBeVisible();
 
-  const response = await page.goto('/hi/terms');
+  // docs/DECISIONS.md W-16: a policy's /hi address leads to the English policy, query kept.
+  await page.goto('/hi/privacy?utm_source=newsletter');
+  await expect(page).toHaveURL(/:\d+\/privacy\?utm_source=newsletter$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('heading', { level: 1, name: 'Privacy policy' })).toBeVisible();
+
+  // Any other unknown /hi path is the 404, marked English.
+  const response = await page.goto('/hi/blog');
   expect(response?.status()).toBe(404);
   await expect(page.getByRole('main')).toHaveAttribute('lang', 'en');
 });

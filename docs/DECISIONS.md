@@ -2399,8 +2399,11 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       `/hi/demo`, `/hi/contact`, `/hi/signup`, `/hi/signup/verify`.
     - Each language has a layout that renders `SiteChrome` (skip link, header, footer) with its
       `lang`; `(site)/layout.tsx` keeps only what both share.
-    - Legal pages exist only in English. `/hi/terms` and any other unknown `/hi` path is the
-      root 404, whose `<main>` is marked English.
+    - Legal pages exist only in English. Their `/hi` addresses (`/hi/terms`, `/hi/privacy`,
+      `/hi/refund`, `/hi/shipping`) lead to the English policy, keeping the query: a redirect
+      in `next.config.ts`, as the owner asked in review (2026-10-11). It is temporary (307), so
+      the policies could still get Hindi twins. Any other unknown `/hi` path is the root 404,
+      whose `<main>` is marked English.
   - **Rejected alternatives:**
     - A `[lang]` segment with a proxy rewrite of English paths: every request rewritten, `/en`
       duplicates, and a segment that catches any first path part.
@@ -2424,20 +2427,35 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
     the parent's image over in `generateMetadata`, since a child's `openGraph` replaces the
     parent's whole object.
 - **W-17 · The language switch:**
-  - **What it is:** `LanguageSwitch`, a link to the same page in the other language, named in
-    that language ("हिन्दी", "English"), with a 44 px target. It sits in the header next to the
-    theme menu (lg and up), in the phone menu, and in the footer.
+  - **What it is:** a language control beside each theme control, as the owner asked in review
+    (2026-10-11). Each is named "Language" / "भाषा" and lists the languages by their own names
+    (English, हिन्दी):
+    - `LanguageSwitch`: English / हिन्दी buttons next to the theme buttons in the footer and the
+      phone menu, with 44 px targets. The page's language is marked `aria-current`. The other
+      is a link to the same page in that language, so it works before the page's JavaScript.
+    - `LanguageMenu`: a language button next to the header's theme menu (lg and up). The two
+      languages are radio items; choosing the other one moves with `router.push`.
+    - It was one link naming the other language, which read as a stray word rather than a
+      setting.
   - **A client-side move that keeps the query:** the chosen plan and cycle and the campaign tags
     carry over. The visit's remembered source and its PostHog id (both kept in page memory,
     W-13) survive too, which a full page load would lose, splitting the funnel.
   - **Where it goes:** from a policy page (English only) it goes to `/hi`.
-  - **No automatic redirects** (the owner's choice), so search engines and shared links always
-    land where they point.
-  - **Font:** the word हिन्दी is drawn in the system font, as ₹ is (W-14). English pages without
-    Hindi text (`/contact`, `/signup`, the policies) then don't download Noto's 99 KB
-    Devanagari file; `site-hindi.spec.ts` checks `/contact`.
+  - **No redirects by browser language or cookie** (the owner's choice), so search engines and
+    shared links land in the language they point to. The one redirect is a policy's `/hi`
+    address, which leads to the English policy (W-16).
+  - **Font:** on English pages the word हिन्दी in both controls is drawn in the system font, as
+    ₹ is (W-14). English pages without Hindi text (`/contact`, `/signup`, the policies) then
+    don't download Noto's 99 KB Devanagari file; `site-hindi.spec.ts` checks `/contact`. Hindi
+    pages have that file anyway, so there it matches the Hindi text around it.
+  - **Header button:** the language icon with the page's language written next to it ("English",
+    "हिन्दी"), so a reader sees the setting without hovering; its name is "Language: English".
+  - **Keyboard focus:** menu items get a brand outline on keyboard focus (`dropdown-menu.tsx`),
+    and the phone menu sheet carries `.site` for the site's focus ring. Both are portalled out of
+    `SiteChrome`, and the menus' accent fill alone was about 1.1:1 against the popover. This
+    also applies to the theme menu and the panels' account menu.
   - **Policies:** on Hindi pages the footer marks them as English, and the theme menu and switch
-    labels are Hindi (`STRINGS.hi.theme`, awaiting the owner's check, B-3).
+    labels are Hindi (`STRINGS.hi.theme`, checked by the owner on 2026-10-11, B-3).
 - **W-18 · Forms, signup and emails in Hindi:**
   - **Replies:** each form's hidden `lang` field (W-15) picks the replies, field errors and
     emails, so `/hi/contact` and `/hi/signup` answer in Hindi.
@@ -2492,7 +2510,8 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
       ₹ or latin-ext letters (W-14); and that the Hindi is in Devanagari with one spelling of
       हिन्दी.
   - **Tests:**
-    - `site-hindi.spec.ts`: each `/hi` page's `lang` and h1, the switch both ways, policies, the
+    - `site-hindi.spec.ts`: each `/hi` page's `lang` and h1, the switch both ways (the header
+      menu on laptops, the footer buttons below), the policies and their `/hi` redirects, the
       404, no sideways scroll from 320 px, and the fonts.
     - Hindi cases in the seo, leads, signup (both emails), demo, contrast, fonts and smoke
       specs. The tests check Devanagari and `lang`, not exact sentences, so copy edits don't
@@ -2570,7 +2589,7 @@ are fixed.
   near-black text). The orange buttons don't change. shadcn's own `dark:` classes now work.
   The choice is saved by a `setTheme` server action; with JavaScript the page repaints at once
   and goes back if saving fails (offline). The website's footer and menu sheet and the customer
-  menu (at its foot, in Hindi too; the Hindi words need the owner's check) use a plain form of
+  menu (at its foot, in Hindi too; the owner checked the Hindi words on 2026-10-11) use a plain form of
   System / Light / Dark buttons, which also works before the page's JavaScript, and shows the
   current choice from the server render. The panels have it in a new account menu in the
   header, which also holds the name and role, the other panel and Log out, and the website's
