@@ -13,5 +13,6 @@ export async function GET(_request: Request, context: RouteContext<'/t/[qrToken]
   if (!session) {
     return Response.json({ error: 'TABLE_NOT_FOUND' }, { status: 404, headers: NO_STORE });
   }
-  return Response.json(session, { headers: NO_STORE });
+  // The bill itself is drawn by the orders page; a poll only needs to notice it changed.
+  return Response.json(session.view, { headers: NO_STORE });
 }

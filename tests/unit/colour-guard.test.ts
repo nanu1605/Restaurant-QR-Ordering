@@ -13,11 +13,12 @@ const FIXED =
   /\b(?:bg|text|border|ring|fill|stroke|outline|divide|from|to|via|shadow|decoration|accent|caret|placeholder)-(?:white|black|(?:stone|gray|zinc|slate|neutral|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d+)?\b|-\[#[0-9a-f]{3,8}\]/gi;
 
 const ALLOWED: Record<string, string[]> = {
-  // Paper: bills, QR sheets, the authenticator QR and the logo preview.
+  // Paper: bills (printed and the guest's copy), QR sheets, the authenticator QR and the logo preview.
   'app/admin/(panel)/tables/print/page.tsx': ['bg-white'],
   'app/admin/(print)/layout.tsx': ['bg-white'],
   'features/billing/components/bill-document.tsx': ['bg-white', 'text-black', 'border-black'],
   'features/billing/components/printable-bill.tsx': ['bg-white'],
+  'features/ordering/components/customer-bill.tsx': ['bg-white'],
   'features/platform/components/mfa-forms.tsx': ['bg-white'],
   'features/settings/components/settings-forms.tsx': ['bg-white'],
   // Scrims behind dialogs and sheets.

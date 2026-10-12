@@ -350,7 +350,7 @@ const printJson = z
 
 export type PrintableBill = { bill: BillDocument; print: PrintSettings };
 
-export function parseSampleBill(json: unknown): PrintableBill {
+export function parsePrintableBill(json: unknown): PrintableBill {
   return z.object({ bill: documentJson, print: printJson }).parse(json);
 }
 

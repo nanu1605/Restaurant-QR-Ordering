@@ -315,11 +315,19 @@ test('an order flows live between the customer, waiter, kitchen and manager', as
   await expect(raviAgain).toHaveAttribute('data-status', 'free', LIVE);
   await expect(raviAgain).toContainText('Available');
 
-  // 13. The customer sees the bill, and the next order starts a fresh session.
+  // 13. The customer sees the paid bill (P11-1), and the next order starts a fresh session.
   await phone.page.goto(`${r.tables['5']!.url}/orders`);
   await expect(
-    phone.page.getByText('Your bill has been generated. Please pay at the counter'),
-  ).toBeVisible();
+    phone.page
+      .getByRole('status')
+      .filter({ hasText: 'Your bill is paid. Thank you for visiting!' }),
+  ).toBeAttached();
+  const yourBill = phone.page.getByRole('region', { name: 'Your bill' });
+  await expect(yourBill).toContainText('/00001');
+  // The customer copy, as printed: "Served by" stays; no discount reason or UPI QR on screen.
+  await expect(yourBill).toContainText('Served byRavi Kumar');
+  await expect(yourBill).not.toContainText('Regular guest');
+  await expect(yourBill).not.toContainText('Scan to pay');
   await phone.page.goto(r.tables['5']!.url);
   await addDish(phone.page, 'Paneer Tikka');
   await placeOrderFromMenu(phone.page);
