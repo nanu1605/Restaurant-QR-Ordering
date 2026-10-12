@@ -2740,3 +2740,62 @@ Share", but iOS 26's default layout keeps Share under •••. The steps now s
 screen until closed, and in-app browsers that can't install no longer offer it. The verifier
 also noted, and B-7 accepts, that catching `beforeinstallprompt` hides Chrome's mini-infobar on
 Android. Chrome's own menu still offers Install.
+
+## Phase 11 · Owner requests (from 2026-10-12)
+
+After reviewing the Hindi website, the owner asked for guests to see their bill, a launch screen
+in the installed app, a "Forgot password" option, a storefront photo and one free trial per
+restaurant at signup, and a Hindi or English worker panel per login. Planned as five stops, each
+its own PR: 11a customer bill, 11b launch screen, 11c forgot password, 11d storefront photo and
+trials, 11e worker panel in Hindi.
+
+### 11a · Guests see their bill
+
+- **P11-1 · Who sees the bill:**
+  - **The rule.** Only a phone that ordered in the billed session sees it, for up to an hour or
+    until it orders again. This is the owner's choice, and the same rule as
+    `last_session_billed` (P3-11).
+  - **How it is returned.** `customer_get_session` returns the bill only when:
+    - that flag is true;
+    - the session's bill isn't void;
+    - one of this phone's dishes is on it, counted as `private.bill_lines` counts them (an
+      accepted order with a dish that isn't cancelled or removed).
+
+    The last condition comes from the review. Without it, a phone from the next party that
+    ordered into a session that was still open, and had that order rejected or removed, would
+    get the previous party's bill. Such a phone now sees a neutral thank-you instead of the
+    bill.
+
+  - **No bill to show.** When the session is billed but there is no bill to show (a void
+    without reopening, or no dish of this phone's on it), the message says "Thank you for
+    visiting! For any questions about your bill, please ask our staff." It doesn't ask for a
+    payment.
+  - **Waiter-placed orders.** Guests whose dishes the waiter entered have no phone on the
+    session and get no bill. That was accepted as the safer choice.
+  - **What a guest sees.** The guest gets the customer copy (§11.3), without:
+    - the bill's id;
+    - who generated or voided it;
+    - the discount reason and void reason;
+    - the print count.
+  - **"Served by".** The line follows the printed copy, so it shows when `print_waiter_on_bill`
+    is on.
+- **P11-2 · Drawn on the server:**
+  - **No bill code on `/t`.** The orders page draws the bill (`CustomerBill`, which reuses the
+    printed `BillDocument`) on the server and hands it to `OrdersView` as a ready element. So
+    `/t` ships no bill code: the orders page is 247 KiB of 275.
+  - **Polling.** The 10 s poll returns only `bill: { invoiceNumber, paid }`.
+    - The paid message comes straight from the poll.
+    - When the invoice number differs from the one the page drew (a new bill, or a void), the
+      view calls `router.refresh()`. A payment doesn't change the drawn bill, so it doesn't
+      refresh the page.
+    - The drawn bill shows only while the poll still reports it, so a voided bill goes at once.
+  - **Screen readers.** The billed message is announced from a status line that is always on
+    the page, so a guest watching the page hears when the bill arrives or is paid.
+  - **Shared parser.** `parseSampleBill` became `parsePrintableBill`, since real bills now use
+    it too.
+- **P11-3 · As printed:**
+  - **Language.** The bill stays in English and in the system font, exactly as on paper. Only
+    the message and heading around it follow the phone's language.
+  - **No UPI QR.** It isn't shown on screen, because a phone can't scan its own screen.
+  - **Paid.** Once a payment is recorded, the message changes to "Your bill is paid. Thank you
+    for visiting!".

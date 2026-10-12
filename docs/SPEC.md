@@ -660,6 +660,7 @@ Storage: bucket `menu-images` (public read), bucket `logos` (public read). Write
 - On first visit, set a signed, `httpOnly`, `SameSite=Lax`, 1-year cookie `cid` containing a random device id (uuid). Used for: cancelling only one's own items, rate limiting, audit labels.
 - Customers see all current-session orders for their table (any device), but no data from previous sessions.
 - Customers never see other tables, staff names, or bill history.
+- The one bill a guest sees is their own: the customer copy of the session they ordered in, on a phone with a dish on that bill, for up to an hour after it was generated (§13.1; docs/DECISIONS.md P11-1). It leaves out who generated it, the discount reason, print counts and the UPI QR. The "Served by" line follows the printed copy (`print_waiter_on_bill`).
 
 ### 9.3 Database functions (RPC) — the business API
 
@@ -671,7 +672,7 @@ All are `SECURITY DEFINER`, `set search_path = public`, validate inputs, check p
 |---|---|
 | `customer_get_table(p_qr_token)` | Returns restaurant public info, table label, access state, menu (active categories/items/variants with availability), and open session summary |
 | `customer_place_order(p_qr_token, p_device_id, p_idempotency_key, p_items jsonb, p_note)` | Validates table active, access state `full`, items/variants belong to restaurant, active and available, qty 1–20, ≤ 30 lines. Locks the dining table row. Opens a session if none is open. Snapshots names/prices from DB. Sets order status `pending_approval` if approval required and session not approved, else `accepted`. Enforces rate limits. Returns order + session summary. Duplicate idempotency key → returns existing order. |
-| `customer_get_session(p_qr_token)` | Current open session's orders and items with statuses (for polling). If the device's last session was billed in the last 60 min, include `last_session_billed: true` so UI can show a "bill generated" message |
+| `customer_get_session(p_qr_token)` | Current open session's orders and items with statuses (for polling). If the device's last session was billed in the last 60 min, include `last_session_billed: true` so UI can show a "bill generated" message, and `bill`: that session's bill unless voided, as the customer copy (§9.2) |
 | `customer_cancel_item(p_qr_token, p_device_id, p_order_item_id)` | Allowed only if the item's order was placed by this device, item status `placed`, and `now() - order.created_at <= customer_cancel_window_seconds`. Sets `cancelled` |
 | `customer_create_service_request(...)` | Phase 9 |
 
@@ -756,6 +757,7 @@ All are `SECURITY DEFINER`, `set search_path = public`, validate inputs, check p
 - A table is **free** when it has no `open` session. Generating the bill frees the table immediately (user requirement: automatic reset so the next customer's orders never mix with the previous customer's).
 - Any scan while a session is open joins that session (a group sharing one table from several phones).
 - A customer device that still shows a billed session gets a fresh session on its next order.
+- A phone with a dish on a bill sees that bill on its Orders page for up to an hour, until it orders again (§13.1). A voided bill disappears; when the void reopens the table, the phone sees the rounds again. A phone that didn't order there, or whose order was rejected or removed (such as the next party's, sent while the session was still open), never sees it.
 
 ### 10.2 First-order approval (anti-prank)
 
@@ -917,6 +919,8 @@ Composition declaration line: "Composition taxable person, not eligible to colle
 
 Footer: UPI QR (if enabled) with caption "Scan to pay ₹662 to <payee name>", footer text, "Powered by tableorder" (small; removable on Pro plan — feature `remove_branding`).
 
+The guest's on-screen copy (§13.1 Orders page) is the customer copy without the UPI QR: a phone can't scan its own screen.
+
 UPI QR payload: `upi://pay?pa=<vpa>&pn=<url-encoded payee>&am=<rupees with 2 decimals>&cu=INR&tn=<url-encoded invoice number>`. Money goes directly to the restaurant; the app never confirms it — staff record payment manually.
 
 ---
@@ -967,7 +971,7 @@ Performance budget: server-rendered, minimal client JS, images lazy-loaded, firs
 - Rejected order: "Staff couldn't confirm this order: <reason>."
 - Cancel button only on this device's items that are still cancellable, with a live countdown.
 - "Order more" button → menu.
-- Session billed state: "Your bill has been generated. Please pay at the counter or to your server. Thank you!" then the page resets for a new session.
+- Session billed state: "Your bill has been generated. Please pay at the counter or to your server. Thank you!", then "Your bill": the customer copy of the bill (§11.3), as printed and in English. Once a payment is recorded the message becomes "Your bill is paid. Thank you for visiting!". Only a phone with a dish on that bill sees it, for up to an hour or until that phone orders again, which starts a new session; "Start a new order" opens the menu. A phone with no bill to show (it was voided, or none of the phone's dishes were billed) reads "Thank you for visiting! For any questions about your bill, please ask our staff." (docs/DECISIONS.md P11-1…P11-3).
 - Polls every 10 s while visible.
 
 ### 13.2 Worker panel (`/staff`) — tablet-first, also works on phones
