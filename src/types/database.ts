@@ -1050,6 +1050,7 @@ export type Database = {
           is_active: boolean
           restaurant_id: string
           role: Database["public"]["Enums"]["member_role"]
+          ui_lang: string
           updated_at: string
           user_id: string
           username: string
@@ -1061,6 +1062,7 @@ export type Database = {
           is_active?: boolean
           restaurant_id: string
           role: Database["public"]["Enums"]["member_role"]
+          ui_lang?: string
           updated_at?: string
           user_id: string
           username: string
@@ -1072,6 +1074,7 @@ export type Database = {
           is_active?: boolean
           restaurant_id?: string
           role?: Database["public"]["Enums"]["member_role"]
+          ui_lang?: string
           updated_at?: string
           user_id?: string
           username?: string
@@ -1885,6 +1888,7 @@ export type Database = {
           last_sign_in_at: string
           member_id: string
           role: Database["public"]["Enums"]["member_role"]
+          ui_lang: string
           username: string
           waiter_id: string
           waiter_name: string
@@ -2026,6 +2030,7 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
       }
+      member_set_ui_lang: { Args: { p_lang: string }; Returns: undefined }
       menu_hindi_names_claim: {
         Args: { p_limit?: number; p_restaurant_id?: string }
         Returns: {
