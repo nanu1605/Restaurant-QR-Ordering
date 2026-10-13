@@ -124,12 +124,13 @@ test('the platform admin sees the storefront photo and the restaurants that may 
   page,
 }) => {
   const admin = adminClient();
-  // A pincode of this run's own, so earlier runs' restaurants don't crowd the list.
+  // A pincode of this run's own; with the same address as well, the neighbour has two
+  // reasons and comes before earlier runs' restaurants, which share only the address.
   const pincode = String(100000 + Math.floor(Math.random() * 899999));
   const neighbour = await createTestRestaurant({ prefix: 'nbr' });
   await admin
     .from('restaurants')
-    .update({ pincode })
+    .update({ pincode, address_line: '5 FC Road' })
     .eq('id', neighbour.restaurantId)
     .throwOnError();
 
@@ -169,7 +170,9 @@ test('the platform admin sees the storefront photo and the restaurants that may 
 
   const duplicates = page.getByRole('region', { name: 'Possible duplicates' });
   await expect(duplicates.getByRole('link', { name: neighbour.name })).toBeVisible();
-  await expect(duplicates).toContainText(`${neighbour.slug}: Same pincode`);
+  await expect(duplicates.getByRole('listitem').first()).toHaveText(
+    `${neighbour.name}${neighbour.slug}: Similar address, Same pincode`,
+  );
 
   // The list marks it for a look.
   await page.goto(`/super/restaurants?q=${slug}`);
