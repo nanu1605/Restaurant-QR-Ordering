@@ -220,5 +220,21 @@ select results_eq(
 );
 select tests.clear_auth();
 
+-- A dish renamed after it was ordered: its Hindi name may be another dish's.
+update public.menu_items set name = 'Chicken Tikka' where id = :'paneer';
+select tests.authenticate_as(:'a_kitchen');
+select is(
+  (
+    select item ->> 'name_hi'
+    from jsonb_array_elements(public.staff_get_board() -> 'tables') t,
+         jsonb_array_elements(t -> 'session' -> 'rounds') r,
+         jsonb_array_elements(r -> 'items') item
+    where item ->> 'name' = 'Paneer Tikka'
+  ),
+  null,
+  'a dish renamed since it was ordered shows no Hindi name'
+);
+select tests.clear_auth();
+
 select * from finish();
 rollback;

@@ -1,6 +1,6 @@
 -- Stop 11e: the worker panel in Hindi (docs/DECISIONS.md P11-15 to P11-18).
 -- Each login keeps the language of its worker panel (/staff); the admin and
--- platform panels, bills and tickets stay English.
+-- platform panels and bills stay English.
 
 alter table public.restaurant_members
   add column ui_lang text not null default 'en' check (ui_lang in ('en', 'hi'));
@@ -199,8 +199,12 @@ begin
                                            'id', oi.id,
                                            'name', oi.item_name_snapshot,
                                            -- ponytail: the dish's current Hindi name, not a
-                                           -- snapshot, as on the guest's bill (P11-16).
-                                           'name_hi', coalesce(mi.name_hi, mi.name_hi_auto),
+                                           -- snapshot (P11-16); none once the dish has been
+                                           -- renamed, so the kitchen never reads another dish.
+                                           'name_hi', case
+                                             when mi.name = oi.item_name_snapshot
+                                               then coalesce(mi.name_hi, mi.name_hi_auto)
+                                           end,
                                            'variant', oi.variant_name_snapshot,
                                            'addons', private.addon_names(oi.addons_snapshot),
                                            'food_type', oi.food_type_snapshot,
