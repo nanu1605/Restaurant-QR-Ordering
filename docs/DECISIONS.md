@@ -3162,7 +3162,7 @@ Refuted:
     have no Hindi); names and reasons staff type; times (en-IN, marked `lang="en"` on the
     rounds). Also the service worker's static offline page, which can't see the login, and the
     toasts' labels after a move from `/admin` in the browser.
-  - **Size.** `/staff` is 457 of 565 KiB. The account menu, shared by every panel, now carries the
+  - **Size.** `/staff` is 458 of 565 KiB. The account menu, shared by every panel, now carries the
     dictionary: `/super` grew 12 KiB, to 248.
 - **P11-16 · Dishes by their Hindi name on the worker panel:**
   - **This reverses part of HN-1.** The `hindi_names` migration said staff screens keep the name
