@@ -1,4 +1,4 @@
-import { ArrowLeft, Eye } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -12,6 +12,7 @@ import {
   TotalOrdersSummary,
 } from '@/features/billing/components/total-orders-view';
 import { readTotalOrdersParams } from '@/features/billing/schemas';
+import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { SupportBoard } from '@/features/platform/components/support-board';
 import { SupportMenuList, SupportTablesList } from '@/features/platform/components/support-view';
 import {
@@ -53,13 +54,12 @@ export default async function SupportViewPage({
 
   return (
     <>
-      <Link
-        href={`/super/restaurants/${restaurant.id}`}
-        className="inline-flex items-center gap-1 self-start text-sm font-medium text-brand underline-offset-4 hover:underline"
-      >
-        <ArrowLeft aria-hidden className="size-4" />
-        {restaurant.name}
-      </Link>
+      <Breadcrumbs
+        items={[
+          { href: '/super/restaurants', label: 'Restaurants' },
+          { href: `/super/restaurants/${restaurant.id}`, label: restaurant.name },
+        ]}
+      />
       <PageHeader
         title={`${SUPPORT_SECTION_LABELS[section]}: ${restaurant.name}`}
         description={

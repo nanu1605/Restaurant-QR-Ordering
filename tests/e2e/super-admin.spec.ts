@@ -231,6 +231,12 @@ test('the support view is read-only and every look is logged', async ({ page }) 
     .getByRole('link', { name: 'Menu' })
     .click();
   await expect(page).toHaveURL(/\/support\/menu$/);
+  // The breadcrumb leads back to the restaurant.
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .locator(`a[href="/super/restaurants/${restaurant.restaurantId}"]`),
+  ).toBeVisible();
   await expect(main.getByRole('region', { name: 'Starters' })).toContainText('Paneer Tikka');
   // Nothing to press: only links between the sections.
   await expect(main.getByRole('button')).toHaveCount(0);

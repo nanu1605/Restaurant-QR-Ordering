@@ -101,11 +101,13 @@ test('the platform admin panel fits every screen', async ({ page }) => {
   const paths = [
     '/super',
     '/super/restaurants',
+    '/super/restaurants/new',
     '/super/leads',
     '/super/subscriptions',
     '/super/plans',
     '/super/webhooks',
     '/super/audit',
+    '/super/settings',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

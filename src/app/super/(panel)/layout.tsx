@@ -18,10 +18,12 @@ export default async function SuperPanelLayout({ children }: LayoutProps<'/super
         leading={<SuperMobileNav />}
       />
       <div className="flex flex-1">
-        <aside className="hidden w-56 shrink-0 border-r border-line bg-surface p-3 lg:block print:hidden">
-          <SuperNav />
+        <aside className="hidden w-56 shrink-0 border-r border-line bg-surface lg:block print:hidden">
+          <div className="sticky top-0 max-h-dvh overflow-y-auto p-3">
+            <SuperNav />
+          </div>
         </aside>
-        <main className="flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col gap-4 p-4 lg:px-6 lg:py-5">{children}</main>
       </div>
     </div>
   );

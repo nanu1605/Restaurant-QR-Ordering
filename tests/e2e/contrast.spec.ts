@@ -91,6 +91,13 @@ test('admin panel', async ({ page }) => {
 
 test('platform admin panel', async ({ page }) => {
   await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast'));
-  const paths = ['/super', '/super/restaurants', '/super/leads', '/super/plans', '/super/audit'];
+  const paths = [
+    '/super',
+    '/super/restaurants',
+    '/super/leads',
+    '/super/plans',
+    '/super/audit',
+    '/super/settings',
+  ];
   expect(await sweep(page, paths)).toEqual([]);
 });
