@@ -1,7 +1,8 @@
 -- "Forgot password" (spec §9.5, docs/DECISIONS.md P11-6 to P11-9): only the
 -- server starts, verifies and finishes resets; a code is sent only to accounts
--- with a real address; an email without one answers like any other; one email
--- or network can't flood the table; a code allows five wrong tries; a used
+-- with a real address (platform admins only with their authenticator set up);
+-- an email without one answers like any other; one email or network can't
+-- flood the table; a code allows five wrong tries, an email ten a day; a used
 -- code stops working; each reset is in the audit log.
 begin;
 
@@ -19,6 +20,12 @@ select tests.create_user('waiter@reset-one.staff.menumesh.in') as waiter \gset
 insert into public.restaurant_members (restaurant_id, user_id, role, display_name, username)
 values (:'rest_one', :'waiter', 'waiter', 'Ravi', 'waiter');
 select tests.create_platform_admin('admin@reset.test') as admin \gset
+insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+values (gen_random_uuid(), :'admin', 'Phone', 'totp', 'verified', now(), now());
+select tests.create_platform_admin('new-admin@reset.test') as new_admin \gset
+insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+values (gen_random_uuid(), :'new_admin', 'Phone', 'totp', 'unverified', now(), now());
+select tests.create_user('cap@reset.test') as cap \gset
 
 \set ip '''aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'''
 \set net '''cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'''
@@ -74,6 +81,11 @@ select public.auth_password_reset_start('waiter@reset-one.staff.menumesh.in', :r
 select is((:'waiter_reset'::jsonb) ->> 'send', 'false', 'a staff login''s made-up address gets nothing');
 select public.auth_password_reset_start('nobody@reset.test', :right, :net) as nobody_reset \gset
 select is((:'nobody_reset'::jsonb) ->> 'send', 'false', 'an email without an account gets nothing');
+select is(
+  public.auth_password_reset_start('new-admin@reset.test', :right) ->> 'send',
+  'false',
+  'nor does a platform admin without a verified authenticator, whose inbox alone would open the platform'
+);
 select is(
   (select count(*)::int from public.password_resets where id in (
     ((:'waiter_reset'::jsonb) ->> 'id')::uuid, ((:'nobody_reset'::jsonb) ->> 'id')::uuid)),
@@ -181,6 +193,35 @@ select is(
   'an unknown request is gone'
 );
 
+-- Wrong codes add up per email: ten a day, however many codes it asks for.
+select public.auth_password_reset_start('cap@reset.test', :right) as cap_one \gset
+select public.auth_password_reset_start('cap@reset.test', :right) as cap_two \gset
+select public.auth_password_reset_start('cap@reset.test', :right) as cap_three \gset
+select is(
+  array_agg(public.auth_password_reset_verify((:'cap_one'::jsonb ->> 'id')::uuid, :wrong) ->> 'status'),
+  array['wrong', 'wrong', 'wrong', 'wrong', 'locked'],
+  'the first code locks after five wrong tries'
+) from generate_series(1, 5);
+select is(
+  array_agg(public.auth_password_reset_verify((:'cap_two'::jsonb ->> 'id')::uuid, :wrong) ->> 'tries_left'),
+  array['4', '3', '2', '1', null],
+  'a second code counts down to the email''s tenth wrong try'
+) from generate_series(1, 5);
+select is(
+  public.auth_password_reset_verify((:'cap_three'::jsonb ->> 'id')::uuid, :right),
+  '{"status": "locked"}'::jsonb,
+  'after ten, even a new right code is refused for the day'
+);
+select tests.clear_auth();
+update public.password_resets set created_at = now() - interval '25 hours'
+where id in ((:'cap_one'::jsonb ->> 'id')::uuid, (:'cap_two'::jsonb ->> 'id')::uuid);
+select tests.as_service_role();
+select is(
+  public.auth_password_reset_verify((:'cap_three'::jsonb ->> 'id')::uuid, :right) ->> 'status',
+  'ok',
+  'a day later the email''s codes work again'
+);
+
 -- ─── Finishing ──────────────────────────────────────────────────────────────
 select public.auth_password_reset_finish((:'owner_reset'::jsonb ->> 'id')::uuid);
 select is(
@@ -236,7 +277,7 @@ select tests.clear_auth();
 update public.password_resets set created_at = now() - interval '25 hours'
 where id = (:'owner_reset'::jsonb ->> 'id')::uuid;
 select tests.as_service_role();
-select is(public.password_resets_cleanup(), 1, 'requests are deleted after a day');
+select is(public.password_resets_cleanup(), 3, 'requests are deleted after a day');
 
 select tests.clear_auth();
 select tests.create_user('gone@reset.test') as gone \gset

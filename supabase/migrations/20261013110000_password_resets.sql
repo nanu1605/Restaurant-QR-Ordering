@@ -1,14 +1,15 @@
 -- "Forgot password" on the login page (spec §9.5, docs/DECISIONS.md P11-6 to
 -- P11-9). /login/forgot stores a hashed 6-digit code for the email typed
 -- there. The server emails the code only when the email belongs to an account
--- with a real address: owners who gave one, and platform admins. Staff
--- logins' made-up addresses never get mail. The code and a new password then
+-- with a real address: owners who gave one, and platform admins who have set
+-- up their authenticator. Staff logins' made-up addresses never get mail. The code and a new password then
 -- set the password through the Admin API. Every request writes a row, account
 -- or not, so neither the answers nor the limits tell whether an email has an
 -- account. Service role only: visitors never touch the table.
 --
 -- Errors: INVALID_INPUT (malformed email or hash), RATE_LIMITED (3 requests an
--- hour for one email, 10 a day from one network).
+-- hour for one email, 10 a day from one network). Wrong codes add up per
+-- email: 10 a day lock its codes until the day is over.
 
 create table public.password_resets (
   id uuid primary key default gen_random_uuid(),
@@ -89,13 +90,23 @@ begin
   end if;
 
   -- Staff logins have made-up addresses (username@<code>.staff.<domain>):
-  -- their owner or manager resets them instead.
+  -- their owner or manager resets them instead. Any domain with ".staff." in
+  -- it is left out, which errs on the side of sending nothing. A platform
+  -- admin without a verified authenticator is left out too: /super/mfa would
+  -- let whoever set the new password enrol their own (P11-8).
   select u.id into v_user
   from auth.users u
   where lower(u.email) = v_email
     and split_part(u.email, '@', 2) not like '%.staff.%'
     and u.deleted_at is null
-    and not u.is_anonymous;
+    and not u.is_anonymous
+    and (
+      not exists (select 1 from public.platform_admins a where a.user_id = u.id)
+      or exists (
+        select 1 from auth.mfa_factors f
+        where f.user_id = u.id and f.factor_type = 'totp' and f.status = 'verified'
+      )
+    );
 
   insert into public.password_resets (email, user_id, code_hash, ip_hash)
   values (v_email, v_user, p_code_hash, p_ip_hash)
@@ -109,8 +120,9 @@ $$;
 
 -- Checks a code. Never raises for a wrong code, so the try counts:
 -- {status: ok, user_id, email} for the right code (until the password is
--- saved); wrong (with tries_left), expired, locked (5 wrong tries) or gone
--- (unknown or used). A request without an account never matches, so it
+-- saved); wrong (with tries_left), expired, locked (5 wrong tries for this
+-- code, or 10 in a day for its email, so new codes don't buy more guesses) or
+-- gone (unknown or used). A request without an account never matches, so it
 -- answers like any wrong code. The right code isn't used up here, so a
 -- password the Admin API refuses can be tried again.
 create or replace function public.auth_password_reset_verify(p_id uuid, p_code_hash text)
@@ -122,13 +134,24 @@ set search_path = ''
 as $$
 declare
   v_reset public.password_resets;
+  v_email_tries integer;
   v_email text;
 begin
+  -- One email's codes are checked one at a time, so tries can't race past the day's limit.
+  -- The email's lock comes before the row's, in the same order as starting a request.
+  select r.email into v_email from public.password_resets r where r.id = p_id;
+  if not found then
+    return jsonb_build_object('status', 'gone');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('password_reset:email:' || v_email, 0));
   select * into v_reset from public.password_resets r where r.id = p_id for update;
   if not found or v_reset.used_at is not null then
     return jsonb_build_object('status', 'gone');
   end if;
-  if v_reset.tries >= 5 then
+  select coalesce(sum(r.tries), 0) into v_email_tries
+  from public.password_resets r
+  where r.email = v_reset.email and r.created_at > now() - interval '1 day';
+  if v_reset.tries >= 5 or v_email_tries >= 10 then
     return jsonb_build_object('status', 'locked');
   end if;
   if v_reset.expires_at <= now() then
@@ -137,10 +160,12 @@ begin
 
   if v_reset.user_id is null or v_reset.code_hash is distinct from p_code_hash then
     update public.password_resets r set tries = r.tries + 1 where r.id = p_id;
-    if v_reset.tries + 1 >= 5 then
+    if v_reset.tries + 1 >= 5 or v_email_tries + 1 >= 10 then
       return jsonb_build_object('status', 'locked');
     end if;
-    return jsonb_build_object('status', 'wrong', 'tries_left', 4 - v_reset.tries);
+    return jsonb_build_object(
+      'status', 'wrong', 'tries_left', least(4 - v_reset.tries, 9 - v_email_tries)
+    );
   end if;
 
   select u.email into v_email from auth.users u where u.id = v_reset.user_id;
