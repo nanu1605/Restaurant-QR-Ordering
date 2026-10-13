@@ -50,6 +50,8 @@ async function askForCode(page: Page, email: string) {
   const send = page.getByRole('button', { name: 'Email me a code' });
   await expect(send).toBeEnabled();
   await send.click();
+  // The step changes on the same address: focus moves to the code field, which reads the intro.
+  await expect(page.getByRole('textbox', { name: 'Code from the email' })).toBeFocused();
   await expect(
     page.getByText(
       `If ${email.trim().toLowerCase()} has a MenuMesh account, we’ve emailed it a 6-digit code.`,
@@ -135,6 +137,7 @@ test('an email without an account gets the same answer and no email', async ({
 
   // Back to the first step, for another email or a new code.
   await page.getByRole('button', { name: 'Get a new code, or use another email' }).click();
+  await expect(page.getByRole('textbox', { name: 'Email' })).toBeFocused();
   await expect(page.getByRole('button', { name: 'Email me a code' })).toBeVisible();
 });
 
@@ -143,6 +146,6 @@ test('staff are told to ask their owner or manager', async ({ page }) => {
   await expect(
     page
       .getByRole('tabpanel', { name: 'Restaurant code' })
-      .getByText('Forgot your password? Ask your owner or manager to reset it.'),
+      .getByText(/^Forgot your password\? Staff: ask your owner or manager to reset it\./),
   ).toBeVisible();
 });

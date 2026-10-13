@@ -24,6 +24,10 @@ describe('forgot password', () => {
     expect(issues(resetRequestSchema.safeParse({ email: 'nope' }))).toEqual([
       ['email', 'Enter a valid email address.'],
     ]);
+    // Emails stop at 254 characters, as the table does: this one is 255.
+    expect(issues(resetRequestSchema.safeParse({ email: `${'a'.repeat(250)}@x.in` }))).toEqual([
+      ['email', 'Enter a valid email address.'],
+    ]);
   });
 
   it('checks the code and the new password, typed twice', () => {
