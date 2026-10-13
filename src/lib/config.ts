@@ -15,8 +15,9 @@ export const THEME_COLOR = '#FFFFFF';
 export const THEME_COLOR_DARK = '#1C1A18';
 
 /**
- * The staff and admin layouts' install manifest and home screen name (spec §19
- * Phase 9, docs/DECISIONS.md P9-6). Customer pages don't link it.
+ * The install manifest and home screen name, linked from the website, the login
+ * page and the staff and admin layouts (spec §19 Phase 9, docs/DECISIONS.md
+ * P9-6). Customer pages don't link it.
  */
 export const INSTALLABLE = {
   manifest: '/app.webmanifest',

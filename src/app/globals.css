@@ -310,11 +310,12 @@ html:has(.site) {
 
 /* The installed app's launch screen (AppSplash; docs/DECISIONS.md P11-4): only when opened
    from the home screen, until the page has loaded. Then the logo zooms in and the screen fades.
-   If the page's JavaScript never runs, it fades on its own after 5 s. */
+   If the page's JavaScript never runs, it fades on its own after 5 s. Never printed: the bill's
+   print page prints as soon as it opens, which can be a new app window. */
 .app-splash {
   display: none;
 }
-@media (display-mode: standalone) {
+@media screen and (display-mode: standalone) {
   html:not([data-launched]) .app-splash {
     position: fixed;
     inset: 0;

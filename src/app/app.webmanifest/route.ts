@@ -4,9 +4,9 @@ import { APP_NAME, THEME_COLOR } from '@/lib/config';
 
 /**
  * The install manifest for the staff and admin panels (spec §19 Phase 9,
- * docs/DECISIONS.md P9-6). Only their layouts link it, so customer pages are
- * never offered for install. It opens on /login, which sends a signed-in user
- * straight to their panel.
+ * docs/DECISIONS.md P9-6). The website, the login page and the panels link it,
+ * so the app installs from any of them; customer pages never offer it. It opens
+ * on /login, which sends a signed-in user straight to their panel.
  */
 export function GET() {
   const manifest: MetadataRoute.Manifest = {

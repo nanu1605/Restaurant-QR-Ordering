@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Noto_Sans } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 
+import { AppSplash } from '@/components/shared/app-splash';
 import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
 import { STRINGS } from '@/features/ordering/strings';
@@ -67,6 +68,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
       className={`${notoSans.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">
+        {/* On every page, so the installed app shows it wherever it opens (P11-4). */}
+        <AppSplash />
         <ThemeProvider theme={theme}>{children}</ThemeProvider>
         <Toaster
           position="top-center"

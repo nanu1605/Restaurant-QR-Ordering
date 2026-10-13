@@ -1415,7 +1415,7 @@ Goal: behaves well in real restaurant conditions.
 
 Tasks:
 1. Offline handling for staff panel: offline banner, queue status updates in IndexedDB and replay on reconnect (status moves are idempotent by target status); billing requires online.
-2. PWA for staff/admin (manifest, icons, installable, app-shell caching), Screen Wake Lock on the board when supported. The account menu offers "Install app" where the device can install it (the browser's prompt, or Safari's Add to Home Screen steps; docs/DECISIONS.md B-7). When the installed app opens (login, worker or admin panel), a launch screen shows the MenuMesh logo with "Powered by Jainav Infotech Pvt Ltd" until the page has loaded; then the logo zooms in and the screen fades (docs/DECISIONS.md P11-4, P11-5). Browser tabs never show it.
+2. PWA for staff/admin (manifest, icons, installable, app-shell caching), Screen Wake Lock on the board when supported. The account menu offers "Install app" where the device can install it (the browser's prompt, or Safari's Add to Home Screen steps; docs/DECISIONS.md B-7). The website and the login page link the same manifest, so installing from any of them gives the same app. When the installed app opens, on any page, a launch screen shows the MenuMesh logo with "Powered by Jainav Infotech Pvt Ltd" until the page has loaded; then the logo zooms in and the screen fades (docs/DECISIONS.md P11-4, P11-5). Browser tabs never show it.
 3. Customer "Call waiter" and "Request bill" buttons → `service_requests` → badge on table card + chime; acknowledge/resolve.
 4. Move session to another table (`staff_move_session`).
 5. Menu add-ons (groups, options, prices) with snapshots.
