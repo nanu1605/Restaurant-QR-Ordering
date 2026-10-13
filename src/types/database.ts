@@ -1014,6 +1014,7 @@ export type Database = {
           created_at: string
           grace_days: number
           id: number
+          setup_fee_discount_ends_at: string | null
           setup_fee_discount_paise: number
           setup_fee_paise: number
           support_email: string | null
@@ -1025,6 +1026,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
           support_email?: string | null
@@ -1036,6 +1038,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
           support_email?: string | null
@@ -2140,6 +2143,7 @@ export type Database = {
         Args: { p_patch: Json; p_plan_id: string }
         Returns: Json
       }
+      platform_update_settings: { Args: { p_patch: Json }; Returns: Json }
       razorpay_record_webhook: {
         Args: { p_event_id: string; p_payload: Json }
         Returns: string
