@@ -4,9 +4,11 @@
 begin;
 select no_plan();
 
--- Restaurants left by other runs (E2E) are unsuspended so the filters below
--- only find this file's; the transaction is rolled back at the end.
+-- Restaurants left by other runs (E2E) are unsuspended, and their paid
+-- subscriptions cancelled, so the filters below only find this file's within
+-- the first page; the transaction is rolled back at the end.
 update public.restaurants set status = 'active', suspended_reason = null where status = 'suspended';
+update public.restaurant_subscriptions set status = 'cancelled' where status = 'active';
 
 select tests.create_platform_admin('platform@admin.test') as admin \gset
 select tests.authenticate_as_platform_admin(:'admin');
