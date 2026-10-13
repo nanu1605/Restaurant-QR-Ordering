@@ -82,13 +82,14 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   await page.getByRole('button', { name: 'Send payment link' }).click();
   await dialog.getByLabel('For').selectOption('setup_fee');
   await expect(dialog.getByLabel('Months')).toHaveCount(0);
-  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('1768.82');
+  // ₹999 less the ₹500 discount, plus GST.
+  await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('588.82');
   await dialog.getByRole('button', { name: 'Send link' }).click();
   await expect(dialog.getByRole('textbox', { name: 'Payment link' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Done' }).click();
   const links = await linksFor(request, restaurant.restaurantId);
   expect(links[1]).toMatchObject({
-    amount: 176882,
+    amount: 58882,
     notes: { restaurant_id: restaurant.restaurantId, purpose: 'setup_fee' },
   });
   expect(links[1]!.notes).not.toHaveProperty('months');
