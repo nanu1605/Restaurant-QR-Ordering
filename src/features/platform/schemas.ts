@@ -263,3 +263,35 @@ export const planFormSchema = z.object({
     .max(1000, '1000 or less.'),
 });
 export type PlanFormInput = z.input<typeof planFormSchema>;
+
+// ─── Platform settings (docs/DECISIONS.md SA-4, SA-5) ───────────────────────
+const daysSchema = (min: number, max: number) =>
+  z.coerce
+    .number({ message: 'Enter a number.' })
+    .int('Enter a whole number.')
+    .min(min, `${min} or more.`)
+    .max(max, `${max} or less.`);
+
+export const platformSettingsSchema = z
+  .object({
+    trialDays: daysSchema(1, 365),
+    graceDays: daysSchema(0, 90),
+    setupFee: rupeesSchema.refine((text) => (parsePriceInput(text) ?? 0) >= 100, 'At least ₹1.'),
+    setupFeeDiscount: rupeesSchema,
+    discountLastDay: z.string().refine((text) => text === '' || isDate(text), 'Choose a date.'),
+    supportPhone: optionalText(20),
+    supportEmail: z
+      .string()
+      .trim()
+      .max(254, 'Use 254 characters or fewer.')
+      .refine(
+        (value) => value === '' || z.email().safeParse(value).success,
+        'Enter a valid email.',
+      ),
+  })
+  .refine(
+    (input) =>
+      (parsePriceInput(input.setupFeeDiscount) ?? 0) < (parsePriceInput(input.setupFee) ?? 0),
+    { message: 'Keep the discount below the fee.', path: ['setupFeeDiscount'] },
+  );
+export type PlatformSettingsInput = z.input<typeof platformSettingsSchema>;

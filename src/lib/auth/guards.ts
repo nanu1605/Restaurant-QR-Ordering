@@ -54,6 +54,30 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
   return user;
 }
 
+/** The super-admin permissions (docs/SUPER_ADMIN_PLAN.md §3), checked again in SQL. */
+export type PlatformPermission =
+  | 'restaurants.view'
+  | 'restaurants.manage'
+  | 'restaurants.support'
+  | 'restaurants.close'
+  | 'money.view'
+  | 'money.record'
+  | 'growth.manage'
+  | 'insights.view'
+  | 'settings.manage'
+  | 'team.manage'
+  | 'system.view'
+  | 'audit.view';
+
+/** A platform admin allowed to do `permission` (docs/DECISIONS.md SA-2). */
+export async function requirePlatformPermission(
+  permission: PlatformPermission,
+): Promise<CurrentUser> {
+  // ponytail: every platform admin holds every permission until team roles (13g) check it.
+  void permission;
+  return requirePlatformAdmin();
+}
+
 /** A platform admin, second factor or not: only for the /super/mfa page. */
 export async function requirePlatformAdminLogin(): Promise<CurrentUser> {
   const user = await requireUser();
