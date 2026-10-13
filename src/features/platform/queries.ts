@@ -50,7 +50,7 @@ export async function listSubscriptions(filters: SubscriptionFilters) {
 
 /** Other restaurants that may be the same as each of these (docs/DECISIONS.md P11-13). */
 export async function getLookalikes(restaurantIds: string[]) {
-  if (restaurantIds.length === 0) return {};
+  if (restaurantIds.length === 0) return parseLookalikes({});
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('platform_restaurant_lookalikes', {
     p_restaurant_ids: restaurantIds,

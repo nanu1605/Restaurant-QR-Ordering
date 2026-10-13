@@ -18,7 +18,7 @@ import {
 import { RestaurantsFilters } from '@/features/platform/components/restaurants-filters';
 import { AccessBadge, SubscriptionBadge } from '@/features/platform/components/status-badges';
 import { filterParams, readRestaurantFilters } from '@/features/platform/params';
-import { formatDate, formatDateTime } from '@/features/platform/platform';
+import { formatDate, formatDateTime, type Lookalike } from '@/features/platform/platform';
 import { getLookalikes, listPlans, listRestaurants } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
@@ -35,7 +35,13 @@ export default async function SuperRestaurantsPage({
   const filters = readRestaurantFilters(await searchParams);
   const [list, plans] = await Promise.all([listRestaurants(filters), listPlans()]);
   // Restaurants that may be the same as another: worth a look (docs/DECISIONS.md P11-13).
-  const lookalikes = await getLookalikes(list.rows.map((row) => row.restaurant_id));
+  // Only a badge, so the list still shows when the check fails or runs out of time.
+  const lookalikes = await getLookalikes(list.rows.map((row) => row.restaurant_id)).catch(
+    (error: unknown): Record<string, Lookalike[]> => {
+      console.error(error);
+      return {};
+    },
+  );
   const filtered = Object.keys(filterParams({ ...filters, page: 1 })).length > 0;
 
   return (

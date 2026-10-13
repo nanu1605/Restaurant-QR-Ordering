@@ -151,6 +151,9 @@ $$;
 -- Up to ten other restaurants that may be the same one, each with its reasons:
 -- fssai, gstin, phone (the same value), name, address (60% alike by
 -- trigrams), pincode (the same). Strongest first.
+-- ponytail: compares with every restaurant (about 12 µs a pair, so 50 rows of
+-- the list take a second at 1,500 restaurants); trigram and expression indexes,
+-- or flags kept on the row, once restaurants run into the thousands.
 create or replace function private.restaurant_lookalikes(p_restaurant_id uuid)
 returns jsonb
 language sql
