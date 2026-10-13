@@ -257,9 +257,9 @@ Production keeps its current build until the owner's legal texts and contact det
      `layout.tsx` (`tests/e2e/legal.spec.ts` checks for the banner, so update it too).
    - The support email, phone and WhatsApp in `contact.ways` of both dictionaries,
      `src/features/site/content.ts` and `content-hi.ts`, and the `contact.placeholder` note.
-   - The owner's review of the Hindi website: `src/features/site/content-hi.ts`, `DEMO_WORDS.hi`
-     in `src/features/site/demo/machine.ts`, and the Hindi code and welcome emails (DECISIONS
-     W-20). Corrections go in the same PR.
+   - The owner approved the Hindi website as written on 2026-10-14 (`content-hi.ts`,
+     `DEMO_WORDS.hi` in `src/features/site/demo/machine.ts`, the Hindi code and welcome emails,
+     DECISIONS W-20). If the texts above change, their Hindi changes with them.
    - The Organization's contact details in `src/features/site/structured-data.tsx` (W-12).
 2. **Production Vercel variables:**
    - `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, from a Cloudflare Turnstile widget whose
