@@ -15,6 +15,11 @@ import {
 // signed out, and staff sent to their owner.
 
 const NEW_PASSWORD = 'new-Password-2';
+
+// Local runs all ask from one network, which may ask 10 times a day (P11-6): each worker asks
+// from an address of its own.
+const octet = () => Math.floor(Math.random() * 256);
+test.use({ extraHTTPHeaders: { 'x-real-ip': `10.${octet()}.${octet()}.${octet()}` } });
 const unique = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 async function inbox(request: APIRequestContext, to: string) {
