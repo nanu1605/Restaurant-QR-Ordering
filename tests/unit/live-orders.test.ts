@@ -43,6 +43,7 @@ function item(overrides: Partial<BoardItem> = {}): BoardItem {
   return {
     id: id('item'),
     name: 'Paneer Tikka',
+    nameHi: null,
     variant: null,
     addons: [],
     foodType: 'veg',
@@ -541,6 +542,7 @@ describe('parseBoard', () => {
                 {
                   id: 'i1',
                   name: 'Butter Chicken',
+                  name_hi: 'बटर चिकन',
                   variant: 'Full',
                   food_type: 'non_veg',
                   quantity: 2,
@@ -568,6 +570,7 @@ describe('parseBoard', () => {
     expect(b.tables[1]!.session!.rounds[0]!.items[0]).toEqual({
       id: 'i1',
       name: 'Butter Chicken',
+      nameHi: 'बटर चिकन',
       variant: 'Full',
       addons: [],
       foodType: 'non_veg',
