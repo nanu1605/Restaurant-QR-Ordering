@@ -28,9 +28,12 @@ export function RequestForm({ siteKey }: { siteKey: string }) {
   const [checked, setChecked] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
-  // After a refusal, focus the field to fix (its message is linked to it).
+  // On arrival (also back from the code step), focus the email field; after a refusal, the
+  // field to fix (its message is linked to it).
   useEffect(() => {
-    form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    form.current
+      ?.querySelector<HTMLElement>(result ? '[aria-invalid="true"]' : 'input[name="email"]')
+      ?.focus();
   }, [result]);
 
   return (

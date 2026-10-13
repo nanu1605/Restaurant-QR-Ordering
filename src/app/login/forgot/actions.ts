@@ -36,7 +36,7 @@ export type ResetPasswordState = {
 const UNAVAILABLE =
   'Password reset by email isn’t available right now. Contact MenuMesh support to reset it.';
 const CHECK_FAILED = 'The check that you’re not a robot didn’t pass. Try again.';
-const RATE_LIMITED = 'Too many reset requests. Wait an hour, then try again.';
+const RATE_LIMITED = 'Too many reset requests. Try again later, or contact MenuMesh support.';
 
 /** Step 1: the email and the bot check; the code goes out after the answer. */
 export async function requestPasswordReset(

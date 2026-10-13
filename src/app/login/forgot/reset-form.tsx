@@ -16,9 +16,12 @@ export function ResetForm() {
   const [confirm, setConfirm] = useState('');
   const form = useRef<HTMLFormElement>(null);
 
-  // After a refusal, focus the first field to fix (its message is linked to it).
+  // On arrival, focus the code field, which reads out the intro ("we've emailed it a code"):
+  // the page changes step on the same address, so nothing else announces it. After a refusal,
+  // focus the first field to fix (its message is linked to it).
   useEffect(() => {
-    form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    const target = result ? '[aria-invalid="true"]' : 'input[name="code"]';
+    form.current?.querySelector<HTMLElement>(target)?.focus();
   }, [result]);
 
   return (
@@ -39,6 +42,7 @@ export function ResetForm() {
           value={code}
           onChange={(event) => setCode(event.target.value)}
           error={result?.fieldErrors?.code}
+          {...(result?.fieldErrors?.code ? {} : { 'aria-describedby': 'reset-intro' })}
         />
         <Field
           name="password"

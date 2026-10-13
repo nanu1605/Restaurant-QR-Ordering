@@ -68,7 +68,8 @@ export function LoginForm({ next, notice }: LoginFormProps) {
               {staffPending ? 'Logging in…' : 'Log in'}
             </Button>
             <p className="text-sm text-ink-muted">
-              Forgot your password? Ask your owner or manager to reset it.
+              Forgot your password? Staff: ask your owner or manager to reset it. Owners: use the
+              Email tab, or contact MenuMesh support.
             </p>
           </form>
         </TabsContent>

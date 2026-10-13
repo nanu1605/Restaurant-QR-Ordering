@@ -5,7 +5,13 @@ import { emailLoginSchema } from '@/lib/auth/schemas';
 
 /** "Forgot password" (docs/DECISIONS.md P11-6): the email, then the code and the new password. */
 
-export const resetRequestSchema = z.object({ email: emailLoginSchema.shape.email });
+export const resetRequestSchema = z.object({
+  // Emails are at most 254 characters (the table checks it too).
+  email: emailLoginSchema.shape.email.refine(
+    (email) => email.length <= 254,
+    'Enter a valid email address.',
+  ),
+});
 
 export const resetPasswordSchema = z
   .object({

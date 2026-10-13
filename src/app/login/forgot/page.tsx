@@ -33,10 +33,10 @@ export default async function ForgotPasswordPage() {
         <div className="mb-6 flex flex-col gap-1">
           <Wordmark className="mb-3 h-7 self-start" />
           <h1 className="text-xl font-bold text-ink">Reset your password</h1>
-          <p className="text-sm text-ink-muted">
+          <p id="reset-intro" className="text-sm text-ink-muted">
             {reset
               ? `If ${reset.email} has a MenuMesh account, we’ve emailed it a 6-digit code. It works for 15 minutes.`
-              : 'Enter the email you log in with, and we’ll email you a code. Staff without an email: ask your owner or manager to reset your password.'}
+              : 'Enter the email you log in with, and we’ll email you a code. No email on your login? Staff: ask your owner or manager. Owners: contact MenuMesh support.'}
           </p>
         </div>
         {!turnstile ? (
