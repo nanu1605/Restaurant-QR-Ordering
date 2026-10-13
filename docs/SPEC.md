@@ -1021,7 +1021,7 @@ Performance budget: server-rendered, minimal client JS, images lazy-loaded, firs
 
 **Header**: restaurant name, connection indicator, sound toggle, user name, log out. Managers see a link to the Admin panel. Inside the worker panel the account menu also offers English / हिन्दी.
 
-**Language**: English or हिन्दी per login (`restaurant_members.ui_lang`). Every worker panel screen follows it: its words, toasts and the database's refusals, and dishes and categories by their Hindi name (the owner's, else the automatic one), searchable in either script. An owner or manager sets it on Staff logins; the login can change it from its account menu. Bills, tickets, variant and add-on names, and the admin and platform panels stay English; `/admin/live` reuses these screens in English (docs/DECISIONS.md P11-15 to P11-18).
+**Language**: English or हिन्दी per login (`restaurant_members.ui_lang`). Every worker panel screen follows it: its words, toasts and the database's refusals, and dishes and categories by their Hindi name (the owner's, else the automatic one), searchable in either script. An owner or manager sets it on Staff logins; the login can change it from its account menu. Bills, variant and add-on names, and the admin and platform panels stay English; `/admin/live` reuses these screens in English (docs/DECISIONS.md P11-15 to P11-18).
 
 ### 13.3 Admin panel (`/admin`) — desktop/laptop-first, responsive
 

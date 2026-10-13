@@ -3145,18 +3145,23 @@ Refuted:
     - The staff layout reads it with the membership and wraps the panel in `StaffLangProvider`.
       Outside it, the context is English, so `/admin/live`, which reuses the board, drawer and
       dialogs, stays English with no change.
-    - The panel's root carries `lang`, and `<html lang>` follows while `/staff` is open, for
-      the menus, dialogs and toasts drawn outside it. Page titles come from `generateMetadata`.
+    - The root layout gives a `/staff` page its login's language: `<html lang>` and the toasts'
+      own labels. The proxy marks worker panel pages with a header for it, as it does `/hi`.
+      Moving between `/admin` and `/staff` in the browser doesn't draw the root layout again,
+      so the panel sets `<html lang>` while it is open, and English again when it closes.
     - A switch saves, then `refresh()` draws the panel again in the new language; the menu shows
       the choice at once.
+    - **A known limit.** Layouts don't draw again when moving between pages, so a language set
+      on the Staff page reaches an open panel at its next full load (or its own switch). Until
+      then the tab title, which each page reads afresh, can already show the new language.
   - **The words.** `src/features/orders/strings.ts`. English reuses the labels the board already
     had; Hindi has every key (the compiler checks). Words that only show on `/admin/live`
     (Delete order, Revert, waiter assignment) stay English in their components. The customer
     options sheet and quantity stepper, reused by "Add dishes", follow through `LangProvider`.
-  - **What stays English.** Bills and tickets; the admin and platform panels; variant and add-on
-    names (they have no Hindi); names and reasons staff type; times (en-IN). Also the toast
-    region's name from the root layout, and the service worker's static offline page, which
-    can't see the login.
+  - **What stays English.** Bills; the admin and platform panels; variant and add-on names (they
+    have no Hindi); names and reasons staff type; times (en-IN, marked `lang="en"` on the
+    rounds). Also the service worker's static offline page, which can't see the login, and the
+    toasts' labels after a move from `/admin` in the browser.
   - **Size.** `/staff` is 457 of 565 KiB. The account menu, shared by every panel, now carries the
     dictionary: `/super` grew 12 KiB, to 248.
 - **P11-16 · Dishes by their Hindi name on the worker panel:**
@@ -3164,6 +3169,9 @@ Refuted:
     as typed; a Hindi panel now shows the owner's Hindi name, else the automatic one.
   - **The board.** `board_json` adds each dish's `name_hi`. It is the dish's current Hindi name,
     not a snapshot, as on the guest's Orders page (HN-4); a `ponytail:` note names the upgrade.
+    It is left out once the dish has been renamed since it was ordered, so a reused menu row
+    never shows the kitchen another dish's name (the owner's Hindi name isn't cleared on a
+    rename).
     `useBoard` swaps the names in with a `select`, so the cache keeps the board as the server
     sent it, and optimistic updates and `/admin/live` are unaffected.
   - **The menu.** "Add dishes" and Availability read both Hindi columns and use `localName`, so a
@@ -3202,3 +3210,33 @@ Refuted:
     - the kitchen and Availability screens in Hindi;
     - an owner set to Hindi still sees `/admin/live` in English, and sets a waiter to Hindi on
       the Staff page.
+
+### Review fixes (11e)
+
+Three reviewers (security and data, correctness, UI and docs) and a verifier confirmed 6
+findings and rated 5 plausible. All are fixed:
+
+- **The Staff page no longer undoes a login's own choice.** The edit dialog sends the language
+  only when it was changed, so saving a new name or role keeps the language the login picked
+  since the page loaded.
+- **The remove dialog's stepper counts what is removed.** It is the customer stepper, whose
+  Hindi buttons said "add one more". It now reads "एक और … हटाएँ" there.
+- **Toasts' own labels and `<html lang>` come from the login** on a `/staff` page (P11-15); the
+  panel resets `<html lang>` to English when it closes, rather than to whatever was there.
+- **A quick change back in the account menu is saved too.** The menu compared a tap with the
+  saved language, not the one it showed, so changing back while the first save ran did nothing.
+- **The kitchen's "not in your plan"** follows the panel's language, not a fresh read.
+- **A renamed dish shows no Hindi name on the board** (P11-16).
+- **Hindi grammar and spelling.** Singular forms for one kept change and one dish left on the
+  order; बाक़ी, ख़त्म and ग़लत spelled as on the website.
+- **Language marks.** A round's clock time is marked English inside the Hindi panel, and the
+  Staff page's हिन्दी badge no longer tags its English tooltip as Hindi.
+- **Docs.** The docs no longer say tickets stay English: the kitchen view is Hindi, and printed
+  tickets are out of scope. The known limit of a language set from the Staff page is recorded.
+- **Tests.** The Hindi spec no longer runs a second time as "mobile" with a desktop window;
+  `panels-responsive` checks the Hindi worker panel from 360 px instead. A vacuous `lang` check
+  became a toast-label check. The unit test checks the whole dictionary file, functions
+  included.
+
+Refuted: the nukta spelling as a defect (both spellings are standard; aligned anyway), and
+missing pgTAP cases for an inactive login and the missing audit (both hold today).
