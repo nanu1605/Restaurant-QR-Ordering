@@ -62,10 +62,12 @@ Before the first pilot:
 - [ ] Write the Terms of Service and Privacy Policy (India's DPDP Act) and put them in place of
       the `/terms` and `/privacy` placeholders.
 - [ ] Recruit 2–3 pilot restaurants.
-- [ ] Read the Hindi customer screens (tap हिन्दी on a menu, add a dish with options, order,
-      cancel) and send corrections for anything that reads oddly.
-- [ ] Read the Hindi website on staging (`/hi`, then every page, the demo, a demo request and a
-      signup with its two emails) and send corrections before the website's Release.
+- [x] Read the Hindi customer screens (tap हिन्दी on a menu, add a dish with options, order,
+      cancel) and send corrections for anything that reads oddly. The owner approved the Hindi
+      copy as written on 2026-10-14.
+- [x] Read the Hindi website on staging (`/hi`, then every page, the demo, a demo request and a
+      signup with its two emails) and send corrections before the website's Release. Approved
+      2026-10-14.
 - [ ] For menu import from photos: create a Command Code API key (Command Code Studio) and,
       as the fallback, an OpenRouter key, each with a monthly spend limit, and set them in Vercel
       (`MENU_IMPORT_API_KEY`, `MENU_IMPORT_FALLBACK_API_KEY`). Set `CRON_SECRET` (a long random
