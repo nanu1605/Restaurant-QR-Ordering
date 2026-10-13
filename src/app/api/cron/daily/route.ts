@@ -42,8 +42,8 @@ async function step<T>(name: string, run: () => Promise<T>): Promise<T | null> {
  * docs/DECISIONS.md P7-20, P8-12, HN-8): menu import photo cleanup,
  * subscription reminder emails (skipped until Resend is set up), Hindi
  * names that menu edits didn't fill (skipped without a menu import key),
- * website signups older than a week (W-9), and password resets older than a
- * day (P11-6).
+ * website signups older than a week (W-9), password resets older than a day
+ * (P11-6), and storefront photos of signups that never finished (P11-12).
  */
 export async function GET(request: Request) {
   if (!authorised(request)) {
@@ -53,30 +53,42 @@ export async function GET(request: Request) {
   const email = emailConfig();
   if (!email) console.warn('[cron/daily] reminders skipped: RESEND_API_KEY or EMAIL_FROM not set');
 
-  const [menuImports, reminders, hindiNames, signups, passwordResets] = await Promise.all([
-    step('menu import cleanup', () => removeOldImportPhotos(admin)),
-    email
-      ? step('reminders', () =>
-          sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL),
-        )
-      : Promise.resolve({ skipped: true }),
-    step('hindi names', () => fillHindiNames(admin, null, 500)),
-    step('signup cleanup', async () => {
-      const { data, error } = await admin.rpc('site_signups_cleanup');
-      if (error) throw new Error(error.message);
-      return { deleted: data };
-    }),
-    step('password reset cleanup', async () => {
-      const { data, error } = await admin.rpc('password_resets_cleanup');
-      if (error) throw new Error(error.message);
-      return { deleted: data };
-    }),
-  ]);
-  const ok = [menuImports, reminders, hindiNames, signups, passwordResets].every(
+  const [menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos] =
+    await Promise.all([
+      step('menu import cleanup', () => removeOldImportPhotos(admin)),
+      email
+        ? step('reminders', () =>
+            sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL),
+          )
+        : Promise.resolve({ skipped: true }),
+      step('hindi names', () => fillHindiNames(admin, null, 500)),
+      step('signup cleanup', async () => {
+        const { data, error } = await admin.rpc('site_signups_cleanup');
+        if (error) throw new Error(error.message);
+        return { deleted: data };
+      }),
+      step('password reset cleanup', async () => {
+        const { data, error } = await admin.rpc('password_resets_cleanup');
+        if (error) throw new Error(error.message);
+        return { deleted: data };
+      }),
+      step('storefront photo cleanup', async () => {
+        const { data: paths, error } = await admin.rpc('storefront_photos_to_remove', {
+          p_limit: 500,
+        });
+        if (error) throw new Error(error.message);
+        if (paths.length > 0) {
+          const removed = await admin.storage.from('storefront-photos').remove(paths);
+          if (removed.error) throw new Error(removed.error.message);
+        }
+        return { deleted: paths.length };
+      }),
+    ]);
+  const ok = [menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos].every(
     (result) => result !== null,
   );
   return NextResponse.json(
-    { ok, menuImports, reminders, hindiNames, signups, passwordResets },
+    { ok, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos },
     { status: ok ? 200 : 500, headers: noStore },
   );
 }
