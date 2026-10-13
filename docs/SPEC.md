@@ -331,6 +331,19 @@ Conventions for every table unless stated otherwise:
 | verified_at | timestamptz null | set once the restaurant exists; the code then stops working |
 | created_at | timestamptz | |
 
+**`password_resets`** ("Forgot password" requests, §9.5; service role only, through `auth_password_reset_start`, `auth_password_reset_verify` and `auth_password_reset_finish`; deleted after a day by `password_resets_cleanup()` in the daily cron)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | kept in an httpOnly cookie between the two steps |
+| email | text | lower-cased, as typed |
+| user_id | uuid null FK auth.users | the account with that real email; null when there is none (no email is sent) |
+| code_hash | text | HMAC of the 6-digit code |
+| ip_hash | text null | HMAC of the visitor's IP, for the rate limit |
+| tries | smallint | wrong codes so far; 5 locks the code |
+| expires_at | timestamptz | 15 minutes after the request |
+| used_at | timestamptz null | set once the new password is saved; the code then stops working |
+| created_at | timestamptz | |
+
 ### 8.2 Restaurants and members
 
 **`restaurants`**
@@ -725,6 +738,7 @@ All are `SECURITY DEFINER`, `set search_path = public`, validate inputs, check p
 - Internally each staff user is a Supabase Auth user with synthetic email `<username>@<slug>.staff.<app-domain>` (non-deliverable) — created server-side with the Admin API, `email_confirm: true`.
 - Owners (and optionally managers) may also have a real email for invites and password reset. Owner login accepts either real email or restaurant code + username.
 - Password rules: minimum 8 characters. Owners/managers reset staff passwords from the Staff page (no email flow for staff).
+- **Forgot password** (`/login/forgot`, linked from the login page's Email tab; docs/DECISIONS.md P11-6 to P11-9): accounts with a real email (owners who gave one, platform admins) type it and pass the Turnstile check, get a 6-digit code by email (15 minutes, 5 tries), then set a new password with it, typed twice. Every email gets the same answer, whether it has an account or not. Limits: 3 requests an hour per email, 10 a day per network. Saving the password signs the account out on every device; this device is signed in again and sent to its panel (platform admins still enter their TOTP code). Each reset is in the audit log. The Restaurant code tab tells staff to ask their owner or manager.
 - Staff devices stay logged in (long session refresh). "Log out" is available in the panel menu.
 - After login, redirect by role: owner/manager → `/admin`, waiter/kitchen → `/staff`, platform admin → `/super`.
 - Platform admin accounts: real emails; enable MFA (TOTP) if supported by current Supabase Auth — log decision.
@@ -1125,7 +1139,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, and deletes website signups older than a week (§8.1 `site_signups`).
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), and deletes password reset requests older than a day (§8.1 `password_resets`).
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 

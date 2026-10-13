@@ -2866,6 +2866,10 @@ trials, 11e worker panel in Hindi.
     The customer menu still links no manifest. Its pages now carry the screen too, hidden in a
     browser tab, and `/t` stays within its budget (254 of 275 KiB). An app saved before this
     change is a plain shortcut: remove it and install again.
+
+    Since the website links the manifest, Chrome on Android may offer its own install bar to
+    visitors. The owner chose to keep it (2026-10-13). The owner confirmed the screen on
+    Android and iPhone after reinstalling.
 - **P11-5 · On every full load, not once per launch:**
   - **Why.** Knowing "first open" before the first paint would need an inline script, which
     the CSP allows only with its nonce. So the screen comes back on every full page load in
@@ -2886,3 +2890,76 @@ trials, 11e worker panel in Hindi.
     - printing hides it before the app has launched.
 
     A browser tab is checked never to show it. Real devices are checked by hand on staging.
+
+### 11c · Forgot password
+
+- **P11-6 · Our own emailed code, not Supabase's reset email:**
+  - **The flow.** The login page's Email tab links "Forgot password?" to `/login/forgot`.
+    1. The visitor types the email they log in with and passes the Turnstile check.
+    2. A 6-digit code goes out by Resend, from `EMAIL_FROM`, the sender the signup codes use
+       ("MenuMesh", at the owner's choice).
+    3. The code and a new password, typed twice, set the password through the Admin API.
+    4. This device is signed in, and the login page sends the account on to its panel.
+  - **Why not Supabase's own reset email.** `resetPasswordForEmail` sends a link through
+    Supabase's mailer, which needs its own SMTP setup. It would also take staff logins' made-up
+    addresses. Ours reuses the signup's code flow, Resend and Turnstile.
+  - **Who can use it.** Accounts whose email isn't a staff login's made-up address
+    (`username@<code>.staff.<domain>`):
+    - owners who signed up on the website, or were onboarded with an email;
+    - platform admins.
+
+    Staff, and owners without an email, can't. The Restaurant code tab says "Forgot your
+    password? Ask your owner or manager to reset it." The platform admin resets an owner's
+    password from the platform panel.
+
+  - **The pieces.**
+    - Table `password_resets` and the functions `auth_password_reset_start`, `_verify` and
+      `_finish`, service role only (`20261013110000_password_resets.sql`). The `auth_` prefix
+      marks server-only auth helpers, as `auth_staff_login_email` does.
+    - `src/lib/one-time-code.ts` now holds `newCode`, `hashCode` and `clientIp` for both flows.
+      Each purpose hashes apart (`signup-code:` and `password-reset-code:`), so a code for
+      one never fits the other. The signup's hash is unchanged, so signups open during the
+      deploy still work.
+    - The `mm_reset` cookie (httpOnly, path `/login`, 30 minutes) keeps the request id and
+      the email typed, so the second step can show the address.
+  - **Limits.**
+    - 3 requests an hour per email, and 10 a day per network.
+    - A code works for 15 minutes and allows 5 wrong tries.
+    - Requests are deleted after a day, by each new request and by the daily cron.
+  - **Not set up.** Without Turnstile keys or email, the page says to contact MenuMesh support.
+- **P11-7 · Nothing tells whether an email has an account:**
+  - Every request writes a row, account or not, so the limits count the same.
+  - Every email gets the same next step: "If you@example.com has a MenuMesh account, we've
+    emailed it a 6-digit code."
+  - The email is sent with `after()`, once the answer has gone. So the time the answer takes
+    doesn't differ either.
+  - A request without an account answers any code as wrong, and then locks, like any other.
+- **P11-8 · Every device signed out:**
+  - Supabase Auth ends every session of an account when the Admin API sets its password: other
+    devices can no longer renew theirs. This was checked locally (the other device's refresh
+    fails with "Refresh Token Not Found"), and `password-reset.spec.ts` guards it.
+  - A first version also called `signOut({ scope: 'others' })`. A test without that call
+    still passed, which showed the call did nothing more, so it was removed.
+  - The reset then signs this device in again. If that sign-in fails, the login page says
+    the password is changed.
+  - **Known limit.** Another device keeps its current access token until it expires, up to an
+    hour (`jwt_expiry`), and then has to log in again.
+  - Platform admins still enter their TOTP code at `/super/mfa` (P7-2), so an inbox alone
+    doesn't open the platform panel.
+- **P11-9 · In the audit log:**
+  - `auth_password_reset_finish` writes `staff.password_reset` with the reason "Reset with an
+    emailed code", in each restaurant where the account is an active member. The actor is the
+    account itself, so the owner sees it in their activity log. A platform admin's reset
+    writes `platform_admin.password_reset` in the platform's log.
+  - The code isn't used up until the password is saved. So a password the Admin API refuses
+    can be tried again with the same code, and finishing twice records it once.
+  - **Testing.**
+    - pgTAP `480_password_resets.test.sql`: grants, real and made-up addresses, the limits,
+      tries, expiry, the audit rows, cleanup.
+    - Unit `password-reset.test.ts`: the schemas, the email, and the hashes kept apart.
+    - E2E `password-reset.spec.ts`:
+      - an owner resets, and lands in `/admin`;
+      - the old password stops working, and another device can't renew its session;
+      - an unknown email gets the same answer and no email;
+      - staff see the hint.
+    - The contrast sweep includes `/login/forgot`.
