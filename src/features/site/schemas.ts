@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { CUISINE_SETS } from '@/features/menu/default-categories';
 import { passwordRule } from '@/features/platform/schemas';
+import { GSTIN_PATTERN } from '@/features/settings/schemas';
 
 import { SITE, type SiteContent, type SiteLang } from './content';
 import { fill } from './i18n';
@@ -53,6 +54,21 @@ export function siteSchemas(m: SiteContent['errors']) {
     ownerName: text(m.name, 80),
     email: z.string().trim().toLowerCase().max(254, tooLong(254)).pipe(z.email(m.email)),
     phone: lead.shape.phone,
+    // One trial per restaurant (docs/DECISIONS.md P11-10): its licence, address and GSTIN.
+    addressLine: text(m.address, 300),
+    pincode: z
+      .string()
+      .trim()
+      .regex(/^[1-9][0-9]{5}$/, m.pincode),
+    fssaiLicense: z
+      .string()
+      .transform((value) => value.replace(/[\s-]/g, ''))
+      .pipe(z.string().regex(/^[0-9]{14}$/, m.fssai)),
+    gstin: z
+      .string()
+      .transform((value) => value.replace(/\s/g, '').toUpperCase())
+      .pipe(z.union([z.literal(''), z.string().regex(GSTIN_PATTERN, m.gstin)]))
+      .transform((value) => value || null),
     terms: z.literal('on', { message: m.terms }),
     /** The plan the visitor came from on /pricing, for autopay after signup. */
     planCode: lead.shape.planCode,

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-import { type BrowserContext, expect, type Page } from '@playwright/test';
+import { type BrowserContext, expect, type Locator, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
 import type { CuisineSet } from '../../src/features/menu/default-categories';
@@ -164,4 +164,56 @@ export function makePng(width = 64, height = 48, rgb: [number, number, number] =
     chunk('IDAT', deflateSync(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+/** A JPEG made in the page: noise reads as a menu to the stand-in reader, white as blank. */
+export async function makeJpeg(page: Page, width: number, height: number, blank = false) {
+  const base64 = await page.evaluate(
+    ({ width, height, blank }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d')!;
+      if (blank) {
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+      } else {
+        const image = context.createImageData(width, height);
+        for (let i = 0; i < image.data.length; i += 4) {
+          const value = (i * 2654435761) % 256;
+          image.data[i] = value;
+          image.data[i + 1] = (value * 7) % 256;
+          image.data[i + 2] = (value * 13) % 256;
+          image.data[i + 3] = 255;
+        }
+        context.putImageData(image, 0, 0);
+      }
+      return canvas.toDataURL('image/jpeg', 0.9).split(',')[1]!;
+    },
+    { width, height, blank },
+  );
+  return Buffer.from(base64, 'base64');
+}
+
+/** A mobile and an FSSAI licence no other run uses (one trial per restaurant, P11-10). */
+export function uniqueIdentity() {
+  const digits = () => String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  const now = String(Date.now());
+  return { phone: `9${now.slice(-6)}${digits()}`, fssai: `3${now.slice(-10)}${digits()}` };
+}
+
+/**
+ * The signup's one-trial details (P11-10 to P11-12), by field name so it works in English and
+ * Hindi: the address, pincode and licence, and a photo of the front, prepared in the page.
+ */
+export async function fillSignupIdentity(page: Page, form: Locator, fssai: string) {
+  await form.locator('[name="addressLine"]').fill('12 MG Road');
+  await form.locator('[name="pincode"]').fill('411001');
+  await form.locator('[name="fssaiLicense"]').fill(fssai);
+  await form.locator('input[type="file"]').setInputFiles({
+    name: 'front.jpg',
+    mimeType: 'image/jpeg',
+    buffer: await makeJpeg(page, 1200, 900),
+  });
+  await expect(form.getByRole('img')).toBeVisible();
 }

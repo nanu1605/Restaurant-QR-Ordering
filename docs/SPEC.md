@@ -344,6 +344,16 @@ Conventions for every table unless stated otherwise:
 | used_at | timestamptz null | set once the new password is saved; the code then stops working |
 | created_at | timestamptz | |
 
+**`trial_claims`** (what each website signup's free trial was given for, one trial per restaurant, §24 W3; service role only, written by `site_signup_create_restaurant`; never changed when Settings change)
+| Column | Type | Notes |
+|---|---|---|
+| kind | text | `fssai`, `phone` or `gstin` |
+| value | text | the licence, the mobile's last 10 digits, or the GSTIN |
+| restaurant_id | uuid FK | |
+| created_at | timestamptz | |
+
+Primary key (kind, value): a value is claimed once.
+
 ### 8.2 Restaurants and members
 
 **`restaurants`**
@@ -357,7 +367,8 @@ Conventions for every table unless stated otherwise:
 | logo_path | text null | Storage path |
 | accent_color | text | hex, default `#FF6606` (MenuMesh orange, §16.2 `primary`); used on customer menu |
 | gstin | text null | validated format (15 chars) when present |
-| fssai_license | text null | printed on bill when present |
+| fssai_license | text null | printed on bill when present; required at website signup |
+| storefront_photo_path | text null | the photo of the front sent at website signup, in the private `storefront-photos` bucket; only the platform admin sees it |
 | gst_mode | enum `none` \| `regular` \| `composition` | default `none` |
 | gst_rate_bps | int | default 500 |
 | prices_include_tax | bool | default false |
@@ -1070,8 +1081,8 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 ### 13.4 Super-admin panel (`/super`)
 
 - **Overview**: restaurants total / trialing / active / past due / read-only / suspended; MRR (sum of monthly-equivalent of active paid subscriptions: yearly ÷ 12); orders in last 24 h across platform; trials ending in next 7 days.
-- **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at).
-- **Restaurant detail**: profile; owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount, mode, period start/end, notes), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
+- **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; docs/DECISIONS.md P11-13).
+- **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount, mode, period start/end, notes), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
 - **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over.
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
@@ -1139,7 +1150,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), and deletes password reset requests older than a day (§8.1 `password_resets`).
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`).
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 
@@ -1615,7 +1626,7 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 |---|---|
 | W1 | Header, footer, phone call-to-action bar; the home page (animated hero scene, problems, how it works, roles, highlights, Hindi, FAQ, final call to action); contact page; terms, privacy, refunds and shipping pages |
 | W2 | Features page with screenshots of the real app; pricing page (plans read from the database, monthly/yearly, plan finder, comparison); an interactive demo in the browser; a "Book a demo" form behind Cloudflare Turnstile, stored as leads for super-admin and emailed to the support address |
-| W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial, then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
+| W3 | Self-serve signup: email code (Resend) and Cloudflare Turnstile, the restaurant created on a 14-day Growth trial (one per restaurant: the FSSAI licence, address, pincode, a GSTIN when there is one and a photo of the front are asked for, and a licence, mobile or GSTIN that already has an account is refused; docs/DECISIONS.md P11-10 to P11-14), then UPI Autopay or card through the existing subscription flow (first charge when the trial ends; skippable); a first-steps checklist in the admin panel |
 | W4 | SEO (sitemap, robots, Open Graph, structured data; only menumesh.in is indexed), funnel analytics (PostHog without cookies on the site only), performance and accessibility budgets, launch (docs/DECISIONS.md W-12 onwards) |
 | W5 | The website in Hindi under `/hi`: every page except the policies (English only), a language switch, Hindi forms, errors and emails, the guest phone in the hero and demo in Hindi, hreflang and sitemap alternates (docs/DECISIONS.md W-15 to W-20) |
 

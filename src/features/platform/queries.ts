@@ -1,11 +1,13 @@
 import 'server-only';
 
 import { dbErrorCode } from '@/lib/db-errors';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import type { AuditFilters, RestaurantFilters, SubscriptionFilters } from './params';
 import {
   parseAuditList,
+  parseLookalikes,
   parseOverview,
   parseRestaurantDetail,
   parseRestaurantList,
@@ -44,6 +46,42 @@ export async function listSubscriptions(filters: SubscriptionFilters) {
   });
   if (error) throw new Error(`Could not load subscriptions: ${error.message}`);
   return parseSubscriptionList(data);
+}
+
+/** Other restaurants that may be the same as each of these (docs/DECISIONS.md P11-13). */
+export async function getLookalikes(restaurantIds: string[]) {
+  if (restaurantIds.length === 0) return parseLookalikes({});
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_restaurant_lookalikes', {
+    p_restaurant_ids: restaurantIds,
+  });
+  if (error) throw new Error(`Could not check for duplicates: ${error.message}`);
+  return parseLookalikes(data);
+}
+
+/**
+ * What the signup gave (P11-10, P11-12): the FSSAI licence, and a link to the
+ * storefront photo that works for an hour. The photo's bucket has no storage
+ * policies, so the link is signed with the service role, after the platform
+ * admin's own read of the row.
+ */
+export async function getSignupReview(restaurantId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('restaurants')
+    .select('fssai_license, storefront_photo_path')
+    .eq('id', restaurantId)
+    .maybeSingle();
+  if (error) throw new Error(`Could not load the signup details: ${error.message}`);
+  let photoUrl: string | null = null;
+  if (data?.storefront_photo_path) {
+    const signed = await createAdminClient()
+      .storage.from('storefront-photos')
+      .createSignedUrl(data.storefront_photo_path, 60 * 60);
+    if (signed.error) console.error('[platform] no link for a storefront photo', signed.error);
+    photoUrl = signed.data?.signedUrl ?? null;
+  }
+  return { fssaiLicense: data?.fssai_license ?? null, photoUrl };
 }
 
 /** One restaurant, or null when there is no such restaurant. */

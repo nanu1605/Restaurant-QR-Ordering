@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { adminClient, createTestRestaurant, logInWithCode } from './helpers';
+import { adminClient, createTestRestaurant, logInWithCode, makeJpeg } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 
 /**
@@ -27,35 +27,6 @@ async function menuDishes(restaurantId: string) {
     .eq('restaurant_id', restaurantId)
     .throwOnError();
   return data!;
-}
-
-/** A JPEG made in the page: noise reads as a menu to the stand-in reader, white as blank. */
-async function makePhoto(page: Page, width: number, height: number, blank = false) {
-  const base64 = await page.evaluate(
-    ({ width, height, blank }) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d')!;
-      if (blank) {
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, width, height);
-      } else {
-        const image = context.createImageData(width, height);
-        for (let i = 0; i < image.data.length; i += 4) {
-          const value = (i * 2654435761) % 256;
-          image.data[i] = value;
-          image.data[i + 1] = (value * 7) % 256;
-          image.data[i + 2] = (value * 13) % 256;
-          image.data[i + 3] = 255;
-        }
-        context.putImageData(image, 0, 0);
-      }
-      return canvas.toDataURL('image/jpeg', 0.9).split(',')[1]!;
-    },
-    { width, height, blank },
-  );
-  return Buffer.from(base64, 'base64');
 }
 
 /** A minimal PDF with one line of text on each A4 page. */
@@ -230,7 +201,7 @@ test('a photo is read, checked and imported; a blank or tiny photo is refused', 
   await page.getByLabel('Menu photos or PDF').setInputFiles({
     name: 'tiny.jpg',
     mimeType: 'image/jpeg',
-    buffer: await makePhoto(page, 600, 800),
+    buffer: await makeJpeg(page, 600, 800),
   });
   await expect(photoCard.getByRole('alert')).toHaveText(
     'tiny.jpg: This photo is too small to read. Take a closer photo of one page at a time.',
@@ -239,7 +210,7 @@ test('a photo is read, checked and imported; a blank or tiny photo is refused', 
   await page.getByLabel('Menu photos or PDF').setInputFiles({
     name: 'menu-page.jpg',
     mimeType: 'image/jpeg',
-    buffer: await makePhoto(page, 1200, 1600),
+    buffer: await makeJpeg(page, 1200, 1600),
   });
   await expect(photoCard.getByRole('img', { name: 'Page 1: menu-page.jpg' })).toBeVisible();
   await photoCard.getByRole('button', { name: 'Read 1 page' }).click();
@@ -297,7 +268,7 @@ test('a photo is read, checked and imported; a blank or tiny photo is refused', 
   await page.getByLabel('Menu photos or PDF').setInputFiles({
     name: 'blank.jpg',
     mimeType: 'image/jpeg',
-    buffer: await makePhoto(page, 1200, 1600, true),
+    buffer: await makeJpeg(page, 1200, 1600, true),
   });
   await page.getByRole('button', { name: 'Read 1 page' }).click();
   const result = page.getByRole('region', { name: 'Import result' });

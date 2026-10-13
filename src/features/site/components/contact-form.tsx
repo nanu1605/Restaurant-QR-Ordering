@@ -149,11 +149,13 @@ export function ContactForm({
 type FieldProps = Omit<React.ComponentProps<'input'>, 'id' | 'name'> & {
   name: string;
   label: string;
+  hint?: string;
   error?: string;
 };
 
-export function Field({ name, label, error, ...inputProps }: FieldProps) {
+export function Field({ name, label, hint, error, ...inputProps }: FieldProps) {
   const id = useId();
+  const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ');
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -164,9 +166,14 @@ export function Field({ name, label, error, ...inputProps }: FieldProps) {
         name={name}
         className="h-11 text-base"
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-error` : undefined}
+        aria-describedby={describedBy || undefined}
         {...inputProps}
       />
+      {hint && (
+        <p id={`${id}-hint`} className="text-sm text-ink-muted">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={`${id}-error`} className="text-sm text-status-void">
           {error}

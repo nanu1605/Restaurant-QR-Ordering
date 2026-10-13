@@ -32,9 +32,11 @@ import {
 } from './signup';
 
 /**
- * The self-serve signup (docs/DECISIONS.md W-9): details and a Turnstile
- * check, an emailed 6-digit code, then the code and a password create the
- * restaurant with a trial, sign the owner in and open autopay.
+ * The self-serve signup (docs/DECISIONS.md W-9): details, a photo of the
+ * restaurant's front and a Turnstile check, an emailed 6-digit code, then the
+ * code and a password create the restaurant with a trial, sign the owner in
+ * and open autopay. One trial per restaurant (P11-10): a licence, mobile or
+ * GSTIN that already has an account is refused, at both steps.
  */
 
 const FIELDS = [
@@ -44,6 +46,10 @@ const FIELDS = [
   'ownerName',
   'email',
   'phone',
+  'addressLine',
+  'pincode',
+  'fssaiLicense',
+  'gstin',
   'terms',
   'planCode',
   'cycle',
@@ -52,10 +58,26 @@ type SignupField = (typeof FIELDS)[number];
 
 export type SignupFormState = {
   error?: string;
-  fieldErrors?: Partial<Record<SignupField, string>>;
-  /** Echoed back so the form keeps what the visitor typed. */
+  /** The restaurant already has an account: logging in, or asking us, helps. */
+  exists?: true;
+  fieldErrors?: Partial<Record<SignupField | 'photo', string>>;
+  /** Echoed back so the form keeps what the visitor typed (the photo stays in the form). */
   values: Record<SignupField, string>;
 } | null;
+
+/** Private, for the platform admin only (P11-12). The form sends a JPEG of at most 1600 px. */
+const PHOTO_BUCKET = 'storefront-photos';
+const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024;
+const photoPath = (signupId: string) => `signups/${signupId}.jpg`;
+
+/** The photo's bytes when it is a JPEG of a sensible size, else null. */
+async function storefrontPhoto(value: FormDataEntryValue | null): Promise<Uint8Array | null> {
+  if (!(value instanceof File) || value.size === 0 || value.size > MAX_PHOTO_BYTES) return null;
+  if (value.type !== 'image/jpeg') return null;
+  const bytes = new Uint8Array(await value.arrayBuffer());
+  // Every JPEG starts with FF D8 FF.
+  return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? bytes : null;
+}
 
 export type VerifyFormState = {
   error?: string;
@@ -105,10 +127,12 @@ export async function startSignup(
   if (!turnstile || !emailConfig()) return { error: replies.closed, values };
 
   const parsed = SITE_SCHEMAS[lang].signup.safeParse(values);
-  if (!parsed.success) {
-    const fieldErrors: Partial<Record<SignupField, string>> = {};
-    for (const issue of parsed.error.issues)
+  const photo = await storefrontPhoto(formData.get('photo'));
+  if (!parsed.success || !photo) {
+    const fieldErrors: NonNullable<SignupFormState>['fieldErrors'] = {};
+    for (const issue of parsed.error?.issues ?? [])
       fieldErrors[issue.path[0] as SignupField] ??= issue.message;
+    if (!photo) fieldErrors.photo = SITE[lang].errors.photo;
     return { fieldErrors, values };
   }
 
@@ -117,9 +141,23 @@ export async function startSignup(
   if (!(await verifyTurnstile(turnstile, token, ip))) return { error: checkFailed, values };
 
   const { email, restaurantName, city, cuisine, ownerName, phone, planCode, cycle } = parsed.data;
+  const { addressLine, pincode, fssaiLicense, gstin } = parsed.data;
+  const admin = createAdminClient();
+  // Told now rather than after the code (P11-14); the database checks again when it creates it.
+  const taken = await admin.rpc('site_signup_identity_taken', {
+    p_fssai: fssaiLicense,
+    p_phone: phone,
+    p_gstin: gstin ?? undefined,
+  });
+  if (taken.error) {
+    console.error('[signup] site_signup_identity_taken failed:', taken.error.message);
+    return { error: replies.failed, values };
+  }
+  if (taken.data) return { exists: true, values };
+
   const { source, visitor, dnt } = parseAttribution(formData.get('attribution'));
   const code = newCode();
-  const { data: id, error } = await createAdminClient().rpc('site_signup_start', {
+  const { data: id, error } = await admin.rpc('site_signup_start', {
     p_email: email,
     p_details: {
       restaurantName,
@@ -127,6 +165,10 @@ export async function startSignup(
       cuisine,
       ownerName,
       phone,
+      addressLine,
+      pincode,
+      fssaiLicense,
+      gstin,
       planCode,
       cycle,
       source,
@@ -139,6 +181,13 @@ export async function startSignup(
   if (error) {
     if (dbErrorCode(error) === 'RATE_LIMITED') return { error: replies.rateLimited, values };
     console.error('[signup] site_signup_start failed:', error.code, error.message);
+    return { error: replies.failed, values };
+  }
+  const uploaded = await admin.storage
+    .from(PHOTO_BUCKET)
+    .upload(photoPath(id), photo, { contentType: 'image/jpeg', upsert: true });
+  if (uploaded.error) {
+    console.error('[signup] could not store the photo:', uploaded.error.message);
     return { error: replies.failed, values };
   }
   if (!(await sendCode(email, code, `signup/${id}/1`, lang))) {
@@ -196,7 +245,12 @@ export async function resendSignupCode(
 type StoredDetails = Omit<Signup, 'email' | 'terms'> & Partial<Attribution>;
 
 /** Creates the restaurant, trying a code with a suffix when the plain one is taken. */
-async function createRestaurant(email: string, details: StoredDetails, password: string) {
+async function createRestaurant(
+  signupId: string,
+  email: string,
+  details: StoredDetails,
+  password: string,
+) {
   const env = getServerEnv();
   for (let attempt = 0; ; attempt++) {
     const suffix = attempt === 0 ? undefined : newCode().slice(0, 4);
@@ -214,7 +268,14 @@ async function createRestaurant(email: string, details: StoredDetails, password:
         cuisine: details.cuisine,
         phone: `+91 ${details.phone}`,
         email,
+        addressLine: details.addressLine,
+        pincode: details.pincode,
         staffEmailDomain: env.STAFF_EMAIL_DOMAIN,
+        selfSignup: {
+          fssaiLicense: details.fssaiLicense,
+          gstin: details.gstin,
+          storefrontPhotoPath: photoPath(signupId),
+        },
       });
     } catch (error) {
       if (error instanceof OnboardError && error.code === 'SLUG_TAKEN' && attempt < 3) continue;
@@ -270,12 +331,17 @@ export async function completeSignup(
 
   // The right code doesn't use the signup up, so a failure here can be tried again.
   const { email, details } = result;
+  // Started before the signup asked for the licence and the photo: it can't make a restaurant.
+  if (!details.fssaiLicense) return { error: t.gone, restart: 'signup' };
   let restaurant;
   try {
-    restaurant = await createRestaurant(email, details, parsed.data.password);
+    restaurant = await createRestaurant(id, email, details, parsed.data.password);
   } catch (error) {
     if (error instanceof OnboardError && error.code === 'EMAIL_TAKEN') {
       return { error: t.emailTaken, restart: 'login' };
+    }
+    if (error instanceof OnboardError && error.code === 'RESTAURANT_EXISTS') {
+      return { error: t.restaurantExists, restart: 'login' };
     }
     if (error instanceof OnboardError && error.code === 'weak_password') {
       return { fieldErrors: { password: t.weakPassword } };

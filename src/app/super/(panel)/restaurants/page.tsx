@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pager } from '@/components/shared/pager';
+import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import {
   Table,
@@ -17,8 +18,8 @@ import {
 import { RestaurantsFilters } from '@/features/platform/components/restaurants-filters';
 import { AccessBadge, SubscriptionBadge } from '@/features/platform/components/status-badges';
 import { filterParams, readRestaurantFilters } from '@/features/platform/params';
-import { formatDate, formatDateTime } from '@/features/platform/platform';
-import { listPlans, listRestaurants } from '@/features/platform/queries';
+import { formatDate, formatDateTime, type Lookalike } from '@/features/platform/platform';
+import { getLookalikes, listPlans, listRestaurants } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
 
@@ -33,6 +34,14 @@ export default async function SuperRestaurantsPage({
   await requirePlatformAdmin();
   const filters = readRestaurantFilters(await searchParams);
   const [list, plans] = await Promise.all([listRestaurants(filters), listPlans()]);
+  // Restaurants that may be the same as another: worth a look (docs/DECISIONS.md P11-13).
+  // Only a badge, so the list still shows when the check fails or runs out of time.
+  const lookalikes = await getLookalikes(list.rows.map((row) => row.restaurant_id)).catch(
+    (error: unknown): Record<string, Lookalike[]> => {
+      console.error(error);
+      return {};
+    },
+  );
   const filtered = Object.keys(filterParams({ ...filters, page: 1 })).length > 0;
 
   return (
@@ -85,6 +94,11 @@ export default async function SuperRestaurantsPage({
                     >
                       {row.name}
                     </Link>
+                    {(lookalikes[row.restaurant_id]?.length ?? 0) > 0 && (
+                      <Badge variant="outline" className="ml-2" title="Possible duplicate">
+                        Review
+                      </Badge>
+                    )}
                     <div className="text-xs text-ink-muted">{row.slug}</div>
                   </TableCell>
                   <TableCell>{row.city ?? '—'}</TableCell>

@@ -25,6 +25,7 @@ import {
   formatDate,
   formatDateTime,
   formatPeriod,
+  LOOKALIKE_REASON_LABELS,
   MANUAL_MODE_LABELS,
   PAYMENT_SOURCE_LABELS,
   SUPPORT_SECTION_LABELS,
@@ -33,7 +34,13 @@ import {
   type RestaurantDetail,
 } from '@/features/platform/platform';
 import { listMenuImports } from '@/features/menu-import/queries';
-import { getRestaurantDetail, getSetupFeePaise, listPlans } from '@/features/platform/queries';
+import {
+  getLookalikes,
+  getRestaurantDetail,
+  getSetupFeePaise,
+  getSignupReview,
+  listPlans,
+} from '@/features/platform/queries';
 import { autopayState } from '@/features/subscriptions/autopay';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
@@ -72,7 +79,12 @@ export default async function SuperRestaurantPage({
     getSetupFeePaise(),
   ]);
   if (!detail) notFound();
-  const imports = await listMenuImports(restaurantId, 5);
+  const [imports, review, lookalikes] = await Promise.all([
+    listMenuImports(restaurantId, 5),
+    getSignupReview(restaurantId),
+    getLookalikes([restaurantId]),
+  ]);
+  const similar = lookalikes[restaurantId] ?? [];
   const { restaurant, subscription, access, usage } = detail;
   const autopay = subscription
     ? autopayState({
@@ -253,9 +265,52 @@ export default async function SuperRestaurantPage({
                 'GST',
                 `${GST_MODE_LABELS[restaurant.gst_mode] ?? restaurant.gst_mode}${restaurant.gstin ? `, ${restaurant.gstin}` : ''}`,
               ],
+              ['FSSAI licence', review.fssaiLicense ?? '—'],
               ['Onboarded', formatDate(restaurant.created_at)],
             ]}
           />
+        </Section>
+
+        {/* What the website's signup sent, for the one-trial check (docs/DECISIONS.md P11-12). */}
+        <Section title="Storefront photo">
+          {review.photoUrl ? (
+            <a href={review.photoUrl} target="_blank" rel="noopener" className="self-start">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed link */}
+              <img
+                src={review.photoUrl}
+                alt={`Front of ${restaurant.name}`}
+                className="max-h-64 w-auto max-w-full rounded-md border border-line object-cover"
+              />
+            </a>
+          ) : (
+            <p className="text-sm text-ink-muted">
+              No photo: restaurants onboarded here, or signed up before the photo was asked for,
+              have none.
+            </p>
+          )}
+        </Section>
+
+        <Section title="Possible duplicates">
+          {similar.length === 0 ? (
+            <p className="text-sm text-ink-muted">None found.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line text-sm">
+              {similar.map((other) => (
+                <li key={other.restaurant_id} className="flex flex-col py-2 first:pt-0 last:pb-0">
+                  <Link
+                    href={`/super/restaurants/${other.restaurant_id}`}
+                    className="font-medium text-ink underline underline-offset-4"
+                  >
+                    {other.name}
+                  </Link>
+                  <span className="text-ink-muted">
+                    {[other.slug, other.city].filter(Boolean).join(', ')}:{' '}
+                    {other.reasons.map((reason) => LOOKALIKE_REASON_LABELS[reason]).join(', ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
       </div>
 
