@@ -13,7 +13,7 @@ import {
   fromZodError,
   type ActionResult,
 } from '@/lib/action-result';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { requirePlatformAdmin, requirePlatformPermission } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { getServerEnv } from '@/lib/env.server';
@@ -27,7 +27,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { onboardRestaurant, OnboardError } from './onboard';
-import { getRestaurantDetail } from './queries';
+import { getPlatformSettings, getRestaurantDetail } from './queries';
+import { discountEndsAt, discountLastDay } from './setup-fee';
 import {
   changePlanSchema,
   extendTrialSchema,
@@ -36,6 +37,7 @@ import {
   ownerPasswordSchema,
   paymentLinkSchema,
   planFormSchema,
+  platformSettingsSchema,
   restaurantIdSchema,
   suspendSchema,
   type ChangePlanInput,
@@ -45,6 +47,7 @@ import {
   type OwnerPasswordInput,
   type PaymentLinkInput,
   type PlanFormInput,
+  type PlatformSettingsInput,
   type SuspendInput,
 } from './schemas';
 
@@ -351,6 +354,38 @@ export async function updatePlan(planId: string, input: PlanFormInput): Promise<
     },
   });
   if (error) return fromDbError(error, 'platform_update_plan');
+  refresh();
+  return actionOk();
+}
+
+/** Saves the platform settings (docs/DECISIONS.md SA-4); the database audits what changed. */
+export async function updatePlatformSettings(input: PlatformSettingsInput): Promise<ActionResult> {
+  await requirePlatformPermission('settings.manage');
+  const parsed = platformSettingsSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const settings = parsed.data;
+  // The form shows the end as a day. Unless that day changed, keep the stored time, which
+  // need not be midnight (e.g. set in SQL to end the offer at once).
+  const stored = (await getPlatformSettings()).setup_fee_discount_ends_at;
+  const dayChanged = (stored ? discountLastDay(stored) : '') !== settings.discountLastDay;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_update_settings', {
+    p_patch: {
+      trial_days: settings.trialDays,
+      grace_days: settings.graceDays,
+      setup_fee_paise: parsePriceInput(settings.setupFee),
+      setup_fee_discount_paise: parsePriceInput(settings.setupFeeDiscount),
+      ...(dayChanged && {
+        setup_fee_discount_ends_at: settings.discountLastDay
+          ? discountEndsAt(settings.discountLastDay)
+          : null,
+      }),
+      support_phone: settings.supportPhone || null,
+      support_email: settings.supportEmail || null,
+    },
+  });
+  if (error) return fromDbError(error, 'platform_update_settings');
   refresh();
   return actionOk();
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/shared/page-header';
+import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { OnboardWizard } from '@/features/platform/components/onboard-wizard';
 import { getTrialDays, listPlans } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
@@ -17,6 +18,7 @@ export default async function OnboardRestaurantPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ href: '/super/restaurants', label: 'Restaurants' }]} />
       <PageHeader
         title="Onboard restaurant"
         description="Creates the restaurant, its owner login and a free trial. Nothing is charged."

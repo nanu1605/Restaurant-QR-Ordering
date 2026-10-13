@@ -306,6 +306,11 @@ Conventions for every table unless stated otherwise:
 | grace_days | int | default 7 |
 | support_phone | text | shown to restaurants |
 | support_email | text | also receives the website's "Book a demo" leads |
+| setup_fee_paise | bigint | the usual setup fee before GST (₹999) |
+| setup_fee_discount_paise | bigint | the launch discount off it (₹500); 0 or more and below the fee |
+| setup_fee_discount_ends_at | timestamptz null | when the discount stops applying (the day after the offer's last day in India); null: until it is set to 0 |
+
+Edited only through `platform_update_settings` (Platform settings in `/super`), which audits what changed (docs/DECISIONS.md SA-4).
 
 **`site_leads`** (website "Book a demo" requests; written only by `site_create_lead`, read by platform admins)
 | Column | Type | Notes |
@@ -1084,6 +1089,8 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 
 ### 13.4 Super-admin panel (`/super`)
 
+The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a group appears once it has a page), and pages below a restaurant show breadcrumbs. §25 and docs/SUPER_ADMIN_PLAN.md describe the redesign in progress.
+
 - **Overview**: restaurants total / trialing / active / past due / read-only / suspended; MRR (sum of monthly-equivalent of active paid subscriptions: yearly ÷ 12); orders in last 24 h across platform; trials ending in next 7 days.
 - **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; docs/DECISIONS.md P11-13).
 - **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount, mode, period start/end, notes), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
@@ -1094,6 +1101,7 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - **Leads**: "Book a demo" requests from the website, newest first.
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable.
+- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email. Every change is audited (docs/DECISIONS.md SA-4, SA-5).
 
 ---
 
@@ -1109,7 +1117,7 @@ Razorpay is used **only** to collect subscription fees from restaurants. Verify 
 | Growth | ₹899 | ₹8,990 | Unlimited | 15 | + Kitchen view, discounts, split payments, UPI QR on bill, advanced reports, **waiter report**, CSV export |
 | Pro | ₹1,799 | ₹17,990 | Unlimited | Unlimited | + remove "Powered by" branding, priority support; multi-outlet later |
 
-A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platform_settings.setup_fee_paise` and `setup_fee_discount_paise`; covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
+A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platform_settings.setup_fee_paise` and `setup_fee_discount_paise`, edited in `/super` → Platform settings, where the offer can also be given a last day; covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
 
 ### 14.2 Feature keys (`plans.features` jsonb)
 
@@ -1635,3 +1643,27 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | W5 | The website in Hindi under `/hi`: every page except the policies (English only), a language switch, Hindi forms, errors and emails, the guest phone in the hero and demo in Hindi, hreflang and sitemap alternates (docs/DECISIONS.md W-15 to W-20) |
 
 Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels, except the installed app's launch screen (P11-4).
+
+## 25. Super-admin redesign (Phases 12 to 14)
+
+The platform panel at `/super` is rebuilt around the questions the MenuMesh team asks every day: how much money came in and who owes it, whether restaurants use MenuMesh, who is about to leave, where customers come from, and whether anything is broken. The detailed plan, definitions (MRR, dues, health, funnel) and acceptance checks are in docs/SUPER_ADMIN_PLAN.md; decisions are docs/DECISIONS.md SA-1 onwards. MenuMesh revenue and restaurants' sales (GMV) never share a chart or a total.
+
+| Stop | Ships |
+|---|---|
+| 12a | Grouped navigation and breadcrumbs, the platform permission check, a Platform settings screen (trial and grace days, setup fee and its discount with a last day, support contacts) |
+| 12b | Daily snapshots of subscriptions, usage and platform numbers; the purpose and GST split of every payment; acquisition channel, plan-limit hits, QR downloads and cancellation reasons; a log of scheduled jobs; backfill and local load data |
+| 12c | Money: payments ledger and dues; Subscriptions moves under Money |
+| 12d | Restaurants list rebuilt (paid till, health, last active, GMV, saved views) and global search |
+| 12e | Home: key numbers, Needs attention, charts, activity feed, live alerts, a daily digest email |
+| 13a | A restaurant's page with tabs, activity timeline, notes, tags and account manager |
+| 13b | Onboarding checklist, support inbox and Get help in the admin panel |
+| 13c | Assisted setup: support sessions with the restaurant owner's consent |
+| 13d | Leads pipeline, signup funnel, attribution, abandoned signups, upgrade opportunities |
+| 13e | Usage analytics |
+| 13f | Revenue analytics |
+| 13g | Team members and roles |
+| 14a | Invoices and GST, refunds and credits, Razorpay reconciliation, costs (after the CA's answers) |
+| 14b | Offers, custom prices, per-restaurant overrides, beta flags |
+| 14c | Announcements and the QR standee tracker |
+| 14d | System health |
+| 14e | Close account: data export and deletion |

@@ -270,9 +270,8 @@ Production keeps its current build until the owner's legal texts and contact det
      (W-9). Without them the site launches with "Book a demo" only, and requests are kept in
      `/super/leads` without an email.
    - `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST`: the same project as staging (W-13).
-3. **Support email** (production SQL editor), where each demo request is emailed when Resend is
-   set; without it, requests are only kept in `/super/leads`:
-   `update public.platform_settings set support_email = '…' where id = 1;`
+3. **Support email** (production `/super` → Platform settings), where each demo request is
+   emailed when Resend is set; without it, requests are only kept in `/super/leads`.
 4. **DNS** (GoDaddy, for `menumesh.in`):
    - DMARC: a TXT record `_dmarc` with `v=DMARC1; p=none; rua=mailto:dmarc@menumesh.in`. The
      domain has SPF and Resend's DKIM but no DMARC record, which mailbox providers look for

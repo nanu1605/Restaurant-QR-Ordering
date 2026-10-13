@@ -9,8 +9,14 @@ import {
   paymentLinkSchema,
   periodEnd,
   planFormSchema,
+  platformSettingsSchema,
   suggestRestaurantCode,
 } from '@/features/platform/schemas';
+import {
+  discountEndsAt,
+  discountLastDay,
+  setupFeeDiscountPaise,
+} from '@/features/platform/setup-fee';
 
 // Super-admin helpers (spec §13.4, docs/DECISIONS.md P7-4, P7-9).
 
@@ -266,6 +272,80 @@ describe('qrCodeDataUrl', () => {
     );
     expect(qrCodeDataUrl(' data:image/png;base64,iVBORw0KGgo= ')).toBe(
       'data:image/png;base64,iVBORw0KGgo=',
+    );
+  });
+});
+
+describe('setupFeeDiscountPaise', () => {
+  const now = new Date('2026-12-31T18:30:00Z');
+  const row = (ends: string | null) => ({
+    setup_fee_discount_paise: 50000,
+    setup_fee_discount_ends_at: ends,
+  });
+
+  it('applies with no end', () => {
+    expect(setupFeeDiscountPaise(row(null), now)).toBe(50000);
+  });
+
+  it('applies until its end', () => {
+    expect(setupFeeDiscountPaise(row('2026-12-31T18:30:01Z'), now)).toBe(50000);
+  });
+
+  it('stops at its end and after', () => {
+    expect(setupFeeDiscountPaise(row('2026-12-31T18:30:00Z'), now)).toBe(0);
+    expect(setupFeeDiscountPaise(row('2026-01-01T00:00:00Z'), now)).toBe(0);
+  });
+});
+
+describe('the offer last day', () => {
+  it('ends at the next midnight in India', () => {
+    expect(discountEndsAt('2026-12-31')).toBe('2026-12-31T18:30:00.000Z');
+  });
+
+  it('reads back as the same day', () => {
+    expect(discountLastDay('2026-12-31T18:30:00.000Z')).toBe('2026-12-31');
+    expect(discountLastDay(discountEndsAt('2027-02-28'))).toBe('2027-02-28');
+  });
+});
+
+describe('platformSettingsSchema', () => {
+  const valid = {
+    trialDays: '14',
+    graceDays: '7',
+    setupFee: '999',
+    setupFeeDiscount: '500',
+    discountLastDay: '',
+    supportPhone: '',
+    supportEmail: '',
+  };
+
+  it('accepts the launch settings', () => {
+    expect(platformSettingsSchema.safeParse(valid).success).toBe(true);
+    expect(
+      platformSettingsSchema.safeParse({ ...valid, discountLastDay: '2026-12-31' }).success,
+    ).toBe(true);
+  });
+
+  it('keeps the discount below the fee', () => {
+    const result = platformSettingsSchema.safeParse({ ...valid, setupFeeDiscount: '999' });
+    expect(result.error?.issues[0]?.path).toEqual(['setupFeeDiscount']);
+  });
+
+  it('refuses a fee under ₹1, a bad date, bad days or a bad email', () => {
+    expect(
+      platformSettingsSchema.safeParse({ ...valid, setupFee: '0.50', setupFeeDiscount: '0' })
+        .success,
+    ).toBe(false);
+    expect(
+      platformSettingsSchema.safeParse({ ...valid, discountLastDay: '31-12-2026' }).success,
+    ).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, trialDays: '0' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '91' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '  ' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: 0 }).data?.graceDays).toBe(0);
+    expect(platformSettingsSchema.safeParse({ ...valid, supportEmail: 'help' }).success).toBe(
+      false,
     );
   });
 });

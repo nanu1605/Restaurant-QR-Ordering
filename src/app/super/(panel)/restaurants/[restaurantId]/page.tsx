@@ -19,6 +19,7 @@ import {
   OwnerPasswordButton,
   RestaurantActions,
 } from '@/features/platform/components/restaurant-actions';
+import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { AccessBadge, SubscriptionBadge } from '@/features/platform/components/status-badges';
 import {
   ACCESS_REASON_LABELS,
@@ -96,6 +97,7 @@ export default async function SuperRestaurantPage({
 
   return (
     <>
+      <Breadcrumbs items={[{ href: '/super/restaurants', label: 'Restaurants' }]} />
       <PageHeader
         title={restaurant.name}
         description={

@@ -173,7 +173,9 @@ select set_eq(
       ('public.menu_import_commit'),
       ('public.menu_import_discard'),
       -- Phase 11: the worker panel's language
-      ('public.member_set_ui_lang')
+      ('public.member_set_ui_lang'),
+      -- Phase 12: platform settings
+      ('public.platform_update_settings')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

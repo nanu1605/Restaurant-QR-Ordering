@@ -2,6 +2,7 @@ import 'server-only';
 
 import { cache } from 'react';
 
+import { setupFeeDiscountPaise } from '@/features/platform/setup-fee';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 import { toPricingPlan, type SitePricing } from './pricing';
@@ -26,7 +27,7 @@ export const getSitePricing = cache(async (): Promise<SitePricing> => {
       .order('sort_order'),
     admin
       .from('platform_settings')
-      .select('trial_days, setup_fee_paise, setup_fee_discount_paise')
+      .select('trial_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at')
       .eq('id', 1)
       .single(),
   ]);
@@ -38,6 +39,6 @@ export const getSitePricing = cache(async (): Promise<SitePricing> => {
     trialDays: settings.data.trial_days,
     trialPlanCode: TRIAL_PLAN_CODE,
     setupFeePaise: settings.data.setup_fee_paise,
-    setupFeeDiscountPaise: settings.data.setup_fee_discount_paise,
+    setupFeeDiscountPaise: setupFeeDiscountPaise(settings.data),
   };
 });

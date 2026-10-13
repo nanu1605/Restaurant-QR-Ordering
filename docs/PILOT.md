@@ -92,14 +92,14 @@ Before charging anyone (Phase 8):
 - [ ] Ask Razorpay whether yearly Pro (₹17,990, above the ₹15,000 e-mandate limit) renews
       without asking the owner to approve it each year; test mode can't show a renewal.
 - [x] Decide the setup fee: ₹999 with ₹500 off for now (2026-10-13, DECISIONS P11-19), set by
-      the release. To end the offer, in the SQL editor:
-      `update public.platform_settings set setup_fee_discount_paise = 0 where id = 1;`
+      the release. To end the offer, set the discount to 0 or give the offer a last day in
+      `/super` → Platform settings (DECISIONS SA-5).
 - [ ] Verify `menumesh.in` as a Resend sending domain and set `RESEND_API_KEY` and `EMAIL_FROM`
       (e.g. `MenuMesh <billing@menumesh.in>`) in Vercel, with `CRON_SECRET`, so reminder emails go
       out from the daily cron.
 - [ ] Create a Cloudflare Turnstile widget for `menumesh.in` (and `staging.menumesh.in`) and set
       `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in Vercel, so the website's "Book a demo"
-      form appears; set `platform_settings.support_email` (SQL editor) to receive each request.
+      form appears; set the support email in `/super` → Platform settings to receive each request.
 - [ ] With Turnstile and Resend both set, self-serve signup opens on the website: on staging, sign
       up once with a real address, check the code and welcome emails arrive, and suspend the test
       restaurant from `/super` afterwards.

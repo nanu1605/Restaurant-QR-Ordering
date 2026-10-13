@@ -1,11 +1,9 @@
-import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { PageHeader } from '@/components/shared/page-header';
-import { buttonVariants } from '@/components/ui/button';
 import { ImportStartView } from '@/features/menu-import/components/import-views';
+import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { getRestaurantDetail } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 
@@ -24,18 +22,15 @@ export default async function SuperImportMenuPage({
 
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { href: '/super/restaurants', label: 'Restaurants' },
+          { href: `/super/restaurants/${restaurantId}`, label: detail.restaurant.name },
+        ]}
+      />
       <PageHeader
         title={`Import menu for ${detail.restaurant.name}`}
         description="The restaurant's owner sees the dishes on their Menu page once imported. Each import is in its audit log."
-        actions={
-          <Link
-            href={`/super/restaurants/${restaurantId}`}
-            className={buttonVariants({ variant: 'outline' })}
-          >
-            <ArrowLeft aria-hidden />
-            {detail.restaurant.name}
-          </Link>
-        }
       />
       <ImportStartView
         restaurantId={restaurantId}
