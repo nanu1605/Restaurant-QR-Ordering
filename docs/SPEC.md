@@ -1635,3 +1635,27 @@ The marketing website at `menumesh.in` (docs/DECISIONS.md W-1 to W-4): the same 
 | W5 | The website in Hindi under `/hi`: every page except the policies (English only), a language switch, Hindi forms, errors and emails, the guest phone in the hero and demo in Hindi, hreflang and sitemap alternates (docs/DECISIONS.md W-15 to W-20) |
 
 Rules: the copy only claims what the product does today (no invented customers, logos or numbers); the site works from 360 px phones to desktops; animations respect reduced motion, pause off screen and can be paused. §16.1's "no decorative motion" stays the rule for the app's panels, except the installed app's launch screen (P11-4).
+
+## 25. Super-admin redesign (Phases 12 to 14)
+
+The platform panel at `/super` is rebuilt around the questions the MenuMesh team asks every day: how much money came in and who owes it, whether restaurants use MenuMesh, who is about to leave, where customers come from, and whether anything is broken. The detailed plan, definitions (MRR, dues, health, funnel) and acceptance checks are in docs/SUPER_ADMIN_PLAN.md; decisions are docs/DECISIONS.md SA-1 onwards. MenuMesh revenue and restaurants' sales (GMV) never share a chart or a total.
+
+| Stop | Ships |
+|---|---|
+| 12a | Grouped navigation and breadcrumbs, the platform permission check, a Platform settings screen (trial and grace days, setup fee and its discount with a last day, support contacts) |
+| 12b | Daily snapshots of subscriptions, usage and platform numbers; the purpose and GST split of every payment; acquisition channel, plan-limit hits, QR downloads and cancellation reasons; a log of scheduled jobs; backfill and local load data |
+| 12c | Money: payments ledger and dues; Subscriptions moves under Money |
+| 12d | Restaurants list rebuilt (paid till, health, last active, GMV, saved views) and global search |
+| 12e | Home: key numbers, Needs attention, charts, activity feed, live alerts, a daily digest email |
+| 13a | A restaurant's page with tabs, activity timeline, notes, tags and account manager |
+| 13b | Onboarding checklist, support inbox and Get help in the admin panel |
+| 13c | Assisted setup: support sessions with the restaurant owner's consent |
+| 13d | Leads pipeline, signup funnel, attribution, abandoned signups, upgrade opportunities |
+| 13e | Usage analytics |
+| 13f | Revenue analytics |
+| 13g | Team members and roles |
+| 14a | Invoices and GST, refunds and credits, Razorpay reconciliation, costs (after the CA's answers) |
+| 14b | Offers, custom prices, per-restaurant overrides, beta flags |
+| 14c | Announcements and the QR standee tracker |
+| 14d | System health |
+| 14e | Close account: data export and deletion |
