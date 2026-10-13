@@ -135,6 +135,8 @@ platform admin nothing.
 - **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids), **Webhooks** (what
   Razorpay sent; a failed one can be reprocessed) and the **Audit log**.
 - **Leads**: "Book a demo" requests from the website's contact page.
+- **Platform settings**: trial and grace days, the setup fee, its launch discount and the offer's
+  last day, and the support phone and email. Every change is in the audit log.
 
 A platform admin who loses their phone can't pass the second factor. Remove their authenticator in
 the Supabase SQL editor, and they enrol again on the next login:
@@ -217,9 +219,9 @@ For real test-mode webhooks, expose the app through a tunnel Razorpay accepts (z
 staging, and register `…/api/webhooks/razorpay` with the `subscription.*` and
 `payment_link.paid` events.
 
-The setup fee a payment link suggests is `platform_settings.setup_fee_paise` (₹999) less
-`setup_fee_discount_paise` (₹500 for now), plus GST; `/pricing` shows both. Change them in the SQL
-editor; a discount of 0 ends the offer.
+The setup fee a payment link suggests is the fee (₹999) less the launch discount (₹500 for now),
+plus GST; `/pricing` shows both. Change them in `/super` → Platform settings: a discount of 0, or a
+last day for the offer, ends it.
 
 #### Reminder emails
 
@@ -259,7 +261,7 @@ home page, `/features`, `/pricing` (plans and prices straight from the `plans` t
 
 The "Book a demo" form on `/contact` is protected by Cloudflare Turnstile and shows only when both
 keys are set; `pnpm dev` uses Cloudflare's always-pass test keys instead. Each request is listed
-in `/super/leads` and emailed to `platform_settings.support_email` (set it in the SQL editor) when
+in `/super/leads` and emailed to the support email (`/super` → Platform settings) when
 Resend is set up.
 
 With both Turnstile and Resend (`RESEND_API_KEY`, `EMAIL_FROM`) set, visitors can also sign up

@@ -3268,3 +3268,55 @@ The owner approved the Hindi copy as written, with no corrections: the customer 
 the website, its demo and emails (W-20), the guest bill (11a), the signup fields (11d), the
 worker panel and its errors (11e), and the setup fee's "लॉन्च ऑफ़र" wording (P11-19). The
 Release no longer waits on a Hindi review; later corrections are ordinary copy changes.
+
+## Super-admin redesign (Phases 12 to 14)
+
+The owner asked (2026-10-14) for a super-admin panel that answers the team's daily questions:
+money in and owed, usage, who is about to leave, where customers come from, and what is broken.
+docs/SUPER_ADMIN_PLAN.md is the plan, in 17 stops; SPEC §25 lists them. The owner's answers:
+follow the plan in its order; a standing go to merge each Phase 12 PR once CI is green; team roles
+stay at 13g, since nobody else gets `/super` before then.
+
+### 12a · Shell, permission check, Platform settings
+
+- **SA-1 · Lean scope:** 12a ships the grouped sidebar, breadcrumbs, the permission check and the
+  settings screen. The shared data table, chart panel, key numbers strip, date range and badges are
+  built in the stop that first uses them (12c, 12e), so each is shaped by a real page. Existing
+  platform functions and pages switch to the permission check in 13g, when roles give it
+  something to check; until then they keep `private.current_platform_admin()` and
+  `requirePlatformAdmin()`. The top bar gets no empty slots for search, date range or alerts.
+- **SA-2 · Permission check:** `private.require_platform_permission(p_permission)` returns the
+  admin like `private.current_platform_admin()` (so FORBIDDEN and MFA_REQUIRED are unchanged) and
+  raises a plain error for a name outside the plan's twelve, which is a bug, not a user mistake.
+  Every platform admin holds every permission until 13g. The TS side, `requirePlatformPermission`
+  in `src/lib/auth/guards.ts`, wraps `requirePlatformAdmin()`; the two name lists stay in sync
+  by hand until 13g. API roles cannot call the SQL check directly.
+- **SA-3 · Navigation:** groups as in the plan's §2, each shown once it has a page: Overview (no
+  heading; it becomes Home in 12e), Money (Subscriptions, at its old URL until 12c), Restaurants,
+  Growth (Leads), System (Webhooks), Settings (Platform settings, Plans, Audit log). Rows are 44 px
+  in the phone sheet and 36 px on desktop (WCAG 2.2's minimum is 24 px); the sidebar stays in
+  place while the page scrolls. Breadcrumbs list only the pages above, since each page's heading
+  names it; they replace the back links on the support view and menu import pages.
+- **SA-4 · Settings:** `platform_update_settings(p_patch)` (settings.manage) takes any of trial
+  days (1 to 365), grace days (0 to 90), the setup fee (at least ₹1), its discount (0 or more and
+  below the fee, checked on the saved result, so lowering only the fee cannot leave the discount
+  above it), the offer's end, and the support phone and email (blank clears them). It audits
+  `platform_settings.updated` with only what changed, and nothing when nothing changed.
+  - Trial days apply to new trials and grace days to payments that fail from then on: each
+    restaurant stores its own trial end and grace end. Extend trial still changes one restaurant.
+  - The support phone is saved but not shown yet: the contact page keeps the W-2 placeholders
+    until the owner's contact details arrive.
+  - The website's copy says "14 days" and the README "7 days' grace" in words; changing those
+    settings makes the copy wrong (§24's rule that the copy only claims what the product does).
+    The trial days field says so; reading the settings into the copy is left until a change is
+    wanted.
+- **SA-5 · Launch offer's last day:** `platform_settings.setup_fee_discount_ends_at`, entered as
+  the offer's last day in India and stored as the next midnight there. Once it passes, the
+  pricing page, new payment links and `pnpm razorpay:event` stop applying the discount, worked out
+  in one helper (`src/features/platform/setup-fee.ts`) when the page is read: `/pricing` renders on
+  every request, so no job or cache refresh is needed. A past day is allowed and ends the offer at
+  once. A payment-link dialog opened before the end keeps the amount it suggested; the admin sees
+  and can edit it.
+- **SA-6 · Testing the shared row:** the settings e2e test changes the one settings row that the
+  pricing and payment-link tests read, so it runs as its own Playwright project after all the
+  others and restores the row. If any earlier project fails, it is skipped.

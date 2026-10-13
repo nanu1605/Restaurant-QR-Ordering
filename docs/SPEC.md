@@ -306,6 +306,11 @@ Conventions for every table unless stated otherwise:
 | grace_days | int | default 7 |
 | support_phone | text | shown to restaurants |
 | support_email | text | also receives the website's "Book a demo" leads |
+| setup_fee_paise | bigint | the usual setup fee before GST (₹999) |
+| setup_fee_discount_paise | bigint | the launch discount off it (₹500); 0 or more and below the fee |
+| setup_fee_discount_ends_at | timestamptz null | when the discount stops applying (the day after the offer's last day in India); null: until it is set to 0 |
+
+Edited only through `platform_update_settings` (Platform settings in `/super`), which audits what changed (docs/DECISIONS.md SA-4).
 
 **`site_leads`** (website "Book a demo" requests; written only by `site_create_lead`, read by platform admins)
 | Column | Type | Notes |
@@ -1084,6 +1089,8 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 
 ### 13.4 Super-admin panel (`/super`)
 
+The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a group appears once it has a page), and pages below a restaurant show breadcrumbs. §25 and docs/SUPER_ADMIN_PLAN.md describe the redesign in progress.
+
 - **Overview**: restaurants total / trialing / active / past due / read-only / suspended; MRR (sum of monthly-equivalent of active paid subscriptions: yearly ÷ 12); orders in last 24 h across platform; trials ending in next 7 days.
 - **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; docs/DECISIONS.md P11-13).
 - **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount, mode, period start/end, notes), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
@@ -1094,6 +1101,7 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - **Leads**: "Book a demo" requests from the website, newest first.
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable.
+- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email. Every change is audited (docs/DECISIONS.md SA-4, SA-5).
 
 ---
 
@@ -1109,7 +1117,7 @@ Razorpay is used **only** to collect subscription fees from restaurants. Verify 
 | Growth | ₹899 | ₹8,990 | Unlimited | 15 | + Kitchen view, discounts, split payments, UPI QR on bill, advanced reports, **waiter report**, CSV export |
 | Pro | ₹1,799 | ₹17,990 | Unlimited | Unlimited | + remove "Powered by" branding, priority support; multi-outlet later |
 
-A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platform_settings.setup_fee_paise` and `setup_fee_discount_paise`; covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
+A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platform_settings.setup_fee_paise` and `setup_fee_discount_paise`, edited in `/super` → Platform settings, where the offer can also be given a last day; covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
 
 ### 14.2 Feature keys (`plans.features` jsonb)
 
