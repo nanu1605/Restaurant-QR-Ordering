@@ -82,7 +82,8 @@ export async function createTestRestaurant({
   prefix = 'e2e',
   plan = 'growth',
   cuisine = 'north_indian',
-}: { prefix?: string; plan?: string; cuisine?: CuisineSet } = {}) {
+  ownerEmail,
+}: { prefix?: string; plan?: string; cuisine?: CuisineSet; ownerEmail?: string } = {}) {
   const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
   const slug = `${prefix}-${unique}`.slice(0, 32);
   const result = await onboardRestaurant(adminClient(), {
@@ -91,6 +92,7 @@ export async function createTestRestaurant({
     ownerName: 'Test Owner',
     ownerUsername: 'owner',
     ownerPassword: TEST_PASSWORD,
+    ownerEmail,
     plan,
     cuisine,
     staffEmailDomain: process.env.STAFF_EMAIL_DOMAIN || 'tableorder.test',

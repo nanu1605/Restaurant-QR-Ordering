@@ -253,8 +253,9 @@ bottom of each section.
   username login (the lookup only returns active members, Phase 1). The "account is inactive"
   message stays for email logins.
 - **Existing sessions:** deactivation takes effect on the next request (RLS and the guards only
-  see active memberships). A password reset doesn't end sessions already signed in; the Admin API
-  has no "sign out this user" call without their token.
+  see active memberships). A password reset does end the login's sessions on every device:
+  Supabase Auth ends them when the Admin API sets a password (found in 11c, P11-8; this note first
+  said the opposite).
 - **P2-12 · Deleting a waiter profile** is a soft delete that also unlinks its login, so the login
   can be linked again; `employee_code` is unique among active waiters only. The login itself stays
   under Staff logins. A login moved off the waiter role is unlinked from its profile.
@@ -2866,6 +2867,10 @@ trials, 11e worker panel in Hindi.
     The customer menu still links no manifest. Its pages now carry the screen too, hidden in a
     browser tab, and `/t` stays within its budget (254 of 275 KiB). An app saved before this
     change is a plain shortcut: remove it and install again.
+
+    Since the website links the manifest, Chrome on Android may offer its own install bar to
+    visitors. The owner chose to keep it (2026-10-13). The owner confirmed the screen on
+    Android and iPhone after reinstalling.
 - **P11-5 · On every full load, not once per launch:**
   - **Why.** Knowing "first open" before the first paint would need an inline script, which
     the CSP allows only with its nonce. So the screen comes back on every full page load in
@@ -2886,3 +2891,120 @@ trials, 11e worker panel in Hindi.
     - printing hides it before the app has launched.
 
     A browser tab is checked never to show it. Real devices are checked by hand on staging.
+
+### 11c · Forgot password
+
+- **P11-6 · Our own emailed code, not Supabase's reset email:**
+  - **The flow.** The login page's Email tab links "Forgot password?" to `/login/forgot`.
+    1. The visitor types the email they log in with and passes the Turnstile check.
+    2. A 6-digit code goes out by Resend, from `EMAIL_FROM`, the sender the signup codes use
+       ("MenuMesh", at the owner's choice).
+    3. The code and a new password, typed twice, set the password through the Admin API.
+    4. This device is signed in, and the login page sends the account on to its panel.
+  - **Why not Supabase's own reset email.** `resetPasswordForEmail` sends a link through
+    Supabase's mailer, which needs its own SMTP setup. It would also take staff logins' made-up
+    addresses. Ours reuses the signup's code flow, Resend and Turnstile.
+  - **Who can use it.** Accounts with a real email:
+    - owners who signed up on the website, or were onboarded with an email;
+    - platform admins who have set up their authenticator (P11-8).
+
+    Staff logins have made-up addresses (`username@<code>.staff.<domain>`). Any address whose
+    domain contains `.staff.` is left out, which errs on the side of sending nothing. Staff,
+    and owners without an email, can't use it. The Restaurant code tab says "Forgot your
+    password? Staff: ask your owner or manager to reset it. Owners: use the Email tab, or
+    contact MenuMesh support." The platform admin resets an owner's password from the platform
+    panel.
+
+  - **The pieces.**
+    - Table `password_resets` and the functions `auth_password_reset_start`, `_verify` and
+      `_finish`, service role only (`20261013110000_password_resets.sql`). The `auth_` prefix
+      marks server-only auth helpers, as `auth_staff_login_email` does.
+    - `src/lib/one-time-code.ts` now holds `newCode`, `hashCode` and `clientIp` for both flows.
+      Each purpose hashes apart (`signup-code:` and `password-reset-code:`), so a code for
+      one never fits the other. The signup's hash is unchanged, so signups open during the
+      deploy still work.
+    - The `mm_reset` cookie (httpOnly, path `/login`, 30 minutes) keeps the request id and
+      the email typed, so the second step can show the address.
+    - Both steps are on `/login/forgot`, so nothing announces the change of step. Each step
+      therefore focuses its first field on arrival. The code field is described by the
+      "we've emailed it a code" line, so a screen reader reads it out.
+  - **Limits.**
+    - 3 requests an hour per email, and 10 a day per network. Both answer "Too many reset
+      requests. Try again later, or contact MenuMesh support."
+    - A code works for 15 minutes and allows 5 wrong tries.
+    - Wrong tries add up per email: after 10 in a day, its codes are refused until the day is
+      over. Without this, asking for new codes would buy more guesses: 3 codes an hour of 5
+      tries each is 360 guesses a day at one account.
+    - Requests are deleted after a day, by each new request and by the daily cron.
+  - **Not set up.** Without Turnstile keys or email, the page says to contact MenuMesh support.
+- **P11-7 · Nothing tells whether an email has an account:**
+  - Every request writes a row, account or not, so the limits count the same.
+  - Every email gets the same next step: "If you@example.com has a MenuMesh account, we've
+    emailed it a 6-digit code."
+  - The email is sent with `after()`, once the answer has gone. So the time the answer takes
+    doesn't differ either.
+  - A request without an account answers any code as wrong, and then locks, like any other.
+  - **Known limit.** Anyone who knows an email can use up its requests (3 an hour) or its wrong
+    tries (10 a day). That blocks its reset for up to a day, and each request mails the owner a
+    code. The owner can still log in with their password, or ask support. Counting every
+    request for an email the same is the price of not telling who has an account.
+- **P11-8 · Every device signed out:**
+  - Supabase Auth ends every session of an account when the Admin API sets its password: other
+    devices can no longer renew theirs. This was checked locally (the other device's refresh
+    fails with "Refresh Token Not Found"), and `password-reset.spec.ts` guards it.
+  - A first version also called `signOut({ scope: 'others' })`. A test without that call
+    still passed, which showed the call did nothing more, so it was removed.
+  - The reset then signs this device in again. If that sign-in fails, the login page says
+    the password is changed.
+  - **Known limit.** Another device keeps its current access token until it expires, up to an
+    hour (`jwt_expiry`), and then has to log in again.
+  - **Platform admins.** They still enter their TOTP code at `/super/mfa` (P7-2), so an inbox
+    alone doesn't open the platform panel. A platform admin without a verified authenticator
+    gets no code: `/super/mfa` would let whoever set the new password enrol their own. That is
+    a new admin who hasn't logged in yet, or one whose factor support removed. Their password
+    is reset from the Supabase dashboard instead.
+- **P11-9 · In the audit log:**
+  - `auth_password_reset_finish` writes `staff.password_reset` with the reason "Reset with an
+    emailed code", in each restaurant where the account is an active member. The actor is the
+    account itself, so the owner sees it in their activity log. A platform admin's reset
+    writes `platform_admin.password_reset` in the platform's log.
+  - The code isn't used up until the password is saved. So a password the Admin API refuses
+    can be tried again with the same code, and finishing twice records it once.
+  - **Testing.**
+    - pgTAP `480_password_resets.test.sql`: grants, real and made-up addresses, platform
+      admins with and without an authenticator, the limits, tries per code and per email,
+      expiry, the audit rows, cleanup.
+    - Unit `password-reset.test.ts`: the schemas, the email, and the hashes kept apart.
+    - E2E `password-reset.spec.ts`:
+      - an owner resets, and lands in `/admin`;
+      - the old password stops working, and another device can't renew its session;
+      - an unknown email gets the same answer and no email;
+      - staff see the hint.
+
+      Each test worker sends its own made-up `x-real-ip`, so repeated local runs stay under
+      the 10-a-day network limit.
+
+    - The contrast sweep includes `/login/forgot`.
+
+### Review fixes (11c)
+
+Three reviewers (security, correctness, UI and docs) and a verifier confirmed 7 findings and
+rated 4 plausible. All are fixed above, except the inbox flood, which P11-7 records as a known
+limit:
+
+- **Platform admin without an authenticator.** A platform admin with no verified authenticator
+  could have been taken over through their inbox alone. Such admins now get no code (P11-8).
+- **Guesses across codes.** Wrong guesses now add up per email, 10 a day (P11-6).
+- **Rate-limit message.** The message no longer says "wait an hour" for the day-long network
+  limit.
+- **Long emails.** An email over 254 characters is a field error, not "Something went wrong".
+- **Step change for screen readers.** The change of step is now read out (P11-6).
+- **Session copy.** Two older texts said a password reset leaves other devices signed in: the
+  platform panel's owner reset dialog, and P2's note on existing sessions. Both now say it
+  signs them out.
+- **Owners on the Restaurant code tab.** The tab's hint now covers owners.
+- **Made-up address check.** The docs now describe the check as it is (P11-6).
+
+Refuted: the per-network limit breaking the e2e spec (already fixed by the per-worker address),
+and missing pgTAP cases for inactive members and deleted or anonymous users (the filters exist
+and work; no defect).

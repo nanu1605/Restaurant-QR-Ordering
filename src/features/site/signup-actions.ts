@@ -1,8 +1,5 @@
 'use server';
 
-import { createHmac, randomInt } from 'node:crypto';
-
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 
@@ -16,6 +13,7 @@ import { dbErrorCode } from '@/lib/db-errors';
 import { emailConfig, sendEmail } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
 import { getServerEnv } from '@/lib/env.server';
+import { clientIp, hashCode, newCode } from '@/lib/one-time-code';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { turnstileConfig, verifyTurnstile } from '@/lib/turnstile';
@@ -74,22 +72,6 @@ export type ResendState = {
   /** New codes sent so far, so each one reads differently. */
   sends: number;
 } | null;
-
-const hashCode = (code: string) =>
-  createHmac('sha256', getServerEnv().CUSTOMER_COOKIE_SECRET)
-    .update(`signup-code:${code}`)
-    .digest('hex');
-
-const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
-
-async function clientIp(): Promise<string | null> {
-  const requestHeaders = await headers();
-  return (
-    requestHeaders.get('x-real-ip') ??
-    requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    null
-  );
-}
 
 /** Emails a code; false when email is off, or Resend refused or couldn't be reached. */
 async function sendCode(
@@ -151,7 +133,7 @@ export async function startSignup(
       visitor,
       dnt,
     },
-    p_code_hash: hashCode(code),
+    p_code_hash: hashCode('signup', code),
     p_ip_hash: ip ? hashIp(ip) : undefined,
   });
   if (error) {
@@ -187,7 +169,7 @@ export async function resendSignupCode(
   const code = newCode();
   const { data: email, error } = await createAdminClient().rpc('site_signup_resend', {
     p_id: id,
-    p_code_hash: hashCode(code),
+    p_code_hash: hashCode('signup', code),
   });
   if (error) {
     const reason = dbErrorCode(error);
@@ -202,7 +184,9 @@ export async function resendSignupCode(
     console.error('[signup] site_signup_resend failed:', error.code, error.message);
     return { ok: false, sends, message: failed };
   }
-  if (!(await sendCode(email, code, `signup/${id}/${hashCode(code).slice(0, 16)}`, lang))) {
+  if (
+    !(await sendCode(email, code, `signup/${id}/${hashCode('signup', code).slice(0, 16)}`, lang))
+  ) {
     return { ok: false, sends, message: notSent };
   }
   return { ok: true, sends: sends + 1, message: sends === 0 ? t.sent : t.sentAgain };
@@ -263,7 +247,7 @@ export async function completeSignup(
   const admin = createAdminClient();
   const { data, error } = await admin.rpc('site_signup_verify', {
     p_id: id,
-    p_code_hash: hashCode(parsed.data.code),
+    p_code_hash: hashCode('signup', parsed.data.code),
   });
   if (error) {
     console.error('[signup] could not check a code', error);

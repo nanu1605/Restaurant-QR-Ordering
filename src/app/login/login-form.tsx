@@ -1,13 +1,13 @@
 'use client';
 
-import { useActionState, useId } from 'react';
+import Link from 'next/link';
+import { useActionState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { signInWithEmail, signInWithUsername, type LoginFormState } from './actions';
+import { Field } from './field';
 
 type LoginFormProps = {
   next?: string;
@@ -67,6 +67,10 @@ export function LoginForm({ next, notice }: LoginFormProps) {
             <Button type="submit" size="touch" disabled={staffPending}>
               {staffPending ? 'Logging in…' : 'Log in'}
             </Button>
+            <p className="text-sm text-ink-muted">
+              Forgot your password? Staff: ask your owner or manager to reset it. Owners: use the
+              Email tab, or contact MenuMesh support.
+            </p>
           </form>
         </TabsContent>
 
@@ -94,41 +98,15 @@ export function LoginForm({ next, notice }: LoginFormProps) {
             <Button type="submit" size="touch" disabled={emailPending}>
               {emailPending ? 'Logging in…' : 'Log in'}
             </Button>
+            <Link
+              href="/login/forgot"
+              className="inline-flex min-h-11 items-center self-start text-sm font-medium text-ink underline underline-offset-4"
+            >
+              Forgot password?
+            </Link>
           </form>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-type FieldProps = Omit<React.ComponentProps<'input'>, 'id'> & {
-  name: string;
-  label: string;
-  error?: string;
-};
-
-function Field({ name, label, error, ...inputProps }: FieldProps) {
-  const id = useId();
-  const errorId = `${id}-error`;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      {/* A new default (the values sent back after a failed login) remounts the
-          input: Base UI warns when an uncontrolled default changes in place. */}
-      <Input
-        key={String(inputProps.defaultValue ?? '')}
-        id={id}
-        name={name}
-        className="h-11 text-base"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        {...inputProps}
-      />
-      {error && (
-        <p id={errorId} className="text-sm text-status-void">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

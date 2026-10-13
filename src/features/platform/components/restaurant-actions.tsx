@@ -811,7 +811,7 @@ export function OwnerPasswordButton({
         open={open}
         onClose={() => setOpen(false)}
         title={`New password for ${ownerName}`}
-        description="The owner's other devices stay logged in. Tell them the new password; it isn't shown again."
+        description="This logs the owner out on every device. Tell them the new password; it isn't shown again."
       >
         <OwnerPasswordForm memberId={memberId} onDone={() => setOpen(false)} />
       </FormDialog>
