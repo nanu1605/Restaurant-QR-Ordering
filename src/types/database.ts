@@ -1215,6 +1215,7 @@ export type Database = {
           staff_can_remove_served_items: boolean
           state: string | null
           status: Database["public"]["Enums"]["restaurant_status"]
+          storefront_photo_path: string | null
           suspended_reason: string | null
           timezone: string
           updated_at: string
@@ -1255,6 +1256,7 @@ export type Database = {
           staff_can_remove_served_items?: boolean
           state?: string | null
           status?: Database["public"]["Enums"]["restaurant_status"]
+          storefront_photo_path?: string | null
           suspended_reason?: string | null
           timezone?: string
           updated_at?: string
@@ -1295,6 +1297,7 @@ export type Database = {
           staff_can_remove_served_items?: boolean
           state?: string | null
           status?: Database["public"]["Enums"]["restaurant_status"]
+          storefront_photo_path?: string | null
           suspended_reason?: string | null
           timezone?: string
           updated_at?: string
@@ -1693,6 +1696,35 @@ export type Database = {
           },
         ]
       }
+      trial_claims: {
+        Row: {
+          created_at: string
+          kind: string
+          restaurant_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          restaurant_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          restaurant_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trial_claims_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waiters: {
         Row: {
           created_at: string
@@ -2084,6 +2116,10 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: string
       }
+      platform_restaurant_lookalikes: {
+        Args: { p_restaurant_ids: string[] }
+        Returns: Json
+      }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
@@ -2132,9 +2168,17 @@ export type Database = {
         Args: { p_ip_hash?: string; p_lead: Json }
         Returns: string
       }
+      site_signup_create_restaurant: {
+        Args: { p_payload: Json }
+        Returns: Json
+      }
       site_signup_finish: {
         Args: { p_id: string; p_restaurant_id?: string }
         Returns: undefined
+      }
+      site_signup_identity_taken: {
+        Args: { p_fssai: string; p_gstin?: string; p_phone: string }
+        Returns: boolean
       }
       site_signup_resend: {
         Args: { p_code_hash: string; p_id: string }
@@ -2207,6 +2251,10 @@ export type Database = {
       staff_update_service_request: {
         Args: { p_request_id: string; p_status: string }
         Returns: Json
+      }
+      storefront_photos_to_remove: {
+        Args: { p_limit?: number }
+        Returns: string[]
       }
       subscription_reminder_sent: {
         Args: { p_due_key: string; p_kind: string; p_restaurant_id: string }

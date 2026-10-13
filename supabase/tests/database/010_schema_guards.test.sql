@@ -148,6 +148,7 @@ select set_eq(
       ('public.platform_list_restaurants'),
       ('public.platform_list_subscriptions'),
       ('public.platform_get_restaurant'),
+      ('public.platform_restaurant_lookalikes'),
       ('public.platform_set_restaurant_status'),
       ('public.platform_extend_trial'),
       ('public.platform_change_plan'),
