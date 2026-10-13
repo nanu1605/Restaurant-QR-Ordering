@@ -77,15 +77,18 @@ Before charging anyone (Phase 8):
 
 - [ ] Razorpay account, KYC with a registered business, bank account, GST details in the Razorpay
       dashboard (Razorpay's receipts carry them), test and live keys, and the webhook URL and secret.
-- [ ] With the test keys on staging (Razorpay can reach its webhook there; locally only
-      `pnpm razorpay:event` can): create the Razorpay plans from `/super` → Plans, then
+- [x] With the test keys on staging (Razorpay can reach its webhook there; locally only
+      `pnpm razorpay:event` can): open Subscriptions once in the Razorpay dashboard in test
+      mode (it switches the product on), create the Razorpay plans from `/super` → Plans, then
       subscribe as a test restaurant's owner with a test card and try "Charge this now" (success
-      and failure) in the Razorpay dashboard.
+      and failure) in the Razorpay dashboard. Done 2026-10-13: webhooks processed, grace banner
+      shown.
 - [ ] Register the webhook `https://menumesh.in/api/webhooks/razorpay` for the `subscription.*`
       and `payment_link.paid` events, and set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and
       `RAZORPAY_WEBHOOK_SECRET` in Vercel (test keys on staging, live keys on production).
-- [ ] Check in test mode whether yearly Pro (₹17,990, above the ₹15,000 e-mandate limit) renews
-      without asking the owner to approve it each year.
+      Staging done 2026-10-13.
+- [ ] Ask Razorpay whether yearly Pro (₹17,990, above the ₹15,000 e-mandate limit) renews
+      without asking the owner to approve it each year; test mode can't show a renewal.
 - [ ] Decide the setup fee (₹1,499 by default: `platform_settings.setup_fee_paise`, in the SQL
       editor).
 - [ ] Verify `menumesh.in` as a Resend sending domain and set `RESEND_API_KEY` and `EMAIL_FROM`

@@ -137,6 +137,11 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   status.supabase.com and vercel-status.com.
 - **A Razorpay webhook failed:** `/super` → **Webhooks** shows it; **Reprocess** runs it again.
   Razorpay also retries on its own for a day.
+- **Create … plan in Razorpay says `401: {"error":"Unauthorized"}`:** Subscriptions isn't
+  switched on in that mode yet, while the other APIs already work. Open **Payments →
+  Subscriptions** in the Razorpay dashboard once, in the same mode as the keys, and try again.
+  `Authentication failed` instead means the key id and secret aren't one pair: regenerate the
+  key and set both.
 - **Errors:** Sentry (errors only, no personal data). The server's `console.error` lines for
   unexpected database errors arrive there too.
 
@@ -222,7 +227,8 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 ## Razorpay live switch
 
 1. Move production to Supabase Pro (daily backups, no pausing when idle); keep the nightly export.
-2. KYC approved; live mode enabled in the Razorpay dashboard.
+2. KYC approved; live mode enabled in the Razorpay dashboard. Open **Payments → Subscriptions**
+   once in live mode: that switches the product on (step 6 fails until then).
 3. Create live keys; set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the production Vercel
    project.
 4. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and

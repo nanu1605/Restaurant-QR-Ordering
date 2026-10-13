@@ -196,7 +196,9 @@ Set in `.env.local` (test-mode keys from the Razorpay dashboard):
 | `RAZORPAY_WEBHOOK_SECRET` | The secret set on the webhook in the Razorpay dashboard      |
 | `RAZORPAY_API_BASE_URL`   | Defaults to `https://api.razorpay.com/v1` (tests use a mock) |
 
-Then, in `/super` → **Plans**, press **Create … plan in Razorpay** for each plan and cycle to sell.
+Open **Subscriptions** once in the Razorpay dashboard, in the keys' mode: until then Razorpay
+answers `401 {"error":"Unauthorized"}` for plans. Then, in `/super` → **Plans**, press
+**Create … plan in Razorpay** for each plan and cycle to sell.
 A new price clears a plan's Razorpay id (Razorpay plans can't change price); create it again.
 
 Razorpay can't send webhooks to `localhost`. To try the states locally, send signed events
