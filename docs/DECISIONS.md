@@ -3008,3 +3008,90 @@ limit:
 Refuted: the per-network limit breaking the e2e spec (already fixed by the per-worker address),
 and missing pgTAP cases for inactive members and deleted or anonymous users (the filters exist
 and work; no defect).
+
+### 11d · Storefront photo and one free trial per restaurant
+
+- **P11-10 · One free trial per restaurant, for the website's signup only:**
+  - **What counts as the same restaurant.** Any one of these:
+    - the same FSSAI licence, which the signup now requires (14 digits);
+    - the same mobile, compared by its last 10 digits, so "+91 98765-43210" and
+      "09876543210" match;
+    - the same GSTIN, when one is given.
+  - **Compared with what.** Every restaurant's current values, and every claim an earlier
+    signup made (P11-11).
+  - **Checked twice.**
+    - At the first step, after the bot check and before any email goes out
+      (`site_signup_identity_taken`). So nobody waits for a code to hear it.
+    - When the restaurant is created, under one lock for all signups
+      (`site_signup_create_restaurant`). It wraps `platform_create_restaurant`, so the
+      platform admin's path is unchanged.
+  - **The platform admin's own onboarding is never checked.** Branches of a chain can share a
+    GSTIN or a mobile, and the admin decides.
+  - **Only the signup requires the licence.** `fssai_license` stays nullable on the table, for
+    existing restaurants and the platform's onboarding.
+  - **The address now comes from the signup.** The address and pincode are required, so the
+    lookalike check (P11-13) has them. As a side effect, the dashboard's "Add your address
+    and GST details" step is already done after a signup.
+- **P11-11 · Trial claims:**
+  - **The table.** `trial_claims (kind, value, restaurant_id)` records what each signup's
+    trial was given for. Its key, (kind, value), means a value is claimed once.
+  - **Claims never change.** An owner can still edit the licence, mobile or GSTIN in Settings,
+    but the claim stays. So changing them never frees a value for another trial.
+  - **What the first step reveals.** It tells whether a licence, mobile or GSTIN already has an
+    account. That sits behind Turnstile, and FSSAI numbers are public anyway (printed on
+    menus, and searchable on the FSSAI site).
+  - **Scale.** The check reads every restaurant's mobile through a regexp. The `ponytail:` note
+    there names the upgrade: an expression index, once restaurants run into the tens of
+    thousands.
+- **P11-12 · The photo of the front:**
+  - **How it's prepared.** The signup requires it. The browser turns it into a JPEG of at most
+    1600 px with the menu import's `preparePhoto`, which loads only when a photo is picked and
+    refuses photos under 800 px wide.
+  - **A refused form keeps it.** The prepared photo lives in the form's state, not in the file
+    input, so a refused form doesn't lose it.
+  - **What the server checks.** It goes with the form. The server accepts at most 1.5 MB, and
+    checks that the bytes start like a JPEG.
+  - **Where it's stored.** Once the signup row exists, at
+    `storefront-photos/signups/<signup id>.jpg`. The bucket is private and has no storage
+    policies, like `menu-imports`.
+  - **Who sees it.** The restaurant keeps the path. Only the platform admin sees the photo,
+    through a link signed for an hour; the restaurant's own screens never show it.
+  - **Cleanup.** Photos of signups that never finished are deleted after a week by the daily
+    cron (`storefront_photos_to_remove`).
+  - **Camera or gallery.** The plan said `capture="environment"`. The input has no `capture`,
+    because on Android that opens the camera only; without it, phones offer the camera or
+    the gallery.
+- **P11-13 · Lookalikes, for the platform admin only:**
+  - **The reasons.** A lookalike shares the licence, GSTIN, mobile or pincode, or has a name or
+    address at least 60% alike by trigrams (`pg_trgm`, in the `extensions` schema).
+  - **Where they show.** At most ten per restaurant, strongest first, each with its reasons, on
+    the restaurant's detail page. The list shows a "Review" badge on any restaurant that has
+    one.
+  - **Pincode alone is noisy in a city.** It still counts, with its reason shown, as the owner
+    chose.
+  - **A function of its own.** `platform_restaurant_lookalikes(uuid[])` sits beside
+    `platform_get_restaurant` and `platform_list_restaurants`, so those large functions stay
+    as they were. It takes at most 100 restaurants, and only a platform admin with the second
+    factor can call it.
+- **P11-14 · What the visitor is told:**
+  - **One message, whatever matched.** "This restaurant already has a MenuMesh account. Log in,
+    or contact us if that isn't right." It has links to the login page and the contact page,
+    and doesn't say which value matched.
+  - **At the code step.** If two signups race, the one that loses hears the same message, with
+    "Go to log in".
+  - **Signups started before this change** have no licence or photo, so they are asked to start
+    again.
+  - **Testing.**
+    - pgTAP `490_signup_identity.test.sql`:
+      - mobiles typed in different ways;
+      - the three values, and a claim that outlives a Settings edit;
+      - a licence that can be claimed only once;
+      - the platform admin's path left unchecked;
+      - lookalike reasons, and their access;
+      - the bucket and the cleanup.
+    - E2E `signup-identity.spec.ts`:
+      - a taken licence is refused before any email;
+      - in Hindi, a taken mobile typed with a leading 0 is refused too;
+      - the photo is needed, and a tiny one is refused;
+      - the platform admin sees the photo, the duplicates and the badge.
+    - The signups in `subscription.spec.ts` use values unique to each run.
