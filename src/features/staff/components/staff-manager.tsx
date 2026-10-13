@@ -205,11 +205,10 @@ export function StaffManager({
                     {ROLE_LABELS[member.role]}
                     {member.uiLang === 'hi' && (
                       <span
-                        lang="hi"
                         title="Worker panel in Hindi"
                         className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-ink"
                       >
-                        {LANG_NAMES.hi}
+                        <span lang="hi">{LANG_NAMES.hi}</span>
                       </span>
                     )}
                   </TableCell>
@@ -508,7 +507,7 @@ function EditStaffForm({
     control,
     handleSubmit,
     setError,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm({
     resolver: zodResolver(editStaffSchema),
     defaultValues: {
@@ -519,7 +518,11 @@ function EditStaffForm({
   });
 
   const onSubmit = handleSubmit(async (values) => {
-    const result = await updateStaff(member.memberId, values);
+    const result = await updateStaff(member.memberId, {
+      ...values,
+      // The login may have changed its own since this page loaded (P11-15).
+      uiLang: dirtyFields.uiLang ? values.uiLang : undefined,
+    });
     if (!result.ok) {
       applyFieldErrors(setError, result.fieldErrors);
       if (!result.fieldErrors) setError('root', { message: result.error });

@@ -39,7 +39,8 @@ export const uiLangSchema = z.enum(['en', 'hi'], { message: 'Choose a language.'
 export const editStaffSchema = z.object({
   displayName: displayNameSchema,
   role: staffRoleSchema,
-  uiLang: uiLangSchema,
+  /** Only when changed: the login may have set its own since the page loaded. */
+  uiLang: uiLangSchema.optional(),
 });
 export type EditStaff = z.input<typeof editStaffSchema>;
 

@@ -65,7 +65,7 @@ export async function updateStaff(memberId: string, input: EditStaff): Promise<A
     p_patch: {
       display_name: parsed.data.displayName,
       role: parsed.data.role,
-      ui_lang: parsed.data.uiLang,
+      ...(parsed.data.uiLang ? { ui_lang: parsed.data.uiLang } : {}),
     },
   });
   if (error) return fromDbError(error, 'admin_update_staff');
