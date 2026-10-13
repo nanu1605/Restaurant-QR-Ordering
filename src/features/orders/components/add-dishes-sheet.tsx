@@ -40,7 +40,6 @@ import {
 } from '@/features/ordering/cart';
 import { OptionsSheet } from '@/features/ordering/components/options-sheet';
 import { QuantityStepper } from '@/features/ordering/components/quantity-stepper';
-import { listNames, tableHeading } from '@/features/ordering/format';
 import { MAX_LINE_NOTE, MAX_ORDER_NOTE } from '@/features/ordering/limits';
 import { filterMenu } from '@/features/ordering/menu-filter';
 import type { CustomerMenuItem } from '@/features/ordering/types';
@@ -51,6 +50,7 @@ import { placeStaffOrder, type StaffOrderResult } from '../actions';
 import { rememberOwnOrder } from '../alert-store';
 import type { Board, BoardTable } from '../board';
 import type { StaffOrderInput } from '../schemas';
+import { useStaffLang, useStaffStrings } from '../staff-lang';
 import { fetchStaffMenu } from '../staff-menu';
 
 type AddDishesSheetProps = {
@@ -65,6 +65,7 @@ type AddDishesSheetProps = {
  * places a new round with staff_place_order — never edits earlier rounds.
  */
 export function AddDishesSheet({ board, table, onClose }: AddDishesSheetProps) {
+  const t = useStaffStrings();
   return (
     <Sheet open={table !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" showCloseButton={false} className="w-full gap-0 sm:max-w-xl">
@@ -73,7 +74,7 @@ export function AddDishesSheet({ board, table, onClose }: AddDishesSheetProps) {
           render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
         >
           <XIcon aria-hidden />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t.close}</span>
         </SheetClose>
       </SheetContent>
     </Sheet>
@@ -86,6 +87,8 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
   const ids = useId();
   const queryClient = useQueryClient();
   const { restaurantId } = useLive();
+  const t = useStaffStrings();
+  const lang = useStaffLang();
   const [cart, setCart] = useState<Cart>(EMPTY_CART);
   const [search, setSearch] = useState('');
   // Made when the picker opens, kept across retries, so a retry never doubles the round.
@@ -95,8 +98,9 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
   const [sheetItem, setSheetItem] = useState<CustomerMenuItem | null>(null);
 
   const menu = useQuery({
-    queryKey: menuKey(restaurantId),
-    queryFn: () => fetchStaffMenu(createClient()),
+    // By language too: the names differ, and /admin/live shares the cache.
+    queryKey: [...menuKey(restaurantId), lang],
+    queryFn: () => fetchStaffMenu(createClient(), lang),
     staleTime: 60_000,
   });
 
@@ -117,7 +121,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
     },
   });
 
-  const heading = tableHeading(table.label);
+  const heading = t.table(table.label);
   const hasSession = table.session !== null;
   const count = cartCount(cart);
   const sessionChanged = (table.session?.id ?? null) !== sessionAtOpen;
@@ -127,7 +131,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
     setSheetItem(null);
     const next = addToCart(cart, line, quantity, note);
     if (!next) {
-      setError('One round can have up to 30 different dishes. Place this one, then add the rest.');
+      setError(t.add.tooMany);
       return;
     }
     setError(null);
@@ -145,7 +149,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
         note: cart.note.trim() || null,
       });
     } catch {
-      setError('Couldn’t reach the server. Check the connection and try again.');
+      setError(t.network);
       return;
     }
     if (!result.ok) {
@@ -155,15 +159,10 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
           refusedKeys(cart.lines, result.unavailableLines),
         );
         setCart(next);
-        const one = removed.length === 1;
-        setError(
-          `${listNames(removed)} ${one ? 'is' : 'are'} out of stock or off the menu, so ${
-            one ? 'it was' : 'they were'
-          } taken out.`,
-        );
+        setError(t.add.unavailable(removed));
         void queryClient.invalidateQueries({ queryKey: menuKey(restaurantId) });
       } else {
-        setError(result.error);
+        setError(t.refusal(result));
       }
       return;
     }
@@ -174,10 +173,8 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
       assignedWaiterId === board.myWaiterId &&
       !table.session?.assignedWaiterId;
     toast.success(
-      roundNumber === 1
-        ? `Order placed for ${heading}`
-        : `Round ${roundNumber} sent to the kitchen · ${heading}`,
-      { description: nowMine ? 'You’re now the waiter for this table.' : undefined },
+      roundNumber === 1 ? t.add.placedFirst(heading) : t.add.placedRound(roundNumber, heading),
+      { description: nowMine ? t.add.nowYours : undefined },
     );
     setCart(EMPTY_CART);
     setIdempotencyKey(randomUuid());
@@ -188,21 +185,17 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
     <div className="flex h-full min-h-0 flex-col">
       <SheetHeader className="gap-2 border-b border-line pr-14">
         <SheetTitle className="text-xl font-bold text-ink">
-          {hasSession ? 'Add dishes' : 'Add order'} · {heading}
+          {hasSession ? t.drawer.addDishes : t.drawer.addOrder} · {heading}
         </SheetTitle>
         <SheetDescription className="text-sm text-ink-muted">
-          {hasSession
-            ? 'Goes to the kitchen as a new round.'
-            : 'Opens the table; the order goes straight to the kitchen.'}
+          {hasSession ? t.add.toSession : t.add.toNewSession}
         </SheetDescription>
         {sessionChanged && (
           <p
             role="status"
             className="rounded-md border border-attention px-3 py-2 text-sm text-ink"
           >
-            {heading} {sessionAtOpen ? 'was closed or billed' : 'was opened by someone else'}{' '}
-            meanwhile.
-            {sessionAtOpen ? ' Placing this order opens it again.' : ' This order joins it.'}
+            {t.add.changed(heading, sessionAtOpen !== null)}
           </p>
         )}
         <div className="relative">
@@ -212,8 +205,8 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
           />
           <Input
             type="search"
-            aria-label="Search dishes"
-            placeholder="Search dishes"
+            aria-label={t.add.search}
+            placeholder={t.add.search}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="h-11 pl-9 text-base"
@@ -224,21 +217,21 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {menu.isPending ? (
           <div role="status" className="flex flex-col gap-2">
-            <span className="sr-only">Loading the menu…</span>
+            <span className="sr-only">{t.add.loadingMenu}</span>
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-14 rounded-lg" />
             ))}
           </div>
         ) : menu.isError ? (
           <div role="alert" className="flex flex-col items-start gap-2 text-sm text-ink">
-            The menu couldn’t be loaded.
+            {t.add.menuFailed}
             <Button variant="outline" size="touch" onClick={() => void menu.refetch()}>
-              Try again
+              {t.tryAgain}
             </Button>
           </div>
         ) : shown.length === 0 ? (
           <p className="py-6 text-center text-sm text-ink-muted">
-            {search ? `No dishes match “${search.trim()}”.` : 'The menu has no dishes yet.'}
+            {search ? t.add.noMatch(search.trim()) : t.add.emptyMenu}
           </p>
         ) : (
           shown.map((category) => (
@@ -268,7 +261,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
 
       <div className="flex max-h-[45dvh] flex-col gap-3 overflow-y-auto border-t border-line bg-surface p-4">
         {cart.lines.length > 0 && (
-          <ul aria-label="This round" className="flex flex-col gap-2">
+          <ul aria-label={t.add.thisRound} className="flex flex-col gap-2">
             {cart.lines.map((line) => {
               const key = lineKey(line);
               const name = lineLabel(line);
@@ -276,7 +269,11 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
                 <li key={key} className="flex flex-col gap-1.5 rounded-lg border border-line p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-2 text-base text-ink">
-                      <FoodTypeMark type={line.foodType} size="sm" />
+                      <FoodTypeMark
+                        type={line.foodType}
+                        size="sm"
+                        label={t.foodType[line.foodType]}
+                      />
                       <span className="min-w-0 break-words">{name}</span>
                     </span>
                     <QuantityStepper
@@ -286,8 +283,8 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
                     />
                   </div>
                   <Input
-                    aria-label={`Note for ${name}`}
-                    placeholder="Note for the kitchen (optional)"
+                    aria-label={t.add.noteFor(name)}
+                    placeholder={t.add.notePlaceholder}
                     value={line.note}
                     maxLength={MAX_LINE_NOTE}
                     onChange={(event) => setCart(setLineNote(cart, key, event.target.value))}
@@ -300,8 +297,8 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
         )}
         {cart.lines.length > 0 && (
           <Textarea
-            aria-label="Note for the whole round"
-            placeholder="Note for the whole round (optional)"
+            aria-label={t.add.roundNote}
+            placeholder={t.add.roundNotePlaceholder}
             value={cart.note}
             maxLength={MAX_ORDER_NOTE}
             onChange={(event) => setCart(setOrderNote(cart, event.target.value))}
@@ -315,24 +312,20 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
             {error}
           </p>
         )}
-        {!board.canOrder && (
-          <p className="text-sm text-ink-muted">
-            New orders are paused while the restaurant is read-only.
-          </p>
-        )}
+        {!board.canOrder && <p className="text-sm text-ink-muted">{t.drawer.paused}</p>}
 
         <div className="flex items-center justify-between gap-3">
           <span aria-live="polite" className="text-base font-semibold text-ink tabular-nums">
             {count === 0
-              ? 'No dishes yet'
-              : `${count} ${count === 1 ? 'item' : 'items'} · ${price(cartTotalPaise(cart))}`}
+              ? t.add.noDishes
+              : `${t.add.items(count)} · ${price(cartTotalPaise(cart))}`}
           </span>
           <Button
             size="touch"
             onClick={() => void submit()}
             disabled={count === 0 || place.isPending || !board.canOrder}
           >
-            {place.isPending ? 'Placing…' : 'Place order'}
+            {place.isPending ? t.add.placing : t.add.place}
           </Button>
         </div>
       </div>
@@ -340,7 +333,7 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
         item={sheetItem}
         onClose={() => setSheetItem(null)}
         onAdd={add}
-        addLabel="Add to round"
+        addLabel={t.add.addToRound}
       />
     </div>
   );
@@ -356,13 +349,14 @@ type MenuRowProps = {
 };
 
 function MenuRow({ item, cart, onAdd, onChoose, onSetCart }: MenuRowProps) {
+  const t = useStaffStrings();
   const simpleKey = lineKey({ menuItemId: item.id, variantId: null });
   const simpleLine = cart.lines.find((line) => lineKey(line) === simpleKey);
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2 last:border-b-0">
       <span className="flex min-w-0 items-center gap-2">
-        <FoodTypeMark type={item.foodType} size="sm" />
+        <FoodTypeMark type={item.foodType} size="sm" label={t.foodType[item.foodType]} />
         <span className={item.isAvailable ? 'text-base text-ink' : 'text-base text-ink-muted'}>
           {item.name}
         </span>
@@ -372,10 +366,11 @@ function MenuRow({ item, cart, onAdd, onChoose, onSetCart }: MenuRowProps) {
       </span>
 
       {!item.isAvailable ? (
-        <span className="text-sm font-medium text-ink-muted">Out of stock</span>
+        <span className="text-sm font-medium text-ink-muted">{t.add.outOfStock}</span>
       ) : item.addonGroups.length > 0 ? (
         <Button variant="outline" size="touch" aria-haspopup="dialog" onClick={onChoose}>
-          Choose<span className="sr-only"> {item.name}</span>
+          {t.add.choose}
+          <span className="sr-only"> {item.name}</span>
         </Button>
       ) : item.variants.length > 0 ? (
         <span className="flex flex-wrap gap-2">
@@ -388,7 +383,7 @@ function MenuRow({ item, cart, onAdd, onChoose, onSetCart }: MenuRowProps) {
             >
               {/* The name starts with the visible text (WCAG 2.5.3). */}
               {variant.name} · <span className="tabular-nums">{price(variant.pricePaise)}</span>
-              <span className="sr-only"> · add {item.name}</span>
+              <span className="sr-only">{t.add.addName(item.name)}</span>
             </Button>
           ))}
         </span>
@@ -400,7 +395,8 @@ function MenuRow({ item, cart, onAdd, onChoose, onSetCart }: MenuRowProps) {
         />
       ) : (
         <Button variant="outline" size="touch" onClick={() => onAdd(cartLineFor(item, null))}>
-          Add<span className="sr-only"> {item.name}</span>
+          {t.add.add}
+          <span className="sr-only"> {item.name}</span>
         </Button>
       )}
     </li>

@@ -5,11 +5,15 @@ import { useOffline } from '@/features/live/live-provider';
 import { updateServiceRequest } from '@/features/sessions/actions';
 
 import type { Board, BoardTable } from '../board';
-import { formatElapsed, minutesSince } from '../board-view';
+import { minutesSince } from '../board-view';
+import { useStaffStrings } from '../staff-lang';
 import { useBoardAction } from '../use-board';
-import { REQUESTS } from './request-badges';
+import { REQUESTS, RequestBadges as Badges } from './request-badges';
 
-export { RequestBadges } from './request-badges';
+/** The table's request badges in the worker panel's words. */
+export function RequestBadges({ requests }: { requests: BoardTable['requests'] }) {
+  return <Badges requests={requests} words={useStaffStrings().requests} />;
+}
 
 function withRequest(board: Board, id: string, status: 'acknowledged' | 'resolved'): Board {
   return {
@@ -32,15 +36,17 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
     optimistic: (board, { id, status }) => withRequest(board, id, status),
   });
   const offline = useOffline();
+  const t = useStaffStrings();
   if (table.requests.length === 0) return null;
 
   return (
     <section
-      aria-label="Customer requests"
+      aria-label={t.requests.section}
       className="flex flex-col gap-2 rounded-lg border-2 border-attention bg-surface p-3"
     >
       {table.requests.map((request) => {
-        const { icon: Icon, line } = REQUESTS[request.type];
+        const { icon: Icon } = REQUESTS[request.type];
+        const { line } = t.requests[request.type];
         return (
           <div key={request.id} className="flex flex-wrap items-center justify-between gap-2">
             <p className="flex items-center gap-2 text-base text-ink">
@@ -49,8 +55,8 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
                 <span className="font-semibold">{line}</span>
                 <span className="text-ink-muted">
                   {' '}
-                  · {formatElapsed(minutesSince(request.createdAt, nowMs))} ago
-                  {request.status === 'acknowledged' && ' · acknowledged'}
+                  · {t.requests.ago(t.elapsed(minutesSince(request.createdAt, nowMs)))}
+                  {request.status === 'acknowledged' && t.requests.acknowledgedNote}
                 </span>
               </span>
             </p>
@@ -62,7 +68,8 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
                   disabled={offline}
                   onClick={() => update.mutate({ id: request.id, status: 'acknowledged' })}
                 >
-                  Acknowledge<span className="sr-only">: {line.toLowerCase()}</span>
+                  {t.requests.acknowledge}
+                  <span className="sr-only">: {line.toLowerCase()}</span>
                 </Button>
               )}
               <Button
@@ -70,7 +77,8 @@ export function RequestsSection({ table, nowMs }: { table: BoardTable; nowMs: nu
                 disabled={offline}
                 onClick={() => update.mutate({ id: request.id, status: 'resolved' })}
               >
-                Done<span className="sr-only">: {line.toLowerCase()}</span>
+                {t.requests.done}
+                <span className="sr-only">: {line.toLowerCase()}</span>
               </Button>
             </span>
           </div>

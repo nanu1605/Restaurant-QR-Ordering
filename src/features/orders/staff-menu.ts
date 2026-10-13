@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { localName } from '@/features/ordering/localize';
+import type { Lang } from '@/features/ordering/strings';
 import type {
   CustomerAddonGroup,
   CustomerCategory,
@@ -13,22 +15,25 @@ import type { Database } from '@/types/database';
  * out-of-stock dishes flagged rather than hidden, active options in order,
  * and each dish's add-on groups. Same shape as the customer menu, so the same
  * search, cart and options sheet work here; isAvailable is the dish's own
- * switch. RLS lets every member read the menu.
+ * switch. RLS lets every member read the menu. A worker panel in Hindi shows
+ * dishes and categories by their Hindi name (the owner's, else the automatic
+ * one), and finds them by either name (docs/DECISIONS.md P11-16).
  */
 export async function fetchStaffMenu(
   client: SupabaseClient<Database>,
+  lang: Lang = 'en',
 ): Promise<CustomerCategory[]> {
   const [categories, items, groups] = await Promise.all([
     client
       .from('menu_categories')
-      .select('id, name')
+      .select('id, name, name_hi, name_hi_auto')
       .eq('is_active', true)
       .order('sort_order')
       .order('created_at'),
     client
       .from('menu_items')
       .select(
-        'id, category_id, name, description, price_paise, food_type, is_available, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
+        'id, category_id, name, name_hi, name_hi_auto, description, price_paise, food_type, is_available, variants:menu_item_variants (id, name, price_paise, sort_order, is_active), addon_links:menu_item_addon_groups (group_id)',
       )
       .eq('is_active', true)
       .order('sort_order')
@@ -65,7 +70,7 @@ export async function fetchStaffMenu(
     const list = byCategory.get(item.category_id) ?? [];
     list.push({
       id: item.id,
-      name: item.name,
+      ...localName(item.name, item.name_hi ?? item.name_hi_auto, lang),
       description: item.description,
       foodType: item.food_type,
       pricePaise: item.price_paise,
@@ -89,7 +94,7 @@ export async function fetchStaffMenu(
   return categories.data
     .map((category) => ({
       id: category.id,
-      name: category.name,
+      ...localName(category.name, category.name_hi ?? category.name_hi_auto, lang),
       items: byCategory.get(category.id) ?? [],
     }))
     .filter((category) => category.items.length > 0);

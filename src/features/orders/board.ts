@@ -18,6 +18,8 @@ export type OrderStatus = Database['public']['Enums']['order_status'];
 export type BoardItem = {
   id: string;
   name: string;
+  /** The dish's Hindi name, the owner's or the automatic one (docs/DECISIONS.md P11-16). */
+  nameHi: string | null;
   variant: string | null;
   /** Add-on names in order (docs/DECISIONS.md P9-4). */
   addons: string[];
@@ -100,6 +102,7 @@ export type Board = {
 const itemJson = z.object({
   id: z.string(),
   name: z.string(),
+  name_hi: z.string().nullable().default(null),
   variant: z.string().nullable(),
   addons: z.array(z.string()).default([]),
   food_type: z.enum(Constants.public.Enums.food_type),
@@ -215,6 +218,7 @@ export function parseBoard(json: unknown, fetchedAt: number = Date.now()): Board
           items: round.items.map((item) => ({
             id: item.id,
             name: item.name,
+            nameHi: item.name_hi,
             variant: item.variant,
             addons: item.addons,
             foodType: item.food_type,

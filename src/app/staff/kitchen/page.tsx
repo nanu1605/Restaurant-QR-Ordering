@@ -3,14 +3,15 @@ import type { Metadata } from 'next';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { KitchenBoard } from '@/features/orders/components/kitchen-board';
-import { hasFeature, upgradeHint } from '@/features/plans/plan-features';
+import { staffStrings } from '@/features/orders/staff-strings';
+import { FEATURE_PLAN, hasFeature } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { requireMember } from '@/lib/auth/guards';
 import { STAFF_PANEL_ROLES } from '@/lib/auth/roles';
 
-export const metadata: Metadata = {
-  title: 'Kitchen',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await staffStrings()).nav.kitchen };
+}
 
 /** Kitchen view (spec §13.2): plan feature `kds`; Starter restaurants use the board. */
 export default async function KitchenPage() {
@@ -18,11 +19,12 @@ export default async function KitchenPage() {
   const plan = await getPlanFeatures(membership.restaurant.id);
 
   if (!hasFeature(plan, 'kds')) {
+    const t = await staffStrings();
     return (
       <EmptyState
         icon={ChefHat}
-        title="The kitchen view isn’t in your plan"
-        description={`${upgradeHint('kds')}. The board still shows every order.`}
+        title={t.kitchenNotInPlan.title}
+        description={t.kitchenNotInPlan.description(FEATURE_PLAN.kds)}
         className="flex-1"
       />
     );

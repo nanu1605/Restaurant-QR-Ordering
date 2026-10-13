@@ -16,14 +16,41 @@ import { markOrderServed, setItemsStatus } from './actions';
 import { type Board, fetchBoard } from './board';
 import { dropChange, saveChange, type StatusChange } from './offline-queue';
 import { withItemStatus, withRoundServed } from './optimistic';
+import { useStaffLang, useStaffStrings } from './staff-lang';
+import type { Refusal } from './strings';
+
+/** Dishes by their Hindi name where they have one (docs/DECISIONS.md P11-16). */
+function withHindiNames(board: Board): Board {
+  return {
+    ...board,
+    tables: board.tables.map((table) =>
+      table.session
+        ? {
+            ...table,
+            session: {
+              ...table.session,
+              rounds: table.session.rounds.map((round) => ({
+                ...round,
+                items: round.items.map((item) =>
+                  item.nameHi ? { ...item, name: item.nameHi } : item,
+                ),
+              })),
+            },
+          }
+        : table,
+    ),
+  };
+}
 
 /**
  * The live board, hydrated from the server and kept fresh by Realtime (spec
  * §12). Pass `watchOnly` for a component that only needs the query kept alive
- * and polling (it won't re-render on changes).
+ * and polling (it won't re-render on changes). A worker panel in Hindi sees the
+ * dishes' Hindi names; the cache keeps the board as the server sent it.
  */
 export function useBoard({ watchOnly = false }: { watchOnly?: boolean } = {}) {
   const { memberId } = useLive();
+  const lang = useStaffLang();
   const queryClient = useQueryClient();
   // While this device is changing the board, its last change refetches (see
   // useBoardAction); an automatic refetch in between would undo the optimistic
@@ -36,13 +63,14 @@ export function useBoard({ watchOnly = false }: { watchOnly?: boolean } = {}) {
     refetchOnWindowFocus: () => idle(),
     refetchOnReconnect: () => idle(),
     notifyOnChangeProps: watchOnly ? [] : undefined,
+    select: lang === 'hi' ? withHindiNames : undefined,
   });
 }
 
 /** An action's refusal, carried through TanStack Query as an error. */
 export class ActionFailed extends Error {}
 
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true } | ({ ok: false } & Refusal);
 
 type BoardActionOptions<TVars> = {
   action: (vars: TVars) => Promise<Result>;
@@ -68,6 +96,7 @@ export function useBoardAction<TVars>({
 }: BoardActionOptions<TVars>) {
   const queryClient = useQueryClient();
   const { memberId } = useLive();
+  const t = useStaffStrings();
   const key = boardKey(memberId);
 
   return useMutation({
@@ -85,7 +114,7 @@ export function useBoardAction<TVars>({
     scope: { id: 'board' },
     mutationFn: async (vars: TVars) => {
       const result = await action(vars);
-      if (!result.ok) throw new ActionFailed(result.error);
+      if (!result.ok) throw new ActionFailed(t.refusal(result));
       return result;
     },
     onMutate: async (vars) => {
@@ -104,8 +133,8 @@ export function useBoardAction<TVars>({
         error instanceof ActionFailed
           ? error.message
           : error instanceof TypeError
-            ? 'Couldn’t reach the server. Check the connection and try again.'
-            : 'Something went wrong. Try again.',
+            ? t.network
+            : t.generic,
       );
     },
     onSettled: (_result, _error, vars) => {

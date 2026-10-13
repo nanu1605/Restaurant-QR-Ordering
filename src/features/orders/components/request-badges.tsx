@@ -11,10 +11,26 @@ export const REQUESTS: Record<
   request_bill: { icon: ReceiptText, badge: 'Bill requested', line: 'Asked for the bill' },
 };
 
-/** "Calling" / "Bill requested" on a table card (spec §10.4, P9-2). */
-export function RequestBadges({ requests }: { requests: BoardRequest[] }) {
+type RequestWords = Record<ServiceRequestType, { badge: string }> & {
+  acknowledgedBadge: string;
+};
+
+const WORDS: RequestWords = { ...REQUESTS, acknowledgedBadge: ' (acknowledged)' };
+
+/**
+ * "Calling" / "Bill requested" on a table card (spec §10.4, P9-2), in English
+ * unless the worker panel passes its own words.
+ */
+export function RequestBadges({
+  requests,
+  words = WORDS,
+}: {
+  requests: BoardRequest[];
+  words?: RequestWords;
+}) {
   return requests.map((request) => {
-    const { icon: Icon, badge } = REQUESTS[request.type];
+    const { icon: Icon } = REQUESTS[request.type];
+    const { badge } = words[request.type];
     return (
       <span
         key={request.id}
@@ -23,7 +39,9 @@ export function RequestBadges({ requests }: { requests: BoardRequest[] }) {
       >
         <Icon aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />
         {badge}
-        {request.status === 'acknowledged' && <span className="sr-only"> (acknowledged)</span>}
+        {request.status === 'acknowledged' && (
+          <span className="sr-only">{words.acknowledgedBadge}</span>
+        )}
       </span>
     );
   });

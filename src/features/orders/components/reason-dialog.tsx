@@ -15,6 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 
 import { MAX_REASON } from '../schemas';
+import { useStaffStrings } from '../staff-lang';
 
 const OTHER = '__other';
 
@@ -35,9 +36,10 @@ type ReasonDialogProps = {
 
 /** Asks for a reason before an audit-relevant action (reject, remove, close). */
 export function ReasonDialog({ open, onOpenChange, ...props }: ReasonDialogProps) {
+  const t = useStaffStrings();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent closeLabel={t.close} className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         {open && <ReasonForm {...props} onDone={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
@@ -55,6 +57,7 @@ function ReasonForm({
   onDone,
 }: Omit<ReasonDialogProps, 'open' | 'onOpenChange'> & { onDone: () => void }) {
   const ids = useId();
+  const t = useStaffStrings();
   const [choice, setChoice] = useState(presets.length > 0 ? '' : OTHER);
   const [other, setOther] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +67,7 @@ function ReasonForm({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!reason) {
-      setError('Choose or type a reason.');
+      setError(t.reason.required);
       return;
     }
     setPending(true);
@@ -84,7 +87,7 @@ function ReasonForm({
 
       <fieldset className="flex flex-col gap-2">
         <legend id={`${ids}-legend`} className="mb-2 text-sm font-semibold text-ink">
-          Reason
+          {t.reason.legend}
         </legend>
         {presets.length > 0 && (
           <RadioGroup
@@ -102,14 +105,14 @@ function ReasonForm({
                 className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-line px-3 text-base text-ink has-data-checked:border-2 has-data-checked:border-ring"
               >
                 <RadioGroupItem value={preset} />
-                {preset === OTHER ? 'Other…' : preset}
+                {preset === OTHER ? t.reason.other : t.reason.text(preset)}
               </label>
             ))}
           </RadioGroup>
         )}
         {choice === OTHER && (
           <Textarea
-            aria-label={presets.length > 0 ? 'Other reason' : 'Reason'}
+            aria-label={presets.length > 0 ? t.reason.otherLabel : t.reason.legend}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${ids}-error` : undefined}
             value={other}
@@ -132,7 +135,7 @@ function ReasonForm({
 
       <DialogFooter>
         <Button type="button" variant="outline" size="touch" onClick={onDone} disabled={pending}>
-          Cancel
+          {t.reason.cancel}
         </Button>
         <Button
           type="submit"

@@ -3,13 +3,9 @@
 import { cn } from 'cn';
 import { Clock3 } from 'lucide-react';
 
-import { tableHeading } from '@/features/ordering/format';
-import { ORDER_ITEM_STATUS_LABELS } from '@/lib/order-status';
-
 import type { Board, BoardTable } from '../board';
 import {
   type TableTone,
-  formatElapsed,
   minutesSince,
   statusCounts,
   tableState,
@@ -17,6 +13,7 @@ import {
   waiterName,
 } from '../board-view';
 import { useHighlighted } from '../alert-store';
+import { useStaffStrings } from '../staff-lang';
 import { RequestBadges } from './table-requests';
 import { TableStateBadge } from './table-state-badge';
 
@@ -51,6 +48,7 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
   const session = table.session;
   const counts = statusCounts(table);
   const waiter = session ? waiterName(board, session.assignedWaiterId) : null;
+  const t = useStaffStrings();
 
   return (
     <button
@@ -69,11 +67,11 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
       <span className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
         <span className="text-2xl leading-tight font-bold text-ink">
           <span className="sr-only">
-            {tableHeading(table.label) === table.label ? '' : 'Table '}
+            {t.table(table.label) === table.label ? '' : t.tablePrefix}
           </span>
           {table.label}
         </span>
-        <TableStateBadge state={state} />
+        <TableStateBadge state={state} label={t.tableState[state]} />
         <RequestBadges requests={table.requests} />
       </span>
 
@@ -84,13 +82,13 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
               <span className="font-medium text-ink">{waiter}</span>
             ) : (
               <span className="rounded-md border border-dashed border-attention px-1.5 font-semibold text-attention">
-                Unassigned
+                {t.card.unassigned}
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-ink-muted tabular-nums">
               <Clock3 aria-hidden className="size-4" />
-              <span className="sr-only">Seated for</span>
-              {formatElapsed(minutesSince(session.openedAt, nowMs))}
+              <span className="sr-only">{t.card.seatedFor}</span>
+              {t.elapsed(minutesSince(session.openedAt, nowMs))}
             </span>
           </span>
           <span className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-base text-ink">
@@ -99,7 +97,7 @@ export function TableCard({ table, board, nowMs, onOpen }: TableCardProps) {
               .map((status) => (
                 <span key={status} className="inline-flex items-center gap-1.5 tabular-nums">
                   <span aria-hidden className={cn('size-2.5 rounded-full', DOT[status])} />
-                  {counts[status]} {ORDER_ITEM_STATUS_LABELS[status]}
+                  {counts[status]} {t.counts[status]}
                 </span>
               ))}
           </span>

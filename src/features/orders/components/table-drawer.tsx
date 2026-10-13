@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/sheet';
 import { useOffline } from '@/features/live/live-provider';
 import { randomUuid } from '@/features/ordering/cart';
-import { dishName, formatClockTime, tableHeading } from '@/features/ordering/format';
+import { dishName, formatClockTime } from '@/features/ordering/format';
 import { WaiterAssignment } from '@/features/sessions/components/waiter-assignment';
 import { closeSessionUnbilled } from '@/features/sessions/actions';
 import { ORDER_ITEM_STATUS_LABELS, isVoidStatus } from '@/lib/order-status';
@@ -29,7 +29,6 @@ import type { Board, BoardItem, BoardRound, BoardTable } from '../board';
 import {
   type ActiveStatus,
   activeItems,
-  formatElapsed,
   isActiveStatus,
   minutesSince,
   nextStatus,
@@ -38,6 +37,8 @@ import {
 } from '../board-view';
 import { withItemStatus } from '../optimistic';
 import { REJECT_REASONS, type ForwardStatus } from '../schemas';
+import { useStaffStrings } from '../staff-lang';
+import type { StaffStrings } from '../strings';
 import { useBoardAction, useStatusChange } from '../use-board';
 import { AddDishesSheet } from './add-dishes-sheet';
 import type { BoardMode } from './live-board';
@@ -47,13 +48,6 @@ import { ReasonDialog } from './reason-dialog';
 import { RemoveItemDialog } from './remove-item-dialog';
 import { RequestBadges, RequestsSection } from './table-requests';
 import { TableStateBadge } from './table-state-badge';
-
-/** One-tap forward buttons (spec §13.2). */
-const NEXT_LABELS: Record<ForwardStatus, string> = {
-  preparing: 'Start preparing',
-  ready: 'Mark ready',
-  served: 'Mark served',
-};
 
 const PREVIOUS: Partial<Record<ActiveStatus, ActiveStatus>> = {
   preparing: 'placed',
@@ -76,6 +70,7 @@ type TableDrawerProps = {
  */
 export function TableDrawer({ board, mode, tableId, nowMs, onClose }: TableDrawerProps) {
   const table = board.tables.find((t) => t.id === tableId) ?? null;
+  const t = useStaffStrings();
 
   return (
     <Sheet open={table !== null} onOpenChange={(open) => !open && onClose()}>
@@ -98,7 +93,7 @@ export function TableDrawer({ board, mode, tableId, nowMs, onClose }: TableDrawe
           render={<Button variant="ghost" size="icon-touch" className="absolute top-2 right-2" />}
         >
           <XIcon aria-hidden />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t.close}</span>
         </SheetClose>
       </SheetContent>
     </Sheet>
@@ -123,10 +118,11 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
   const [moving, setMoving] = useState<string | null>(null);
   // Only dish status moves wait for the network (docs/DECISIONS.md P9-5).
   const offline = useOffline();
+  const t = useStaffStrings();
 
   const approve = useBoardAction({
     action: (orderId: string) => approveOrder(orderId),
-    successMessage: () => 'Order approved',
+    successMessage: () => t.drawer.approved,
   });
   const reject = useBoardAction({
     action: ({ orderId, reason }: { orderId: string; reason: string }) =>
@@ -145,7 +141,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
   const state = tableState(table);
   const role = board.role;
   const isManager = role === 'owner' || role === 'manager';
-  const heading = tableHeading(table.label);
+  const heading = t.table(table.label);
   const waiting = session?.rounds.filter((round) => round.isWaiting) ?? [];
   const rounds = session?.rounds.filter((round) => !round.isWaiting) ?? [];
   const accepted = rounds.flatMap(activeItems);
@@ -159,24 +155,24 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       <SheetHeader className="gap-2 border-b border-line pr-14">
         <SheetTitle className="flex flex-wrap items-center gap-3 text-2xl font-bold text-ink">
           {heading}
-          <TableStateBadge state={state} />
+          <TableStateBadge state={state} label={t.tableState[state]} />
           <RequestBadges requests={table.requests} />
         </SheetTitle>
         <SheetDescription className="text-sm text-ink-muted">
           {session
-            ? `Seated ${formatElapsed(minutesSince(session.openedAt, nowMs))} ago`
-            : 'Free — no one is seated here.'}
+            ? t.drawer.seatedAgo(t.elapsed(minutesSince(session.openedAt, nowMs)))
+            : t.drawer.free}
         </SheetDescription>
         {session &&
           (mode === 'admin' && isManager ? (
             <WaiterAssignment board={board} table={table} />
           ) : (
             <p className="text-sm text-ink">
-              Waiter:{' '}
+              {t.drawer.waiter}{' '}
               {waiter ? (
                 <span className="font-semibold">{waiter}</span>
               ) : (
-                <span className="font-semibold text-attention">Unassigned</span>
+                <span className="font-semibold text-attention">{t.drawer.unassigned}</span>
               )}
             </p>
           ))}
@@ -189,31 +185,39 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
 
         {session && session.waitingCount > 0 && waiting.length === 0 && (
           <p className="rounded-lg border border-attention px-3 py-2 text-sm text-ink">
-            {session.waitingCount === 1 ? 'An order is' : `${session.waitingCount} orders are`}{' '}
-            waiting for a waiter to approve. It shows here once approved.
+            {t.drawer.waitingElsewhere(session.waitingCount)}
           </p>
         )}
 
         {waiting.map((round) => (
           <section
             key={round.id}
-            aria-label={`Round ${round.roundNumber}, waiting for approval`}
+            aria-label={t.drawer.waitingRound(round.roundNumber)}
             className="flex flex-col gap-3 rounded-lg border-2 border-attention bg-surface p-3"
           >
-            <RoundHeading round={round} timezone={board.timezone} label="Waiting for approval" />
-            {round.customerNote && <p className="text-sm text-ink">Note: {round.customerNote}</p>}
+            <RoundHeading
+              round={round}
+              timezone={board.timezone}
+              label={t.drawer.waitingForApproval}
+            />
+            {round.customerNote && (
+              <p className="text-sm text-ink">{t.drawer.note(round.customerNote)}</p>
+            )}
             <ul className="flex flex-col">
               {round.items.map((item) => (
                 <li key={item.id} className="flex items-start justify-between gap-2 py-1">
                   <ItemName item={item} />
-                  {isVoidStatus(item.status) && <StatusChip status={item.status} />}
+                  {isVoidStatus(item.status) && (
+                    <StatusChip status={item.status} label={t.status[item.status]} />
+                  )}
                 </li>
               ))}
             </ul>
             {role !== 'kitchen' && (
               <div className="flex flex-wrap gap-2">
                 <Button size="touch" disabled={offline} onClick={() => approve.mutate(round.id)}>
-                  Approve<span className="sr-only"> round {round.roundNumber}</span>
+                  {t.drawer.approve}
+                  <span className="sr-only">{t.drawer.roundSuffix(round.roundNumber)}</span>
                 </Button>
                 <Button
                   size="touch"
@@ -221,7 +225,8 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
                   disabled={offline}
                   onClick={() => setRejecting(round)}
                 >
-                  Reject<span className="sr-only"> round {round.roundNumber}</span>
+                  {t.drawer.reject}
+                  <span className="sr-only">{t.drawer.roundSuffix(round.roundNumber)}</span>
                 </Button>
                 {mode === 'admin' && isManager && (
                   <Button
@@ -253,9 +258,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
 
         {!session && (
           <p className="text-base text-ink">
-            {board.canOrder
-              ? 'Add an order to open this table. It stays open until the bill is generated.'
-              : 'New orders are paused while the restaurant is read-only.'}
+            {board.canOrder ? t.drawer.openToOrder : t.drawer.paused}
           </p>
         )}
       </div>
@@ -263,13 +266,10 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       <SheetFooter className="sticky bottom-0 border-t border-line bg-surface">
         <Button size="touch" onClick={() => setAdding(true)} disabled={!board.canOrder || offline}>
           <Plus aria-hidden />
-          {session ? 'Add dishes' : 'Add order'}
+          {session ? t.drawer.addDishes : t.drawer.addOrder}
         </Button>
         {!board.canOrder && session && (
-          <p className="text-sm text-ink-muted">
-            New orders are paused while the restaurant is read-only. Dishes already ordered can
-            still be served.
-          </p>
+          <p className="text-sm text-ink-muted">{t.drawer.pausedServe}</p>
         )}
         {session && role !== 'kitchen' && (
           <Button
@@ -279,7 +279,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
             onClick={() => setMoving(session.id)}
           >
             <ArrowRightLeft aria-hidden />
-            Move table
+            {t.drawer.moveTable}
           </Button>
         )}
         {canClose && (
@@ -289,7 +289,7 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
             disabled={offline}
             onClick={() => setClosing(true)}
           >
-            Close without bill
+            {t.drawer.closeWithoutBill}
           </Button>
         )}
       </SheetFooter>
@@ -314,16 +314,16 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       <ReasonDialog
         open={rejecting !== null}
         onOpenChange={(open) => !open && setRejecting(null)}
-        title={`Reject round ${rejecting?.roundNumber ?? ''}`}
-        description="The customer sees the reason. The table's next order waits for approval again."
+        title={t.drawer.rejectTitle(rejecting?.roundNumber ?? 0)}
+        description={t.drawer.rejectDescription}
         presets={REJECT_REASONS}
-        confirmLabel="Reject order"
+        confirmLabel={t.drawer.rejectConfirm}
         destructive
         onConfirm={async (reason) => {
           if (!rejecting) return true;
           try {
             await reject.mutateAsync({ orderId: rejecting.id, reason });
-            toast.success('Order rejected');
+            toast.success(t.drawer.rejected);
             return true;
           } catch {
             return false;
@@ -355,19 +355,17 @@ function DrawerBody({ board, mode, table, nowMs, onClose }: DrawerBodyProps) {
       <ReasonDialog
         open={closing}
         onOpenChange={setClosing}
-        title={`Close ${heading} without a bill`}
+        title={t.drawer.closeTitle(heading)}
         description={
-          onTheWay.length > 0
-            ? `${onTheWay.length} ${onTheWay.length === 1 ? 'dish' : 'dishes'} still on the way will be cancelled; served dishes stay on record. The table becomes free.`
-            : 'The table becomes free for the next guests.'
+          onTheWay.length > 0 ? t.drawer.closeOnTheWay(onTheWay.length) : t.drawer.closeEmpty
         }
-        confirmLabel="Close table"
+        confirmLabel={t.drawer.closeConfirm}
         destructive
         onConfirm={async (reason) => {
           if (!session) return true;
           try {
             await close.mutateAsync({ sessionId: session.id, reason });
-            toast.success(`${heading} closed`);
+            toast.success(t.drawer.closed(heading));
             onClose();
             return true;
           } catch {
@@ -388,13 +386,14 @@ function RoundHeading({
   timezone: string;
   label?: string;
 }) {
+  const t = useStaffStrings();
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h3 className="text-base font-semibold text-ink">
-        Round {round.roundNumber}{' '}
+        {t.drawer.round(round.roundNumber)}{' '}
         <span className="font-normal text-ink-muted">
           · {formatClockTime(round.createdAt, timezone)} ·{' '}
-          {round.placedVia === 'staff' ? 'Added by staff' : 'Customer'}
+          {round.placedVia === 'staff' ? t.drawer.addedByStaff : t.drawer.customer}
         </span>
       </h3>
       {label && <span className="text-sm font-semibold text-attention">{label}</span>}
@@ -402,10 +401,10 @@ function RoundHeading({
   );
 }
 
-function roundLabel(round: BoardRound): string | undefined {
-  if (round.status === 'rejected') return 'Rejected';
-  if (round.status === 'removed') return 'Deleted';
-  if (round.status === 'pending_approval') return 'Cancelled by the customer';
+function roundLabel(round: BoardRound, t: StaffStrings): string | undefined {
+  if (round.status === 'rejected') return t.drawer.roundRejected;
+  if (round.status === 'removed') return t.drawer.roundDeleted;
+  if (round.status === 'pending_approval') return t.drawer.roundCancelled;
   return undefined;
 }
 
@@ -420,10 +419,11 @@ type RoundSectionProps = {
 function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSectionProps) {
   const serveRound = useStatusChange();
   const offline = useOffline();
+  const t = useStaffStrings();
   const isManager = board.role === 'owner' || board.role === 'manager';
   const accepted = round.status === 'accepted';
   const onTheWay = activeItems(round).filter((item) => item.status !== 'served');
-  const label = roundLabel(round);
+  const label = roundLabel(round, t);
   const canServeAll = accepted && onTheWay.length > 1;
   // Waiting rounds are deleted from the waiting section above; a pending round
   // shown here was cancelled by the customer and has nothing left to delete.
@@ -431,20 +431,24 @@ function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSecti
 
   return (
     <section
-      aria-label={`Round ${round.roundNumber}`}
+      aria-label={t.drawer.round(round.roundNumber)}
       className={cn(
         'flex flex-col gap-2 rounded-lg border border-line bg-surface p-3',
         !accepted && 'bg-paper',
       )}
     >
       <RoundHeading round={round} timezone={board.timezone} label={label} />
-      {round.customerNote && <p className="text-sm text-ink">Note: {round.customerNote}</p>}
+      {round.customerNote && (
+        <p className="text-sm text-ink">{t.drawer.note(round.customerNote)}</p>
+      )}
       {round.status === 'rejected' && round.rejectReason && (
-        <p className="text-sm text-status-void">Rejected: {round.rejectReason}</p>
+        <p className="text-sm text-status-void">
+          {t.drawer.rejectedReason(t.reason.text(round.rejectReason))}
+        </p>
       )}
       {round.status === 'removed' && round.removedReason && (
         <p className="text-sm text-status-void">
-          Deleted{round.removedByName ? ` by ${round.removedByName}` : ''}: {round.removedReason}
+          {t.drawer.deletedBy(round.removedByName, t.reason.text(round.removedReason))}
         </p>
       )}
 
@@ -469,7 +473,8 @@ function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSecti
               variant="outline"
               onClick={() => serveRound.mutate({ key: randomUuid(), orderId: round.id })}
             >
-              Mark all served<span className="sr-only"> in round {round.roundNumber}</span>
+              {t.drawer.markAllServed}
+              <span className="sr-only">{t.drawer.inRound(round.roundNumber)}</span>
             </Button>
           )}
           {canDelete && (
@@ -492,6 +497,7 @@ function RoundSection({ round, board, mode, onRemoveItem, onDelete }: RoundSecti
 
 function ItemName({ item }: { item: BoardItem }) {
   const voided = isVoidStatus(item.status);
+  const t = useStaffStrings();
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <p
@@ -500,7 +506,7 @@ function ItemName({ item }: { item: BoardItem }) {
           voided && 'text-ink-muted line-through',
         )}
       >
-        <FoodTypeMark type={item.foodType} size="sm" />
+        <FoodTypeMark type={item.foodType} size="sm" label={t.foodType[item.foodType]} />
         <span className="tabular-nums">{item.quantity} ×</span>
         <span className="min-w-0 break-words">
           {item.name}
@@ -512,11 +518,13 @@ function ItemName({ item }: { item: BoardItem }) {
           + {item.addons.join(', ')}
         </p>
       )}
-      {item.note && <p className="text-sm text-ink-muted">Note: {item.note}</p>}
+      {item.note && <p className="text-sm text-ink-muted">{t.drawer.note(item.note)}</p>}
       {item.status === 'removed' && (
         <p className="text-sm text-status-void">
-          Removed{item.removedByName ? ` by ${item.removedByName}` : ''}
-          {item.removedReason ? `: ${item.removedReason}` : ''}
+          {t.drawer.removedBy(
+            item.removedByName,
+            item.removedReason && t.reason.text(item.removedReason),
+          )}
         </p>
       )}
     </div>
@@ -534,6 +542,7 @@ type ItemRowProps = {
 function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
   const advance = useStatusChange();
   const offline = useOffline();
+  const t = useStaffStrings();
   const revert = useBoardAction({
     action: ({ from }: { from: ForwardStatus; to: ActiveStatus }) =>
       revertItemStatus(item.id, from),
@@ -555,7 +564,7 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
     <li className="flex flex-col gap-2 border-t border-line py-2 first:border-t-0">
       <div className="flex items-start justify-between gap-2">
         <ItemName item={item} />
-        <StatusChip status={item.status} className="mt-0.5" />
+        <StatusChip status={item.status} label={t.status[item.status]} className="mt-0.5" />
       </div>
 
       {active && (
@@ -565,7 +574,7 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
               size="touch"
               onClick={() => advance.mutate({ key: randomUuid(), ids: [item.id], status: next })}
             >
-              {NEXT_LABELS[next]}
+              {t.drawer.next[next]}
               <span className="sr-only"> {name}</span>
             </Button>
           )}
@@ -577,7 +586,8 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
                 advance.mutate({ key: randomUuid(), ids: [item.id], status: 'served' })
               }
             >
-              Mark served<span className="sr-only"> {name}</span>
+              {t.drawer.next.served}
+              <span className="sr-only"> {name}</span>
             </Button>
           )}
           {mode === 'admin' && isManager && status && status !== 'placed' && previous && (
@@ -604,11 +614,13 @@ function ItemRow({ item, actionable, board, mode, onRemove }: ItemRowProps) {
               onClick={onRemove}
             >
               <Trash2 aria-hidden />
-              Remove<span className="sr-only"> {name}</span>
+              {t.drawer.remove}
+              <span className="sr-only"> {name}</span>
             </Button>
           ) : (
             <Button size="touch" variant="ghost" disabled>
-              Ask manager to remove<span className="sr-only"> {name}</span>
+              {t.drawer.askManager}
+              <span className="sr-only"> {name}</span>
             </Button>
           )}
         </div>

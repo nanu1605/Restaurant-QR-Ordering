@@ -9,6 +9,7 @@ import { useLive } from '@/features/live/live-provider';
 import { QUEUED_MUTATION_KEY } from '@/features/live/query-client';
 
 import { type StatusChange, savedChanges } from '../offline-queue';
+import { useStaffStrings } from '../staff-lang';
 import { useStatusChange } from '../use-board';
 
 /**
@@ -19,6 +20,7 @@ import { useStatusChange } from '../use-board';
  */
 export function OfflineBanner({ className }: { className?: string }) {
   const { memberId, connection } = useLive();
+  const t = useStaffStrings();
   const queryClient = useQueryClient();
   const { mutate } = useStatusChange();
   const waiting = useMutationState({
@@ -45,16 +47,13 @@ export function OfflineBanner({ className }: { className?: string }) {
   }, [memberId, mutate, queryClient]);
 
   const count = waiting.length;
-  const kept =
-    count === 0 ? null : `${count} ${count === 1 ? 'change' : 'changes'} kept on this device`;
+  const kept = count === 0 ? null : t.offline.kept(count);
   let message: string | null = null;
   if (connection === 'offline') {
-    message = kept
-      ? `Offline. ${kept}, sent when you’re back online. Other actions need a connection.`
-      : 'Offline. Dish status changes are kept on this device and sent when you’re back online. Other actions need a connection.';
-  } else if (waiting.some((failures) => failures > 0)) {
+    message = kept ? t.offline.offlineKept(kept) : t.offline.offline;
+  } else if (kept && waiting.some((failures) => failures > 0)) {
     // Online, but the server doesn't answer: the changes keep retrying.
-    message = `Can’t reach the server. ${kept}, sent as soon as it answers.`;
+    message = t.offline.unreachable(kept);
   }
 
   return (
