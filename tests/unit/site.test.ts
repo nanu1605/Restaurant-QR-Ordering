@@ -158,6 +158,10 @@ describe('the self-serve signup', () => {
     ownerName: 'Asha Rao',
     email: ' Asha@Example.IN ',
     phone: '+91 98765 43210',
+    addressLine: ' 12 MG Road ',
+    pincode: '452001',
+    fssaiLicense: '1142 5999 0001 23',
+    gstin: ' 23aaacd1234e1z5 ',
     terms: 'on',
     planCode: 'starter',
     cycle: 'yearly',
@@ -169,7 +173,11 @@ describe('the self-serve signup', () => {
       restaurantName: 'Spice Route',
       email: 'asha@example.in',
       phone: '9876543210',
+      addressLine: '12 MG Road',
+      fssaiLicense: '11425999000123',
+      gstin: '23AAACD1234E1Z5',
     });
+    expect(signupSchema.parse({ ...valid, gstin: '' }).gstin).toBeNull();
     expect(signupSchema.parse({ ...valid, planCode: '', cycle: 'weekly' })).toMatchObject({
       planCode: null,
       cycle: 'monthly',
@@ -179,6 +187,25 @@ describe('the self-serve signup', () => {
       ['cuisine', 'Choose your menu style.'],
       ['email', 'Enter a valid email address.'],
       ['terms', 'Agree to the terms to continue.'],
+    ]);
+  });
+
+  it('needs the licence, address and pincode, and a well-formed GSTIN when given', () => {
+    const refused = signupSchema.safeParse({
+      ...valid,
+      addressLine: ' ',
+      pincode: '012345',
+      fssaiLicense: '1234',
+      gstin: '23AAACD1234E1Z',
+    });
+    expect(refused.error!.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
+      ['addressLine', 'Enter your restaurant’s address.'],
+      ['pincode', 'Enter a 6-digit pincode.'],
+      ['fssaiLicense', 'Enter the 14-digit FSSAI licence number.'],
+      [
+        'gstin',
+        'A GSTIN has 15 characters, like 23AAACD1234E1Z5. Leave it empty if you have none.',
+      ],
     ]);
   });
 

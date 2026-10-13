@@ -5,7 +5,9 @@ import {
   createTestRestaurant,
   DEVANAGARI,
   fakeTurnstile,
+  fillSignupIdentity,
   logInAsOwner,
+  uniqueIdentity,
   watchCspViolations,
 } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
@@ -245,16 +247,21 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   ).toBeVisible();
 
   const form = page.getByRole('form', { name: 'Start your free trial' });
+  const identity = uniqueIdentity();
   await form.getByLabel('Restaurant name').fill(`Signup Café ${unique}`);
   await form.getByLabel('City').fill('Pune');
   await form.getByLabel('Menu style').selectOption('cafe');
   await form.getByLabel('Your name').fill('Asha Rao');
   await form.getByLabel('Email').fill(email);
-  await form.getByLabel('Mobile number').fill('98765 43210');
-  // Without the terms ticked, nothing is sent.
+  await form
+    .getByLabel('Mobile number')
+    .fill(`${identity.phone.slice(0, 5)} ${identity.phone.slice(5)}`);
+  await fillSignupIdentity(page, form, identity.fssai);
+  // Without the terms ticked, nothing is sent; the photo stays.
   await form.getByRole('button', { name: 'Email me a code' }).click();
   await expect(form.getByText('Agree to the terms to continue.')).toBeVisible();
   await expect(form.getByLabel('Email')).toHaveValue(email);
+  await expect(form.getByRole('img', { name: 'Your restaurant’s front' })).toBeVisible();
   await form.getByRole('checkbox', { name: /I agree to the terms/ }).check();
   await form.getByRole('button', { name: 'Email me a code' }).click();
 
@@ -301,13 +308,15 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   // The welcome email names the restaurant code staff log in with.
   const { data: restaurant } = await adminClient()
     .from('restaurants')
-    .select('slug, city, phone, email, signup_source')
+    .select('slug, city, phone, email, signup_source, fssai_license, storefront_photo_path')
     .eq('name', `Signup Café ${unique}`)
     .single();
   expect(restaurant).toMatchObject({
     city: 'Pune',
-    phone: '+91 9876543210',
+    phone: `+91 ${identity.phone}`,
     email,
+    fssai_license: identity.fssai,
+    storefront_photo_path: expect.stringMatching(/^signups\/[0-9a-f-]{36}\.jpg$/),
     signup_source: { utm_source: 'ads', utm_campaign: 'autumn', referrer: 'partner.example' },
   });
   expect(restaurant!.slug).toBe(`signup-cafe-${unique}`);
@@ -315,22 +324,27 @@ test('a visitor signs up from the pricing page and sets up autopay for the plan 
   const welcome = (await inbox()).find((item) => item.subject.startsWith('Welcome to MenuMesh'));
   expect(welcome?.text).toContain(`Your restaurant code is ${restaurant!.slug}.`);
 
-  // The dashboard lists what's left to set up; autopay is done.
+  // The dashboard lists what's left to set up; the signup gave the address, and autopay is done.
   await page.getByRole('link', { name: 'Go to the dashboard' }).click();
   const steps = page.getByRole('region', { name: 'Set up your restaurant' });
-  await expect(steps.getByText('1 of 5 done')).toBeVisible();
+  await expect(steps.getByText('2 of 5 done')).toBeVisible();
+  await expect(
+    steps.getByRole('link', { name: /Add your address and GST details \(done\)/ }),
+  ).toBeVisible();
   await expect(steps.getByRole('link', { name: /Set up autopay \(done\)/ })).toBeVisible();
   await expect(steps.getByRole('link', { name: /Add your menu \(to do\)/ })).toBeVisible();
   expect(violations).toEqual([]);
 
-  // The same email can't sign up twice.
+  // The same email can't sign up twice, even for another restaurant.
   await page.context().clearCookies();
   await page.goto('/signup');
+  const second = uniqueIdentity();
   await form.getByLabel('Restaurant name').fill('Second Café');
   await form.getByLabel('City').fill('Pune');
   await form.getByLabel('Your name').fill('Asha Rao');
   await form.getByLabel('Email').fill(email);
-  await form.getByLabel('Mobile number').fill('9876543210');
+  await form.getByLabel('Mobile number').fill(second.phone);
+  await fillSignupIdentity(page, form, second.fssai);
   await form.getByRole('checkbox', { name: /I agree to the terms/ }).check();
   await form.getByRole('button', { name: 'Email me a code' }).click();
   await expect(page).toHaveURL(/\/signup\/verify$/);
@@ -369,7 +383,9 @@ test('a Hindi visitor signs up from the Hindi pricing page, with emails in Hindi
   await field('city').fill('इंदौर');
   await field('ownerName').fill('आशा राव');
   await field('email').fill(email);
-  await field('phone').fill('98765 43210');
+  const identity = uniqueIdentity();
+  await field('phone').fill(identity.phone);
+  await fillSignupIdentity(page, form, identity.fssai);
   await field('terms').check();
   await form.locator('button[type="submit"]').click();
 
