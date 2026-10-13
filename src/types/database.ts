@@ -907,6 +907,42 @@ export type Database = {
           },
         ]
       }
+      password_resets: {
+        Row: {
+          code_hash: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          ip_hash: string | null
+          tries: number
+          used_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          tries?: number
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          tries?: number
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       plans: {
         Row: {
           code: string
@@ -1905,6 +1941,15 @@ export type Database = {
           waiter_id: string
         }[]
       }
+      auth_password_reset_finish: { Args: { p_id: string }; Returns: undefined }
+      auth_password_reset_start: {
+        Args: { p_code_hash: string; p_email: string; p_ip_hash?: string }
+        Returns: Json
+      }
+      auth_password_reset_verify: {
+        Args: { p_code_hash: string; p_id: string }
+        Returns: Json
+      }
       auth_staff_login_email: {
         Args: { p_slug: string; p_username: string }
         Returns: string
@@ -2004,6 +2049,7 @@ export type Database = {
         Returns: undefined
       }
       menu_set_hindi_names: { Args: { p_names: Json }; Returns: number }
+      password_resets_cleanup: { Args: never; Returns: number }
       platform_admin_status: { Args: never; Returns: string }
       platform_audit_payment_link: {
         Args: { p_link: Json; p_restaurant_id: string }
