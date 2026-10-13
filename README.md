@@ -217,8 +217,9 @@ For real test-mode webhooks, expose the app through a tunnel Razorpay accepts (z
 staging, and register `…/api/webhooks/razorpay` with the `subscription.*` and
 `payment_link.paid` events.
 
-The setup fee a payment link suggests is `platform_settings.setup_fee_paise` (₹1,499 by default;
-change it in the SQL editor).
+The setup fee a payment link suggests is `platform_settings.setup_fee_paise` (₹999) less
+`setup_fee_discount_paise` (₹500 for now), plus GST; `/pricing` shows both. Change them in the SQL
+editor; a discount of 0 ends the offer.
 
 #### Reminder emails
 

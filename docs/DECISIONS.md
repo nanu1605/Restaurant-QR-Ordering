@@ -3240,3 +3240,18 @@ findings and rated 5 plausible. All are fixed:
 
 Refuted: the nukta spelling as a defect (both spellings are standard; aligned anyway), and
 missing pgTAP cases for an inactive login and the missing audit (both hold today).
+
+### Setup fee: ₹999 with ₹500 off (2026-10-13)
+
+The owner set the setup fee to ₹999, with ₹500 off for now (it was ₹1,499).
+
+- **P11-19 · The discount is a setting:** `platform_settings.setup_fee_discount_paise` (₹500),
+  next to `setup_fee_paise` (₹999). A check keeps it at 0 or more and below the fee. The
+  migration sets both on the existing row, so staging and production get them with the release.
+  Ending the offer is one SQL line (in the migration's header), with no release.
+  - `/pricing` shows "₹499 (launch offer, usually ~~₹999~~)" while there is a discount, and the
+    plain fee once it is 0. The discount is shown, not hidden in a lower fee, so the usual price
+    is on record when the offer ends. The Hindi wording ("लॉन्च ऑफ़र") is for the owner to check.
+  - `/super`'s setup fee link suggests the fee less the discount, plus GST (₹588.82), and says
+    "₹500 off" in its description, which the restaurant sees on Razorpay's page.
+  - Self-serve signups still pay no setup fee (W-10).
