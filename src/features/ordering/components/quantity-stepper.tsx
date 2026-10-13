@@ -6,6 +6,7 @@ import type { Ref } from 'react';
 import { Button } from '@/components/ui/button';
 
 import { MAX_LINE_QUANTITY } from '../limits';
+import type { Strings } from '../strings';
 import { useStrings } from './lang-provider';
 
 type QuantityStepperProps = {
@@ -18,6 +19,8 @@ type QuantityStepperProps = {
   max?: number;
   /** The "One more" button, so focus can move there when the stepper appears. */
   incrementRef?: Ref<HTMLButtonElement>;
+  /** Other words for the buttons, e.g. when the count is of dishes to remove. */
+  labels?: Strings['stepper'];
 };
 
 /** – 1 + with 44 px targets; the count is announced when it changes. */
@@ -28,8 +31,10 @@ export function QuantityStepper({
   min = 0,
   max = MAX_LINE_QUANTITY,
   incrementRef,
+  labels,
 }: QuantityStepperProps) {
-  const { stepper } = useStrings();
+  const strings = useStrings();
+  const stepper = labels ?? strings.stepper;
   const removes = min === 0 && value === 1;
   return (
     <div

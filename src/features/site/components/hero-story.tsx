@@ -19,7 +19,8 @@ import { usePrefersReducedMotion } from './motion';
  * 2 placed, 3 preparing, 4 ready, 5 served, 6 bill, 7 paid. It plays only
  * while on screen and the tab is visible; with reduced motion it shows the
  * finished scene, and it can be paused (WCAG 2.2.2). The guest's phone speaks
- * the page's language; the kitchen board and the bill stay English, as in the app.
+ * the page's language; the kitchen board and the bill stay English (the app's kitchen can be
+ * Hindi per login, P11-15).
  */
 
 const DURATIONS = [1600, 1400, 1700, 1500, 1500, 1700, 1700, 2800] as const;

@@ -260,6 +260,7 @@ const en = {
     removed: (name: string) => `Removed ${name}`,
     howMany: 'How many to remove',
     of: (count: number) => `of ${count}`,
+    stepper: STRINGS.en.stepper,
   },
 };
 
@@ -276,7 +277,7 @@ const HI_REASONS: Record<
   'Items unavailable': 'डिश उपलब्ध नहीं',
   Duplicate: 'दोबारा आया ऑर्डर',
   'Customer request': 'ग्राहक ने कहा',
-  'Wrong item': 'गलत डिश',
+  'Wrong item': 'ग़लत डिश',
   'Out of stock': 'स्टॉक में नहीं',
   'Quality complaint': 'क्वालिटी की शिकायत',
 };
@@ -360,16 +361,16 @@ const hi: StaffStrings = {
     return typeof message === 'function' ? message(detail?.trim() ?? '') : message;
   },
   tableState: {
-    needs_approval: 'मंज़ूरी बाकी',
+    needs_approval: 'मंज़ूरी बाक़ी',
     in_progress: 'चल रहा है',
     all_served: 'सब परोसा गया',
-    idle: 'कोई डिश बाकी नहीं',
+    idle: 'कोई डिश बाक़ी नहीं',
     free: 'खाली',
   },
   filters: {
     all: 'सभी',
     mine: 'मेरी टेबल',
-    needs_approval: 'मंज़ूरी बाकी',
+    needs_approval: 'मंज़ूरी बाक़ी',
     unassigned: 'बिना वेटर',
     in_progress: 'चल रहा है',
     all_served: 'सब परोसा गया',
@@ -436,7 +437,7 @@ const hi: StaffStrings = {
     rejected: 'ऑर्डर मना किया गया',
     closeTitle: (heading) => `${heading} बिना बिल बंद करें`,
     closeOnTheWay: (count) =>
-      `अभी बाकी ${count} डिश रद्द ${
+      `अभी बाक़ी ${count} डिश रद्द ${
         count === 1 ? 'हो जाएगी' : 'हो जाएँगी'
       }; परोसी गई डिश रिकॉर्ड में रहेंगी। टेबल खाली हो जाएगी।`,
     closeEmpty: 'टेबल अगले मेहमानों के लिए खाली हो जाएगी।',
@@ -459,7 +460,7 @@ const hi: StaffStrings = {
   },
   add: {
     tooMany:
-      'एक राउंड में ज़्यादा से ज़्यादा 30 अलग डिश हो सकती हैं। यह राउंड भेजें, फिर बाकी जोड़ें।',
+      'एक राउंड में ज़्यादा से ज़्यादा 30 अलग डिश हो सकती हैं। यह राउंड भेजें, फिर बाक़ी जोड़ें।',
     unavailable: (names) => {
       const one = names.length === 1;
       return `${listNames(names, 'और')} स्टॉक में नहीं ${one ? 'है' : 'हैं'} या मेन्यू में नहीं ${
@@ -501,7 +502,7 @@ const hi: StaffStrings = {
     empty: {
       placed: 'कोई नया ऑर्डर नहीं',
       preparing: 'अभी कुछ नहीं बन रहा',
-      ready: 'परोसने के लिए कुछ बाकी नहीं',
+      ready: 'परोसने के लिए कुछ बाक़ी नहीं',
     },
     action: { placed: 'सब बनाना शुरू करें', preparing: 'सब तैयार है', ready: 'सब परोस दिया' },
     itemAction: { preparing: 'बनाना शुरू करें', ready: 'तैयार है', served: 'परोस दिया' },
@@ -516,7 +517,7 @@ const hi: StaffStrings = {
   stock: {
     title: 'उपलब्धता',
     intro:
-      'कोई डिश या ऐड-ऑन खत्म हो जाए तो उसे बंद करें। ग्राहकों को वह तुरंत “उपलब्ध नहीं” दिखेगी।',
+      'कोई डिश या ऐड-ऑन ख़त्म हो जाए तो उसे बंद करें। ग्राहकों को वह तुरंत “उपलब्ध नहीं” दिखेगी।',
     back: (name) => `${name} फिर से स्टॉक में है`,
     out: (name) => `${name} स्टॉक में नहीं है`,
     empty: 'मेन्यू में अभी कोई डिश नहीं',
@@ -539,16 +540,17 @@ const hi: StaffStrings = {
     scan: (heading) => `मेहमानों से ${heading} का QR कोड स्कैन करने को कहें।`,
     title: (heading) => `${heading} बदलें`,
     description: 'कोई खाली टेबल चुनें। ऑर्डर, वेटर और बिल मेहमानों के साथ चले जाएँगे।',
-    none: 'अभी बाकी सभी टेबल पर मेहमान हैं।',
+    none: 'अभी बाक़ी सभी टेबल पर मेहमान हैं।',
     freeTables: 'खाली टेबल',
   },
   offline: {
-    kept: (count) => `${count} बदलाव इस डिवाइस पर रखे गए हैं`,
+    kept: (count) =>
+      count === 1 ? '1 बदलाव इस डिवाइस पर रखा गया है' : `${count} बदलाव इस डिवाइस पर रखे गए हैं`,
     offlineKept: (kept) =>
-      `ऑफ़लाइन। ${kept}; इंटरनेट लौटने पर भेजे जाएँगे। बाकी कामों के लिए कनेक्शन चाहिए।`,
+      `ऑफ़लाइन। ${kept}; इंटरनेट लौटने पर भेज दिया जाएगा। बाक़ी कामों के लिए कनेक्शन चाहिए।`,
     offline:
-      'ऑफ़लाइन। डिश की स्थिति के बदलाव इस डिवाइस पर रखे जाते हैं और इंटरनेट लौटने पर भेजे जाते हैं। बाकी कामों के लिए कनेक्शन चाहिए।',
-    unreachable: (kept) => `सर्वर से संपर्क नहीं हो पा रहा। ${kept}; जवाब मिलते ही भेजे जाएँगे।`,
+      'ऑफ़लाइन। डिश की स्थिति के बदलाव इस डिवाइस पर रखे जाते हैं और इंटरनेट लौटने पर भेजे जाते हैं। बाक़ी कामों के लिए कनेक्शन चाहिए।',
+    unreachable: (kept) => `सर्वर से संपर्क नहीं हो पा रहा। ${kept}; जवाब मिलते ही भेज दिया जाएगा।`,
   },
   reason: {
     required: 'कोई कारण चुनें या लिखें।',
@@ -561,7 +563,8 @@ const hi: StaffStrings = {
   },
   remove: {
     title: (name) => `${name} हटाएँ`,
-    keeps: (left, name) => `ऑर्डर में ${left} × ${name} रहेंगे। आपका कारण दर्ज होगा।`,
+    keeps: (left, name) =>
+      `ऑर्डर में ${left} × ${name} ${left === 1 ? 'रहेगा' : 'रहेंगे'}। आपका कारण दर्ज होगा।`,
     struck: 'डिश ऑर्डर में कटी हुई दिखेगी, आपके कारण के साथ।',
     confirmSome: (count) => `${count} हटाएँ`,
     confirmAll: 'डिश हटाएँ',
@@ -569,6 +572,13 @@ const hi: StaffStrings = {
     removed: (name) => `${name} हटाया गया`,
     howMany: 'कितने हटाने हैं',
     of: (count) => `${count} में से`,
+    // The count is of dishes to remove, not to add.
+    stepper: {
+      group: (dish) => `हटाने के लिए ${dish} की संख्या`,
+      remove: (dish) => `${dish} हटाएँ`,
+      less: (dish) => `एक ${dish} कम हटाएँ`,
+      more: (dish) => `एक और ${dish} हटाएँ`,
+    },
   },
 };
 

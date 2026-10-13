@@ -72,6 +72,7 @@ function ReasonDialogForItem({ item, onClose }: RemoveItemDialogProps) {
             value={quantity}
             onChange={setQuantity}
             itemName={name}
+            labels={t.remove.stepper}
             min={1}
             max={item.quantity}
           />

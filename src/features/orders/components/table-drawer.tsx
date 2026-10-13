@@ -392,7 +392,7 @@ function RoundHeading({
       <h3 className="text-base font-semibold text-ink">
         {t.drawer.round(round.roundNumber)}{' '}
         <span className="font-normal text-ink-muted">
-          · {formatClockTime(round.createdAt, timezone)} ·{' '}
+          · <span lang="en">{formatClockTime(round.createdAt, timezone)}</span> ·{' '}
           {round.placedVia === 'staff' ? t.drawer.addedByStaff : t.drawer.customer}
         </span>
       </h3>

@@ -99,7 +99,8 @@ function LanguageRadioGroup({ lang }: { lang: Lang }) {
         value={shown}
         onValueChange={(value) => {
           const next: Lang = value === 'hi' ? 'hi' : 'en';
-          if (next === lang) return;
+          // Against what shows, so a quick change back is saved too (in order).
+          if (next === shown) return;
           startTransition(async () => {
             setShown(next);
             const result = await setMyLanguage(next).catch(() => null);
