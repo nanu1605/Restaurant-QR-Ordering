@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { setupFeeDiscountPaise } from '../src/features/platform/setup-fee.ts';
 import { withGst } from '../src/features/subscriptions/gst.ts';
 import type { Database } from '../src/types/database.ts';
 
@@ -93,7 +94,7 @@ if (error) fail(`Could not read the subscription: ${error.message}`);
 
 const { data: settings, error: settingsError } = await admin
   .from('platform_settings')
-  .select('setup_fee_paise, setup_fee_discount_paise')
+  .select('setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at')
   .eq('id', 1)
   .single();
 if (settingsError) fail(`Could not read the setup fee: ${settingsError.message}`);
@@ -106,7 +107,7 @@ const amount = Number(
   args.amount ??
     withGst(
       args.event === 'setup-fee'
-        ? settings.setup_fee_paise - settings.setup_fee_discount_paise
+        ? settings.setup_fee_paise - setupFeeDiscountPaise(settings)
         : args.event === 'payment-link'
           ? price * Number(args.months)
           : price,

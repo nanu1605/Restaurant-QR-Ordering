@@ -16,6 +16,7 @@ import {
   supportRestaurantSchema,
   type SupportSection,
 } from './platform';
+import { setupFeeDiscountPaise } from './setup-fee';
 
 /**
  * Super-admin reads (spec §13.4). They run as the signed-in platform admin;
@@ -200,17 +201,26 @@ export async function listSiteLeads(page: number) {
   return { rows: data ?? [], total: count ?? 0, page: current };
 }
 
-/** The setup fee a payment link suggests (paise): the usual fee and the discount on it. */
+/** The setup fee a payment link suggests (paise): the usual fee and the discount in force. */
 export async function getSetupFee(): Promise<{ feePaise: number; discountPaise: number }> {
+  const settings = await getPlatformSettings();
+  return { feePaise: settings.setup_fee_paise, discountPaise: setupFeeDiscountPaise(settings) };
+}
+
+export async function getPlatformSettings() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('platform_settings')
-    .select('setup_fee_paise, setup_fee_discount_paise')
+    .select(
+      'trial_days, grace_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at, support_phone, support_email',
+    )
     .eq('id', 1)
     .single();
   if (error) throw new Error(`Could not load platform settings: ${error.message}`);
-  return { feePaise: data.setup_fee_paise, discountPaise: data.setup_fee_discount_paise };
+  return data;
 }
+
+export type PlatformSettings = Awaited<ReturnType<typeof getPlatformSettings>>;
 
 export async function getTrialDays(): Promise<number> {
   const supabase = await createClient();
