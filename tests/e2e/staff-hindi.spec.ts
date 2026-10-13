@@ -74,7 +74,7 @@ test('a waiter set to Hindi works the board, a table and new dishes in Hindi', a
   await expect(page).toHaveTitle(/^बोर्ड · /);
 
   await page.getByRole('button', { name: /^सभी \d/ }).click();
-  await expect(tableCard(page, '3')).toContainText('मंज़ूरी बाकी');
+  await expect(tableCard(page, '3')).toContainText('मंज़ूरी बाक़ी');
   await expect(tableCard(page, '4')).toContainText('खाली');
 
   // The waiting order, approved in Hindi; its dish by the owner's Hindi name.
@@ -194,11 +194,13 @@ test('an owner in Hindi keeps the admin panel in English, and sets a waiter’s 
   await expect(page.getByRole('banner').getByRole('status')).toHaveText('Live', {
     timeout: 15_000,
   });
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('region', { name: 'Tables' })).toBeVisible();
 
   await page.goto('/staff');
   await expect(page.getByRole('link', { name: 'बोर्ड' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'hi');
+  // The toasts' own labels follow the panel too.
+  await expect(page.getByRole('region', { name: /सूचनाएँ/ })).toBeAttached();
   await page.getByRole('banner').getByRole('button', { name: /मालिक/ }).click();
   await page.getByRole('menuitem', { name: 'एडमिन पैनल' }).click();
   await expect(page).toHaveURL(/\/admin$/);

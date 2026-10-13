@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { FILTER_LABELS, TABLE_STATE_LABELS } from '@/features/orders/board-view';
@@ -59,6 +61,12 @@ describe('worker panel words', () => {
     }
   });
 
+  it('the dictionary file, functions included, writes nuktas as marks and हिन्दी as such', () => {
+    const source = readFileSync('src/features/orders/strings.ts', 'utf8');
+    expect(source).not.toMatch(/[\u0958-\u095F]/);
+    expect(source).not.toContain('हिंदी');
+  });
+
   it('Hindi has its own times, tables and counts', () => {
     expect(hi.elapsed(7)).toBe('7 मिनट');
     expect(hi.elapsed(125)).toBe('2 घं 05 मिनट');
@@ -72,7 +80,13 @@ describe('worker panel words', () => {
       'पनीर टिक्का और दाल स्टॉक में नहीं हैं या मेन्यू में नहीं हैं, इसलिए इन्हें हटा दिया गया।',
     );
     expect(hi.drawer.removedBy('Ravi', null)).toBe('Ravi ने हटाया');
-    expect(hi.drawer.removedBy(null, 'गलत डिश')).toBe('हटाया गया: गलत डिश');
+    expect(hi.offline.kept(1)).toBe('1 बदलाव इस डिवाइस पर रखा गया है');
+    expect(hi.offline.kept(3)).toBe('3 बदलाव इस डिवाइस पर रखे गए हैं');
+    expect(hi.remove.keeps(1, 'दाल')).toContain('1 × दाल रहेगा।');
+    expect(hi.remove.keeps(2, 'दाल')).toContain('2 × दाल रहेंगे।');
+    // The remove dialog's stepper counts what is removed.
+    expect(hi.remove.stepper.more('दाल')).toBe('एक और दाल हटाएँ');
+    expect(hi.drawer.removedBy(null, 'ग़लत डिश')).toBe('हटाया गया: ग़लत डिश');
   });
 
   it('preset reasons show in Hindi but are saved in English', () => {
