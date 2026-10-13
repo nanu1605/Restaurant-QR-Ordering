@@ -45,6 +45,12 @@ export type OnboardInput = {
   staffEmailDomain: string;
   /** Platform admin doing the onboarding (null = script/system). */
   actorUserId?: string;
+  /**
+   * The website's signup (docs/DECISIONS.md P11-10): refused when the restaurant
+   * already has an account (RESTAURANT_EXISTS), and its trial is recorded.
+   * Needs the licence, the phone and the storefront photo.
+   */
+  selfSignup?: { fssaiLicense: string; gstin: string | null; storefrontPhotoPath: string };
 };
 
 export type OnboardResult = {
@@ -110,31 +116,37 @@ export async function onboardRestaurant(
     );
   }
 
-  const { data, error } = await admin.rpc('platform_create_restaurant', {
-    p_payload: {
-      name: input.name.trim(),
-      slug,
-      city: input.city,
-      legal_name: input.legalName,
-      address_line: input.addressLine,
-      state: input.state,
-      pincode: input.pincode,
-      phone: input.phone,
-      email: input.email,
-      gst_mode: input.gstMode,
-      gst_rate_bps: input.gstRateBps,
-      prices_include_tax: input.pricesIncludeTax,
-      trial_days: input.trialDays,
-      plan_code: input.plan ?? 'growth',
-      actor_user_id: input.actorUserId,
-      categories: [...DEFAULT_CATEGORY_SETS[input.cuisine ?? DEFAULT_CUISINE]],
-      owner: {
-        user_id: created.user.id,
-        display_name: input.ownerName.trim(),
-        username: ownerUsername,
+  const { data, error } = await admin.rpc(
+    input.selfSignup ? 'site_signup_create_restaurant' : 'platform_create_restaurant',
+    {
+      p_payload: {
+        name: input.name.trim(),
+        slug,
+        city: input.city,
+        legal_name: input.legalName,
+        address_line: input.addressLine,
+        state: input.state,
+        pincode: input.pincode,
+        phone: input.phone,
+        email: input.email,
+        gst_mode: input.gstMode,
+        gst_rate_bps: input.gstRateBps,
+        prices_include_tax: input.pricesIncludeTax,
+        trial_days: input.trialDays,
+        plan_code: input.plan ?? 'growth',
+        actor_user_id: input.actorUserId,
+        categories: [...DEFAULT_CATEGORY_SETS[input.cuisine ?? DEFAULT_CUISINE]],
+        owner: {
+          user_id: created.user.id,
+          display_name: input.ownerName.trim(),
+          username: ownerUsername,
+        },
+        fssai_license: input.selfSignup?.fssaiLicense,
+        gstin: input.selfSignup?.gstin,
+        storefront_photo_path: input.selfSignup?.storefrontPhotoPath,
       },
     },
-  });
+  );
 
   if (error) {
     // Don't leave an orphaned login behind.
