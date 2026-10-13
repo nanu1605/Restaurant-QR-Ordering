@@ -97,6 +97,33 @@ const overviewSchema = z.object({
 export type PlatformOverview = z.infer<typeof overviewSchema>;
 export const parseOverview = (json: unknown) => overviewSchema.parse(json);
 
+// ─── Lookalikes (docs/DECISIONS.md P11-13) ───────────────────────────────────
+export const LOOKALIKE_REASON_LABELS = {
+  fssai: 'Same FSSAI licence',
+  gstin: 'Same GSTIN',
+  phone: 'Same mobile',
+  name: 'Similar name',
+  address: 'Similar address',
+  pincode: 'Same pincode',
+} as const;
+const lookalikeReason = z.enum(
+  Object.keys(LOOKALIKE_REASON_LABELS) as [keyof typeof LOOKALIKE_REASON_LABELS],
+);
+const lookalikesSchema = z.record(
+  z.string(),
+  z.array(
+    z.object({
+      restaurant_id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+      city: z.string().nullable(),
+      reasons: z.array(lookalikeReason),
+    }),
+  ),
+);
+export type Lookalike = z.infer<typeof lookalikesSchema>[string][number];
+export const parseLookalikes = (json: unknown) => lookalikesSchema.parse(json);
+
 // ─── Restaurants list ────────────────────────────────────────────────────────
 const restaurantRowSchema = z.object({
   restaurant_id: z.string(),
