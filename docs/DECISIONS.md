@@ -3095,3 +3095,34 @@ and work; no defect).
       - the photo is needed, and a tiny one is refused;
       - the platform admin sees the photo, the duplicates and the badge.
     - The signups in `subscription.spec.ts` use values unique to each run.
+
+### Review fixes (11d)
+
+Three reviewers (security and data, correctness, UI and docs) and a verifier confirmed 2
+findings and rated 1 plausible. All are fixed:
+
+- **A refused photo is read out.** "Too small" or "can't be opened" is now an alert, as in the
+  menu import. The photo button is no longer disabled while the photo is made, so focus stays
+  on it; a second press does nothing until the photo is ready (P11-12).
+- **No sending before the photo is ready.** "Email me a code" waits while the photo is made, so a
+  quick tap can't send the form without it.
+- **The restaurants list survives a slow duplicates check.** The lookalike check compares each
+  restaurant with every other, about 12 µs a pair (a second for the 50 rows of a page at 1,500
+  restaurants). If it fails or runs out of time, the list shows without the "Review" badges
+  instead of failing. A `ponytail:` note in the migration names the upgrade: trigram and
+  expression indexes, or flags kept on the row, once restaurants run into the thousands
+  (P11-13).
+
+Refuted:
+
+- **Claims squatted with another restaurant's public licence.** This is the design.
+  - The refusal says to contact us, and the platform admin's onboarding is never checked
+    (P11-10, P11-14).
+  - Restaurants are never deleted, so a claim's restaurant is never deleted either.
+- **The first step as a lookup of mobiles.** The mobile is the restaurant's, printed on every
+  bill. Each probe needs a Turnstile pass (P11-11).
+- **Photos over 1.5 MB.** A JPEG at 1600 px and quality 0.85 came to 0.16–0.46 MB for real
+  photos. Only artificial noise passed 1.5 MB.
+- **Earlier runs crowding the duplicates test.** Already fixed: the neighbour has two reasons.
+- **The code step's wording.** It matches P11-14, as the email-taken message does.
+- **No GSTIN claim in pgTAP.** The phone claim is checked; the GSTIN insert is the same line.
