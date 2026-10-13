@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 const NOTICES: Record<string, string> = {
   no_access:
     'This account has no active restaurant. Log in with a different account or ask your manager.',
+  password_changed: 'Your password is changed. Log in with the new one.',
 };
 
 export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
