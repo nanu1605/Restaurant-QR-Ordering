@@ -43,8 +43,15 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
     resetOptions: { keepDirtyValues: true },
   });
 
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) =>
-    handleSubmit(async (values) => {
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    // A date with a part missing reads as '', which would save as "no last day".
+    const lastDay = event.currentTarget.elements.namedItem('discountLastDay');
+    if (lastDay instanceof HTMLInputElement && lastDay.validity.badInput) {
+      event.preventDefault();
+      setError('discountLastDay', { message: 'Finish the date, or clear it.' });
+      return;
+    }
+    return handleSubmit(async (values) => {
       const result = await updatePlatformSettings(values);
       if (!result.ok) {
         for (const [key, message] of Object.entries(result.fieldErrors ?? {})) {
@@ -56,6 +63,7 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
       reset(values);
       toast.success('Settings saved');
     })(event);
+  };
 
   const input = (
     name: Path<PlatformSettingsInput>,
@@ -64,23 +72,33 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
       description?: string;
       inputMode?: 'decimal' | 'numeric' | 'email' | 'tel';
       type?: string;
+      /** Fields whose checks depend on this one. */
+      deps?: Path<PlatformSettingsInput>[];
     } = {},
   ) => {
     const error = errors[name];
+    const id = `${ids}-${name}`;
+    const describedBy = [options.description && `${id}-hint`, error && `${id}-error`]
+      .filter(Boolean)
+      .join(' ');
     return (
       <Field data-invalid={error ? true : undefined}>
-        <FieldLabel htmlFor={`${ids}-${name}`}>{label}</FieldLabel>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Input
-          id={`${ids}-${name}`}
+          id={id}
           className="h-9"
           type={options.type}
           inputMode={options.inputMode}
           autoComplete="off"
           spellCheck={false}
-          {...register(name)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy || undefined}
+          {...register(name, { deps: options.deps })}
         />
-        {options.description && <FieldDescription>{options.description}</FieldDescription>}
-        <FieldError errors={[error]} />
+        {options.description && (
+          <FieldDescription id={`${id}-hint`}>{options.description}</FieldDescription>
+        )}
+        <FieldError id={`${id}-error`} errors={[error]} />
       </Field>
     );
   };
@@ -111,7 +129,11 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
       {group(
         'Setup fee',
         <>
-          {input('setupFee', 'Setup fee (₹)', { inputMode: 'decimal', description: 'Before GST.' })}
+          {input('setupFee', 'Setup fee (₹)', {
+            inputMode: 'decimal',
+            description: 'Before GST.',
+            deps: ['setupFeeDiscount'],
+          })}
           {input('setupFeeDiscount', 'Launch discount (₹)', {
             inputMode: 'decimal',
             description: '0 for none. The website shows the usual fee struck through.',

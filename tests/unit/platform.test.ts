@@ -341,6 +341,9 @@ describe('platformSettingsSchema', () => {
     ).toBe(false);
     expect(platformSettingsSchema.safeParse({ ...valid, trialDays: '0' }).success).toBe(false);
     expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '91' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: '  ' }).success).toBe(false);
+    expect(platformSettingsSchema.safeParse({ ...valid, graceDays: 0 }).data?.graceDays).toBe(0);
     expect(platformSettingsSchema.safeParse({ ...valid, supportEmail: 'help' }).success).toBe(
       false,
     );

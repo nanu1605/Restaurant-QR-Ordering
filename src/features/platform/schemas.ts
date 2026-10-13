@@ -265,12 +265,18 @@ export const planFormSchema = z.object({
 export type PlanFormInput = z.input<typeof planFormSchema>;
 
 // ─── Platform settings (docs/DECISIONS.md SA-4, SA-5) ───────────────────────
+// A cleared box is refused, not read as 0 (Number('') is 0).
 const daysSchema = (min: number, max: number) =>
-  z.coerce
-    .number({ message: 'Enter a number.' })
-    .int('Enter a whole number.')
-    .min(min, `${min} or more.`)
-    .max(max, `${max} or less.`);
+  z
+    .union([z.number(), z.string().trim().min(1, 'Enter a number.')])
+    .transform(Number)
+    .pipe(
+      z
+        .number({ message: 'Enter a number.' })
+        .int('Enter a whole number.')
+        .min(min, `${min} or more.`)
+        .max(max, `${max} or less.`),
+    );
 
 export const platformSettingsSchema = z
   .object({

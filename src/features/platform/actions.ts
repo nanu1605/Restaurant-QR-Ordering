@@ -27,8 +27,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { onboardRestaurant, OnboardError } from './onboard';
-import { getRestaurantDetail } from './queries';
-import { discountEndsAt } from './setup-fee';
+import { getPlatformSettings, getRestaurantDetail } from './queries';
+import { discountEndsAt, discountLastDay } from './setup-fee';
 import {
   changePlanSchema,
   extendTrialSchema,
@@ -364,6 +364,10 @@ export async function updatePlatformSettings(input: PlatformSettingsInput): Prom
   const parsed = platformSettingsSchema.safeParse(input);
   if (!parsed.success) return fromZodError(parsed.error);
   const settings = parsed.data;
+  // The form shows the end as a day. Unless that day changed, keep the stored time, which
+  // need not be midnight (e.g. set in SQL to end the offer at once).
+  const stored = (await getPlatformSettings()).setup_fee_discount_ends_at;
+  const dayChanged = (stored ? discountLastDay(stored) : '') !== settings.discountLastDay;
 
   const supabase = await createClient();
   const { error } = await supabase.rpc('platform_update_settings', {
@@ -372,9 +376,11 @@ export async function updatePlatformSettings(input: PlatformSettingsInput): Prom
       grace_days: settings.graceDays,
       setup_fee_paise: parsePriceInput(settings.setupFee),
       setup_fee_discount_paise: parsePriceInput(settings.setupFeeDiscount),
-      setup_fee_discount_ends_at: settings.discountLastDay
-        ? discountEndsAt(settings.discountLastDay)
-        : null,
+      ...(dayChanged && {
+        setup_fee_discount_ends_at: settings.discountLastDay
+          ? discountEndsAt(settings.discountLastDay)
+          : null,
+      }),
       support_phone: settings.supportPhone || null,
       support_email: settings.supportEmail || null,
     },

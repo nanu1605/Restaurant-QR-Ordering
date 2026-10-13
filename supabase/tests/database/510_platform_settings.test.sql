@@ -86,8 +86,10 @@ select throws_ok($$ select public.platform_update_settings('{"grace_days": 91}')
   'P0001', 'INVALID_INPUT', 'grace days at most 90');
 select throws_ok($$ select public.platform_update_settings('{"grace_days": "7"}') $$,
   'P0001', 'INVALID_INPUT', 'numbers are JSON numbers');
-select throws_ok($$ select public.platform_update_settings('{"setup_fee_paise": 99}') $$,
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_paise": 99, "setup_fee_discount_paise": 0}') $$,
   'P0001', 'INVALID_INPUT', 'the fee is at least ₹1');
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_paise": 100000001}') $$,
+  'P0001', 'INVALID_INPUT', 'the fee is at most ₹10,00,000');
 select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_paise": 149900}') $$,
   'P0001', 'INVALID_INPUT', 'the discount stays below the fee');
 select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_paise": -1}') $$,
@@ -96,6 +98,14 @@ select throws_ok($$ select public.platform_update_settings('{"setup_fee_paise": 
   'P0001', 'INVALID_INPUT', 'lowering only the fee cannot leave the discount above it');
 select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_ends_at": "next week"}') $$,
   'P0001', 'INVALID_INPUT', 'the end is a real time');
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_ends_at": "2026-01-01 10:00 Foo/Bar"}') $$,
+  'P0001', 'INVALID_INPUT', 'an unknown time zone is refused');
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_ends_at": "2026-01-01T10:00:00+99:00"}') $$,
+  'P0001', 'INVALID_INPUT', 'an impossible offset is refused');
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_ends_at": "infinity"}') $$,
+  'P0001', 'INVALID_INPUT', 'the end is a real day, not infinity');
+select throws_ok($$ select public.platform_update_settings('{"setup_fee_discount_ends_at": "99999-01-01"}') $$,
+  'P0001', 'INVALID_INPUT', 'the end is not centuries away');
 select throws_ok($$ select public.platform_update_settings('{"support_email": "not-an-email"}') $$,
   'P0001', 'INVALID_INPUT', 'the email looks like one');
 select throws_ok($$ select public.platform_update_settings('{"support_phone": "123456789012345678901"}') $$,

@@ -80,9 +80,13 @@ begin
     -- A past time is allowed: it ends the offer now (SA-5).
     begin
       v_new.setup_fee_discount_ends_at := private.json_text(v_patch, 'setup_fee_discount_ends_at')::timestamptz;
-    exception when invalid_datetime_format or datetime_field_overflow then
+    exception when data_exception then
       perform private.fail('INVALID_INPUT', 'setup_fee_discount_ends_at');
     end;
+    -- Not 'infinity' or a far-off year, which the screen could not show.
+    if v_new.setup_fee_discount_ends_at not between '2000-01-01T00:00:00Z' and '2100-01-01T00:00:00Z' then
+      perform private.fail('INVALID_INPUT', 'setup_fee_discount_ends_at');
+    end if;
   end if;
   if v_patch ? 'support_phone' then
     v_new.support_phone := private.tidy_text(private.json_text(v_patch, 'support_phone'));

@@ -3249,6 +3249,8 @@ The owner set the setup fee to ₹999, with ₹500 off for now (it was ₹1,499)
   next to `setup_fee_paise` (₹999). A check keeps it at 0 or more and below the fee. The
   migration sets both on the existing row, so staging and production get them with the release.
   Ending the offer is one SQL line (in the migration's header), with no release.
+  _Superseded on 2026-10-14 by SA-5: end the offer in `/super` → Platform settings, which audits
+  the change._
   - `/pricing` shows "₹499 (launch offer, usually ~~₹999~~)" while there is a discount, and the
     plain fee once it is 0. The discount is shown, not hidden in a lower fee, so the usual price
     is on record when the offer ends. The Hindi wording ("लॉन्च ऑफ़र") is for the owner to check.
@@ -3317,6 +3319,9 @@ stay at 13g, since nobody else gets `/super` before then.
   every request, so no job or cache refresh is needed. A past day is allowed and ends the offer at
   once. A payment-link dialog opened before the end keeps the amount it suggested; the admin sees
   and can edit it.
+  - The database takes any time between 2000 and 2100 (not 'infinity'). A save keeps the stored
+    time unless the day in the form changed, so an end set to a time of day survives other edits.
+    A half-typed date is refused rather than read as "no last day".
 - **SA-6 · Testing the shared row:** the settings e2e test changes the one settings row that the
   pricing and payment-link tests read, so it runs as its own Playwright project after all the
   others and restores the row. If any earlier project fails, it is skipped.
