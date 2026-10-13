@@ -58,6 +58,7 @@ describe('softwareApplication', () => {
       trialDays: 14,
       trialPlanCode: 'starter',
       setupFeePaise: 0,
+      setupFeeDiscountPaise: 0,
     };
     const { offers } = softwareApplication(pricing, 'en') as { offers: Record<string, unknown>[] };
     expect(offers).toHaveLength(2);

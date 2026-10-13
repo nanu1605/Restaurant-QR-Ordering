@@ -24,7 +24,11 @@ export const getSitePricing = cache(async (): Promise<SitePricing> => {
       )
       .eq('is_active', true)
       .order('sort_order'),
-    admin.from('platform_settings').select('trial_days, setup_fee_paise').eq('id', 1).single(),
+    admin
+      .from('platform_settings')
+      .select('trial_days, setup_fee_paise, setup_fee_discount_paise')
+      .eq('id', 1)
+      .single(),
   ]);
   if (plans.error) throw new Error(`Could not load plans: ${plans.error.message}`);
   if (settings.error)
@@ -34,5 +38,6 @@ export const getSitePricing = cache(async (): Promise<SitePricing> => {
     trialDays: settings.data.trial_days,
     trialPlanCode: TRIAL_PLAN_CODE,
     setupFeePaise: settings.data.setup_fee_paise,
+    setupFeeDiscountPaise: settings.data.setup_fee_discount_paise,
   };
 });

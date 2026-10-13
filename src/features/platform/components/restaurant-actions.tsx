@@ -48,6 +48,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { withGst } from '@/features/subscriptions/gst';
 import type { ActionResult } from '@/lib/action-result';
 import { APP_NAME } from '@/lib/config';
+import { formatINR } from '@/lib/money';
 
 import {
   cancelRestaurantAutopay,
@@ -88,7 +89,9 @@ export type LinkDefaults = {
   planName: string;
   monthlyPaise: number;
   yearlyPaise: number;
+  /** What the restaurant pays for setup, after the discount. */
   setupFeePaise: number;
+  setupFeeDiscountPaise: number;
 };
 
 type RestaurantActionsProps = {
@@ -566,7 +569,12 @@ function linkAmount(defaults: LinkDefaults, purpose: string, months: number): st
 }
 
 function linkDescription(defaults: LinkDefaults, purpose: string, months: number): string {
-  if (purpose === 'setup_fee') return `${APP_NAME} setup fee, with GST`;
+  if (purpose === 'setup_fee') {
+    const off = defaults.setupFeeDiscountPaise;
+    return off > 0
+      ? `${APP_NAME} setup fee, ${formatINR(off, { fraction: 'auto' })} off, with GST`
+      : `${APP_NAME} setup fee, with GST`;
+  }
   return `${APP_NAME} ${defaults.planName}, ${months} ${months === 1 ? 'month' : 'months'}, with GST`;
 }
 

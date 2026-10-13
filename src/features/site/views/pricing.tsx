@@ -43,9 +43,29 @@ export async function PricingView({ lang }: { lang: SiteLang }) {
             {/* Self-serve signups set up for free (docs/DECISIONS.md W-10). */}
             <p>
               {fillNodes(signup ? t.setupFee.signup : t.setupFee.demo, {
-                fee: (
-                  <Money paise={pricing.setupFeePaise} fraction="auto" className="font-semibold" />
-                ),
+                fee:
+                  pricing.setupFeeDiscountPaise > 0 ? (
+                    fillNodes(t.setupFee.discounted, {
+                      fee: (
+                        <Money
+                          paise={pricing.setupFeePaise - pricing.setupFeeDiscountPaise}
+                          fraction="auto"
+                          className="font-semibold"
+                        />
+                      ),
+                      was: (
+                        <del>
+                          <Money paise={pricing.setupFeePaise} fraction="auto" />
+                        </del>
+                      ),
+                    })
+                  ) : (
+                    <Money
+                      paise={pricing.setupFeePaise}
+                      fraction="auto"
+                      className="font-semibold"
+                    />
+                  ),
               })}
             </p>
             <p>{t.gst}</p>

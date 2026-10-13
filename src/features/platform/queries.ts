@@ -200,16 +200,16 @@ export async function listSiteLeads(page: number) {
   return { rows: data ?? [], total: count ?? 0, page: current };
 }
 
-/** The setup fee a payment link suggests (paise). */
-export async function getSetupFeePaise(): Promise<number> {
+/** The setup fee a payment link suggests (paise): the usual fee and the discount on it. */
+export async function getSetupFee(): Promise<{ feePaise: number; discountPaise: number }> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('platform_settings')
-    .select('setup_fee_paise')
+    .select('setup_fee_paise, setup_fee_discount_paise')
     .eq('id', 1)
     .single();
   if (error) throw new Error(`Could not load platform settings: ${error.message}`);
-  return data.setup_fee_paise;
+  return { feePaise: data.setup_fee_paise, discountPaise: data.setup_fee_discount_paise };
 }
 
 export async function getTrialDays(): Promise<number> {
