@@ -40,6 +40,8 @@ export function SignupForm({
   cycle: string;
 }) {
   const [photo, setPhoto] = useState<Photo | null>(null);
+  // Sending while the photo is still being made would send none.
+  const [preparing, setPreparing] = useState(false);
   const [{ result, round }, action, pending] = useActionState(
     async (previous: State, formData: FormData): Promise<State> => {
       if (photo) formData.set('photo', photo.blob, 'storefront.jpg');
@@ -171,7 +173,14 @@ export function SignupForm({
           defaultValue={value('gstin')}
           error={error('gstin')}
         />
-        <PhotoField t={t} photo={photo} onPhoto={setPhoto} error={result?.fieldErrors?.photo} />
+        <PhotoField
+          t={t}
+          photo={photo}
+          onPhoto={setPhoto}
+          preparing={preparing}
+          onPreparing={setPreparing}
+          error={result?.fieldErrors?.photo}
+        />
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-start gap-3">
@@ -248,7 +257,7 @@ export function SignupForm({
       <Button
         type="submit"
         size="touch"
-        disabled={pending || !checked}
+        disabled={pending || !checked || preparing}
         className="sm:self-start sm:px-8"
       >
         {pending ? t.sending : t.submit}
@@ -266,16 +275,19 @@ function PhotoField({
   t,
   photo,
   onPhoto,
+  preparing,
+  onPreparing,
   error,
 }: {
   t: Words;
   photo: Photo | null;
   onPhoto: (photo: Photo | null) => void;
+  preparing: boolean;
+  onPreparing: (preparing: boolean) => void;
   error?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
-  const [preparing, setPreparing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const shownError = problem ?? error;
 
@@ -289,7 +301,7 @@ function PhotoField({
 
   async function pick(file: File | undefined) {
     if (!file) return;
-    setPreparing(true);
+    onPreparing(true);
     setProblem(null);
     try {
       const { preparePhoto, TOO_SMALL } = await import('@/features/menu-import/prepare-pages');
@@ -306,7 +318,7 @@ function PhotoField({
     } catch {
       setProblem(t.photoUnreadable);
     } finally {
-      setPreparing(false);
+      onPreparing(false);
       if (input.current) input.current.value = '';
     }
   }
@@ -340,20 +352,23 @@ function PhotoField({
         className="sr-only"
         onChange={(event) => void pick(event.target.files?.[0])}
       />
+      {/* Not disabled while the photo is made, so focus stays on it. */}
       <Button
         type="button"
         variant="outline"
         size="touch"
-        disabled={preparing}
+        aria-disabled={preparing || undefined}
         aria-invalid={shownError ? true : undefined}
         aria-describedby={[`${id}-hint`, shownError && `${id}-error`].filter(Boolean).join(' ')}
         className="self-start"
-        onClick={() => input.current?.click()}
+        onClick={() => {
+          if (!preparing) input.current?.click();
+        }}
       >
         {preparing ? t.photoPreparing : photo ? t.photoChange : t.photoChoose}
       </Button>
       {shownError && (
-        <p id={`${id}-error`} className="text-sm text-status-void">
+        <p id={`${id}-error`} role="alert" className="text-sm text-status-void">
           {shownError}
         </p>
       )}

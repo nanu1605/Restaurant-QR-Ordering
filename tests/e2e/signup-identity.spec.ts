@@ -114,9 +114,13 @@ test('the photo of the front is needed, and a tiny one is refused in the browser
     mimeType: 'image/jpeg',
     buffer: await makeJpeg(page, 400, 300),
   });
+  // Said aloud, and the photo button keeps focus.
   await expect(
-    form.getByText('This photo is too small. Use one at least 800 pixels wide.'),
+    form.getByRole('alert').filter({
+      hasText: 'This photo is too small. Use one at least 800 pixels wide.',
+    }),
   ).toBeVisible();
+  await expect(choose).toBeFocused();
   await expect(form.getByRole('img')).toHaveCount(0);
 });
 
