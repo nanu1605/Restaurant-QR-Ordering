@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 
 import { withDeviceCookie } from '@/features/ordering/device';
 import { SITE_LANG_HEADER, siteLangOf } from '@/features/site/i18n';
-import { APP_DOMAIN } from '@/lib/config';
+import { APP_DOMAIN, STAFF_PANEL_HEADER } from '@/lib/config';
 import { contentSecurityPolicy } from '@/lib/csp';
 import { getPublicEnv } from '@/lib/env';
 import { updateSession } from '@/lib/supabase/proxy';
@@ -26,6 +26,11 @@ export async function proxy(request: NextRequest) {
   // The website's language for <html lang>: Hindi under /hi. Always set, so a visitor's own
   // header is never trusted.
   request.headers.set(SITE_LANG_HEADER, siteLangOf(request.nextUrl.pathname));
+  // The worker panel takes its login's language (docs/DECISIONS.md P11-15). Always set too.
+  request.headers.set(
+    STAFF_PANEL_HEADER,
+    /^\/staff(\/|$)/.test(request.nextUrl.pathname) ? '1' : '0',
+  );
 
   // Customer pages (/t/<qr token>/…) have no staff session: they only need the
   // signed device cookie, which keeps them fast.

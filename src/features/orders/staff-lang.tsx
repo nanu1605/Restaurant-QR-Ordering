@@ -17,11 +17,10 @@ const StaffLangContext = createContext<Lang | null>(null);
  */
 export function StaffLangProvider({ lang, children }: { lang: Lang; children: ReactNode }) {
   useEffect(() => {
-    const html = document.documentElement;
-    const before = html.lang;
-    html.lang = lang;
+    document.documentElement.lang = lang;
+    // The admin panel, the only one reached from here in the browser, is English.
     return () => {
-      html.lang = before;
+      document.documentElement.lang = 'en';
     };
   }, [lang]);
   return (
