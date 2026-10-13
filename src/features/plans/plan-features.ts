@@ -40,7 +40,7 @@ export type PlanFeatures = {
 };
 
 /** Cheapest default plan that includes each feature, for upgrade hints. */
-const FEATURE_PLAN: Record<FeatureKey, string> = {
+export const FEATURE_PLAN: Record<FeatureKey, string> = {
   kds: 'Growth',
   discounts: 'Growth',
   split_payments: 'Growth',

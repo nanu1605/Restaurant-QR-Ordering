@@ -18,6 +18,7 @@ import type { CustomerAddonGroup, CustomerCategory } from '@/features/ordering/t
 import { createClient } from '@/lib/supabase/browser';
 
 import { setAddonAvailability, setDishAvailability } from '../actions';
+import { useStaffLang, useStaffStrings } from '../staff-lang';
 import { fetchStaffMenu } from '../staff-menu';
 
 /** What a switch changes: a dish, or one add-on option (shared by every dish in its group). */
@@ -67,12 +68,15 @@ export function AvailabilityList() {
   const ids = useId();
   const queryClient = useQueryClient();
   const { restaurantId } = useLive();
-  const key = menuKey(restaurantId);
+  const t = useStaffStrings();
+  const lang = useStaffLang();
+  // By language too: the names differ (P11-16).
+  const key = [...menuKey(restaurantId), lang];
   const [search, setSearch] = useState('');
 
   const menu = useQuery({
     queryKey: key,
-    queryFn: () => fetchStaffMenu(createClient()),
+    queryFn: () => fetchStaffMenu(createClient(), lang),
     staleTime: 60_000,
   });
 
@@ -86,7 +90,7 @@ export function AvailabilityList() {
         target.id,
         available,
       );
-      if (!result.ok) throw new Error(result.error);
+      if (!result.ok) throw new Error(t.refusal(result));
     },
     onMutate: async ({ target, available }) => {
       await queryClient.cancelQueries({ queryKey: key });
@@ -95,16 +99,16 @@ export function AvailabilityList() {
       );
     },
     onSuccess: (_result, { target, available }) => {
-      toast.success(
-        available ? `${target.name} is back in stock` : `${target.name} is out of stock`,
-      );
+      toast.success(available ? t.stock.back(target.name) : t.stock.out(target.name));
     },
     onError: (error, { target, available }) => {
       // Put this one back; other switches keep their own pending changes.
       queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
         current ? withAvailability(current, target, !available) : current,
       );
-      toast.error(error instanceof Error ? error.message : 'Something went wrong. Try again.');
+      toast.error(
+        error instanceof TypeError ? t.network : error instanceof Error ? error.message : t.generic,
+      );
     },
     onSettled: () => {
       if (lastChange()) void queryClient.invalidateQueries({ queryKey: key });
@@ -114,7 +118,7 @@ export function AvailabilityList() {
   if (menu.isPending) {
     return (
       <div role="status" className="flex flex-col gap-2">
-        <span className="sr-only">Loading the menu…</span>
+        <span className="sr-only">{t.add.loadingMenu}</span>
         {[0, 1, 2, 3, 4].map((i) => (
           <Skeleton key={i} className="h-14 rounded-lg" />
         ))}
@@ -124,9 +128,9 @@ export function AvailabilityList() {
   if (menu.isError) {
     return (
       <div role="alert" className="flex flex-col items-start gap-2 text-sm text-ink">
-        The menu couldn’t be loaded.
+        {t.add.menuFailed}
         <Button variant="outline" size="touch" onClick={() => void menu.refetch()}>
-          Try again
+          {t.tryAgain}
         </Button>
       </div>
     );
@@ -135,8 +139,8 @@ export function AvailabilityList() {
     return (
       <EmptyState
         icon={PackageCheck}
-        title="No dishes on the menu yet"
-        description="A manager can add dishes in the admin panel."
+        title={t.stock.empty}
+        description={t.stock.emptyHint}
         className="flex-1"
       />
     );
@@ -148,11 +152,8 @@ export function AvailabilityList() {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-ink">Availability</h1>
-        <p className="text-sm text-ink-muted">
-          Switch a dish or add-on off when it runs out. Customers see it as not available straight
-          away.
-        </p>
+        <h1 className="text-xl font-semibold text-ink">{t.stock.title}</h1>
+        <p className="text-sm text-ink-muted">{t.stock.intro}</p>
       </div>
       <div className="relative">
         <Search
@@ -161,8 +162,8 @@ export function AvailabilityList() {
         />
         <Input
           type="search"
-          aria-label="Search dishes"
-          placeholder="Search dishes"
+          aria-label={t.add.search}
+          placeholder={t.add.search}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="h-11 pl-9 text-base"
@@ -170,9 +171,7 @@ export function AvailabilityList() {
       </div>
 
       {shown.length === 0 && addonGroups.length === 0 ? (
-        <p className="py-6 text-center text-sm text-ink-muted">
-          No dishes match “{search.trim()}”.
-        </p>
+        <p className="py-6 text-center text-sm text-ink-muted">{t.stock.noMatch(search.trim())}</p>
       ) : (
         shown.map((category) => (
           <section
@@ -194,7 +193,11 @@ export function AvailabilityList() {
                 >
                   <span className="flex min-w-0 flex-col">
                     <span className="flex items-center gap-2 text-base text-ink">
-                      <FoodTypeMark type={item.foodType} size="sm" />
+                      <FoodTypeMark
+                        type={item.foodType}
+                        size="sm"
+                        label={t.foodType[item.foodType]}
+                      />
                       {item.name}
                     </span>
                     {item.variants.length > 0 && (
@@ -230,7 +233,7 @@ export function AvailabilityList() {
             id={`${ids}-${group.id}`}
             className="border-b border-line px-4 py-2 text-sm font-semibold text-ink-muted"
           >
-            Add-ons · {group.name}
+            {t.stock.addons(group.name)}
           </h2>
           <ul>
             {group.addons.map((addon) => (
@@ -266,17 +269,18 @@ type StockSwitchProps = {
 
 function StockSwitch({ name, available, onChange }: StockSwitchProps) {
   const offline = useOffline();
+  const t = useStaffStrings();
   return (
     // Not a <label>: it would rename the switch after its status text.
     <div className="flex min-h-11 items-center gap-3 text-sm font-medium">
       <span aria-hidden className={available ? 'text-ink' : 'text-ink-muted'}>
-        {available ? 'In stock' : 'Out of stock'}
+        {available ? t.stock.inStock : t.stock.outOfStock}
       </span>
       <Switch
         checked={available}
         onCheckedChange={onChange}
         disabled={offline}
-        aria-label={`${name} in stock`}
+        aria-label={t.stock.switchLabel(name)}
       />
     </div>
   );

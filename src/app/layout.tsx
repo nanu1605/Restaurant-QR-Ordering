@@ -5,11 +5,12 @@ import { cookies, headers } from 'next/headers';
 import { AppSplash } from '@/components/shared/app-splash';
 import { Toaster } from '@/components/ui/sonner';
 import { getLang } from '@/features/ordering/lang';
-import { STRINGS } from '@/features/ordering/strings';
+import { type Lang, STRINGS } from '@/features/ordering/strings';
 import { SITE_LANG_HEADER } from '@/features/site/i18n';
 import { parseTheme, THEME_COOKIE } from '@/features/theme/theme';
 import { ThemeProvider } from '@/features/theme/theme-switch';
-import { APP_NAME, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
+import { getCurrentMembership } from '@/lib/auth/session';
+import { APP_NAME, STAFF_PANEL_HEADER, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
 import { getPublicEnv } from '@/lib/env';
 
 import './globals.css';
@@ -49,10 +50,18 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-/** The website's language from the proxy (Hindi under /hi), else the customer panel's choice. */
-async function getPageLang() {
+/**
+ * The website's language from the proxy (Hindi under /hi), the worker panel's from its login,
+ * else the customer panel's choice. A move between panels in the browser keeps the first page's
+ * toast labels; the worker panel sets <html lang> itself (P11-15).
+ */
+async function getPageLang(): Promise<Lang> {
+  const request = await headers();
+  if (request.get(SITE_LANG_HEADER) === 'hi') return 'hi';
+  if (request.get(STAFF_PANEL_HEADER) === '1')
+    return (await getCurrentMembership())?.uiLang ?? 'en';
   // The customer panel's cookie is only sent to /t pages.
-  return (await headers()).get(SITE_LANG_HEADER) === 'hi' ? 'hi' : getLang();
+  return getLang();
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {

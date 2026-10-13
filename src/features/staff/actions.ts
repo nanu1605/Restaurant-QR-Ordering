@@ -11,7 +11,7 @@ import {
   type ActionResult,
 } from '@/lib/action-result';
 import { requireMember } from '@/lib/auth/guards';
-import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
+import { ADMIN_PANEL_ROLES, STAFF_PANEL_ROLES } from '@/lib/auth/roles';
 import { getCurrentUser } from '@/lib/auth/session';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -25,6 +25,7 @@ import {
   type EditStaff,
   type NewStaff,
   type ResetPassword,
+  uiLangSchema,
 } from './schemas';
 
 /**
@@ -61,7 +62,11 @@ export async function updateStaff(memberId: string, input: EditStaff): Promise<A
   const supabase = await createClient();
   const { error } = await supabase.rpc('admin_update_staff', {
     p_member_id: parsedId.data,
-    p_patch: { display_name: parsed.data.displayName, role: parsed.data.role },
+    p_patch: {
+      display_name: parsed.data.displayName,
+      role: parsed.data.role,
+      ...(parsed.data.uiLang ? { ui_lang: parsed.data.uiLang } : {}),
+    },
   });
   if (error) return fromDbError(error, 'admin_update_staff');
   refresh();
@@ -112,5 +117,20 @@ export async function resetStaffPassword(
     console.error('Password not updated:', updateError.code, updateError.message);
     return actionError(GENERIC_ERROR);
   }
+  return actionOk();
+}
+
+/**
+ * The signed-in login's own worker panel language, from its account menu
+ * (docs/DECISIONS.md P11-15); the panel then draws again in it.
+ */
+export async function setMyLanguage(lang: string): Promise<ActionResult> {
+  await requireMember(STAFF_PANEL_ROLES);
+  const parsed = uiLangSchema.safeParse(lang);
+  if (!parsed.success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('member_set_ui_lang', { p_lang: parsed.data });
+  if (error) return fromDbError(error, 'member_set_ui_lang');
+  refresh();
   return actionOk();
 }

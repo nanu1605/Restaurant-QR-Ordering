@@ -8,10 +8,10 @@ import { FoodTypeMark } from '@/components/shared/food-type-mark';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { randomUuid } from '@/features/ordering/cart';
-import { dishName, listNames, tableHeading } from '@/features/ordering/format';
+import { dishName, listNames } from '@/features/ordering/format';
 import { useWakeLock } from '@/hooks/use-wake-lock';
 
-import { formatElapsed, minutesSince, nextStatus } from '../board-view';
+import { minutesSince, nextStatus } from '../board-view';
 import {
   isLate,
   KITCHEN_COLUMNS,
@@ -20,30 +20,14 @@ import {
   kitchenTickets,
 } from '../kitchen';
 import type { ForwardStatus } from '../schemas';
+import { useStaffStrings } from '../staff-lang';
 import { useBoard, useStatusChange } from '../use-board';
 import { useServerNow } from '../use-server-now';
-
-const COLUMN_EMPTY: Record<KitchenColumn, string> = {
-  placed: 'No new orders',
-  preparing: 'Nothing being prepared',
-  ready: 'Nothing waiting to be served',
-};
 
 const EDGE: Record<KitchenColumn, string> = {
   placed: 'border-l-status-placed',
   preparing: 'border-l-status-preparing',
   ready: 'border-l-status-ready',
-};
-
-const MOVED_TO: Record<Exclude<ForwardStatus, 'served'>, string> = {
-  preparing: 'Preparing',
-  ready: 'Ready',
-};
-
-const TICKET_ACTION: Record<KitchenColumn, string> = {
-  placed: 'Start all',
-  preparing: 'Mark all ready',
-  ready: 'Mark all served',
 };
 
 /**
@@ -56,12 +40,13 @@ export function KitchenBoard() {
   const nowMs = useServerNow(board);
   const [announcement, setAnnouncement] = useState('');
   const advance = useStatusChange();
+  const t = useStaffStrings();
   useWakeLock();
 
   if (!board) {
     return (
       <div role="status" className="grid gap-4 md:grid-cols-3">
-        <span className="sr-only">Loading orders…</span>
+        <span className="sr-only">{t.kitchen.loading}</span>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-64 rounded-lg" />
         ))}
@@ -84,8 +69,11 @@ export function KitchenBoard() {
         )?.dataset.item
       : undefined;
     advance.mutate({ key: randomUuid(), ids: request.ids, status: request.to });
+    const names = listNames(request.names, t.and);
     setAnnouncement(
-      `${listNames(request.names)} ${request.to === 'served' ? 'served' : `moved to ${MOVED_TO[request.to]}`}`,
+      request.to === 'served'
+        ? t.kitchen.served(names)
+        : t.kitchen.movedTo(names, t.kitchen.columns[request.to]),
     );
     requestAnimationFrame(() => {
       const target = nextDish
@@ -109,8 +97,8 @@ export function KitchenBoard() {
         {announcement}
       </p>
       {/* Phones show one column at a time: every count stays in sight, a tap jumps to it. */}
-      <div role="group" aria-label="Go to column" className="flex gap-2 md:hidden">
-        {KITCHEN_COLUMNS.map(({ status, label }) => (
+      <div role="group" aria-label={t.kitchen.goTo} className="flex gap-2 md:hidden">
+        {KITCHEN_COLUMNS.map(({ status }) => (
           <Button
             key={status}
             variant="outline"
@@ -118,13 +106,14 @@ export function KitchenBoard() {
             className="flex-1 px-2"
             onClick={() => jumpTo(status)}
           >
-            {label} <span className="tabular-nums">{columns[status].length}</span>
+            {t.kitchen.columns[status]}{' '}
+            <span className="tabular-nums">{columns[status].length}</span>
           </Button>
         ))}
       </div>
       {/* Relative, so screen-reader text in a column off to the side can't widen the page. */}
       <div className="relative -mx-4 flex snap-x snap-mandatory scroll-px-4 items-start gap-4 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0 md:pb-0">
-        {KITCHEN_COLUMNS.map(({ status, label }) => (
+        {KITCHEN_COLUMNS.map(({ status }) => (
           <section
             key={status}
             aria-labelledby={`kitchen-${status}`}
@@ -135,14 +124,14 @@ export function KitchenBoard() {
               tabIndex={-1}
               className="flex items-center gap-2 text-lg font-semibold text-ink focus-visible:outline-none"
             >
-              {label}
+              {t.kitchen.columns[status]}
               <span className="rounded-full bg-surface px-2 text-base text-ink-muted tabular-nums">
                 {columns[status].length}
               </span>
             </h2>
             {columns[status].length === 0 ? (
               <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
-                {COLUMN_EMPTY[status]}
+                {t.kitchen.empty[status]}
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
@@ -179,8 +168,9 @@ function Ticket({
 }) {
   const late = isLate(ticket.acceptedAt, nowMs);
   const next = nextStatus(ticket.status)!;
-  const heading = tableHeading(ticket.tableLabel);
-  const context = `${heading}, round ${ticket.roundNumber}`;
+  const t = useStaffStrings();
+  const heading = t.table(ticket.tableLabel);
+  const context = t.kitchen.ticket(heading, ticket.roundNumber);
 
   return (
     <article
@@ -194,7 +184,7 @@ function Ticket({
         <h3 className="text-xl font-bold text-ink">
           {heading}{' '}
           <span className="text-base font-medium whitespace-nowrap text-ink-muted">
-            · Round {ticket.roundNumber}
+            {t.kitchen.round(ticket.roundNumber)}
           </span>
         </h3>
         <span
@@ -204,11 +194,11 @@ function Ticket({
           )}
         >
           {late && <AlarmClock aria-hidden className="size-4" />}
-          {late && 'Late · '}
-          {formatElapsed(minutesSince(ticket.acceptedAt, nowMs))}
+          {late && t.kitchen.late}
+          {t.elapsed(minutesSince(ticket.acceptedAt, nowMs))}
         </span>
       </header>
-      {ticket.note && <p className="text-sm text-ink">Note: {ticket.note}</p>}
+      {ticket.note && <p className="text-sm text-ink">{t.drawer.note(ticket.note)}</p>}
       <ul className="flex flex-col gap-1.5">
         {ticket.items.map((item) => {
           const name = dishName(item);
@@ -228,7 +218,12 @@ function Ticket({
                 }
                 className="flex min-h-11 w-full items-start gap-2 rounded-md border border-line px-2 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               >
-                <FoodTypeMark type={item.foodType} size="sm" className="mt-1" />
+                <FoodTypeMark
+                  type={item.foodType}
+                  size="sm"
+                  label={t.foodType[item.foodType]}
+                  className="mt-1"
+                />
                 <span className="flex min-w-0 flex-col">
                   <span className="text-base font-medium text-ink">
                     <span className="tabular-nums">{item.quantity} ×</span>{' '}
@@ -237,17 +232,11 @@ function Ticket({
                   {item.addons.length > 0 && (
                     <span className="text-base text-ink">+ {item.addons.join(', ')}</span>
                   )}
-                  {item.note && <span className="text-sm text-ink-muted">Note: {item.note}</span>}
+                  {item.note && (
+                    <span className="text-sm text-ink-muted">{t.drawer.note(item.note)}</span>
+                  )}
                 </span>
-                <span className="sr-only">
-                  {' '}
-                  —{' '}
-                  {next === 'preparing'
-                    ? 'start preparing'
-                    : next === 'ready'
-                      ? 'mark ready'
-                      : 'mark served'}
-                </span>
+                <span className="sr-only"> — {t.kitchen.itemAction[next]}</span>
               </button>
             </li>
           );
@@ -266,8 +255,8 @@ function Ticket({
           })
         }
       >
-        {TICKET_ACTION[ticket.status]}
-        <span className="sr-only"> for {context}</span>
+        {t.kitchen.action[ticket.status]}
+        <span className="sr-only">{t.kitchen.forTicket(context)}</span>
       </Button>
     </article>
   );

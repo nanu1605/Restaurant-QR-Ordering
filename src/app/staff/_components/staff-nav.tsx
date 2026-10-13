@@ -5,22 +5,22 @@ import { ChefHat, LayoutGrid, PackageCheck, type LucideIcon } from 'lucide-react
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+import { useStaffStrings } from '@/features/orders/staff-lang';
+
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
 /** Worker panel sections (spec §13.2). The kitchen view needs the `kds` plan feature. */
 export function StaffNav({ kitchenView }: { kitchenView: boolean }) {
   const pathname = usePathname();
+  const t = useStaffStrings();
   const items: NavItem[] = [
-    { href: '/staff', label: 'Board', icon: LayoutGrid },
-    ...(kitchenView ? [{ href: '/staff/kitchen', label: 'Kitchen', icon: ChefHat }] : []),
-    { href: '/staff/availability', label: 'Availability', icon: PackageCheck },
+    { href: '/staff', label: t.nav.board, icon: LayoutGrid },
+    ...(kitchenView ? [{ href: '/staff/kitchen', label: t.nav.kitchen, icon: ChefHat }] : []),
+    { href: '/staff/availability', label: t.nav.availability, icon: PackageCheck },
   ];
 
   return (
-    <nav
-      aria-label="Worker panel sections"
-      className="border-b border-line bg-surface px-2 print:hidden"
-    >
+    <nav aria-label={t.nav.label} className="border-b border-line bg-surface px-2 print:hidden">
       <ul className="flex gap-1 overflow-x-auto">
         {items.map(({ href, label, icon: Icon }) => {
           const active = href === '/staff' ? pathname === '/staff' : pathname.startsWith(href);

@@ -12,6 +12,7 @@ import { tableHeading } from '@/features/ordering/format';
 import type { Board } from '../board';
 import { type BoardSnapshot, diffBoard, snapshotOf } from '../alerts';
 import { highlightTables, ownOrderIds } from '../alert-store';
+import { useStaffStrings } from '../staff-lang';
 import { useBoard } from '../use-board';
 
 /** Cached board data older than this is not trusted as the baseline. */
@@ -32,6 +33,7 @@ type BoardAlertsProps = {
 export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
   const queryClient = useQueryClient();
   const { memberId } = useLive();
+  const t = useStaffStrings();
   // Pages without a board of their own (Availability) still refetch it.
   useBoard({ watchOnly: true });
 
@@ -68,9 +70,9 @@ export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
       }
 
       for (const order of alerts.orders) {
-        const table = tableHeading(order.tableLabel);
-        toast(order.waiting ? `${table} needs approval` : `New order · ${table}`, {
-          description: order.roundNumber > 1 ? `Round ${order.roundNumber}` : undefined,
+        const table = t.table(order.tableLabel);
+        toast(order.waiting ? t.alerts.needsApproval(table) : t.alerts.newOrder(table), {
+          description: order.roundNumber > 1 ? t.alerts.round(order.roundNumber) : undefined,
         });
       }
       const sessionsWithoutOrderToast = sessions.filter(
@@ -80,12 +82,8 @@ export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
         toast(`${tableHeading(session.tableLabel)} is seated`, { description: 'Assign a waiter' });
       }
       for (const request of alerts.requests) {
-        const table = tableHeading(request.tableLabel);
-        toast(
-          request.type === 'call_waiter'
-            ? `${table} is calling a waiter`
-            : `${table} asked for the bill`,
-        );
+        const table = t.table(request.tableLabel);
+        toast(request.type === 'call_waiter' ? t.alerts.calling(table) : t.alerts.bill(table));
       }
       highlightTables([
         ...alerts.orders.map((order) => order.tableId),
@@ -94,7 +92,7 @@ export function BoardAlerts({ newSessions = false }: BoardAlertsProps) {
       ]);
       playChime();
     });
-  }, [queryClient, memberId, newSessions]);
+  }, [queryClient, memberId, newSessions, t]);
 
   return null;
 }

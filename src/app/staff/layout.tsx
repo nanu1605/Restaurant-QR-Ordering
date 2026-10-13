@@ -9,10 +9,12 @@ import { boardKey, getQueryClient } from '@/features/live/query-client';
 import { BoardAlerts } from '@/features/orders/components/board-alerts';
 import { OfflineBanner } from '@/features/orders/components/offline-banner';
 import { getBoard } from '@/features/orders/queries';
+import { StaffLangProvider } from '@/features/orders/staff-lang';
+import { STAFF_STRINGS } from '@/features/orders/strings';
 import { hasFeature } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { requireMember } from '@/lib/auth/guards';
-import { ADMIN_PANEL_ROLES, ROLE_LABELS, STAFF_PANEL_ROLES } from '@/lib/auth/roles';
+import { ADMIN_PANEL_ROLES, STAFF_PANEL_ROLES } from '@/lib/auth/roles';
 import { INSTALLABLE } from '@/lib/config';
 
 import { StaffNav } from './_components/staff-nav';
@@ -27,31 +29,36 @@ export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
   // Every worker panel page shares the live board, so alerts sound on any of them.
   const queryClient = getQueryClient();
   queryClient.setQueryData(boardKey(membership.memberId), board);
+  // The login's own language (docs/DECISIONS.md P11-15).
+  const lang = membership.uiLang;
+  const t = STAFF_STRINGS[lang];
 
   return (
     <LiveProvider restaurantId={membership.restaurant.id} memberId={membership.memberId}>
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <div className="flex flex-1 flex-col">
-          <PanelAnalytics
-            userId={membership.memberId}
-            role={membership.role}
-            restaurantId={membership.restaurant.id}
-          />
-          <PanelHeader
-            panel="Worker panel"
-            title={membership.restaurant.name}
-            userName={membership.displayName}
-            roleLabel={ROLE_LABELS[membership.role]}
-            switchTo={canOpenAdmin ? { href: '/admin', label: 'Admin panel' } : undefined}
-            installable
-          >
-            <LiveStatus />
-          </PanelHeader>
-          <StaffNav kitchenView={hasFeature(plan, 'kds')} />
-          <BoardAlerts />
-          <OfflineBanner className="mx-4 mt-4" />
-          <main className="flex flex-1 flex-col p-4">{children}</main>
-        </div>
+        <StaffLangProvider lang={lang}>
+          <div lang={lang} className="flex flex-1 flex-col">
+            <PanelAnalytics
+              userId={membership.memberId}
+              role={membership.role}
+              restaurantId={membership.restaurant.id}
+            />
+            <PanelHeader
+              panel={t.panel}
+              title={membership.restaurant.name}
+              userName={membership.displayName}
+              roleLabel={t.roles[membership.role]}
+              switchTo={canOpenAdmin ? { href: '/admin', label: t.adminPanel } : undefined}
+              installable
+            >
+              <LiveStatus />
+            </PanelHeader>
+            <StaffNav kitchenView={hasFeature(plan, 'kds')} />
+            <BoardAlerts />
+            <OfflineBanner className="mx-4 mt-4" />
+            <main className="flex flex-1 flex-col p-4">{children}</main>
+          </div>
+        </StaffLangProvider>
       </HydrationBoundary>
     </LiveProvider>
   );

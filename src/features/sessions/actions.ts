@@ -3,13 +3,7 @@
 import { z } from 'zod';
 
 import { reasonSchema } from '@/features/orders/schemas';
-import {
-  actionError,
-  actionOk,
-  fromDbError,
-  fromZodError,
-  type ActionResult,
-} from '@/lib/action-result';
+import { actionOk, fromDbError, fromZodError, type ActionResult } from '@/lib/action-result';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 import { dbErrorCode, dbErrorMessage } from '@/lib/db-errors';
@@ -23,7 +17,7 @@ import { createClient } from '@/lib/supabase/server';
 /** Waiters close tables with nothing accepted; managers and owners close any (spec §9.3). */
 const CLOSER_ROLES = ['owner', 'manager', 'waiter'] as const;
 
-const invalid = () => actionError(dbErrorMessage({ code: 'P0001', message: 'INVALID_INPUT' })!);
+const invalid = () => fromDbError({ code: 'P0001', message: 'INVALID_INPUT' }, 'session input');
 
 export async function closeSessionUnbilled(
   sessionId: string,

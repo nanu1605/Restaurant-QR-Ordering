@@ -33,9 +33,14 @@ export const newStaffSchema = z.object({
 });
 export type NewStaff = z.input<typeof newStaffSchema>;
 
+/** The worker panel's language for a login (docs/DECISIONS.md P11-15). */
+export const uiLangSchema = z.enum(['en', 'hi'], { message: 'Choose a language.' });
+
 export const editStaffSchema = z.object({
   displayName: displayNameSchema,
   role: staffRoleSchema,
+  /** Only when changed: the login may have set its own since the page loaded. */
+  uiLang: uiLangSchema.optional(),
 });
 export type EditStaff = z.input<typeof editStaffSchema>;
 

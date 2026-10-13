@@ -31,3 +31,6 @@ export const APP_DOMAIN = 'menumesh.in';
 export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
 export const DEFAULT_LOCALE = 'en-IN';
+
+/** Set by the proxy on worker panel pages, so the root layout uses the login's language (P11-15). */
+export const STAFF_PANEL_HEADER = 'x-staff-panel';

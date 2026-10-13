@@ -7,13 +7,8 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWakeLock } from '@/hooks/use-wake-lock';
 
-import {
-  type BoardFilter,
-  FILTER_LABELS,
-  availableFilters,
-  defaultFilter,
-  matchesFilter,
-} from '../board-view';
+import { type BoardFilter, availableFilters, defaultFilter, matchesFilter } from '../board-view';
+import { useStaffStrings } from '../staff-lang';
 import { useBoard } from '../use-board';
 import { useServerNow } from '../use-server-now';
 import { BoardFilters } from './board-filters';
@@ -29,6 +24,7 @@ export type BoardMode = 'staff' | 'admin';
  */
 export function LiveBoard({ mode }: { mode: BoardMode }) {
   const { data: board } = useBoard();
+  const t = useStaffStrings();
   const nowMs = useServerNow(board);
   const [chosenFilter, setChosenFilter] = useState<BoardFilter | null>(null);
   const [openTableId, setOpenTableId] = useState<string | null>(null);
@@ -48,24 +44,22 @@ export function LiveBoard({ mode }: { mode: BoardMode }) {
   const tables = board.tables.filter((table) => matchesFilter(table, filter, board.myWaiterId));
 
   return (
-    <section aria-label="Tables" className="flex flex-col gap-3">
+    <section aria-label={t.board.label} className="flex flex-col gap-3">
       <BoardFilters filters={filters} value={filter} counts={counts} onChange={setChosenFilter} />
 
       {board.tables.length === 0 ? (
         <EmptyState
           icon={LayoutGrid}
-          title="No tables yet"
+          title={t.board.noTables}
           description={
-            mode === 'admin'
-              ? 'Add tables in Tables & QR to see them here.'
-              : 'Ask a manager to add tables in the admin panel.'
+            mode === 'admin' ? 'Add tables in Tables & QR to see them here.' : t.board.noTablesHint
           }
         />
       ) : tables.length === 0 ? (
         <EmptyState
           icon={LayoutGrid}
-          title={`No tables in “${FILTER_LABELS[filter]}”`}
-          description="Choose All to see every table."
+          title={t.board.noneInFilter(t.filters[filter])}
+          description={t.board.chooseAll}
         />
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
@@ -94,9 +88,10 @@ export function LiveBoard({ mode }: { mode: BoardMode }) {
 }
 
 function BoardSkeleton() {
+  const t = useStaffStrings();
   return (
     <div role="status" className="flex flex-col gap-3">
-      <span className="sr-only">Loading tables…</span>
+      <span className="sr-only">{t.board.loading}</span>
       <div className="flex gap-2">
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-11 w-28 rounded-full" />

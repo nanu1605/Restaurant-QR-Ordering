@@ -4,8 +4,8 @@ import { createContext, type ReactNode, use } from 'react';
 
 import { type Lang, STRINGS, type Strings } from '../strings';
 
-// English outside the customer panel: the staff panel reuses the options
-// sheet and the quantity stepper.
+// English unless a panel says otherwise: the worker panel reuses the options
+// sheet and the quantity stepper, in its login's language (P11-15).
 const LangContext = createContext<Lang>('en');
 
 export function LangProvider({ lang, children }: { lang: Lang; children: ReactNode }) {

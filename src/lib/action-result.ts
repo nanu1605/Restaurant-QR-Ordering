@@ -1,13 +1,22 @@
 import type { z } from 'zod';
 
-import { dbErrorMessage, GENERIC_ERROR, type DbErrorLike } from './db-errors';
+import { dbErrorCode, dbErrorMessage, GENERIC_ERROR, type DbErrorLike } from './db-errors';
 
 /**
  * What every server action returns. Shaped for the UI (spec §13: errors say
- * what happened and what to do next), never raw database rows or errors.
+ * what happened and what to do next), never raw database rows or errors. A
+ * database refusal also carries its code and detail, so the worker panel can
+ * say it in Hindi (docs/DECISIONS.md P11-17).
  */
 export type ActionResult<T = void> =
-  { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string> };
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string>;
+      code?: string;
+      detail?: string;
+    };
 
 export function actionOk(): ActionResult<void>;
 export function actionOk<T>(data: T): ActionResult<T>;
@@ -39,7 +48,9 @@ export function fromZodError(error: z.ZodError) {
  */
 export function fromDbError(error: DbErrorLike, context: string) {
   const message = dbErrorMessage(error);
-  if (message) return actionError(message);
+  if (message) {
+    return { ...actionError(message), code: dbErrorCode(error)!, detail: error.details ?? '' };
+  }
   console.error(`${context} failed:`, error.code, error.message, error.details);
   return actionError(GENERIC_ERROR);
 }

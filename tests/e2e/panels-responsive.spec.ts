@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { createOrderingTable } from './customer-fixtures';
-import { DEMO_PASSWORD, logInWithCode } from './helpers';
+import { adminClient, DEMO_PASSWORD, logInWithCode, TEST_PASSWORD } from './helpers';
 import { createLiveRestaurant, openLiveScreen, placeCustomerOrder } from './live-fixtures';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 
@@ -57,6 +57,22 @@ async function logIn(page: Page, username: string) {
 
 test('the worker panel fits every screen', async ({ page }) => {
   await logIn(page, 'manager');
+  expect(await sweep(page, ['/staff', '/staff/kitchen', '/staff/availability'])).toEqual([]);
+});
+
+test('the worker panel in Hindi fits every screen', async ({ page }) => {
+  // Devanagari runs longer than English (docs/DECISIONS.md P11-15).
+  const r = await createLiveRestaurant();
+  await adminClient()
+    .from('restaurant_members')
+    .update({ ui_lang: 'hi' })
+    .eq('id', r.logins.ravi.memberId)
+    .throwOnError();
+  await placeCustomerOrder(r.tables['3']!.token, [{ menu_item_id: r.item.paneer, quantity: 2 }]);
+  await page.goto('/login');
+  await logInWithCode(page, r.slug, 'ravi', TEST_PASSWORD);
+  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page.getByRole('link', { name: 'बोर्ड' })).toBeVisible();
   expect(await sweep(page, ['/staff', '/staff/kitchen', '/staff/availability'])).toEqual([]);
 });
 

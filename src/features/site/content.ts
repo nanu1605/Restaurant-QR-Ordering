@@ -185,7 +185,7 @@ const en = {
       },
       {
         title: 'English and हिन्दी',
-        body: 'Guests switch the menu to Hindi in one tap. Dish names are written in Hindi for you, and you can change any of them.',
+        body: 'Guests switch the menu to Hindi in one tap. Dish names are written in Hindi for you, and you can change any of them. Waiters and the kitchen can use their screens in Hindi too.',
       },
       {
         title: 'Live status colours',

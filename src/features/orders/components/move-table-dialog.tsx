@@ -10,10 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { tableHeading } from '@/features/ordering/format';
 import { moveSession } from '@/features/sessions/actions';
 
 import type { Board, BoardTable } from '../board';
+import { useStaffStrings } from '../staff-lang';
 import { useBoardAction } from '../use-board';
 
 type MoveTableDialogProps = {
@@ -36,7 +36,8 @@ export function MoveTableDialog({
   onOpenChange,
   onMoved,
 }: MoveTableDialogProps) {
-  const free = board.tables.filter((t) => t.session === null && t.id !== table.id);
+  const t = useStaffStrings();
+  const free = board.tables.filter((other) => other.session === null && other.id !== table.id);
   const move = useBoardAction({
     action: ({ sessionId, tableId }: { sessionId: string; tableId: string }) =>
       moveSession(sessionId, tableId),
@@ -48,32 +49,28 @@ export function MoveTableDialog({
     } catch {
       return;
     }
-    const heading = tableHeading(target.label);
+    const heading = t.table(target.label);
     // Guests' phones still show the old table's QR code.
-    toast.success(`Moved to ${heading}`, {
-      description: `Ask the guests to scan the QR code on ${heading}.`,
-    });
+    toast.success(t.move.moved(heading), { description: t.move.scan(heading) });
     onOpenChange(false);
     onMoved();
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent closeLabel={t.close} className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-ink">
-            Move {tableHeading(table.label)}
+            {t.move.title(t.table(table.label))}
           </DialogTitle>
-          <DialogDescription>
-            Choose a free table. The orders, waiter and bill move with the guests.
-          </DialogDescription>
+          <DialogDescription>{t.move.description}</DialogDescription>
         </DialogHeader>
         {free.length === 0 ? (
-          <p className="text-base text-ink">Every other table has guests right now.</p>
+          <p className="text-base text-ink">{t.move.none}</p>
         ) : (
           <ul
             className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2"
-            aria-label="Free tables"
+            aria-label={t.move.freeTables}
           >
             {free.map((target) => (
               <li key={target.id}>
@@ -85,7 +82,7 @@ export function MoveTableDialog({
                   onClick={() => moveTo(target)}
                 >
                   <span className="sr-only">
-                    {tableHeading(target.label) === target.label ? '' : 'Table '}
+                    {t.table(target.label) === target.label ? '' : t.tablePrefix}
                   </span>
                   {target.label}
                 </Button>

@@ -2,18 +2,25 @@
 
 import { ArrowLeftRight, ChevronDown, CircleUser, Download, LogOut } from 'lucide-react';
 import Link from 'next/link';
-import { useRef, useSyncExternalStore } from 'react';
+import { useOptimistic, useRef, useSyncExternalStore, useTransition } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuLinkItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { LANG_NAMES, type Lang } from '@/features/ordering/strings';
+import { useStaffLangChoice, useStaffStrings } from '@/features/orders/staff-lang';
+import { setMyLanguage } from '@/features/staff/actions';
 import { ThemeRadioGroup } from '@/features/theme/theme-switch';
 
 const ITEM = 'min-h-11 px-2';
@@ -57,12 +64,10 @@ function useInstall(installable: boolean): 'prompt' | 'safari' | null {
   );
 }
 
-function install(how: 'prompt' | 'safari') {
+function install(how: 'prompt' | 'safari', safariSteps: string) {
   if (how === 'safari') {
     // It stays until closed, while the steps are followed.
-    toast('To install, tap Share (under ••• if you don’t see it), then Add to Home Screen.', {
-      duration: Infinity,
-    });
+    toast(safariSteps, { duration: Infinity });
     return;
   }
   // A prompt can only be shown once.
@@ -79,7 +84,44 @@ type AccountMenuProps = {
   installable?: boolean;
 };
 
-/** Who is signed in, the other panel, the theme, installing the app and Log out, in one menu. */
+/**
+ * The worker panel's language (docs/DECISIONS.md P11-15), saved on the login.
+ * The panel draws again in it once saved; until then the choice shows at once.
+ */
+function LanguageRadioGroup({ lang }: { lang: Lang }) {
+  const t = useStaffStrings();
+  const [shown, setShown] = useOptimistic(lang);
+  const [, startTransition] = useTransition();
+  return (
+    <DropdownMenuGroup>
+      <DropdownMenuLabel>{t.account.language}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={shown}
+        onValueChange={(value) => {
+          const next: Lang = value === 'hi' ? 'hi' : 'en';
+          // Against what shows, so a quick change back is saved too (in order).
+          if (next === shown) return;
+          startTransition(async () => {
+            setShown(next);
+            const result = await setMyLanguage(next).catch(() => null);
+            if (!result?.ok) toast.error(result ? t.refusal(result) : t.network);
+          });
+        }}
+      >
+        {(['en', 'hi'] as const).map((value) => (
+          <DropdownMenuRadioItem key={value} value={value} lang={value} className={ITEM}>
+            {LANG_NAMES[value]}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuGroup>
+  );
+}
+
+/**
+ * Who is signed in, the other panel, the theme, installing the app and Log out, in one menu.
+ * Inside the worker panel it is in the panel's language and offers that language too.
+ */
 export function AccountMenu({
   userName,
   roleLabel,
@@ -88,6 +130,8 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const logout = useRef<HTMLFormElement>(null);
   const canInstall = useInstall(installable);
+  const t = useStaffStrings();
+  const staffLang = useStaffLangChoice();
   return (
     <>
       <form ref={logout} action="/logout" method="post" hidden />
@@ -120,17 +164,26 @@ export function AccountMenu({
               <DropdownMenuSeparator />
             </>
           )}
-          <ThemeRadioGroup itemClassName={ITEM} />
+          {staffLang && (
+            <>
+              <LanguageRadioGroup lang={staffLang} />
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <ThemeRadioGroup labels={t.account.theme} itemClassName={ITEM} />
           <DropdownMenuSeparator />
           {canInstall && (
-            <DropdownMenuItem className={ITEM} onClick={() => install(canInstall)}>
+            <DropdownMenuItem
+              className={ITEM}
+              onClick={() => install(canInstall, t.account.installSafari)}
+            >
               <Download aria-hidden />
-              Install app
+              {t.account.install}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem className={ITEM} onClick={() => logout.current?.requestSubmit()}>
             <LogOut aria-hidden />
-            Log out
+            {t.account.logOut}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

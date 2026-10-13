@@ -57,6 +57,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { LANG_NAMES } from '@/features/ordering/strings';
 import { assignableRoles, canManageRole, ROLE_LABELS, type MemberRole } from '@/lib/auth/roles';
 import { DEFAULT_LOCALE } from '@/lib/config';
 
@@ -200,7 +201,17 @@ export function StaffManager({
                     )}
                   </TableCell>
                   <TableCell className="font-mono text-sm">{member.username}</TableCell>
-                  <TableCell>{ROLE_LABELS[member.role]}</TableCell>
+                  <TableCell>
+                    {ROLE_LABELS[member.role]}
+                    {member.uiLang === 'hi' && (
+                      <span
+                        title="Worker panel in Hindi"
+                        className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-ink"
+                      >
+                        <span lang="hi">{LANG_NAMES.hi}</span>
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <span
                       className={cn(
@@ -359,6 +370,12 @@ function RoleSelect({
   );
 }
 
+/** The worker panel's languages, each by its own name (docs/DECISIONS.md P11-15). */
+const LANGUAGE_ITEMS = (['en', 'hi'] as const).map((value) => ({
+  value,
+  label: LANG_NAMES[value],
+}));
+
 const ROLE_HINTS: Record<string, string> = {
   manager: 'Managers use the admin panel: menu, tables, billing, waiters and settings.',
   waiter: 'Waiters approve orders and serve tables in the worker panel.',
@@ -490,14 +507,22 @@ function EditStaffForm({
     control,
     handleSubmit,
     setError,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm({
     resolver: zodResolver(editStaffSchema),
-    defaultValues: { displayName: member.displayName, role: member.role } as EditStaff,
+    defaultValues: {
+      displayName: member.displayName,
+      role: member.role,
+      uiLang: member.uiLang,
+    } as EditStaff,
   });
 
   const onSubmit = handleSubmit(async (values) => {
-    const result = await updateStaff(member.memberId, values);
+    const result = await updateStaff(member.memberId, {
+      ...values,
+      // The login may have changed its own since this page loaded (P11-15).
+      uiLang: dirtyFields.uiLang ? values.uiLang : undefined,
+    });
     if (!result.ok) {
       applyFieldErrors(setError, result.fieldErrors);
       if (!result.fieldErrors) setError('root', { message: result.error });
@@ -535,6 +560,39 @@ function EditStaffForm({
             </FieldDescription>
           )}
           <FieldError errors={[errors.role]} />
+        </Field>
+        <Field data-invalid={errors.uiLang ? true : undefined}>
+          <FieldLabel htmlFor={`${ids}-lang`}>Panel language</FieldLabel>
+          <Controller
+            control={control}
+            name="uiLang"
+            render={({ field }) => (
+              <Select
+                items={LANGUAGE_ITEMS}
+                value={field.value}
+                onValueChange={(next) => field.onChange(next ?? 'en')}
+              >
+                <SelectTrigger
+                  id={`${ids}-lang`}
+                  className="h-9 w-full"
+                  aria-describedby={`${ids}-lang-hint`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGE_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value} lang={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          <FieldDescription id={`${ids}-lang-hint`}>
+            The worker panel only. The login can also change it from its account menu.
+          </FieldDescription>
+          <FieldError errors={[errors.uiLang]} />
         </Field>
       </FieldGroup>
       {errors.root?.message && (

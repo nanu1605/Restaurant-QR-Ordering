@@ -19,8 +19,19 @@ const STATE_STYLES: Record<TableState, { icon: LucideIcon; className: string }> 
   free: { icon: Circle, className: 'bg-paper text-ink-muted border-line' },
 };
 
-/** Table state as icon + label; colour is never the only signal (spec §10.4). */
-export function TableStateBadge({ state, className }: { state: TableState; className?: string }) {
+/**
+ * Table state as icon + label; colour is never the only signal (spec §10.4).
+ * English unless the worker panel passes its own label.
+ */
+export function TableStateBadge({
+  state,
+  label = TABLE_STATE_LABELS[state],
+  className,
+}: {
+  state: TableState;
+  label?: string;
+  className?: string;
+}) {
   const { icon: Icon, className: stateClassName } = STATE_STYLES[state];
   return (
     <span
@@ -33,7 +44,7 @@ export function TableStateBadge({ state, className }: { state: TableState; class
       )}
     >
       <Icon aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />
-      {TABLE_STATE_LABELS[state]}
+      {label}
     </span>
   );
 }

@@ -2,7 +2,8 @@
 
 import { cn } from 'cn';
 
-import { type BoardFilter, FILTER_LABELS } from '../board-view';
+import type { BoardFilter } from '../board-view';
+import { useStaffStrings } from '../staff-lang';
 
 type BoardFiltersProps = {
   filters: BoardFilter[];
@@ -13,8 +14,9 @@ type BoardFiltersProps = {
 
 /** Filter chips (spec §13.2): All / My tables / Needs approval / Unassigned / In progress / All served. */
 export function BoardFilters({ filters, value, counts, onChange }: BoardFiltersProps) {
+  const t = useStaffStrings();
   return (
-    <div role="group" aria-label="Show tables" className="flex gap-2 overflow-x-auto pb-1">
+    <div role="group" aria-label={t.board.filtersLabel} className="flex gap-2 overflow-x-auto pb-1">
       {filters.map((filter) => {
         const active = filter === value;
         return (
@@ -28,7 +30,7 @@ export function BoardFilters({ filters, value, counts, onChange }: BoardFiltersP
               active && 'border-ring bg-primary text-primary-foreground hover:bg-primary',
             )}
           >
-            {FILTER_LABELS[filter]}
+            {t.filters[filter]}
             <span
               className={cn(
                 'min-w-6 rounded-full px-1.5 text-sm tabular-nums',

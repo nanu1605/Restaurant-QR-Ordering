@@ -1,5 +1,6 @@
 import 'server-only';
 
+import type { Lang } from '@/features/ordering/strings';
 import type { MemberRole } from '@/lib/auth/roles';
 import { createClient } from '@/lib/supabase/server';
 
@@ -14,6 +15,8 @@ export type StaffMember = {
   /** The waiter profile this login is linked to, if any. */
   waiterId: string | null;
   waiterName: string | null;
+  /** The worker panel's language. */
+  uiLang: Lang;
 };
 
 /** Every login of the caller's restaurant (managers and owners only). */
@@ -31,5 +34,6 @@ export async function getStaff(): Promise<StaffMember[]> {
     createdAt: row.created_at,
     waiterId: row.waiter_id,
     waiterName: row.waiter_name,
+    uiLang: row.ui_lang === 'hi' ? 'hi' : 'en',
   }));
 }
