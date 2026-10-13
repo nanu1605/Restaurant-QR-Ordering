@@ -2,6 +2,7 @@ import 'server-only';
 
 import { cache } from 'react';
 
+import type { Lang } from '@/features/ordering/strings';
 import { createClient } from '@/lib/supabase/server';
 import type { Enums } from '@/types/database';
 
@@ -18,6 +19,8 @@ export type CurrentMembership = {
   role: MemberRole;
   displayName: string;
   username: string;
+  /** The worker panel's language for this login (docs/DECISIONS.md P11-15). */
+  uiLang: Lang;
   restaurant: {
     id: string;
     name: string;
@@ -51,7 +54,7 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
   const { data, error } = await supabase
     .from('restaurant_members')
     .select(
-      'id, role, display_name, username, restaurant:restaurants!inner (id, name, slug, status, timezone)',
+      'id, role, display_name, username, ui_lang, restaurant:restaurants!inner (id, name, slug, status, timezone)',
     )
     .eq('user_id', user.id)
     .eq('is_active', true)
@@ -67,6 +70,7 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
     role: data.role,
     displayName: data.display_name,
     username: data.username,
+    uiLang: data.ui_lang === 'hi' ? 'hi' : 'en',
     restaurant: data.restaurant,
   };
 });

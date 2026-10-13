@@ -4,13 +4,7 @@ import { z } from 'zod';
 
 import { refusedLines } from '@/features/ordering/addons';
 import { toOrderItemsPayload } from '@/features/ordering/schemas';
-import {
-  actionError,
-  actionOk,
-  fromDbError,
-  fromZodError,
-  type ActionResult,
-} from '@/lib/action-result';
+import { actionOk, fromDbError, fromZodError, type ActionResult } from '@/lib/action-result';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES, STAFF_PANEL_ROLES } from '@/lib/auth/roles';
 import { dbErrorCode, dbErrorMessage } from '@/lib/db-errors';
@@ -39,7 +33,7 @@ import { fetchStaffMenu } from './staff-menu';
 /** Waiters, managers and owners approve and reject (spec §3). */
 const APPROVER_ROLES = ['owner', 'manager', 'waiter'] as const;
 
-const invalid = () => actionError(dbErrorMessage({ code: 'P0001', message: 'INVALID_INPUT' })!);
+const invalid = () => fromDbError({ code: 'P0001', message: 'INVALID_INPUT' }, 'board input');
 
 export async function approveOrder(orderId: string): Promise<ActionResult> {
   await requireMember(APPROVER_ROLES);
@@ -194,7 +188,7 @@ const placedJson = z.object({
 export type StaffOrderResult =
   | { ok: true; data: { orderId: string; roundNumber: number; assignedWaiterId: string | null } }
   /** unavailableLines: indexes of the sent lines to take out of the round. */
-  | { ok: false; error: string; unavailableLines?: number[] };
+  | { ok: false; error: string; code?: string; detail?: string; unavailableLines?: number[] };
 
 /** "Add dishes" / "Add order" (spec §10.8): a new round, or a full order for a free table. */
 export async function placeStaffOrder(input: StaffOrderInput): Promise<StaffOrderResult> {
@@ -215,6 +209,7 @@ export async function placeStaffOrder(input: StaffOrderInput): Promise<StaffOrde
       return {
         ok: false,
         error: dbErrorMessage(error)!,
+        code: 'ITEM_UNAVAILABLE',
         unavailableLines: refusedLines(
           menu,
           parsed.data.lines,
