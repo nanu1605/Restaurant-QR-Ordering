@@ -400,6 +400,7 @@ Primary key (kind, value): a value is claimed once.
 | display_name | text | shown on audit logs and "served by" |
 | username | text | unique per restaurant, lowercase `[a-z0-9_]{3,30}` |
 | is_active | bool | default true; inactive members cannot log in to the restaurant |
+| ui_lang | text | `en` (default) or `hi`: this login's worker panel language (§13.2); set on Staff logins or from the login's own account menu |
 | unique | (restaurant_id, user_id), (restaurant_id, username) | |
 
 **`waiters`** (waiter profiles — managed in the admin Waiters section)
@@ -728,7 +729,8 @@ All are `SECURITY DEFINER`, `set search_path = public`, validate inputs, check p
 | `admin_record_payment(p_bill_id, p_payments jsonb)` | Payments array of {mode, amount_paise, reference}. Sum must equal grand total (MVP) → `payment_status = paid`. Split payments allowed only if plan feature `split_payments` |
 | `admin_void_bill(p_bill_id, p_reason, p_reopen boolean)` | Bill → `void`, its payments `is_void = true`. If `p_reopen` and within `reopen_window_minutes` of `generated_at` and the table has no open session: session → `open` again and the previous waiter is re-assigned if still available (otherwise Unassigned). Invoice number is never reused |
 | `admin_increment_print_count(p_bill_id)` | |
-| `admin_create_staff(...)`, `admin_update_staff(...)`, `admin_deactivate_staff(...)` | Called from server actions that also use the Supabase Admin API to create/update auth users (§9.5). Owner manages managers; manager manages waiter/kitchen only. Enforces `max_staff` |
+| `admin_create_staff(...)`, `admin_update_staff(...)`, `admin_deactivate_staff(...)` | Called from server actions that also use the Supabase Admin API to create/update auth users (§9.5). Owner manages managers; manager manages waiter/kitchen only. Enforces `max_staff`. `admin_update_staff` also sets `ui_lang` (audited) |
+| `member_set_ui_lang(p_lang)` | Any signed-in member sets their own login's worker panel language (`en` / `hi`); works while read-only; not audited (docs/DECISIONS.md P11-15) |
 | `admin_create_tables(p_labels text[])`, `admin_regenerate_qr(p_table_id)` | Enforces `max_tables` |
 | `admin_update_settings(p_patch jsonb)` | Whitelisted columns only; tax/bill changes audit logged |
 
@@ -1017,7 +1019,9 @@ Performance budget: server-rendered, minimal client JS, images lazy-loaded, firs
 **Availability** (`/staff/availability`)
 - Searchable list of menu items with an in-stock switch.
 
-**Header**: restaurant name, connection indicator, sound toggle, user name, log out. Managers see a link to the Admin panel.
+**Header**: restaurant name, connection indicator, sound toggle, user name, log out. Managers see a link to the Admin panel. Inside the worker panel the account menu also offers English / हिन्दी.
+
+**Language**: English or हिन्दी per login (`restaurant_members.ui_lang`). Every worker panel screen follows it: its words, toasts and the database's refusals, and dishes and categories by their Hindi name (the owner's, else the automatic one), searchable in either script. An owner or manager sets it on Staff logins; the login can change it from its account menu. Bills, tickets, variant and add-on names, and the admin and platform panels stay English; `/admin/live` reuses these screens in English (docs/DECISIONS.md P11-15 to P11-18).
 
 ### 13.3 Admin panel (`/admin`) — desktop/laptop-first, responsive
 
@@ -1068,7 +1072,7 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - Add waiter: full name (required), phone, employee code, joined on, notes; optionally "Create a login for this waiter" (username + password → creates a `waiter` login and links it) or link an existing waiter login.
 - Edit details; switch on/off duty (e.g. at shift start or for leave); **Delete waiter** with confirmation — blocked while they have open tables ("Reassign Table 3 first"); past bills and reports keep their name.
 
-**Staff logins**: list (name, username, role, active, last login if available), add staff (name, username, role, password), edit role, reset password, deactivate. Enforce role hierarchy and `max_staff`.
+**Staff logins**: list (name, username, role, active, last login if available), add staff (name, username, role, password), edit name, role and worker panel language (a हिन्दी badge marks Hindi logins), reset password, deactivate. Enforce role hierarchy and `max_staff`.
 
 **Settings** (tabs)
 - Restaurant: name, legal name, address, phone, email, logo, accent colour.
@@ -1226,7 +1230,7 @@ Keyboard accessible with visible focus, screen-reader labels on icon buttons, wo
 | Data integrity | DB constraints for one open session per table, unique invoice numbers, non-negative money, valid status transitions inside functions |
 | Security | §9; cross-tenant isolation tested |
 | Privacy | No customer personal data collected in MVP (no names/phones). Only anonymous device id cookie. Website analytics keep nothing on the device; campaign tags are kept with leads and signups (W-13). Privacy policy and terms pages (content supplied by the user) |
-| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00). The public website in English and in Hindi under `/hi` (docs/DECISIONS.md W-16 to W-20); staff and admin screens stay English |
+| Localisation | English at launch; Hindi for customer menu UI strings in Phase 9 (names remain as entered by the restaurant; on the Hindi customer menu, dishes and categories show the owner's optional Hindi name, else the name sounded out in Devanagari by the menu import model — e.g. Butter Chicken → बटर चिकन — else the name as typed). INR formatting with `en-IN` (₹1,23,456.00). The public website in English and in Hindi under `/hi` (docs/DECISIONS.md W-16 to W-20); the worker panel in English or Hindi per login (§13.2, docs/DECISIONS.md P11-15); admin and platform screens stay English |
 | Time | All business logic uses restaurant timezone and business-day start hour |
 | Observability | Sentry on client and server; structured server logs for DB function errors; `/api/health` checks DB connectivity |
 | Browser support | Latest Chrome (Android + desktop), Safari iOS 16+, Edge; staff panel optimised for Android tablets and Chrome |

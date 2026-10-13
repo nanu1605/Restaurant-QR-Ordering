@@ -1498,7 +1498,8 @@ banner's live region was hidden while empty, so screen readers could miss its fi
   JavaScript has loaded, and sets a `lang` cookie with the device cookie's options (path `/t`, one
   year, httpOnly). The root layout reads it for `<html lang>`, so screen readers use the right voice
   for toasts and titles too (the plan put `lang` on a wrapper; the page is more correct). The
-  cookie only reaches `/t`, so the staff and admin pages stay English on the same phone. A client
+  cookie only reaches `/t`, so the staff and admin pages stay English on the same phone (since
+  11e the worker panel follows its login's own language instead, P11-15). A client
   `LangProvider` hands the dictionary to the customer components; without it the default is
   English, so the staff panel's reuse of the options sheet and quantity stepper is unchanged.
   Server actions answer in the phone's language: the customer refusal messages moved from
@@ -2483,7 +2484,7 @@ W5a moves the English words into one dictionary with no visible change; W5b adds
   - **Guest phone:** in the hero and "how it works", it takes its words from `STRINGS[lang]` and
     the demo's Hindi dish names, built on the server and passed as props.
   - **Truthfulness:** the Hindi hero, features and demo copy say the staff and admin screens are
-    in English.
+    in English. (Since 11e they say the waiter and kitchen screens can be Hindi, P11-18.)
 - **W-20 · Search engines and analytics for two languages:**
   - **hreflang:** every page pair gets `alternates` from `pageMetadata`: its own canonical plus
     `en-IN`, `hi-IN` and `x-default` (English). The legal pages and both verify pages keep their
@@ -3126,3 +3127,78 @@ Refuted:
 - **Earlier runs crowding the duplicates test.** Already fixed: the neighbour has two reasons.
 - **The code step's wording.** It matches P11-14, as the email-taken message does.
 - **No GSTIN claim in pgTAP.** The phone claim is checked; the GSTIN insert is the same line.
+
+### 11e · The worker panel in Hindi
+
+- **P11-15 · A language per login, for `/staff` only:**
+  - **Stored on the login.** `restaurant_members.ui_lang`, `en` (the default) or `hi`.
+  - **Who sets it.**
+    - An owner or manager, in the Staff logins edit dialog ("Panel language"). It goes through
+      `admin_update_staff`, with the usual role rules, and is audited as `staff.updated` with
+      the old and new language.
+    - The login itself, from its account menu: English / हिन्दी, shown only inside the worker
+      panel. `member_set_ui_lang` changes the caller's own row only. It is a preference, so it
+      works while the restaurant is read-only and isn't audited.
+    - Nobody edits their own row on the Staff page (an older rule), so an owner uses the account
+      menu.
+  - **How the panel follows it.**
+    - The staff layout reads it with the membership and wraps the panel in `StaffLangProvider`.
+      Outside it, the context is English, so `/admin/live`, which reuses the board, drawer and
+      dialogs, stays English with no change.
+    - The panel's root carries `lang`, and `<html lang>` follows while `/staff` is open, for
+      the menus, dialogs and toasts drawn outside it. Page titles come from `generateMetadata`.
+    - A switch saves, then `refresh()` draws the panel again in the new language; the menu shows
+      the choice at once.
+  - **The words.** `src/features/orders/strings.ts`. English reuses the labels the board already
+    had; Hindi has every key (the compiler checks). Words that only show on `/admin/live`
+    (Delete order, Revert, waiter assignment) stay English in their components. The customer
+    options sheet and quantity stepper, reused by "Add dishes", follow through `LangProvider`.
+  - **What stays English.** Bills and tickets; the admin and platform panels; variant and add-on
+    names (they have no Hindi); names and reasons staff type; times (en-IN). Also the toast
+    region's name from the root layout, and the service worker's static offline page, which
+    can't see the login.
+  - **Size.** `/staff` is 457 of 565 KiB. The account menu, shared by every panel, now carries the
+    dictionary: `/super` grew 12 KiB, to 248.
+- **P11-16 · Dishes by their Hindi name on the worker panel:**
+  - **This reverses part of HN-1.** The `hindi_names` migration said staff screens keep the name
+    as typed; a Hindi panel now shows the owner's Hindi name, else the automatic one.
+  - **The board.** `board_json` adds each dish's `name_hi`. It is the dish's current Hindi name,
+    not a snapshot, as on the guest's Orders page (HN-4); a `ponytail:` note names the upgrade.
+    `useBoard` swaps the names in with a `select`, so the cache keeps the board as the server
+    sent it, and optimistic updates and `/admin/live` are unaffected.
+  - **The menu.** "Add dishes" and Availability read both Hindi columns and use `localName`, so a
+    search finds a dish in either script. The query key includes the language.
+  - **The kitchen** sees the Hindi names too. A dish with no Hindi name keeps its own.
+- **P11-17 · Refusals in the panel's language:**
+  - **The plan said** each action would take the screen's language. Instead the server stays
+    language-free: `fromDbError` sends the code and detail with the English text, and the panel
+    words them. English shows the server's text; Hindi looks the code up in `HI_REFUSALS`
+    (the 15 codes worker actions can meet), else says a Hindi generic message. So the offline
+    queue's replays and `/admin/live` need nothing, and a test checks every code has both.
+  - **Preset reasons.** The radio shows them in Hindi, but the English preset is what's saved,
+    since guests, the admin panel and bills read it. A Hindi board shows a saved preset in
+    Hindi; a typed reason stays as typed.
+- **P11-18 · The website says so:**
+  - The Hindi hero, features lead and demo lead now say the waiter and kitchen screens also come
+    in Hindi, and the admin screens are English. The demo's kitchen and counter stay English,
+    and the copy says that too.
+  - The "English and हिन्दी" highlight adds, in both languages, that waiters and the kitchen can
+    use their screens in Hindi. The owner reviews the Hindi before the Release.
+- **Testing.**
+  - pgTAP `500_member_language.test.sql`:
+    - the default and the column's check;
+    - the account menu's switch: own row only, bad values, no login, read-only;
+    - the Staff page: the list, the edit and its audit, no repeat audit, role rules, another
+      restaurant;
+    - board dishes with the owner's Hindi name, the automatic one, or none.
+  - `150_staff_board` expects the new `name_hi` key.
+  - Unit `staff-strings.test.ts`: English keeps the old labels; every Hindi word is Devanagari
+    with nuktas as marks; times, tables and plurals; preset reasons; every refusal code in both
+    languages, with its detail.
+  - E2E `staff-hindi.spec.ts`:
+    - a Hindi waiter approves, starts a dish, adds one found by its English or Hindi name, and
+      meets a database refusal in Hindi;
+    - the account menu's switch to English stays after a reload;
+    - the kitchen and Availability screens in Hindi;
+    - an owner set to Hindi still sees `/admin/live` in English, and sets a waiter to Hindi on
+      the Staff page.
