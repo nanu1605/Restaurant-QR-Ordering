@@ -91,6 +91,13 @@ const { data: sub, error } = await admin
   .single();
 if (error) fail(`Could not read the subscription: ${error.message}`);
 
+const { data: settings, error: settingsError } = await admin
+  .from('platform_settings')
+  .select('setup_fee_paise, setup_fee_discount_paise')
+  .eq('id', 1)
+  .single();
+if (settingsError) fail(`Could not read the setup fee: ${settingsError.message}`);
+
 const plan = sub.next_plan ?? sub.plan;
 const cycle = sub.next_billing_cycle ?? sub.billing_cycle ?? 'monthly';
 const price = cycle === 'yearly' ? plan.price_yearly_paise : plan.price_monthly_paise;
@@ -99,7 +106,7 @@ const amount = Number(
   args.amount ??
     withGst(
       args.event === 'setup-fee'
-        ? 149900
+        ? settings.setup_fee_paise - settings.setup_fee_discount_paise
         : args.event === 'payment-link'
           ? price * Number(args.months)
           : price,
