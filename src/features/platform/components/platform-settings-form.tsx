@@ -99,7 +99,8 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
         <>
           {input('trialDays', 'Trial days', {
             inputMode: 'numeric',
-            description: 'For new trials. Existing trials keep their end date.',
+            description:
+              'For new trials; existing trials keep their end date. The website’s text says 14 days.',
           })}
           {input('graceDays', 'Grace days after a failed payment', {
             inputMode: 'numeric',
