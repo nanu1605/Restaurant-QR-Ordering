@@ -3255,3 +3255,8 @@ The owner set the setup fee to ₹999, with ₹500 off for now (it was ₹1,499)
   - `/super`'s setup fee link suggests the fee less the discount, plus GST (₹588.82), and says
     "₹500 off" in its description, which the restaurant sees on Razorpay's page.
   - Self-serve signups still pay no setup fee (W-10).
+  - **Review** (3 reviewers + verifier): 2 confirmed, fixed. `pnpm razorpay:event --event
+setup-fee` still sent ₹1,499 plus GST; it now reads the fee less the discount. The pilot
+    checklist still said ₹1,499; it now has the fee and the line that ends the offer. Refuted:
+    SPEC's `platform_settings` table not listing the setup fee columns (it never listed
+    `setup_fee_paise`; §14.1 names both).
