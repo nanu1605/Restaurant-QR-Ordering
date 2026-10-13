@@ -37,7 +37,7 @@ import { listMenuImports } from '@/features/menu-import/queries';
 import {
   getLookalikes,
   getRestaurantDetail,
-  getSetupFeePaise,
+  getSetupFee,
   getSignupReview,
   listPlans,
 } from '@/features/platform/queries';
@@ -73,10 +73,10 @@ export default async function SuperRestaurantPage({
 }: PageProps<'/super/restaurants/[restaurantId]'>) {
   await requirePlatformAdmin();
   const { restaurantId } = await params;
-  const [detail, plans, setupFeePaise] = await Promise.all([
+  const [detail, plans, setupFee] = await Promise.all([
     getRestaurantDetail(restaurantId),
     listPlans(),
-    getSetupFeePaise(),
+    getSetupFee(),
   ]);
   if (!detail) notFound();
   const [imports, review, lookalikes] = await Promise.all([
@@ -126,7 +126,8 @@ export default async function SuperRestaurantPage({
                       planName: plan?.name ?? '',
                       monthlyPaise: plan?.price_monthly_paise ?? 0,
                       yearlyPaise: plan?.price_yearly_paise ?? 0,
-                      setupFeePaise,
+                      setupFeePaise: setupFee.feePaise - setupFee.discountPaise,
+                      setupFeeDiscountPaise: setupFee.discountPaise,
                     },
                   }
                 : null

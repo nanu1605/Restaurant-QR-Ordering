@@ -430,6 +430,8 @@ const en = {
       signup:
         'Setting up yourself is free. Or we set up your menu and tables with you for a one-time {fee}, with printed QR codes for your tables.',
       demo: 'One-time setup fee of {fee}: we set up your menu and tables with you, with printed QR codes for your tables.',
+      /** {fee} above while platform_settings has a setup fee discount. */
+      discounted: '{fee} (launch offer, usually {was})',
     },
     gst: 'All prices are before GST: 18% is added to each payment.',
     noCommission:

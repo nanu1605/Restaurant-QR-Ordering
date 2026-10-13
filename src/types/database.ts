@@ -1014,6 +1014,7 @@ export type Database = {
           created_at: string
           grace_days: number
           id: number
+          setup_fee_discount_paise: number
           setup_fee_paise: number
           support_email: string | null
           support_phone: string | null
@@ -1024,6 +1025,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_discount_paise?: number
           setup_fee_paise?: number
           support_email?: string | null
           support_phone?: string | null
@@ -1034,6 +1036,7 @@ export type Database = {
           created_at?: string
           grace_days?: number
           id?: number
+          setup_fee_discount_paise?: number
           setup_fee_paise?: number
           support_email?: string | null
           support_phone?: string | null

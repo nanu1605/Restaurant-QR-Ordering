@@ -82,6 +82,10 @@ test('pricing shows the plans from the database and finds the right one', async 
   expect(plans?.length).toBeGreaterThan(0);
 
   await page.goto('/pricing');
+  // The setup fee and its discount come from platform_settings.
+  await expect(page.getByText('Or we set up your menu')).toContainText(
+    'one-time ₹499 (launch offer, usually ₹999)',
+  );
   const cards = page.getByRole('list', { name: 'Plans' });
   for (const plan of plans!) {
     await expect(cards.getByRole('listitem').filter({ hasText: plan.name }).first()).toContainText(

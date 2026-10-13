@@ -26,7 +26,9 @@ export type SitePricing = {
   trialDays: number;
   /** New restaurants trial this plan (spec §14.1). */
   trialPlanCode: string;
+  /** The usual setup fee; what is charged is this less the discount. */
   setupFeePaise: Paise;
+  setupFeeDiscountPaise: Paise;
 };
 
 export type PlanRow = {

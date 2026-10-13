@@ -14,8 +14,32 @@ select tests.add_member(:'rest', 'owner', 'tools_owner') as owner \gset
 -- ─── Setup fee setting ──────────────────────────────────────────────────────
 select is(
   (select setup_fee_paise from public.platform_settings where id = 1),
-  149900::bigint,
-  'the setup fee defaults to ₹1,499'
+  99900::bigint,
+  'the setup fee is ₹999'
+);
+select is(
+  (select setup_fee_discount_paise from public.platform_settings where id = 1),
+  50000::bigint,
+  'with ₹500 off for now'
+);
+select throws_ok(
+  $$update public.platform_settings set setup_fee_discount_paise = 99900 where id = 1$$,
+  '23514', null,
+  'the discount is less than the fee'
+);
+select throws_ok(
+  $$update public.platform_settings set setup_fee_discount_paise = -1 where id = 1$$,
+  '23514', null,
+  'the discount is not negative'
+);
+select throws_ok(
+  $$update public.platform_settings set setup_fee_paise = 50000 where id = 1$$,
+  '23514', null,
+  'nor can the fee drop to the discount'
+);
+select lives_ok(
+  $$update public.platform_settings set setup_fee_discount_paise = 0 where id = 1$$,
+  'the discount can end'
 );
 select throws_ok(
   $$update public.platform_settings set setup_fee_paise = 50 where id = 1$$,

@@ -1109,7 +1109,7 @@ Razorpay is used **only** to collect subscription fees from restaurants. Verify 
 | Growth | ₹899 | ₹8,990 | Unlimited | 15 | + Kitchen view, discounts, split payments, UPI QR on bill, advanced reports, **waiter report**, CSV export |
 | Pro | ₹1,799 | ₹17,990 | Unlimited | Unlimited | + remove "Powered by" branding, priority support; multi-outlet later |
 
-A one-time **setup fee** (default ₹1,499, covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
+A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platform_settings.setup_fee_paise` and `setup_fee_discount_paise`; covers QR standees and onboarding) can be charged with the first payment (Razorpay subscription upfront add-on if supported; otherwise a separate Payment Link). Trials default to the Growth plan so restaurants experience the full product.
 
 ### 14.2 Feature keys (`plans.features` jsonb)
 
