@@ -3474,7 +3474,12 @@ stay at 13g, since nobody else gets `/super` before then.
   restaurant's logins. The phone has Call and WhatsApp as on Dues. The CSV has the filters and
   sort, every column, up to 10,000 rows, refusing beyond. The old `status` and `subscription`
   filters went (state covers both); the overview's Suspended card links `?state=suspended`. The
-  header stays in view inside the table's own scroll region, one region, not two.
+  header stays in view inside the table's own scroll region, one region, not two. The Review
+  badge's check (P11-13) compared each row with every restaurant, 2 s a page at 2,600
+  restaurants; each reason is now an index lookup (trigram indexes on name and address, and
+  indexes on FSSAI, GSTIN, pincode and `private.phone10(phone)`) with the same results.
+  Whoever writes a phone runs `phone10` for its index, so it is granted like
+  `is_valid_timezone`.
 - **SA-24 · Saved views:** `platform_saved_views` (owner, page, name, query, shared), read by RLS
   (a platform admin's own views and shared ones), written only through `platform_save_view`
   (the same name again, in any case, replaces the view) and `platform_delete_view` (the owner's
@@ -3496,5 +3501,5 @@ stay at 13g, since nobody else gets `/super` before then.
   `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
   payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
   the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
-  about 2,600 restaurants locally the list function takes 26 to 103 ms, the CSV 0.6 s and search
-  under 10 ms.
+  about 2,600 restaurants locally the list function takes 26 to 103 ms, the page answers in about
+  0.2 s, the CSV takes 0.6 s and search under 10 ms.

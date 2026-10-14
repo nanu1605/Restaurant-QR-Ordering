@@ -182,6 +182,8 @@ select set_eq(
       ('public.platform_save_view'),
       ('public.platform_delete_view'),
       ('public.platform_search'),
+      -- the restaurants phone index runs it for whoever writes a phone
+      ('private.phone10'),
       ('public.member_record_plan_limit'),
       ('public.admin_record_qr_use'),
       ('public.admin_record_cancel_reason')

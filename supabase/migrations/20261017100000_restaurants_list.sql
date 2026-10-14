@@ -610,6 +610,84 @@ $$;
 create index restaurants_name_trgm_idx
   on public.restaurants using gin (name extensions.gin_trgm_ops);
 
+-- ─── Lookalikes through indexes (P11-13) ────────────────────────────────────
+-- The list's Review badge compared each row with every restaurant: 2 s for a
+-- page at 2,600 restaurants. Now each reason is an index lookup, and only the
+-- restaurants found are compared. Trigrams ignore case and spacing, so a name
+-- or address 60% alike by `%` is the same test as before on normalize_name.
+create index restaurants_address_trgm_idx
+  on public.restaurants using gin (address_line extensions.gin_trgm_ops);
+create index restaurants_fssai_idx on public.restaurants (fssai_license);
+create index restaurants_gstin_idx on public.restaurants (gstin);
+create index restaurants_phone10_idx on public.restaurants (private.phone10(phone));
+-- Writing a phone runs phone10 for this index as the writer, like
+-- is_valid_timezone for its check: a pure function that reveals nothing.
+grant execute on function private.phone10(text) to authenticated, service_role;
+create index restaurants_pincode_idx on public.restaurants (pincode);
+
+create or replace function private.restaurant_lookalikes(p_restaurant_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+set pg_trgm.similarity_threshold = 0.6
+as $$
+  with me as (
+    select r.id, r.name as raw_name, r.address_line as raw_address,
+      private.normalize_name(r.name) as name, private.normalize_name(r.address_line) as address,
+      r.pincode, r.fssai_license, r.gstin, private.phone10(r.phone) as phone
+    from public.restaurants r
+    where r.id = p_restaurant_id
+  ),
+  candidates as (
+    select o.id from public.restaurants o, me where o.fssai_license = me.fssai_license
+    union
+    select o.id from public.restaurants o, me where o.gstin = me.gstin
+    union
+    select o.id from public.restaurants o, me where private.phone10(o.phone) = me.phone
+    union
+    select o.id from public.restaurants o, me where o.name operator(extensions.%) me.raw_name
+    union
+    select o.id from public.restaurants o, me
+    where o.address_line operator(extensions.%) me.raw_address
+    union
+    select o.id from public.restaurants o, me where o.pincode = me.pincode
+  ),
+  matches as (
+    select o.id, o.name, o.slug, o.city, o.created_at,
+      array_remove(array[
+        case when o.fssai_license = me.fssai_license then 'fssai' end,
+        case when o.gstin = me.gstin then 'gstin' end,
+        case when private.phone10(o.phone) = me.phone then 'phone' end,
+        case when extensions.similarity(private.normalize_name(o.name), me.name) >= 0.6
+          then 'name' end,
+        case when extensions.similarity(private.normalize_name(o.address_line), me.address) >= 0.6
+          then 'address' end,
+        case when o.pincode = me.pincode then 'pincode' end
+      ], null) as reasons
+    from candidates c
+    join public.restaurants o on o.id = c.id
+    cross join me
+    where o.id <> me.id
+  ),
+  top as (
+    select * from matches
+    where cardinality(reasons) > 0
+    order by cardinality(reasons) desc, created_at
+    limit 10
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('restaurant_id', t.id, 'name', t.name, 'slug', t.slug, 'city', t.city,
+        'reasons', to_jsonb(t.reasons))
+      order by cardinality(t.reasons) desc, t.created_at
+    ),
+    '[]'::jsonb
+  )
+  from top t;
+$$;
+
 -- Restaurants by name, code, city, phone (any part of the digits, when the
 -- text is a number: a GSTIN's digits aren't a phone), GSTIN, FSSAI number or
 -- an owner's email; payments by Razorpay payment or
