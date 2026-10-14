@@ -1773,6 +1773,7 @@ export type Database = {
         Row: {
           amount_paise: number
           base_paise: number | null
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           created_at: string
           discount_paise: number | null
           gst_bps: number
@@ -1783,6 +1784,7 @@ export type Database = {
           notes: string | null
           period_end: string | null
           period_start: string | null
+          plan_id: string | null
           purpose: string
           razorpay_payment_id: string | null
           recorded_by: string | null
@@ -1793,6 +1795,7 @@ export type Database = {
         Insert: {
           amount_paise: number
           base_paise?: number | null
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
           discount_paise?: number | null
           gst_bps?: number
@@ -1805,6 +1808,7 @@ export type Database = {
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          plan_id?: string | null
           purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
@@ -1815,6 +1819,7 @@ export type Database = {
         Update: {
           amount_paise?: number
           base_paise?: number | null
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
           discount_paise?: number | null
           gst_bps?: number
@@ -1827,6 +1832,7 @@ export type Database = {
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          plan_id?: string | null
           purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
@@ -1835,6 +1841,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_payments_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscription_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
@@ -2380,6 +2393,8 @@ export type Database = {
         Returns: Json
       }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_metrics_backfill_usage: {

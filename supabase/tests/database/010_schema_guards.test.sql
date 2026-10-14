@@ -177,6 +177,8 @@ select set_eq(
       -- Phase 12: platform settings, payments and tracking
       ('public.platform_update_settings'),
       ('public.platform_record_setup_fee'),
+      ('public.platform_list_payments'),
+      ('public.platform_list_dues'),
       ('public.member_record_plan_limit'),
       ('public.admin_record_qr_use'),
       ('public.admin_record_cancel_reason')
