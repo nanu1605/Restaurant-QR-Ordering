@@ -10,19 +10,18 @@
 -- before the first). A step undone later (dishes or tables turned off) is to
 -- do again. Read by the restaurant page, the list, Needs attention and, for
 -- its own restaurant, the owner's first-steps card.
--- plpgsql, so its plan is kept between calls: the list and Needs attention
--- call it once a restaurant.
-create function private.restaurant_onboarding(p_restaurant_id uuid)
-returns jsonb
-language plpgsql
+-- For many restaurants in one query: the list and Needs attention ask for
+-- thousands at once.
+create function private.restaurants_onboarding(p_restaurant_ids uuid[])
+returns table (restaurant_id uuid, onboarding jsonb)
+language sql
 stable
 security definer
 set search_path = ''
 as $$
-begin
-  return (
   with t as (
     select
+      r.id,
       r.created_at,
       -- At least 5 dishes on the menu: done when the fifth was added.
       (select i.created_at from public.menu_items i
@@ -58,10 +57,10 @@ begin
           and not s.cancel_at_period_end)
       ) as paid
     from public.restaurants r
-    where r.id = p_restaurant_id
+    where r.id = any(p_restaurant_ids)
   ),
   steps as (
-    select x.key, x.n, x.done_at, t.created_at
+    select t.id, x.key, x.n, x.done_at, t.created_at
     from t
     cross join lateral (values
       ('menu', 1, t.menu),
@@ -74,7 +73,7 @@ begin
       ('paid', 7, t.paid)
     ) as x(key, n, done_at)
   )
-  select jsonb_build_object(
+  select s.id, jsonb_build_object(
     'steps', jsonb_agg(jsonb_build_object('key', s.key, 'done_at', s.done_at) order by s.n),
     'done', count(s.done_at),
     'next', (array_agg(s.key order by s.n) filter (where s.done_at is null))[1],
@@ -83,10 +82,20 @@ begin
       and greatest(max(s.done_at), max(s.created_at)) < now() - interval '3 days'
   )
   from steps s
-  having count(*) > 0
-  );
-end;
+  group by s.id;
 $$;
+
+create function private.restaurant_onboarding(p_restaurant_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select o.onboarding from private.restaurants_onboarding(array[p_restaurant_id]) as o;
+$$;
+
+revoke execute on function private.restaurants_onboarding(uuid[]) from public, anon, authenticated;
 
 revoke execute on function private.restaurant_onboarding(uuid) from public, anon, authenticated;
 
@@ -866,9 +875,12 @@ begin
         select u.gmv_30d_paise
         from private.restaurant_recent_usage(b.id, b.timezone, b.business_day_start_hour) as u
       ) end as gmv_30d,
-      case when v_onboarding is not null then private.restaurant_onboarding(b.id) end
-        as onboarding
+      ob.onboarding
     from base b
+    -- Only when filtering by it: the page's rows get theirs below.
+    left join private.restaurants_onboarding(
+      case when v_onboarding is not null then array(select x.id from base x) end
+    ) as ob on ob.restaurant_id = b.id
     where v_state is null or b.state = v_state
   ),
   matching as (
@@ -1326,13 +1338,13 @@ as $$
         'phone', o.phone, 'next', o.ob ->> 'next', 'since', o.ob -> 'since'
       )
     from (
-      select x.* from (
-        select r.id, r.name, r.slug, r.city, r.phone, private.restaurant_onboarding(r.id) as ob
-        from public.restaurants r
+      select r.id, r.name, r.slug, r.city, r.phone, x.onboarding as ob
+      from private.restaurants_onboarding(array(
+        select r.id from public.restaurants r
         where r.status = 'active' and r.created_at >= now() - interval '60 days'
-        offset 0 -- once a restaurant, not once a mention
-      ) as x
-      where (x.ob ->> 'stuck')::boolean and x.ob ->> 'next' <> 'paid'
+      )) as x
+      join public.restaurants r on r.id = x.restaurant_id
+      where (x.onboarding ->> 'stuck')::boolean and x.onboarding ->> 'next' <> 'paid'
       offset 0 -- access only for the stuck ones
     ) as o
     cross join lateral public.restaurant_access(o.id) as a
