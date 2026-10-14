@@ -74,9 +74,11 @@ test('Home lists a failed payment, and a snooze puts it aside', async ({ page })
 
 test('a new payment raises an alert and shows in the activity', async ({ page }) => {
   const restaurant = await createTestRestaurant({ prefix: 'alert' });
+  // The first look is quiet; it sets what counts as new. It can come before the
+  // login helper returns, so the wait starts first.
+  const firstLook = page.waitForResponse((response) => response.url().endsWith('/super/alerts'));
   await logInAsPlatformAdmin(page, await createPlatformAdmin('alerts'));
-  // The first look is quiet; it sets what counts as new.
-  await page.waitForResponse((response) => response.url().endsWith('/super/alerts'));
+  await firstLook;
 
   await adminClient()
     .from('subscription_payments')

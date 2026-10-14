@@ -297,16 +297,18 @@ test('a plan edit is saved and audited', async ({ page }) => {
   try {
     await field.fill(value);
     await pro.getByRole('button', { name: 'Save Pro' }).click();
-    await expect(pro.getByRole('button', { name: 'Save Pro' })).toBeDisabled();
+    // Saved, not only sending: reloading sooner can cancel the save.
+    await expect(page.getByText('Pro saved')).toBeVisible();
     await page.reload();
     await expect(pro.getByLabel('Razorpay plan id (monthly)')).toHaveValue(value);
 
     await page.goto('/super/audit?action=plan.updated');
     await expect(page.locator('tr[data-action="plan.updated"]').first()).toContainText(value);
   } finally {
-    await page.goto('/super/plans');
-    await pro.getByLabel('Razorpay plan id (monthly)').fill(original);
-    await pro.getByRole('button', { name: 'Save Pro' }).click();
-    await expect(pro.getByRole('button', { name: 'Save Pro' })).toBeDisabled();
+    await adminClient()
+      .from('plans')
+      .update({ razorpay_plan_id_monthly: original || null })
+      .eq('code', 'pro')
+      .throwOnError();
   }
 });
