@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { notePlanLimit } from '@/features/plans/plan-limit-events';
 import { actionError, fromDbError } from '@/lib/action-result';
 import { canManageRole, type StaffLoginRole } from '@/lib/auth/roles';
 import type { CurrentMembership } from '@/lib/auth/session';
@@ -73,6 +74,7 @@ export async function createStaffLogin(
   });
   if (error) {
     await admin.auth.admin.deleteUser(created.user.id);
+    await notePlanLimit(error);
     const result = fromDbError(error, 'admin_create_staff');
     return dbErrorCode(error) === 'USERNAME_TAKEN'
       ? actionError(result.error, { username: result.error })

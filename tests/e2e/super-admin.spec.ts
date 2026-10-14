@@ -34,6 +34,10 @@ test('onboards a restaurant, hands over the login, and the owner logs in', async
   await expect(main.getByLabel('Restaurant code')).toHaveValue(`wizard-dhaba-${id}`);
   await main.getByLabel('Restaurant code').fill(slug);
   await main.getByLabel('City (optional)').fill('Indore');
+  // How they found MenuMesh must be answered (SA-12).
+  await main.getByRole('button', { name: 'Next' }).click();
+  await expect(main.getByText('Choose how they found MenuMesh.')).toBeVisible();
+  await main.getByLabel('How did they find MenuMesh?').selectOption({ label: 'Field visit' });
   await main.getByRole('button', { name: 'Next' }).click();
 
   await expect(main.getByRole('heading', { name: 'Owner login' })).toBeFocused();
@@ -49,6 +53,7 @@ test('onboards a restaurant, hands over the login, and the owner logs in', async
   await main.getByLabel('Plan to trial').selectOption({ label: 'Growth' });
   await main.getByLabel('Trial days').fill('30');
   await expect(main.getByLabel('Summary')).toContainText(`${name} (${slug})`);
+  await expect(main.getByLabel('Summary')).toContainText('Field visit');
   await main.getByRole('button', { name: 'Create restaurant' }).click();
 
   const handover = main.getByLabel('Owner login');
@@ -73,6 +78,7 @@ test('onboards a restaurant, hands over the login, and the owner logs in', async
   await page.goto('/super/restaurants/new');
   await main.getByLabel('Restaurant name').fill(`Copy ${id}`);
   await main.getByLabel('Restaurant code').fill(slug);
+  await main.getByLabel('How did they find MenuMesh?').selectOption({ label: 'Referral' });
   await main.getByRole('button', { name: 'Next' }).click();
   await main.getByLabel("Owner's name").fill('Someone Else');
   await main.getByRole('button', { name: 'Next' }).click();
@@ -141,7 +147,9 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(main.getByRole('region', { name: 'Subscription' })).toContainText('Starter');
 
   await main.getByRole('button', { name: 'Record payment' }).click();
-  await dialog.getByLabel('Amount (₹)').fill('399');
+  await dialog.getByLabel('Amount received, with GST (₹)').fill('399');
+  // The split is shown as it will be stored (SA-8).
+  await expect(dialog.getByText('₹338.14 + GST ₹60.86')).toBeVisible();
   await dialog.getByLabel('Paid by').selectOption({ label: 'UPI' });
   await dialog.getByLabel('Notes').fill('UTR 998877');
   await dialog.getByRole('button', { name: 'Record payment' }).click();
@@ -163,9 +171,19 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(ownerPayments).not.toContainText('UTR 998877');
   await ownerContext.close();
 
+  // A setup fee paid in cash covers no period.
+  await main.getByRole('button', { name: 'Record payment' }).click();
+  await dialog.getByLabel('For').selectOption({ label: 'Setup fee' });
+  await expect(dialog.getByLabel('First day')).toHaveCount(0);
+  await dialog.getByLabel('Amount received, with GST (₹)').fill('588.82');
+  await dialog.getByLabel('Paid by').selectOption({ label: 'Cash' });
+  await dialog.getByRole('button', { name: 'Record payment' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(main.getByRole('table', { name: 'Payments' })).toContainText('₹588.82');
+
   // The actions are in the audit log.
   await main.getByRole('link', { name: 'Audit log' }).click();
-  await expect(page.locator('tr[data-action="subscription.payment_recorded"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-action="subscription.payment_recorded"]')).toHaveCount(2);
   await expect(page.locator('tr[data-action="subscription.plan_changed"]')).toHaveCount(1);
   await expect(page.locator('tr[data-action="subscription.trial_extended"]')).toHaveCount(1);
 });

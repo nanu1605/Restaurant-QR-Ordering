@@ -3,6 +3,7 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
+import { notePlanLimit } from '@/features/plans/plan-limit-events';
 import {
   actionError,
   actionOk,
@@ -82,8 +83,10 @@ export async function setStaffActive(memberId: string, active: boolean): Promise
   const { error } = active
     ? await supabase.rpc('admin_reactivate_staff', { p_member_id: parsedId.data })
     : await supabase.rpc('admin_deactivate_staff', { p_member_id: parsedId.data });
-  if (error)
+  if (error) {
+    await notePlanLimit(error);
     return fromDbError(error, active ? 'admin_reactivate_staff' : 'admin_deactivate_staff');
+  }
   refresh();
   return actionOk();
 }

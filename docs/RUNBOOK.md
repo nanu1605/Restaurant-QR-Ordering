@@ -104,6 +104,14 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 - There are no down migrations. To undo, write a new migration.
 - To see what a deploy would apply: `pnpm exec supabase link --project-ref <ref>` then
   `pnpm exec supabase db push --dry-run`.
+- **Once per environment after the super-admin metrics migration** (stop 12b,
+  `20261015100100_metrics_snapshots.sql`): fill past days' usage in that project's Supabase SQL
+  editor, a month at a time from the first order to yesterday, for example
+  `select public.platform_metrics_backfill_usage('2026-10-01', '2026-10-31');`. It recounts each
+  day, so running a range twice is harmless. (Locally, `pnpm metrics:backfill` does the same
+  against the stack in `.env.local`; never point `.env.local` at staging or production for it.)
+  Subscription history can't be backfilled: it starts with the first nightly snapshot (03:00
+  India time).
 
 ## Rolling back
 
@@ -132,6 +140,13 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 - **Health 503 with `Invalid API key`** in Vercel's function log: `SUPABASE_SECRET_KEY` belongs
   to another Supabase project. Put in the project's own key and deploy again: a changed variable
   reaches only new deployments.
+- **A daily cron step failed:** `cron_runs` has one row per step with `ok` and the error in
+  `detail` (SQL editor: `select * from cron_runs order by started_at desc limit 20;`). Each step
+  is independent; the next night's run repeats it. If `metrics snapshot` failed, the day's
+  subscription snapshot and platform counts are missing: the same day, run
+  `select public.platform_metrics_snapshot('<yesterday>');` in the SQL editor (it states the day
+  as of now, close enough on the morning after; signups older than a week can no longer be
+  counted). A failed `usage snapshot` needs nothing: the next night recounts the last four days.
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.

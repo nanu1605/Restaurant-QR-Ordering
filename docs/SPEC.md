@@ -374,6 +374,7 @@ Primary key (kind, value): a value is claimed once.
 | gstin | text null | validated format (15 chars) when present |
 | fssai_license | text null | printed on bill when present; required at website signup |
 | storefront_photo_path | text null | the photo of the front sent at website signup, in the private `storefront-photos` bucket; only the platform admin sees it |
+| acquisition_channel | text null | how it found MenuMesh: `website`, `website_lead` (set by signup), `field_visit`, `referral`, `phone`, `whatsapp`, `social`, `other` (asked by the onboarding wizard); null is unknown (docs/DECISIONS.md SA-12) |
 | gst_mode | enum `none` \| `regular` \| `composition` | default `none` |
 | gst_rate_bps | int | default 500 |
 | prices_include_tax | bool | default false |
@@ -626,10 +627,18 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 | cancel_at_period_end | bool | |
 | razorpay_subscription_id | text null unique | |
 | razorpay_customer_id | text null | |
+| cancel_reason, cancel_reason_detail | text null | why the owner last turned autopay off (`too_expensive`, `not_using`, `missing_feature`, `closing`, `switching`, `other` with a few words; docs/DECISIONS.md SA-15) |
 
-**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `amount_paise`, `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end`, `notes`, `recorded_by` null.
+**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8).
 
 **`webhook_events`**: `provider` (`razorpay`), `event_id` unique, `event_type`, `payload jsonb`, `received_at`, `processed_at`, `processing_error`.
+
+**Super-admin metrics** (docs/SUPER_ADMIN_PLAN.md §4.1; docs/DECISIONS.md SA-7 to SA-13). Platform admins read them; only the functions named write them.
+- **`metrics_subscription_daily`** (day, restaurant_id): each restaurant's subscription state (`private.subscription_state`: suspended, read_only, trial, payment_failed, paid, cancelled), plan, cycle, source, MRR (`private.restaurant_mrr_paise`), autopay, cancel at period end and dates, as they stood at the end of an India day; written by `platform_metrics_snapshot`, never rebuilt.
+- **`metrics_usage_daily`** (restaurant_id, business_day): orders by who placed them and by hour, items, bills, GMV (bill totals with the restaurant's taxes), discount, tax, payments by mode, average table time and service requests, counted like the restaurant's own reports; the current business day is never stored. Recounted for the last four days by the daily cron; past days by `platform_metrics_backfill_usage` (`pnpm metrics:backfill`).
+- **`metrics_platform_daily`** (day): signups started and completed, restaurants onboarded by the team, leads; website visitors from PostHog later (null until then).
+- **`cron_runs`**: each step of the daily cron, with its result.
+- **`plan_limit_events`**: refusals because of the plan (tables, staff or a feature), recorded by the server action through `member_record_plan_limit`.
 
 ### 8.10 Indexes (minimum)
 
@@ -1093,7 +1102,7 @@ The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a gr
 
 - **Overview**: restaurants total / trialing / active / past due / read-only / suspended; MRR (sum of monthly-equivalent of active paid subscriptions: yearly ÷ 12); orders in last 24 h across platform; trials ending in next 7 days.
 - **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; docs/DECISIONS.md P11-13).
-- **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount, mode, period start/end, notes), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
+- **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount with GST, mode, notes; for a subscription the period start/end, or a setup fee with no period), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
 - **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over.
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
@@ -1158,11 +1167,11 @@ Map the Razorpay subscription back to the restaurant via `razorpay_subscription_
 
 ### 14.5 Manual payments
 
-Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount, period start/end, notes → `subscription_payments` row, subscription `active`, `source = manual`, `current_period_end` set. Or sends a Razorpay Payment Link (amount, description, `notes.restaurant_id`, `notes.months`).
+Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount, period start/end, notes → `subscription_payments` row, subscription `active`, `source = manual`, `current_period_end` set. A setup fee paid this way has no period and changes no subscription (`platform_record_setup_fee`; docs/DECISIONS.md SA-8). Or sends a Razorpay Payment Link (amount, description, `notes.restaurant_id`, `notes.months`).
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`).
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. It first takes the super-admin snapshots (§8.9 metrics), before signups are deleted, and records every step in `cron_runs`. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`).
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 

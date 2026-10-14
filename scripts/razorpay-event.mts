@@ -119,7 +119,12 @@ let payload: Record<string, unknown>;
 if (args.event === 'payment-link' || args.event === 'setup-fee') {
   const notes =
     args.event === 'setup-fee'
-      ? { restaurant_id: restaurant.id, purpose: 'setup_fee' }
+      ? {
+          restaurant_id: restaurant.id,
+          purpose: 'setup_fee',
+          list_price_paise: String(settings.setup_fee_paise),
+          discount_paise: String(setupFeeDiscountPaise(settings)),
+        }
       : { restaurant_id: restaurant.id, purpose: 'subscription', months: args.months };
   payload = {
     entity: 'event',

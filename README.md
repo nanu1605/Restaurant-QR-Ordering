@@ -321,4 +321,5 @@ placeholders to replace before launch.
 | `pnpm db:types`          | Regenerate `src/types/database.ts`            |
 | `pnpm create-restaurant` | Onboard a restaurant + owner login            |
 | `pnpm razorpay:event`    | Send a signed Razorpay webhook to the app     |
+| `pnpm metrics:backfill`  | Fill super-admin usage history for past days  |
 | `pnpm site:shots`        | Retake the website's app screenshots (local)  |

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { readAuditFilters, readRestaurantFilters } from '@/features/platform/params';
@@ -12,6 +14,7 @@ import {
   platformSettingsSchema,
   suggestRestaurantCode,
 } from '@/features/platform/schemas';
+import { FEE_GST_BPS, feeGst, splitGst, withGst } from '@/features/subscriptions/gst';
 import {
   discountEndsAt,
   discountLastDay,
@@ -137,6 +140,38 @@ describe('manualPaymentSchema', () => {
     expect(result.error?.issues[0]?.path).toEqual(['periodEnd']);
     expect(manualPaymentSchema.safeParse({ ...valid, periodEnd: '2026-09-01' }).success).toBe(true);
   });
+
+  it('is a subscription unless it says setup fee, which has no period', () => {
+    expect(manualPaymentSchema.parse(valid).purpose).toBe('subscription');
+    expect(
+      manualPaymentSchema.safeParse({ ...valid, purpose: 'setup_fee', periodEnd: '2026-08-31' })
+        .success,
+    ).toBe(true);
+    // The hidden dates don't block a setup fee, but a subscription needs real ones.
+    expect(
+      manualPaymentSchema.safeParse({ ...valid, purpose: 'setup_fee', periodStart: '' }).success,
+    ).toBe(true);
+    expect(
+      manualPaymentSchema.safeParse({ ...valid, periodStart: '' }).error?.issues[0]?.path,
+    ).toEqual(['periodStart']);
+  });
+});
+
+describe('splitGst', () => {
+  it('splits what was paid back into the fee and its GST', () => {
+    expect(splitGst(106082)).toEqual({ basePaise: 89900, gstPaise: 16182 });
+    expect(splitGst(58882)).toEqual({ basePaise: 49900, gstPaise: 8982 });
+    expect(splitGst(withGst(39900))).toEqual({ basePaise: 39900, gstPaise: feeGst(39900) });
+  });
+
+  it('uses the rate the database uses (private.fee_gst_bps)', () => {
+    const sql = readFileSync(
+      'supabase/migrations/20261015100000_payment_purpose_and_gst.sql',
+      'utf8',
+    );
+    const rate = /function private\.fee_gst_bps\(\)[\s\S]*?select (\d+);/.exec(sql)?.[1];
+    expect(Number(rate)).toBe(FEE_GST_BPS);
+  });
 });
 
 describe('onboardSchema', () => {
@@ -144,6 +179,7 @@ describe('onboardSchema', () => {
     name: 'Spice Route',
     slug: 'Spice-Route',
     cuisine: 'north_indian',
+    acquisitionChannel: 'field_visit',
     legalName: '',
     addressLine: '',
     city: 'Indore',
@@ -170,6 +206,7 @@ describe('onboardSchema', () => {
   });
 
   it('checks what the database would refuse', () => {
+    expect(onboardSchema.safeParse({ ...valid, acquisitionChannel: '' }).success).toBe(false);
     expect(onboardSchema.safeParse({ ...valid, slug: '-bad-' }).success).toBe(false);
     expect(onboardSchema.safeParse({ ...valid, pincode: '012345' }).success).toBe(false);
     expect(onboardSchema.safeParse({ ...valid, gstRateBps: 700 }).success).toBe(false);

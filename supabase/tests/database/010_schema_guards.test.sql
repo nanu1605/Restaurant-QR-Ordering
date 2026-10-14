@@ -174,8 +174,12 @@ select set_eq(
       ('public.menu_import_discard'),
       -- Phase 11: the worker panel's language
       ('public.member_set_ui_lang'),
-      -- Phase 12: platform settings
-      ('public.platform_update_settings')
+      -- Phase 12: platform settings, payments and tracking
+      ('public.platform_update_settings'),
+      ('public.platform_record_setup_fee'),
+      ('public.member_record_plan_limit'),
+      ('public.admin_record_qr_use'),
+      ('public.admin_record_cancel_reason')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

@@ -44,6 +44,30 @@ export const ACCESS_REASON_LABELS: Record<string, string> = {
   subscription_ended: 'Subscription ended',
 };
 
+// How a restaurant found MenuMesh (docs/DECISIONS.md SA-12). Signup sets the
+// first two itself; the onboarding wizard asks.
+export const ACQUISITION_CHANNELS = [
+  'website',
+  'website_lead',
+  'field_visit',
+  'referral',
+  'phone',
+  'whatsapp',
+  'social',
+  'other',
+] as const;
+export type AcquisitionChannel = (typeof ACQUISITION_CHANNELS)[number];
+export const ACQUISITION_CHANNEL_LABELS: Record<AcquisitionChannel, string> = {
+  website: 'Signed up on the website',
+  website_lead: 'Demo request on the website',
+  field_visit: 'Field visit',
+  referral: 'Referral',
+  phone: 'Phone call',
+  whatsapp: 'WhatsApp',
+  social: 'Social media',
+  other: 'Other',
+};
+
 export const MANUAL_MODES = ['bank_transfer', 'upi', 'cash', 'cheque'] as const;
 export type ManualMode = (typeof MANUAL_MODES)[number];
 export const MANUAL_MODE_LABELS: Record<ManualMode, string> = {
@@ -93,6 +117,8 @@ const overviewSchema = z.object({
       trial_ends_at: iso,
     }),
   ),
+  // The first daily snapshot (docs/DECISIONS.md SA-9); null until the cron has run.
+  history_starts_on: z.string().nullable(),
 });
 export type PlatformOverview = z.infer<typeof overviewSchema>;
 export const parseOverview = (json: unknown) => overviewSchema.parse(json);

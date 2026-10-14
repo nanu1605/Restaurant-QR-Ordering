@@ -7,7 +7,7 @@ import { GST_RATES_BPS } from '@/features/settings/schemas';
 import { RESTAURANT_CODE_PATTERN, USERNAME_PATTERN } from '@/lib/auth/staff-email';
 import { addDays, isDate } from '@/lib/date-range';
 
-import { MANUAL_MODES } from './platform';
+import { ACQUISITION_CHANNELS, MANUAL_MODES } from './platform';
 
 /** Super-admin forms (spec §13.4), shared by the dialogs and the server actions. */
 
@@ -36,23 +36,38 @@ export const changePlanSchema = z.object({
 });
 export type ChangePlanInput = z.input<typeof changePlanSchema>;
 
-const dateSchema = z.string().refine(isDate, 'Choose a date.');
-
 export const manualPaymentSchema = z
   .object({
+    // A setup fee has no billing cycle or period (docs/DECISIONS.md SA-8).
+    purpose: z.enum(['subscription', 'setup_fee']).default('subscription'),
     amount: z
       .string()
       .trim()
       .refine((text) => (parsePriceInput(text) ?? 0) > 0, 'Enter the amount in rupees, e.g. 899.'),
     mode: z.enum(MANUAL_MODES, { message: 'Choose how it was paid.' }),
     billingCycle: z.enum(['monthly', 'yearly'], { message: 'Choose monthly or yearly.' }),
-    periodStart: dateSchema,
-    periodEnd: dateSchema,
+    // Checked below, and only for a subscription: a setup fee hides them.
+    periodStart: z.string(),
+    periodEnd: z.string(),
     notes: z.string().trim().max(500, 'Use 500 characters or fewer.'),
   })
-  .refine((value) => value.periodEnd >= value.periodStart, {
-    path: ['periodEnd'],
-    message: 'The last day is on or after the first.',
+  .superRefine((value, ctx) => {
+    if (value.purpose === 'setup_fee') return;
+    for (const key of ['periodStart', 'periodEnd'] as const) {
+      if (!isDate(value[key]))
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Choose a date.' });
+    }
+    if (
+      isDate(value.periodStart) &&
+      isDate(value.periodEnd) &&
+      value.periodEnd < value.periodStart
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['periodEnd'],
+        message: 'The last day is on or after the first.',
+      });
+    }
   });
 export type ManualPaymentInput = z.input<typeof manualPaymentSchema>;
 
@@ -142,6 +157,9 @@ export const onboardDetailsSchema = z.object({
       'Use 3–32 lowercase letters, numbers or hyphens, starting and ending with a letter or number.',
     ),
   cuisine: z.enum(CUISINE_SETS, { message: 'Choose a menu style.' }),
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS, {
+    message: 'Choose how they found MenuMesh.',
+  }),
   legalName: optionalText(160),
   addressLine: optionalText(300),
   city: optionalText(80),

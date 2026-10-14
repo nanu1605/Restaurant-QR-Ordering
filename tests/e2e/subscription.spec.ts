@@ -179,6 +179,9 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
   await page.getByRole('button', { name: 'Cancel at period end' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Cancel autopay?' });
   await expect(dialog).toContainText('Nothing more will be charged.');
+  // A reason first (SA-15).
+  await expect(dialog.getByRole('button', { name: 'Cancel autopay' })).toBeDisabled();
+  await dialog.getByRole('radio', { name: 'Too expensive' }).check();
   await dialog.getByRole('button', { name: 'Cancel autopay' }).click();
   await expect(page.getByText('It will not renew after that.', { exact: false })).toBeVisible();
   expect(await subscriptionRow(restaurant.restaurantId)).toMatchObject({
@@ -214,12 +217,23 @@ test('autopay set up during a trial can be cancelled straight away', async ({ pa
   await page.getByRole('button', { name: 'Cancel autopay' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Cancel autopay?' });
   await expect(dialog).toContainText('Your free trial still runs until');
+  await dialog.getByRole('radio', { name: 'Other', exact: true }).check();
+  await expect(dialog.getByRole('button', { name: 'Cancel autopay' })).toBeDisabled();
+  await dialog.getByRole('textbox', { name: 'Tell us a little more' }).fill('Trying it first');
   await dialog.getByRole('button', { name: 'Cancel autopay' }).click();
   await expect(page.getByRole('button', { name: 'Subscribe to Growth' })).toBeVisible();
   expect(await subscriptionRow(restaurant.restaurantId)).toMatchObject({
     status: 'trialing',
     razorpay_status: 'cancelled',
   });
+  // The reason is kept for MenuMesh, even for a trial's mandate cancelled at once.
+  const { data: why } = await adminClient()
+    .from('restaurant_subscriptions')
+    .select('cancel_reason, cancel_reason_detail')
+    .eq('restaurant_id', restaurant.restaurantId)
+    .single()
+    .throwOnError();
+  expect(why).toEqual({ cancel_reason: 'other', cancel_reason_detail: 'Trying it first' });
 });
 
 test('a visitor signs up from the pricing page and sets up autopay for the plan they chose', async ({

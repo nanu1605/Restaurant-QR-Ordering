@@ -93,6 +93,23 @@ test('owner adds 10 tables, downloads a QR code and prints the cards', async ({ 
   await expect(
     card.getByRole('img', { name: 'QR code for table Window 2' }).locator('svg'),
   ).toBeVisible();
+
+  // The download and the printed sheet are recorded for super-admin (SA-14).
+  await page.evaluate(() => {
+    window.print = () => {};
+  });
+  await page.getByRole('button', { name: 'Print' }).click();
+  await expect
+    .poll(async () => {
+      const { data } = await admin
+        .from('audit_logs')
+        .select('action')
+        .eq('restaurant_id', restaurant.restaurantId)
+        .like('action', 'table.qr_%')
+        .order('action');
+      return data?.map((row) => row.action);
+    })
+    .toEqual(['table.qr_downloaded', 'table.qr_regenerated', 'table.qr_sheet_printed']);
 });
 
 test('a Starter restaurant is blocked at the 9th table with an upgrade hint', async ({ page }) => {
@@ -105,6 +122,13 @@ test('a Starter restaurant is blocked at the 9th table with an upgrade hint', as
   await expect(
     page.getByRole('alert').filter({ hasText: 'Your plan allows up to 8 tables.' }),
   ).toBeVisible();
+  // The refusal is recorded as an upgrade opportunity (SA-13).
+  const { data: hits } = await adminClient()
+    .from('plan_limit_events')
+    .select('kind')
+    .eq('restaurant_id', restaurant.restaurantId)
+    .throwOnError();
+  expect(hits).toEqual([{ kind: 'tables' }]);
 
   await addTables(page, '1-8');
   await expect(page.getByText('8 tables added')).toBeVisible();

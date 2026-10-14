@@ -15,6 +15,7 @@ import { CUISINE_LABELS, CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/d
 import { bpsToPercent, GST_RATES_BPS } from '@/features/settings/schemas';
 
 import { onboardNewRestaurant, type OnboardHandover } from '../actions';
+import { ACQUISITION_CHANNEL_LABELS, ACQUISITION_CHANNELS } from '../platform';
 import {
   generatePassword,
   ONBOARD_STEPS,
@@ -70,6 +71,8 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
       name: '',
       slug: '',
       cuisine: DEFAULT_CUISINE,
+      // No default: the team has to answer (SA-12).
+      acquisitionChannel: '' as OnboardFormInput['acquisitionChannel'],
       legalName: '',
       addressLine: '',
       city: '',
@@ -262,6 +265,25 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
               </select>
               <FieldDescription>The owner can change them in Menu.</FieldDescription>
             </Field>
+            <Field data-invalid={errors.acquisitionChannel ? true : undefined}>
+              <FieldLabel htmlFor={`${ids}-channel`}>How did they find MenuMesh?</FieldLabel>
+              <select
+                id={`${ids}-channel`}
+                className={SELECT_CLASS}
+                aria-invalid={errors.acquisitionChannel ? true : undefined}
+                {...register('acquisitionChannel')}
+              >
+                <option value="" disabled>
+                  Choose one
+                </option>
+                {ACQUISITION_CHANNELS.filter((channel) => channel !== 'website').map((channel) => (
+                  <option key={channel} value={channel}>
+                    {ACQUISITION_CHANNEL_LABELS[channel]}
+                  </option>
+                ))}
+              </select>
+              <FieldError errors={[errors.acquisitionChannel]} />
+            </Field>
             {field('legalName', 'Legal name (optional)', {
               description: 'Printed on bills when set.',
             })}
@@ -413,6 +435,10 @@ function Summary({ values, planName }: { values: OnboardFormInput; planName?: st
       <dt className="text-ink-muted">Owner</dt>
       <dd className="text-ink">
         {values.ownerName}, username {values.ownerUsername}
+      </dd>
+      <dt className="text-ink-muted">Found us</dt>
+      <dd className="text-ink">
+        {values.acquisitionChannel ? ACQUISITION_CHANNEL_LABELS[values.acquisitionChannel] : '—'}
       </dd>
       <dt className="text-ink-muted">GST</dt>
       <dd className="text-ink">{GST_MODE_LABELS[values.gstMode]}</dd>
