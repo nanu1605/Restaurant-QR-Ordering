@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { adminClient, createTestRestaurant } from './helpers';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import { createPlatformAdmin, logInAsPlatformAdmin, restaurantAction } from './platform-fixtures';
 
 /**
  * Platform settings (docs/SUPER_ADMIN_PLAN.md 12a, docs/DECISIONS.md SA-4 to
@@ -67,7 +67,7 @@ test('ending the launch offer changes the pricing page and the next setup fee li
 
     // ₹999 with no discount, plus GST.
     await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
-    await page.getByRole('button', { name: 'Send payment link' }).click();
+    await restaurantAction(page, 'Send payment link');
     const dialog = page.getByRole('dialog', { name: 'Send payment link' });
     await dialog.getByLabel('For').selectOption('setup_fee');
     await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('1178.82');

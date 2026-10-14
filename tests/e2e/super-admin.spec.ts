@@ -2,7 +2,13 @@ import { expect, test } from '@playwright/test';
 
 import { adminClient, createTestRestaurant, logInWithCode } from './helpers';
 import { createLiveRestaurant } from './live-fixtures';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  hasRestaurantAction,
+  logInAsPlatformAdmin,
+  restaurantAction,
+  restaurantTab,
+} from './platform-fixtures';
 import { billTable, ownerClient, seatTable } from './report-fixtures';
 
 /**
@@ -72,7 +78,7 @@ test('onboards a restaurant, hands over the login, and the owner logs in', async
   // The restaurant page shows the trial.
   await main.getByRole('link', { name: 'Open restaurant' }).click();
   await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
-  await expect(main.getByText('Trial ends')).toBeVisible();
+  await expect(main.getByText('Trial till')).toBeVisible();
 
   // A second restaurant with the same code is sent back to the first step.
   await page.goto('/super/restaurants/new');
@@ -132,7 +138,7 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   const main = page.getByRole('main');
   const dialog = page.getByRole('dialog');
 
-  await main.getByRole('button', { name: 'Extend trial' }).click();
+  await restaurantAction(page, 'Extend trial');
   await dialog.getByLabel('Days to add').fill('10');
   await dialog.getByRole('button', { name: 'Extend trial' }).click();
   await expect(dialog).toBeHidden();
@@ -140,13 +146,16 @@ test('extends a trial, changes the plan and records a manual payment', async ({
     .poll(async () => Date.parse(await trialBefore()) - Date.parse(before))
     .toBe(10 * 24 * 60 * 60 * 1000);
 
-  await main.getByRole('button', { name: 'Change plan' }).click();
+  await restaurantAction(page, 'Change plan');
   await dialog.getByLabel('Plan').selectOption({ label: 'Starter' });
   await dialog.getByRole('button', { name: 'Change plan' }).click();
   await expect(dialog).toBeHidden();
-  await expect(main.getByRole('region', { name: 'Subscription' })).toContainText('Starter');
+  await restaurantTab(page, 'Billing');
+  await expect(main.getByRole('region', { name: 'Subscription', exact: true })).toContainText(
+    'Starter',
+  );
 
-  await main.getByRole('button', { name: 'Record payment' }).click();
+  await restaurantAction(page, 'Record payment');
   await dialog.getByLabel('Amount received, with GST (₹)').fill('399');
   // The split is shown as it will be stored (SA-8).
   await expect(dialog.getByText('₹338.14 + GST ₹60.86')).toBeVisible();
@@ -157,8 +166,8 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(main.getByRole('table', { name: 'Payments' })).toContainText('₹399.00');
   await expect(main.getByRole('table', { name: 'Payments' })).toContainText('UTR 998877');
   // Paid now: the trial is over and the subscription is active.
-  await expect(main.getByRole('button', { name: 'Extend trial' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('Active');
+  expect(await hasRestaurantAction(page, 'Extend trial')).toBe(false);
+  await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('Paid');
 
   // The owner now sees a paid Starter plan and the payment.
   await ownerPage.reload();
@@ -172,7 +181,7 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await ownerContext.close();
 
   // A setup fee paid in cash covers no period.
-  await main.getByRole('button', { name: 'Record payment' }).click();
+  await restaurantAction(page, 'Record payment');
   await dialog.getByLabel('For').selectOption({ label: 'Setup fee' });
   await expect(dialog.getByLabel('First day')).toHaveCount(0);
   await dialog.getByLabel('Amount received, with GST (₹)').fill('588.82');
@@ -181,7 +190,8 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(dialog).toBeHidden();
   await expect(main.getByRole('table', { name: 'Payments' })).toContainText('₹588.82');
 
-  // The actions are in the audit log.
+  // The actions are in the audit log, from the restaurant's timeline.
+  await restaurantTab(page, 'Activity');
   await main.getByRole('link', { name: 'Audit log' }).click();
   await expect(page.locator('tr[data-action="subscription.payment_recorded"]')).toHaveCount(2);
   await expect(page.locator('tr[data-action="subscription.plan_changed"]')).toHaveCount(1);
@@ -201,7 +211,7 @@ test('suspending stops customer ordering but the open table can still be billed'
   await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
   const main = page.getByRole('main');
   const dialog = page.getByRole('dialog');
-  await main.getByRole('button', { name: 'Suspend' }).click();
+  await restaurantAction(page, 'Suspend');
   await dialog.getByLabel('Reason').fill('Setup fee not paid');
   await dialog.getByRole('button', { name: 'Suspend' }).click();
   await expect(main.getByText('Suspended: Setup fee not paid')).toBeVisible();
@@ -227,9 +237,10 @@ test('suspending stops customer ordering but the open table can still be billed'
     .throwOnError();
   expect((bill as { bill_id: string }).bill_id).toBeTruthy();
 
-  await main.getByRole('button', { name: 'Unsuspend' }).click();
+  await restaurantAction(page, 'Unsuspend');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Unsuspend' }).click();
-  await expect(main.getByRole('button', { name: 'Suspend' })).toBeVisible();
+  await expect(main.getByText('Suspended: Setup fee not paid')).toHaveCount(0);
+  expect(await hasRestaurantAction(page, 'Suspend')).toBe(true);
   await customer.reload();
   await expect(customer.getByText('Online ordering is unavailable right now.')).toHaveCount(0);
   await phone.close();
@@ -244,34 +255,32 @@ test('the support view is read-only and every look is logged', async ({ page }) 
   await logInAsPlatformAdmin(page, await createPlatformAdmin());
   await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
   const main = page.getByRole('main');
-  await main
-    .getByRole('navigation', { name: 'Support view' })
-    .getByRole('link', { name: 'Menu' })
-    .click();
+  await restaurantTab(page, 'Support view');
   await expect(page).toHaveURL(/\/support\/menu$/);
-  // The breadcrumb leads back to the restaurant.
+  // The Overview tab leads back to the restaurant.
   await expect(
     page
-      .getByRole('navigation', { name: 'Breadcrumb' })
+      .getByRole('navigation', { name: 'Restaurant sections' })
       .locator(`a[href="/super/restaurants/${restaurant.restaurantId}"]`),
   ).toBeVisible();
-  await expect(main.getByRole('region', { name: 'Starters' })).toContainText('Paneer Tikka');
+  const view = main.getByRole('region', { name: /^Support view/ });
+  await expect(view.getByRole('region', { name: 'Starters' })).toContainText('Paneer Tikka');
   // Nothing to press: only links between the sections.
-  await expect(main.getByRole('button')).toHaveCount(0);
+  await expect(view.getByRole('button')).toHaveCount(0);
 
-  const sections = main.getByRole('navigation', { name: 'Support sections' });
+  const sections = view.getByRole('navigation', { name: 'Support sections' });
   await sections.getByRole('link', { name: 'Tables' }).click();
-  await expect(main.getByRole('row', { name: /^3 Occupied/ })).toBeVisible();
-  await expect(main.getByRole('button')).toHaveCount(0);
+  await expect(view.getByRole('row', { name: /^3 Occupied/ })).toBeVisible();
+  await expect(view.getByRole('button')).toHaveCount(0);
 
   await sections.getByRole('link', { name: 'Live board' }).click();
-  await expect(main.locator('[data-table="3"][data-state="in_progress"]')).toBeVisible();
-  await expect(main.locator('a[data-table]')).toHaveCount(0);
-  await expect(main.getByRole('button')).toHaveCount(0);
+  await expect(view.locator('[data-table="3"][data-state="in_progress"]')).toBeVisible();
+  await expect(view.locator('a[data-table]')).toHaveCount(0);
+  await expect(view.getByRole('button')).toHaveCount(0);
 
   await sections.getByRole('link', { name: 'Total orders' }).click();
-  await expect(main.getByText(billed.invoiceNumber)).toBeVisible();
-  await expect(main.getByRole('link', { name: billed.invoiceNumber })).toHaveCount(0);
+  await expect(view.getByText(billed.invoiceNumber)).toBeVisible();
+  await expect(view.getByRole('link', { name: billed.invoiceNumber })).toHaveCount(0);
 
   await page.goto(`/super/audit?restaurant=${restaurant.restaurantId}&action=support.viewed`);
   await expect(page.locator('tr[data-action="support.viewed"]')).toHaveCount(4);

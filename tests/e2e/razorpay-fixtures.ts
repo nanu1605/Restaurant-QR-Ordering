@@ -62,6 +62,7 @@ export function subscriptionEvent(
 export function paymentLinkEvent(
   notes: Record<string, string>,
   payment: { id: string; amount: number },
+  linkId = razorpayId('plink'),
 ) {
   return {
     entity: 'event',
@@ -70,7 +71,7 @@ export function paymentLinkEvent(
     payload: {
       payment_link: {
         entity: {
-          id: razorpayId('plink'),
+          id: linkId,
           amount: payment.amount,
           amount_paid: payment.amount,
           status: 'paid',

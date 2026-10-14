@@ -2,7 +2,11 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
 import { DEMO_PASSWORD, logInWithCode } from './helpers';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  logInAsPlatformAdmin,
+  restaurantPagePaths,
+} from './platform-fixtures';
 
 /**
  * Every screen reads in both themes (spec §16.2, docs/DECISIONS.md B-3): axe's
@@ -102,6 +106,8 @@ test('platform admin panel', async ({ page }) => {
     '/super/money/payments',
     '/super/money/dues',
     '/super/money/subscriptions',
+    // A restaurant's page, every tab (13a).
+    ...(await restaurantPagePaths('contrast')),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

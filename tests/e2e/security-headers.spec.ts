@@ -9,7 +9,11 @@ import {
   placeCustomerOrder,
   tableCard,
 } from './live-fixtures';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  logInAsPlatformAdmin,
+  restaurantPagePaths,
+} from './platform-fixtures';
 
 // Security hardening (spec §19 Phase 9, docs/DECISIONS.md P9-9): every page
 // runs under a nonce-based Content-Security-Policy without being blocked, and
@@ -102,6 +106,8 @@ test('the platform admin pages run under the policy without violations', async (
     '/super/money/subscriptions',
     '/super/webhooks',
     '/super/audit',
+    // A restaurant's Overview (its chart) and Billing.
+    ...(await restaurantPagePaths('csp')).slice(0, 2),
   ]) {
     await visit(page, path);
   }

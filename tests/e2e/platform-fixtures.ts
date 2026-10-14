@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { expect, type Page } from '@playwright/test';
 
-import { adminClient, logInWithEmail, TEST_PASSWORD } from './helpers';
+import { adminClient, createTestRestaurant, logInWithEmail, TEST_PASSWORD } from './helpers';
 
 /**
  * Platform admins for E2E. Each test makes its own, because a platform admin's
@@ -78,4 +78,69 @@ export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
     await main.getByRole('button', { name: 'Verify' }).click();
     await expect(page).toHaveURL(/\/super$/);
   }
+}
+
+/** Picks one of a restaurant page's Actions (docs/DECISIONS.md SA-34). */
+export async function restaurantAction(page: Page, name: string) {
+  await page.getByRole('main').getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name }).click();
+}
+
+/** Whether the restaurant page's Actions menu offers an action. */
+export async function hasRestaurantAction(page: Page, name: string) {
+  await page.getByRole('main').getByRole('button', { name: 'Actions' }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  const count = await menu.getByRole('menuitem', { name }).count();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  return count > 0;
+}
+
+/** Opens one of a restaurant page's tabs. */
+export async function restaurantTab(page: Page, name: string) {
+  await page
+    .getByRole('navigation', { name: 'Restaurant sections' })
+    .getByRole('link', { name, exact: true })
+    .click();
+}
+
+/**
+ * A restaurant with a pinned note and a tag, and the paths of its page's tabs,
+ * for the sweeps over every super-admin page.
+ */
+export async function restaurantPagePaths(prefix: string) {
+  const restaurant = await createTestRestaurant({ prefix });
+  const admin = adminClient();
+  await admin
+    .from('restaurant_notes')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      body: 'Prefers calls after 4 pm',
+      pinned: true,
+    })
+    .throwOnError();
+  // One tag for every sweep: made by the first, found by the rest.
+  const name = `Sweep ${prefix}`;
+  const found = await admin.from('platform_tags').select('id').eq('name', name).maybeSingle();
+  const tag =
+    found.data ??
+    (await admin.from('platform_tags').insert({ name, colour: 'teal' }).select('id').single()).data;
+  if (tag) {
+    await admin
+      .from('restaurant_tags')
+      .insert({ restaurant_id: restaurant.restaurantId, tag_id: tag.id })
+      .throwOnError();
+  }
+  const base = `/super/restaurants/${restaurant.restaurantId}`;
+  return [
+    '',
+    '/billing',
+    '/usage',
+    '/activity',
+    '/notes',
+    '/documents',
+    '/support/menu',
+    '/menu-import',
+  ].map((tab) => `${base}${tab}`);
 }

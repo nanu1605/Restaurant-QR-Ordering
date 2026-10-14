@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { adminClient } from './helpers';
 import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 
 // Opt-in, against a production build with the local load data:
@@ -18,13 +19,22 @@ const PATHS = [
   '/super/money/dues',
   '/super/money/subscriptions',
   '/super/leads',
+  '/super/restaurants?manager=none',
 ];
+// A busy load restaurant's page, every tab of its own (13a).
+const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents'];
 
 test('each super-admin page answers within 1.5 s', async ({ page }) => {
-  test.setTimeout(PATHS.length * 15_000);
+  test.setTimeout((PATHS.length + TABS.length) * 15_000);
+  const { data: load } = await adminClient()
+    .from('restaurants')
+    .select('id')
+    .eq('slug', 'load-010')
+    .single()
+    .throwOnError();
   await logInAsPlatformAdmin(page, await createPlatformAdmin('perf'));
   const slow: string[] = [];
-  for (const path of PATHS) {
+  for (const path of [...PATHS, ...TABS.map((tab) => `/super/restaurants/${load!.id}${tab}`)]) {
     // The second visit, so the first compile or cold cache doesn't count.
     await page.goto(path);
     const response = await page.goto(path);

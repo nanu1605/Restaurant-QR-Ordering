@@ -3,7 +3,11 @@ import { expect, type Page, test } from '@playwright/test';
 import { createOrderingTable } from './customer-fixtures';
 import { adminClient, DEMO_PASSWORD, logInWithCode, TEST_PASSWORD } from './helpers';
 import { createLiveRestaurant, openLiveScreen, placeCustomerOrder } from './live-fixtures';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  logInAsPlatformAdmin,
+  restaurantPagePaths,
+} from './platform-fixtures';
 
 /**
  * Every panel works from a 360 px phone to a laptop (spec §16.3,
@@ -110,6 +114,8 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super/webhooks',
     '/super/audit',
     '/super/settings',
+    // A restaurant's page, every tab (13a).
+    ...(await restaurantPagePaths('responsive')),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

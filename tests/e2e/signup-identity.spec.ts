@@ -162,7 +162,7 @@ test('the platform admin sees the storefront photo and the restaurants that may 
   });
 
   await logInAsPlatformAdmin(page, await createPlatformAdmin('review'));
-  await page.goto(`/super/restaurants/${created.restaurantId}`);
+  await page.goto(`/super/restaurants/${created.restaurantId}/documents`);
   const photo = page
     .getByRole('region', { name: 'Storefront photo' })
     .getByRole('img', { name: `Front of ${name}` });
