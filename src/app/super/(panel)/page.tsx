@@ -128,7 +128,7 @@ export default async function SuperHomePage({ searchParams }: PageProps<'/super'
                 gmvPaise: day.gmv_paise,
                 orders: day.orders,
               }))}
-              summary={`GMV and orders for the 30 days to ${dayLabel(charts.usage.at(-1)?.day ?? today)}: ${formatINR(charts.usage.reduce((sum, day) => sum + day.gmv_paise, 0))} and ${charts.usage.reduce((sum, day) => sum + day.orders, 0)} orders.`}
+              summary={`GMV and orders for the 30 days to ${dayLabel(charts.usage.at(-1)?.day ?? today)}: ${formatINR(charts.usage.reduce((sum, day) => sum + day.gmv_paise, 0))} and ${charts.usage.reduce((sum, day) => sum + day.orders, 0).toLocaleString('en-IN')} orders.`}
             />
           }
           table={{
