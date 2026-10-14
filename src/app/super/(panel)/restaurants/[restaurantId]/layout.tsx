@@ -26,6 +26,9 @@ import { paidTillDay } from '@/features/platform/restaurants-csv';
 import { autopayState } from '@/features/subscriptions/autopay';
 import { requirePlatformPermission } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
+import { getSupportWindow } from '@/features/support/access-queries';
+import { untilText } from '@/features/support/support-access';
+import { DEFAULT_TIMEZONE } from '@/lib/config';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
 type Params = Pick<LayoutProps<'/super/restaurants/[restaurantId]'>, 'params'>;
@@ -46,16 +49,18 @@ export default async function RestaurantLayout({
   children,
   params,
 }: LayoutProps<'/super/restaurants/[restaurantId]'>) {
-  await requirePlatformPermission('restaurants.view');
+  const user = await requirePlatformPermission('restaurants.view');
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [plans, setupFee, tags, team] = await Promise.all([
+  const [plans, setupFee, tags, team, support] = await Promise.all([
     listPlans(),
     getSetupFee(),
     listTags(),
     getTeam(),
+    getSupportWindow(restaurantId, user.id),
   ]);
+  const supportWindow = support.window;
   const { restaurant, subscription, access } = detail;
   const autopay = subscription
     ? autopayState({
@@ -121,6 +126,16 @@ export default async function RestaurantLayout({
                   }
                 : null
             }
+            support={{
+              state: !supportWindow
+                ? 'none'
+                : !supportWindow.userId
+                  ? 'open'
+                  : supportWindow.userId === user.id
+                    ? 'mine'
+                    : 'in_use',
+              lastName: support.lastName,
+            }}
           />
         </div>
 
@@ -137,6 +152,11 @@ export default async function RestaurantLayout({
           {subscription && <PaidTill subscription={subscription} />}
           <HeaderFact term="Last active">
             {detail.last_active ? formatDateTime(detail.last_active) : 'Never'}
+          </HeaderFact>
+          <HeaderFact term="Support access">
+            {!supportWindow
+              ? 'Not allowed'
+              : `${supportWindow.staffName ? `${supportWindow.staffName}, ` : 'Allowed, '}until ${untilText(supportWindow.endsAt, DEFAULT_TIMEZONE)}`}
           </HeaderFact>
         </dl>
 

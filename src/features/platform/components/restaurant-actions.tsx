@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CircleStop,
   CreditCard,
+  Headset,
   KeyRound,
   Link2,
   NotebookPen,
@@ -14,6 +15,7 @@ import {
   RotateCcw,
   Tags,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useId, useState, useTransition, type ReactNode } from 'react';
 import {
   useForm,
@@ -56,6 +58,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { parsePriceInput } from '@/features/menu/schemas';
 import { splitGst, withGst } from '@/features/subscriptions/gst';
+import { StartSupportSessionForm } from '@/features/support/components/start-support-session';
 import type { ActionResult } from '@/lib/action-result';
 import { APP_NAME } from '@/lib/config';
 import { formatINR } from '@/lib/money';
@@ -95,7 +98,16 @@ const SELECT_CLASS =
   'h-9 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
 
 type Dialogs =
-  'trial' | 'plan' | 'payment' | 'link' | 'autopay' | 'suspend' | 'unsuspend' | 'note' | null;
+  | 'trial'
+  | 'plan'
+  | 'payment'
+  | 'link'
+  | 'autopay'
+  | 'suspend'
+  | 'unsuspend'
+  | 'note'
+  | 'support'
+  | null;
 
 const ITEM_CLASS = 'min-h-11 px-2 md:min-h-9';
 
@@ -129,6 +141,11 @@ type RestaurantActionsProps = {
     autopay: 'on' | 'ending' | 'off';
     linkDefaults: LinkDefaults;
   } | null;
+  /**
+   * The restaurant's support window (docs/DECISIONS.md SA-47): none open, open
+   * and unused, this team member's, or someone else's.
+   */
+  support: { state: 'none' | 'open' | 'mine' | 'in_use'; lastName: string };
 };
 
 /**
@@ -143,7 +160,9 @@ export function RestaurantActions({
   plans,
   paymentStart,
   razorpay,
+  support,
 }: RestaurantActionsProps) {
+  const router = useRouter();
   const [open, setOpen] = useState<Dialogs>(null);
   const close = () => setOpen(null);
   const [syncing, startSync] = useTransition();
@@ -205,6 +224,21 @@ export function RestaurantActions({
             <NotebookPen aria-hidden />
             Add note
           </DropdownMenuItem>
+          {support.state === 'mine' ? (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => router.push('/admin')}>
+              <Headset aria-hidden />
+              Open admin panel
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              className={ITEM_CLASS}
+              disabled={support.state !== 'open'}
+              onClick={() => setOpen('support')}
+            >
+              <Headset aria-hidden />
+              Start support session
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           {status === 'active' ? (
             <DropdownMenuItem
@@ -294,6 +328,14 @@ export function RestaurantActions({
         description="Only the MenuMesh team sees notes. You can edit yours for 15 minutes."
       >
         <NoteForm restaurantId={restaurantId} onDone={close} />
+      </FormDialog>
+      <FormDialog
+        open={open === 'support'}
+        onClose={close}
+        title={`Start a support session in ${restaurantName}`}
+        description="You work in its admin panel as a manager until the owner's access ends. Bills, payments, live orders, tax and UPI settings stay the owner's, and the owner sees every change you make."
+      >
+        <StartSupportSessionForm restaurantId={restaurantId} defaultName={support.lastName} />
       </FormDialog>
     </>
   );

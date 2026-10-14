@@ -13,6 +13,8 @@ import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui
 import { Input } from '@/components/ui/input';
 import { CUISINE_LABELS, CUISINE_SETS, DEFAULT_CUISINE } from '@/features/menu/default-categories';
 import { bpsToPercent, GST_RATES_BPS } from '@/features/settings/schemas';
+import { startOnboardingSupportSession } from '@/features/support/access-actions';
+import { staffNameSchema } from '@/features/support/support-access';
 
 import { onboardNewRestaurant, type OnboardHandover } from '../actions';
 import { ACQUISITION_CHANNEL_LABELS, ACQUISITION_CHANNELS } from '../platform';
@@ -49,6 +51,11 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
   const [handover, setHandover] = useState<
     (OnboardHandover & { password: string; name: string }) | null
   >(null);
+  // In person, the owner may let the team set the restaurant up (docs/DECISIONS.md SA-51).
+  const [setupConsent, setSetupConsent] = useState(false);
+  const [staffName, setStaffName] = useState('');
+  const [staffNameError, setStaffNameError] = useState('');
+  const [support, setSupport] = useState<SupportStart>(null);
   // The code follows the name until someone edits it.
   const [slugEdited, setSlugEdited] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -111,6 +118,11 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
   }
 
   const create = async (values: OnboardFormInput) => {
+    const name = staffNameSchema.safeParse(staffName);
+    if (setupConsent && !name.success) {
+      setStaffNameError(name.error.issues[0]!.message);
+      return;
+    }
     const result = await onboardNewRestaurant(values);
     if (!result.ok) {
       const fields = Object.entries(result.fieldErrors ?? {});
@@ -131,6 +143,9 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
     }
     setHandover({ ...result.data, password: values.ownerPassword, name: values.name });
     toast.success('Restaurant created');
+    if (setupConsent && name.success) {
+      setSupport(await startSetupSession(result.data.restaurantId, name.data));
+    }
   };
 
   if (handover) {
@@ -138,11 +153,17 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
       <Handover
         handover={handover}
         loginUrl={loginUrl}
+        support={support}
+        onRetrySupport={async () =>
+          setSupport(await startSetupSession(handover.restaurantId, staffName))
+        }
         onAnother={() => {
           reset();
           setValue('ownerPassword', generatePassword());
           setSlugEdited(false);
           setHandover(null);
+          setSupport(null);
+          setSetupConsent(false);
           setStep(0);
         }}
       />
@@ -390,6 +411,41 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
               <FieldError errors={[errors.plan]} />
             </Field>
             {field('trialDays', 'Trial days', { type: 'number', inputMode: 'numeric' })}
+            <Field className="sm:col-span-2">
+              <label className="flex min-h-11 items-center gap-2 text-sm text-ink md:min-h-0">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-brand"
+                  checked={setupConsent}
+                  onChange={(event) => setSetupConsent(event.target.checked)}
+                />
+                The owner agrees that MenuMesh may set up the restaurant for the next 24 hours.
+              </label>
+              <FieldDescription>
+                Recorded in the audit log. The owner can end it from Settings.
+              </FieldDescription>
+            </Field>
+            {setupConsent && (
+              <Field data-invalid={staffNameError ? true : undefined}>
+                <FieldLabel htmlFor={`${ids}-staff-name`}>Your name</FieldLabel>
+                <Input
+                  id={`${ids}-staff-name`}
+                  className="h-9"
+                  maxLength={40}
+                  autoComplete="given-name"
+                  value={staffName}
+                  aria-invalid={staffNameError ? true : undefined}
+                  onChange={(event) => {
+                    setStaffName(event.target.value);
+                    setStaffNameError('');
+                  }}
+                />
+                <FieldDescription>
+                  The restaurant sees this name, never your email.
+                </FieldDescription>
+                <FieldError errors={[staffNameError ? { message: staffNameError } : undefined]} />
+              </Field>
+            )}
             <Summary
               values={watched}
               planName={plans.find((plan) => plan.code === watched.plan)?.name}
@@ -450,15 +506,28 @@ function Summary({ values, planName }: { values: OnboardFormInput; planName?: st
   );
 }
 
+/** The setup session after create: started, or why not (it can be tried again). */
+type SupportStart = { ok: true } | { ok: false; error: string } | null;
+
+async function startSetupSession(restaurantId: string, staffName: string): Promise<SupportStart> {
+  const result = await startOnboardingSupportSession(restaurantId, staffName);
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
 function Handover({
   handover,
   loginUrl,
+  support,
+  onRetrySupport,
   onAnother,
 }: {
   handover: OnboardHandover & { password: string; name: string };
   loginUrl: string;
+  support: SupportStart;
+  onRetrySupport: () => Promise<void>;
   onAnother: () => void;
 }) {
+  const [retrying, setRetrying] = useState(false);
   const lines = [
     `${handover.name}`,
     `Log in at ${loginUrl}`,
@@ -505,7 +574,30 @@ function Handover({
         <dt className="text-ink-muted">Password</dt>
         <dd className="font-mono font-medium text-ink">{handover.password}</dd>
       </dl>
+      {support && !support.ok && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+          <p className="min-w-0 flex-1">The setup session didn&apos;t start: {support.error}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="touch"
+            disabled={retrying}
+            onClick={async () => {
+              setRetrying(true);
+              await onRetrySupport();
+              setRetrying(false);
+            }}
+          >
+            {retrying ? 'Starting…' : 'Try again'}
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
+        {support?.ok && (
+          <Link href="/admin" className={buttonVariants({ size: 'touch' })}>
+            Set up in admin panel
+          </Link>
+        )}
         <Button type="button" size="touch" onClick={copy}>
           <Copy aria-hidden />
           Copy login details
