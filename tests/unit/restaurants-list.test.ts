@@ -112,6 +112,7 @@ const row: RestaurantRow = {
     { id: 't2', name: 'Indore', colour: 'teal' },
   ],
   account_manager: 'tanishq@menumesh.test',
+  onboarding: { done: 7, next: null, since: '2026-10-02T06:00:00Z', stuck: false },
 };
 
 describe('paid till', () => {

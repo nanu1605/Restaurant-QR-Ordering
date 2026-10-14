@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { onboardingSummarySchema } from '@/features/onboarding/onboarding';
 import { CANCEL_REASONS } from '@/features/subscriptions/cancel-reasons';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
@@ -251,6 +252,7 @@ const restaurantRowSchema = z.object({
   tags: z.array(tagSchema),
   // The account manager's email.
   account_manager: z.string().nullable(),
+  onboarding: onboardingSummarySchema,
 });
 const restaurantListSchema = z.object({
   page: z.number(),
@@ -273,6 +275,7 @@ export const RESTAURANT_COLUMNS = [
   'gmv',
   'orders',
   'health',
+  'onboarding',
   'last_active',
   'phone',
   'tags',
@@ -289,6 +292,7 @@ export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
   gmv: 'GMV, 30 days',
   orders: 'Orders, 7 days',
   health: 'Health',
+  onboarding: 'Onboarding',
   last_active: 'Last active',
   phone: 'Phone',
   tags: 'Tags',
@@ -297,8 +301,22 @@ export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
   created: 'Created',
 };
 export const DEFAULT_RESTAURANT_COLUMNS: RestaurantColumn[] = RESTAURANT_COLUMNS.filter(
-  (column) => column !== 'channel' && column !== 'manager',
+  (column) => column !== 'channel' && column !== 'manager' && column !== 'onboarding',
 );
+
+/** The columns of the Onboarding view: the default ones and where onboarding stands. */
+export const ONBOARDING_VIEW_COLUMNS = RESTAURANT_COLUMNS.filter(
+  (column) => DEFAULT_RESTAURANT_COLUMNS.includes(column) || column === 'onboarding',
+).join(',');
+
+/** The list's onboarding filter (docs/DECISIONS.md SA-41): a step still to do, stuck, or done. */
+export const ONBOARDING_FILTERS = ['open', 'stuck', 'done'] as const;
+export type OnboardingFilter = (typeof ONBOARDING_FILTERS)[number];
+export const ONBOARDING_FILTER_LABELS: Record<OnboardingFilter, string> = {
+  open: 'Not finished',
+  stuck: 'Stuck',
+  done: 'Done',
+};
 
 // ─── Search (docs/DECISIONS.md SA-25) ────────────────────────────────────────
 const searchResultsSchema = z.object({

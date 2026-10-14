@@ -5,6 +5,7 @@ import { Money } from '@/components/shared/money';
 import { UsageChart } from '@/features/platform/components/home-charts';
 import { ChartPanel, Figure } from '@/features/platform/components/home-sections';
 import { NoteItem } from '@/features/platform/components/notes';
+import { OnboardingChecklist } from '@/features/platform/components/onboarding-checklist';
 import { OwnerPasswordButton } from '@/features/platform/components/restaurant-actions';
 import { Section } from '@/features/platform/components/restaurant-sections';
 import { activityKindsFor, activityLine } from '@/features/platform/home';
@@ -24,8 +25,9 @@ const linkClass = 'text-sm font-medium text-brand underline-offset-4 hover:under
 
 /**
  * A restaurant's Overview (docs/SUPER_ADMIN_PLAN.md 13a, docs/DECISIONS.md
- * SA-35): its last 30 days in numbers, 90 days of orders and GMV, pinned and
- * latest notes, the latest activity and its owner's login.
+ * SA-35, SA-41): its last 30 days in numbers, 90 days of orders and GMV, the
+ * onboarding checklist, pinned and latest notes, the latest activity and its
+ * owner's login.
  */
 export default async function RestaurantOverviewPage({
   params,
@@ -34,9 +36,9 @@ export default async function RestaurantOverviewPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [money, growth, audit] = await Promise.all([
+  const [money, support, audit] = await Promise.all([
     hasPlatformPermission('money.view'),
-    hasPlatformPermission('growth.manage'),
+    hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
   ]);
   const [overview, notes, activity] = await Promise.all([
@@ -44,7 +46,7 @@ export default async function RestaurantOverviewPage({
     listNotes(restaurantId),
     listActivity({
       restaurantId,
-      kinds: activityKindsFor({ money, growth, audit }).filter((kind) => kind !== 'lead'),
+      kinds: activityKindsFor({ money, growth: false, support, audit }),
       limit: 5,
     }),
   ]);
@@ -117,6 +119,7 @@ export default async function RestaurantOverviewPage({
         />
 
         <div className="flex min-w-0 flex-col gap-4">
+          <OnboardingChecklist onboarding={overview.onboarding} />
           <Section
             title="Notes"
             action={

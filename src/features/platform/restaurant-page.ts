@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { onboardingSchema } from '@/features/onboarding/onboarding';
 import { FEATURE_LABELS, type FeatureKey } from '@/features/plans/plan-features';
 import { CANCEL_REASON_LABELS, type CancelReason } from '@/features/subscriptions/cancel-reasons';
 import { formatINR } from '@/lib/money';
@@ -41,6 +42,7 @@ const overviewSchema = z.object({
     bills: z.number(),
     gmv_paise: z.number(),
   }),
+  onboarding: onboardingSchema,
 });
 export type RestaurantOverview = z.infer<typeof overviewSchema>;
 export const parseOverview = (json: unknown) => overviewSchema.parse(json);

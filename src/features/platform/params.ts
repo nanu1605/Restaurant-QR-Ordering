@@ -8,6 +8,7 @@ import {
   DEFAULT_RESTAURANT_COLUMNS,
   DUES_BUCKETS,
   HEALTHS,
+  ONBOARDING_FILTERS,
   PAYMENT_METHODS,
   PAYMENT_PURPOSES,
   RESTAURANT_COLUMNS,
@@ -16,6 +17,7 @@ import {
   type ActorType,
   type DuesBucket,
   type Health,
+  type OnboardingFilter,
   type PaymentMethod,
   type PaymentPurpose,
   type RestaurantColumn,
@@ -82,6 +84,7 @@ export type RestaurantFilters = {
   tag?: string;
   /** 'me', 'none' or a team member's user id (docs/DECISIONS.md SA-39). */
   manager?: string;
+  onboarding?: OnboardingFilter;
   from?: string;
   to?: string;
   paid_from?: string;
@@ -111,6 +114,7 @@ export function readRestaurantFilters(params: SearchParams): RestaurantFilters {
       manager === 'me' || manager === 'none' || (manager && UUID.test(manager))
         ? manager
         : undefined,
+    onboarding: oneOf(firstParam(params, 'onboarding'), ONBOARDING_FILTERS),
     from,
     to,
     paid_from: paidFrom,

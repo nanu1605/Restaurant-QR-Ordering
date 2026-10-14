@@ -17,10 +17,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ONBOARDING_STEP_LABELS, ONBOARDING_STEPS } from '@/features/onboarding/onboarding';
 import { RestaurantsFilters } from '@/features/platform/components/restaurants-filters';
 import { DeleteViewButton, SaveViewButton } from '@/features/platform/components/saved-views';
 import { Sparkline } from '@/features/platform/components/sparkline';
-import { HealthBadge, SubscriptionStateBadge } from '@/features/platform/components/status-badges';
+import {
+  HealthBadge,
+  StuckBadge,
+  SubscriptionStateBadge,
+} from '@/features/platform/components/status-badges';
 import { TagBadge } from '@/features/platform/components/tag-badge';
 import { formatMobile, telHref, whatsappHref } from '@/features/platform/dues-messages';
 import {
@@ -33,6 +38,7 @@ import {
   ACQUISITION_CHANNEL_LABELS,
   formatDate,
   formatDateTime,
+  ONBOARDING_VIEW_COLUMNS,
   RESTAURANT_COLUMN_LABELS,
   todayInIndia,
   type Lookalike,
@@ -116,6 +122,11 @@ export default async function SuperRestaurantsPage({
   const builtIn: { name: string; params: Record<string, string> }[] = [
     // The restaurants this admin looks after (docs/DECISIONS.md SA-39).
     { name: 'My restaurants', params: { manager: 'me' } },
+    // Where each new restaurant is in setting up (docs/DECISIONS.md SA-41).
+    {
+      name: 'Onboarding',
+      params: { onboarding: 'open', cols: ONBOARDING_VIEW_COLUMNS },
+    },
     { name: 'Payment failed', params: { state: 'payment_failed' } },
     {
       name: 'Trial ending',
@@ -357,6 +368,19 @@ function cell(column: RestaurantColumn, row: RestaurantRow): ReactNode {
           muted={row.state === 'suspended' || row.state === 'read_only'}
         />
       );
+    case 'onboarding': {
+      const { next, done, stuck, since } = row.onboarding;
+      if (next === null) return 'Done';
+      return (
+        <span className="flex flex-col items-start gap-1">
+          <span>{ONBOARDING_STEP_LABELS[next]}</span>
+          <span className="text-xs text-ink-muted tabular-nums">
+            {done} of {ONBOARDING_STEPS.length} done
+          </span>
+          {stuck && <StuckBadge since={since} />}
+        </span>
+      );
+    }
     case 'last_active':
       return row.last_active ? formatDateTime(row.last_active) : 'Never';
     case 'phone': {

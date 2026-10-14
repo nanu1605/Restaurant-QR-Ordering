@@ -11,6 +11,8 @@ import {
   ACQUISITION_CHANNELS,
   HEALTH_LABELS,
   HEALTHS,
+  ONBOARDING_FILTER_LABELS,
+  ONBOARDING_FILTERS,
   RESTAURANT_COLUMN_LABELS,
   RESTAURANT_COLUMNS,
   SUBSCRIPTION_STATE_LABELS,
@@ -118,6 +120,12 @@ export function RestaurantsFilters({
         'Health',
         'Any health',
         HEALTHS.map((health) => [health, HEALTH_LABELS[health]]),
+      )}
+      {select(
+        'onboarding',
+        'Onboarding',
+        'Any',
+        ONBOARDING_FILTERS.map((value) => [value, ONBOARDING_FILTER_LABELS[value]]),
       )}
       {select('channel', 'Found us', 'Any way', [
         ...ACQUISITION_CHANNELS.map((c): [string, string] => [c, ACQUISITION_CHANNEL_LABELS[c]]),
