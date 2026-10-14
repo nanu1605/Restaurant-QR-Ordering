@@ -217,7 +217,7 @@ test('autopay set up during a trial can be cancelled straight away', async ({ pa
   await page.getByRole('button', { name: 'Cancel autopay' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Cancel autopay?' });
   await expect(dialog).toContainText('Your free trial still runs until');
-  await dialog.getByRole('radio', { name: 'Other' }).check();
+  await dialog.getByRole('radio', { name: 'Other', exact: true }).check();
   await expect(dialog.getByRole('button', { name: 'Cancel autopay' })).toBeDisabled();
   await dialog.getByRole('textbox', { name: 'Tell us a little more' }).fill('Trying it first');
   await dialog.getByRole('button', { name: 'Cancel autopay' }).click();
