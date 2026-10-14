@@ -158,6 +158,17 @@
   --color-status-served-foreground: var(--status-served-foreground);
   --color-status-void-fill: var(--status-void-fill);
   --color-status-void-foreground: var(--status-void-foreground);
+  /* Subscription states (docs/SUPER_ADMIN_PLAN.md §5.1): aliases of the status fills. */
+  --color-sub-suspended-fill: var(--status-void-fill);
+  --color-sub-suspended-foreground: var(--status-void-foreground);
+  --color-sub-read-only-fill: var(--status-placed-fill);
+  --color-sub-read-only-foreground: var(--status-placed-foreground);
+  --color-sub-trial-fill: var(--status-ready-fill);
+  --color-sub-trial-foreground: var(--status-ready-foreground);
+  --color-sub-payment-failed-fill: var(--status-preparing-fill);
+  --color-sub-payment-failed-foreground: var(--status-preparing-foreground);
+  --color-sub-paid-fill: var(--status-served-fill);
+  --color-sub-paid-foreground: var(--status-served-foreground);
   --color-food-veg: var(--food-veg);
   --color-food-non-veg: var(--food-non-veg);
   --color-food-egg: var(--food-egg);

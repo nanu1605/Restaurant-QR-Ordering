@@ -95,7 +95,9 @@ test('the platform admin pages run under the policy without violations', async (
     '/super/restaurants',
     '/super/leads',
     '/super/plans',
-    '/super/subscriptions',
+    '/super/money/payments',
+    '/super/money/dues',
+    '/super/money/subscriptions',
     '/super/webhooks',
     '/super/audit',
   ]) {

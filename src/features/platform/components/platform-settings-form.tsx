@@ -16,8 +16,9 @@ import { platformSettingsSchema, type PlatformSettingsInput } from '../schemas';
 import { discountLastDay } from '../setup-fee';
 
 /**
- * Trial and grace days, the setup fee and its discount, and support contacts
- * (docs/DECISIONS.md SA-4, SA-5). The database audits what changed.
+ * Trial and grace days, the setup fee and its discount, support contacts and
+ * the health thresholds (docs/DECISIONS.md SA-4, SA-5, SA-22). The database
+ * audits what changed.
  */
 export function PlatformSettingsForm({ settings }: { settings: PlatformSettings }) {
   const ids = useId();
@@ -39,6 +40,10 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
         : '',
       supportPhone: settings.support_phone ?? '',
       supportEmail: settings.support_email ?? '',
+      healthSetupDays: settings.health_setup_days,
+      healthInactiveDays: settings.health_inactive_days,
+      healthSlowingPercent: settings.health_slowing_percent,
+      healthSlowingMinOrders: settings.health_slowing_min_orders,
     },
     resetOptions: { keepDirtyValues: true },
   });
@@ -155,6 +160,25 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
           {input('supportPhone', 'Support phone', {
             inputMode: 'tel',
             description: 'Not shown on the website yet.',
+          })}
+        </>,
+      )}
+      {group(
+        'Restaurant health',
+        <>
+          {input('healthSetupDays', 'Days to set up', {
+            inputMode: 'numeric',
+            description: 'A new restaurant with no order yet is Setting up, then Never started.',
+          })}
+          {input('healthInactiveDays', 'Inactive after days without an order', {
+            inputMode: 'numeric',
+          })}
+          {input('healthSlowingPercent', 'Slowing below (% of usual week)', {
+            inputMode: 'numeric',
+            description: 'The last 7 days against the weekly average of the 4 weeks before.',
+          })}
+          {input('healthSlowingMinOrders', 'Slowing needs at least (orders in those 4 weeks)', {
+            inputMode: 'numeric',
           })}
         </>,
       )}

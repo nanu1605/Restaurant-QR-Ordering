@@ -59,6 +59,12 @@ const nextConfig: NextConfig = {
         destination: '/:policy',
         permanent: false,
       },
+      // Moved into the Money group (docs/SUPER_ADMIN_PLAN.md 12c).
+      {
+        source: '/super/subscriptions',
+        destination: '/super/money/subscriptions',
+        permanent: false,
+      },
     ];
   },
   images: {

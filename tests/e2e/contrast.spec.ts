@@ -90,6 +90,7 @@ test('admin panel', async ({ page }) => {
 });
 
 test('platform admin panel', async ({ page }) => {
+  test.slow();
   await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast'));
   const paths = [
     '/super',
@@ -98,6 +99,9 @@ test('platform admin panel', async ({ page }) => {
     '/super/plans',
     '/super/audit',
     '/super/settings',
+    '/super/money/payments',
+    '/super/money/dues',
+    '/super/money/subscriptions',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

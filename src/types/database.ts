@@ -1238,10 +1238,44 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_saved_views: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          page: string
+          query: string
+          shared: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          page: string
+          query: string
+          shared?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          page?: string
+          query?: string
+          shared?: boolean
+        }
+        Relationships: []
+      }
       platform_settings: {
         Row: {
           created_at: string
           grace_days: number
+          health_inactive_days: number
+          health_setup_days: number
+          health_slowing_min_orders: number
+          health_slowing_percent: number
           id: number
           setup_fee_discount_ends_at: string | null
           setup_fee_discount_paise: number
@@ -1254,6 +1288,10 @@ export type Database = {
         Insert: {
           created_at?: string
           grace_days?: number
+          health_inactive_days?: number
+          health_setup_days?: number
+          health_slowing_min_orders?: number
+          health_slowing_percent?: number
           id?: number
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
@@ -1266,6 +1304,10 @@ export type Database = {
         Update: {
           created_at?: string
           grace_days?: number
+          health_inactive_days?: number
+          health_setup_days?: number
+          health_slowing_min_orders?: number
+          health_slowing_percent?: number
           id?: number
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
@@ -1773,6 +1815,7 @@ export type Database = {
         Row: {
           amount_paise: number
           base_paise: number | null
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           created_at: string
           discount_paise: number | null
           gst_bps: number
@@ -1783,6 +1826,7 @@ export type Database = {
           notes: string | null
           period_end: string | null
           period_start: string | null
+          plan_id: string | null
           purpose: string
           razorpay_payment_id: string | null
           recorded_by: string | null
@@ -1793,6 +1837,7 @@ export type Database = {
         Insert: {
           amount_paise: number
           base_paise?: number | null
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
           discount_paise?: number | null
           gst_bps?: number
@@ -1805,6 +1850,7 @@ export type Database = {
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          plan_id?: string | null
           purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
@@ -1815,6 +1861,7 @@ export type Database = {
         Update: {
           amount_paise?: number
           base_paise?: number | null
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
           discount_paise?: number | null
           gst_bps?: number
@@ -1827,6 +1874,7 @@ export type Database = {
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          plan_id?: string | null
           purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
@@ -1835,6 +1883,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_payments_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscription_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
@@ -2371,6 +2426,7 @@ export type Database = {
         Returns: Json
       }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_delete_view: { Args: { p_id: string }; Returns: undefined }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2380,6 +2436,8 @@ export type Database = {
         Returns: Json
       }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_metrics_backfill_usage: {
@@ -2408,6 +2466,16 @@ export type Database = {
         Args: { p_restaurant_ids: string[] }
         Returns: Json
       }
+      platform_save_view: {
+        Args: {
+          p_name: string
+          p_page: string
+          p_query: string
+          p_shared: boolean
+        }
+        Returns: string
+      }
+      platform_search: { Args: { p_q: string }; Returns: Json }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json

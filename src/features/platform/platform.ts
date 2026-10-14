@@ -30,6 +30,38 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
   expired: 'Expired',
 };
 
+// One state per restaurant, first match wins (docs/SUPER_ADMIN_PLAN.md §5.1,
+// private.subscription_state in SQL).
+export const SUBSCRIPTION_STATES = [
+  'suspended',
+  'read_only',
+  'trial',
+  'payment_failed',
+  'paid',
+  'cancelled',
+] as const;
+export type SubscriptionState = (typeof SUBSCRIPTION_STATES)[number];
+export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
+  suspended: 'Suspended',
+  read_only: 'Read-only',
+  trial: 'Trial',
+  payment_failed: 'Payment failed',
+  paid: 'Paid',
+  cancelled: 'Cancelled',
+};
+
+// A restaurant's health, first match wins (docs/SUPER_ADMIN_PLAN.md §5.11,
+// private.restaurant_health in SQL).
+export const HEALTHS = ['setting_up', 'never_started', 'inactive', 'slowing', 'active'] as const;
+export type Health = (typeof HEALTHS)[number];
+export const HEALTH_LABELS: Record<Health, string> = {
+  setting_up: 'Setting up',
+  never_started: 'Never started',
+  inactive: 'Inactive',
+  slowing: 'Slowing',
+  active: 'Active',
+};
+
 export const ACCESS_STATE_LABELS: Record<string, string> = {
   full: 'Full access',
   read_only: 'Read-only',
@@ -83,6 +115,48 @@ export const PAYMENT_SOURCE_LABELS: Record<string, string> = {
   payment_link: 'Payment link',
 };
 
+// How a payment arrived: Razorpay autopay, a payment link, or a manual mode.
+export const PAYMENT_METHODS = ['autopay', 'payment_link', ...MANUAL_MODES] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  autopay: 'Autopay',
+  payment_link: 'Payment link',
+  ...MANUAL_MODE_LABELS,
+};
+
+export const PAYMENT_PURPOSES = ['subscription', 'setup_fee'] as const;
+export type PaymentPurpose = (typeof PAYMENT_PURPOSES)[number];
+export const PAYMENT_PURPOSE_LABELS: Record<PaymentPurpose, string> = {
+  subscription: 'Subscription',
+  setup_fee: 'Setup fee',
+};
+
+// Dues buckets, in the order a restaurant is placed (docs/SUPER_ADMIN_PLAN.md §5.6).
+export const DUES_BUCKETS = ['payment_failed', 'lapsed', 'trial_ending', 'renewal_due'] as const;
+export type DuesBucket = (typeof DUES_BUCKETS)[number];
+export const DUES_BUCKET_LABELS: Record<DuesBucket, string> = {
+  payment_failed: 'Payment failed',
+  lapsed: 'Lapsed',
+  trial_ending: 'Trial ending',
+  renewal_due: 'Renewal due',
+};
+
+export const RENEWAL_KINDS = ['autopay', 'needs_payment', 'ending'] as const;
+export type RenewalKind = (typeof RENEWAL_KINDS)[number];
+export const RENEWAL_KIND_LABELS: Record<RenewalKind, string> = {
+  autopay: 'On autopay',
+  needs_payment: 'Needs a payment',
+  ending: 'Ending',
+};
+
+// subscription_reminders.kind: the emails the daily cron sends (spec §14.6).
+export const REMINDER_LABELS: Record<string, string> = {
+  trial_ends_3d: 'Trial ends in 3 days',
+  trial_ends_1d: 'Trial ends tomorrow',
+  payment_failed: 'Payment failed',
+  access_restricted: 'Ordering paused',
+};
+
 export const ACTOR_TYPES = ['staff', 'customer', 'system', 'platform_admin'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 export const ACTOR_TYPE_LABELS: Record<ActorType, string> = {
@@ -93,6 +167,7 @@ export const ACTOR_TYPE_LABELS: Record<ActorType, string> = {
 };
 
 const subscriptionStatus = z.enum(SUBSCRIPTION_STATUSES);
+const subscriptionState = z.enum(SUBSCRIPTION_STATES);
 const restaurantStatus = z.enum(['active', 'suspended']);
 const billingCycle = z.enum(['monthly', 'yearly']);
 
@@ -156,15 +231,34 @@ const restaurantRowSchema = z.object({
   name: z.string(),
   slug: z.string(),
   city: z.string().nullable(),
+  region: z.string().nullable(),
+  phone: z.string().nullable(),
   status: restaurantStatus,
   created_at: iso,
+  acquisition_channel: z.enum(ACQUISITION_CHANNELS).nullable(),
   plan_code: z.string().nullable(),
   plan_name: z.string().nullable(),
+  billing_cycle: billingCycle.nullable(),
   subscription_status: subscriptionStatus.nullable(),
-  trial_ends_at: isoOrNull,
-  current_period_end: isoOrNull,
+  state: subscriptionState,
   access_state: z.string(),
-  last_order_at: isoOrNull,
+  // The trial's end while trialing, otherwise the paid period's (plan §5.5).
+  paid_till: isoOrNull,
+  // A paid period set to end there.
+  ending: z.boolean(),
+  health: z.enum(HEALTHS),
+  last_active: isoOrNull,
+  gmv_30d_paise: z.number(),
+  // Accepted orders on each of the last 7 finished business days, oldest first.
+  orders_7d: z.array(z.number()).nullable(),
+  // Null without money.view.
+  paid: z
+    .object({
+      subscription_paise: z.number(),
+      setup_fee_paise: z.number(),
+      gst_paise: z.number(),
+    })
+    .nullable(),
 });
 const restaurantListSchema = z.object({
   page: z.number(),
@@ -172,10 +266,75 @@ const restaurantListSchema = z.object({
   total: z.number(),
   rows: z.array(restaurantRowSchema),
   cities: z.array(z.string()),
+  regions: z.array(z.string()),
 });
 export type RestaurantList = z.infer<typeof restaurantListSchema>;
 export type RestaurantRow = z.infer<typeof restaurantRowSchema>;
 export const parseRestaurantList = (json: unknown) => restaurantListSchema.parse(json);
+
+// The restaurants list's optional columns (docs/DECISIONS.md SA-23), in order.
+export const RESTAURANT_COLUMNS = [
+  'state',
+  'plan',
+  'paid_till',
+  'lifetime',
+  'gmv',
+  'orders',
+  'health',
+  'last_active',
+  'phone',
+  'channel',
+  'created',
+] as const;
+export type RestaurantColumn = (typeof RESTAURANT_COLUMNS)[number];
+export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
+  state: 'State',
+  plan: 'Plan',
+  paid_till: 'Paid till',
+  lifetime: 'Lifetime paid',
+  gmv: 'GMV, 30 days',
+  orders: 'Orders, 7 days',
+  health: 'Health',
+  last_active: 'Last active',
+  phone: 'Phone',
+  channel: 'Found us',
+  created: 'Created',
+};
+export const DEFAULT_RESTAURANT_COLUMNS: RestaurantColumn[] = RESTAURANT_COLUMNS.filter(
+  (column) => column !== 'channel',
+);
+
+// ─── Search (docs/DECISIONS.md SA-25) ────────────────────────────────────────
+const searchResultsSchema = z.object({
+  restaurants: z.array(
+    z.object({
+      restaurant_id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+      city: z.string().nullable(),
+      match: z.string().nullable(),
+    }),
+  ),
+  payments: z.array(
+    z.object({
+      restaurant_id: z.string(),
+      name: z.string(),
+      kind: z.enum(['payment', 'subscription']),
+      ref: z.string(),
+    }),
+  ),
+  leads: z.array(
+    z.object({
+      lead_id: z.string(),
+      name: z.string(),
+      restaurant_name: z.string().nullable(),
+      phone: z.string().nullable(),
+      created_at: iso,
+    }),
+  ),
+});
+export type SearchResults = z.infer<typeof searchResultsSchema>;
+export const parseSearchResults = (json: unknown) => searchResultsSchema.parse(json);
 
 // ─── Subscriptions list ──────────────────────────────────────────────────────
 const subscriptionRowSchema = z.object({
@@ -193,6 +352,9 @@ const subscriptionRowSchema = z.object({
   grace_until: isoOrNull,
   cancel_at_period_end: z.boolean(),
   access_state: z.string(),
+  state: subscriptionState,
+  // A paid period set to end: cancelled, or autopay switched off.
+  ending: z.boolean(),
 });
 const subscriptionListSchema = z.object({
   page: z.number(),
@@ -202,6 +364,108 @@ const subscriptionListSchema = z.object({
 });
 export type SubscriptionList = z.infer<typeof subscriptionListSchema>;
 export const parseSubscriptionList = (json: unknown) => subscriptionListSchema.parse(json);
+
+// ─── Payments ledger (docs/DECISIONS.md SA-17, SA-18) ────────────────────────
+const paymentRowSchema = z.object({
+  payment_id: z.string(),
+  created_at: iso,
+  restaurant_id: z.string(),
+  restaurant_name: z.string(),
+  slug: z.string(),
+  purpose: z.enum(PAYMENT_PURPOSES),
+  plan_code: z.string().nullable(),
+  plan_name: z.string().nullable(),
+  billing_cycle: billingCycle.nullable(),
+  base_paise: z.number(),
+  gst_paise: z.number(),
+  amount_paise: z.number(),
+  method: z.enum(PAYMENT_METHODS),
+  razorpay_payment_id: z.string().nullable(),
+  period_start: isoOrNull,
+  period_end: isoOrNull,
+  recorded_by: z.string().nullable(),
+  notes: z.string().nullable(),
+  list_price_paise: z.number().nullable(),
+  discount_paise: z.number().nullable(),
+});
+const paymentListSchema = z.object({
+  page: z.number(),
+  page_size: z.number(),
+  total: z.number(),
+  totals: z.object({
+    count: z.number(),
+    base_paise: z.number(),
+    gst_paise: z.number(),
+    amount_paise: z.number(),
+    subscription_base_paise: z.number(),
+    setup_fee_base_paise: z.number(),
+  }),
+  rows: z.array(paymentRowSchema),
+});
+export type PaymentList = z.infer<typeof paymentListSchema>;
+export type PaymentRow = z.infer<typeof paymentRowSchema>;
+export const parsePaymentList = (json: unknown) => paymentListSchema.parse(json);
+
+/** Who recorded a payment: the team member's email, or Razorpay. */
+export function paymentRecordedBy(row: Pick<PaymentRow, 'method' | 'recorded_by'>): string {
+  if (row.method === 'autopay' || row.method === 'payment_link') return 'Razorpay';
+  return row.recorded_by ?? '—';
+}
+
+/** "Growth, monthly"; a setup fee has no plan. */
+export function paymentPlanLabel(
+  row: Pick<PaymentRow, 'purpose' | 'plan_name' | 'billing_cycle'>,
+): string {
+  if (row.purpose === 'setup_fee') return PAYMENT_PURPOSE_LABELS.setup_fee;
+  if (!row.plan_name) return '—';
+  return `${row.plan_name}, ${row.billing_cycle === 'yearly' ? 'yearly' : 'monthly'}`;
+}
+
+// ─── Dues (docs/DECISIONS.md SA-19) ──────────────────────────────────────────
+const duesRowSchema = z.object({
+  restaurant_id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  city: z.string().nullable(),
+  phone: z.string().nullable(),
+  plan_code: z.string(),
+  plan_name: z.string(),
+  billing_cycle: billingCycle.nullable(),
+  status: subscriptionStatus,
+  source: z.string().nullable(),
+  state: subscriptionState,
+  trial_ends_at: isoOrNull,
+  current_period_end: isoOrNull,
+  grace_until: isoOrNull,
+  restriction_at: isoOrNull,
+  access_reason: z.string().nullable(),
+  razorpay_status: z.string().nullable(),
+  autopay: z.boolean(),
+  renewal_kind: z.enum(RENEWAL_KINDS),
+  due_paise: z.number(),
+  last_reminder_kind: z.string().nullable(),
+  last_reminder_at: isoOrNull,
+});
+const duesListSchema = z.object({
+  bucket: z.enum(DUES_BUCKETS),
+  days: z.union([z.literal(7), z.literal(30)]),
+  page: z.number(),
+  page_size: z.number(),
+  total: z.number(),
+  counts: z.record(z.enum(DUES_BUCKETS), z.number()),
+  // Renewals of each kind in the chosen window, across every page.
+  kinds: z.record(z.enum(RENEWAL_KINDS), z.number()),
+  expected: z.object({
+    autopay_paise: z.number(),
+    autopay_count: z.number(),
+    needs_payment_paise: z.number(),
+    needs_payment_count: z.number(),
+  }),
+  rows: z.array(duesRowSchema),
+});
+export type DuesList = z.infer<typeof duesListSchema>;
+export type DuesRow = z.infer<typeof duesRowSchema>;
+export const parseDuesList = (json: unknown) => duesListSchema.parse(json);
 
 // ─── Restaurant detail ───────────────────────────────────────────────────────
 const restaurantDetailSchema = z.object({
@@ -417,11 +681,57 @@ export function formatDate(value: string | null): string {
   return value ? dateFormat.format(new Date(value)) : '—';
 }
 
+const shortDateFormat = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+  timeZone: DEFAULT_TIMEZONE,
+  day: 'numeric',
+  month: 'short',
+});
+
+/** "13 Nov", India time. */
+export function formatShortDate(value: string): string {
+  return shortDateFormat.format(new Date(value));
+}
+
+/** The last day a period covers: its end is the start of the next business day. */
+export function periodLastDay(end: string): string {
+  return new Date(new Date(end).getTime() - 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * The first day a new subscription payment would pay for ('YYYY-MM-DD',
+ * India): after the trial or the paid period when either still runs,
+ * otherwise today.
+ */
+export function firstUnpaidDay(
+  subscription: {
+    status: SubscriptionStatus;
+    restrictionAt: string | null;
+    currentPeriodEnd: string | null;
+  } | null,
+  now = new Date(),
+): string {
+  const today = todayInIndia(now);
+  let covered: string | null = null;
+  if (subscription?.status === 'trialing') covered = subscription.restrictionAt;
+  else if (subscription?.status === 'active') covered = subscription.currentPeriodEnd;
+  const day = covered ? todayInIndia(new Date(covered)) : today;
+  return day > today ? day : today;
+}
+
+/** Whole days from now until a time, never below 0. */
+export function daysUntil(value: string, now = new Date()): number {
+  return Math.max(0, Math.ceil((new Date(value).getTime() - now.getTime()) / 86_400_000));
+}
+
+/** Whole days from a time until now, never below 0. */
+export function daysSince(value: string, now = new Date()): number {
+  return Math.max(0, Math.floor((now.getTime() - new Date(value).getTime()) / 86_400_000));
+}
+
 /** A period whose end is the start of the next business day, shown with its last day. */
 export function formatPeriod(start: string | null, end: string | null): string {
   if (!start || !end) return '—';
-  const lastDay = new Date(new Date(end).getTime() - 24 * 60 * 60 * 1000).toISOString();
-  return `${formatDate(start)} – ${formatDate(lastDay)}`;
+  return `${formatDate(start)} – ${formatDate(periodLastDay(end))}`;
 }
 
 /**

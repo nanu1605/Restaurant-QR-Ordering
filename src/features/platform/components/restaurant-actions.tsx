@@ -85,6 +85,12 @@ const SELECT_CLASS =
 
 type Dialogs = 'trial' | 'plan' | 'payment' | 'link' | 'autopay' | 'suspend' | 'unsuspend' | null;
 
+const TRIAL_HELP = "Days are added to the trial's end, or to today if it has already ended.";
+const PAYMENT_HELP =
+  'A payment received outside Razorpay. A subscription payment starts on the first day not yet covered and keeps the restaurant active until the last day (a period already covered is only recorded). A setup fee is only recorded.';
+const LINK_HELP =
+  "Razorpay emails or texts the link to the restaurant's email and phone, when it has them. A paid subscription link extends access from the first day not yet paid for; a setup fee is only recorded.";
+
 /** What a payment link form starts with (paise). */
 export type LinkDefaults = {
   planName: string;
@@ -187,7 +193,7 @@ export function RestaurantActions({
         open={open === 'trial'}
         onClose={close}
         title="Extend trial"
-        description="Days are added to the trial's end, or to today if it has already ended."
+        description={TRIAL_HELP}
       >
         <ExtendTrialForm restaurantId={restaurantId} onDone={close} />
       </FormDialog>
@@ -208,7 +214,7 @@ export function RestaurantActions({
         open={open === 'payment'}
         onClose={close}
         title="Record payment"
-        description="A payment received outside Razorpay. A subscription payment starts on the first day not yet covered and keeps the restaurant active until the last day (a period already covered is only recorded). A setup fee is only recorded."
+        description={PAYMENT_HELP}
       >
         <ManualPaymentForm restaurantId={restaurantId} start={paymentStart} onDone={close} />
       </FormDialog>
@@ -217,7 +223,7 @@ export function RestaurantActions({
           open={open === 'link'}
           onClose={close}
           title="Send payment link"
-          description="Razorpay emails or texts the link to the restaurant's email and phone, when it has them. A paid subscription link extends access from the first day not yet paid for; a setup fee is only recorded."
+          description={LINK_HELP}
         >
           <PaymentLinkForm
             restaurantId={restaurantId}
@@ -247,6 +253,77 @@ export function RestaurantActions({
         restaurantName={restaurantName}
       />
     </div>
+  );
+}
+
+/**
+ * The payment actions on a Dues row (docs/SUPER_ADMIN_PLAN.md 12c): the same
+ * dialogs as the restaurant's page.
+ */
+export function DuesActions({
+  restaurantId,
+  restaurantName,
+  canExtendTrial,
+  paymentStart,
+  linkDefaults,
+}: {
+  restaurantId: string;
+  restaurantName: string;
+  canExtendTrial: boolean;
+  /** The first day a new payment would cover ('YYYY-MM-DD', India). */
+  paymentStart: string;
+  /** Null while the Razorpay keys aren't set. */
+  linkDefaults: LinkDefaults | null;
+}) {
+  const [open, setOpen] = useState<'trial' | 'payment' | 'link' | null>(null);
+  const close = () => setOpen(null);
+  const size = 'h-11 md:h-8';
+
+  return (
+    <>
+      {linkDefaults && (
+        <Button variant="outline" className={size} onClick={() => setOpen('link')}>
+          <Link2 aria-hidden />
+          Send payment link
+        </Button>
+      )}
+      <Button variant="outline" className={size} onClick={() => setOpen('payment')}>
+        <CreditCard aria-hidden />
+        Record payment
+      </Button>
+      {canExtendTrial && (
+        <Button variant="outline" className={size} onClick={() => setOpen('trial')}>
+          <CalendarPlus aria-hidden />
+          Extend trial
+        </Button>
+      )}
+      <FormDialog
+        open={open === 'trial'}
+        onClose={close}
+        title={`Extend trial for ${restaurantName}`}
+        description={TRIAL_HELP}
+      >
+        <ExtendTrialForm restaurantId={restaurantId} onDone={close} />
+      </FormDialog>
+      <FormDialog
+        open={open === 'payment'}
+        onClose={close}
+        title={`Record payment for ${restaurantName}`}
+        description={PAYMENT_HELP}
+      >
+        <ManualPaymentForm restaurantId={restaurantId} start={paymentStart} onDone={close} />
+      </FormDialog>
+      {linkDefaults && (
+        <FormDialog
+          open={open === 'link'}
+          onClose={close}
+          title={`Send payment link to ${restaurantName}`}
+          description={LINK_HELP}
+        >
+          <PaymentLinkForm restaurantId={restaurantId} defaults={linkDefaults} onDone={close} />
+        </FormDialog>
+      )}
+    </>
   );
 }
 

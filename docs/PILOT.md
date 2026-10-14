@@ -68,6 +68,9 @@ Before the first pilot:
 - [x] Read the Hindi website on staging (`/hi`, then every page, the demo, a demo request and a
       signup with its two emails) and send corrections before the website's Release. Approved
       2026-10-14.
+- [ ] Read the Hindi WhatsApp messages on `/super` → Dues (WhatsApp, then हिन्दी, on a
+      restaurant in each tab) and send corrections; they are in
+      `src/features/platform/dues-messages.ts`.
 - [ ] For menu import from photos: create a Command Code API key (Command Code Studio) and,
       as the fallback, an OpenRouter key, each with a monthly spend limit, and set them in Vercel
       (`MENU_IMPORT_API_KEY`, `MENU_IMPORT_FALLBACK_API_KEY`). Set `CRON_SECRET` (a long random

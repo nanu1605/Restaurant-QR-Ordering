@@ -3398,3 +3398,117 @@ stay at 13g, since nobody else gets `/super` before then.
 - **Release:** subscription history starts the night 12b reaches production. That release also
   ships everything else waiting on main, including the website, so its timing is the owner's
   call.
+
+### 12c · Money: payments and dues
+
+- **SA-17 · What a payment paid for:** `subscription_payments.plan_id` and `billing_cycle`,
+  stamped by a before-insert trigger, so every insert path sets them and a later plan change
+  doesn't rewrite history. A Razorpay charge pays for the plan its mandate was set up with
+  (`next_plan_id` until the charge applies it); anything else pays for the current plan. The
+  cycle is yearly for a paid period of 360 days or more, otherwise monthly (an 18-month link
+  would read yearly; none is sold). Setup fees have neither. Earlier payments were filled in
+  from the restaurant's current plan, the best there is.
+- **SA-18 · Payments ledger:** `/super/money/payments` (money.view, the first page and function
+  to use the permission check for reading) through `platform_list_payments`. Payments are dated
+  by when they were recorded, in India dates; the page opens on this month, with This month,
+  Last month, Last 30 days, This quarter (calendar quarters are also the financial year's), Last
+  12 months and All time, or any two dates. Amount (before GST), GST and the total paid are
+  separate columns, and the totals cover every matching row, not just the page, split by
+  purpose. The method is Autopay (a Razorpay subscription charge), Payment link, or the manual
+  mode. The CSV has the same rows and columns with the reports' escaping, up to 10,000 rows;
+  beyond that the page asks for fewer days and the download refuses, rather than cutting the
+  file short. A row opens the restaurant's Payments section (its Billing tab from 13a). On a
+  phone the rows become cards, their total marked "incl. GST". With only an end date the
+  heading reads "Up to" that day and the file is named `payments-to-<day>.csv`.
+  Compare-with-previous-period comes with Home (12e).
+- **SA-19 · Dues:** `/super/money/dues` through `platform_list_dues`, the buckets of plan §5.6,
+  first match wins. Suspended restaurants are in no bucket: suspending is the team's own call,
+  handled on the restaurant's page. Payment failed needs full access; once grace ends the
+  restaurant is Lapsed. Renewals are split by `private.renewal_kind`: Ending (set to end at the
+  period's end, or a Razorpay subscription whose mandate is off), On autopay (a live mandate),
+  Needs a payment (source manual, which covers payment links too), listed in that order with each
+  kind's count across every page. The amount due is the plan's price for its cycle (monthly when
+  none) with GST, rounded like `withGst()` (`private.fee_with_gst`); while a Razorpay mandate is
+  live (authenticated, active, or retrying a failed charge) it is the mandate's plan and cycle
+  (`next_plan_id`, `next_billing_cycle`), what Razorpay will charge, as SA-17 does for the
+  payment itself. Expected collections are the next 30 days' renewals on autopay and
+  needing a payment, as two figures; ending ones aren't expected. The search narrows the counts
+  too. The last reminder email comes from `subscription_reminders`. The row's actions are the
+  restaurant page's own dialogs: Send payment link, Record payment, and Extend trial on trials.
+- **SA-20 · Call and WhatsApp:** `tel:+91…` and `https://wa.me/91…` from `restaurants.phone`, the
+  only phone stored. It is free text, so its last 10 digits are used when they are a mobile
+  number (as `private.phone10` reads it: "+91 98765-43210" works), shown on the row as
+  "98765 43210"; anything else shows as typed, with no buttons. Each bucket has a message in
+  English and in Hindi, with the restaurant, plan, amount and day filled in on the server (Hindi
+  month names in the Hindi one); the team edits it in a dialog and WhatsApp opens with it.
+  MenuMesh sends nothing itself.
+  The templates live in `src/features/platform/dues-messages.ts`; the Hindi wording awaits the
+  owner's reading, like the worker panel's did.
+- **SA-21 · Subscriptions under Money:** `/super/money/subscriptions` (the old URL redirects,
+  keeping its query) filters by the six states of plan §5.1 instead of Razorpay's statuses, with
+  the raw status under the badge; the Access column went, the state covers it.
+  `SubscriptionStateBadge` pairs an icon and words with the status colours through
+  `--color-sub-*` aliases (contrast-checked in both themes) and reads "Paid, ends 13 Nov" when a
+  paid period is set to end. The other pages keep the old badge until they are rebuilt (12d,
+  13a).
+
+### 12d · Restaurants list, health, saved views and search
+
+- **SA-22 · Health:** `private.restaurant_health(restaurant, created_at, at)`, first match wins,
+  from accepted orders: Setting up (none yet, within the setup days), Never started (none after
+  them), Inactive (none in the inactive days), Slowing (the last 7 days under a share of the
+  weekly average of the 4 weeks before, when those had enough orders), Active. The thresholds are
+  platform settings (14 days, 7 days, 50%, 10 orders), edited in the Restaurant health group of
+  `/super/settings` and audited like the rest. The daily snapshot stores it from this stop. On a
+  suspended or read-only restaurant the badge is muted: its access explains the quiet.
+- **SA-23 · Restaurants list:** `platform_list_restaurants` rebuilt. Filters: state (plan §5.1),
+  plan, health, city, Indian state, how they found us (or not known), created and paid-till
+  ranges in India dates. Paid till is a trial's end or a paid period's last day (the day before
+  it ends), on screen, in the filter, in the sort and in the CSV alike. Sorts: created, name, last
+  active, paid till, GMV, with `aria-sort` on the header. Health, last active and GMV are worked out for every
+  match only when a filter or the sort needs them, otherwise for the page's 50 rows. Columns are
+  chosen in the URL (`cols`), all but Found us by default. Lifetime paid is subscriptions and
+  setup fees before GST, the GST apart; it needs money.view, checked by
+  `private.has_platform_permission` (null in the rows) and `hasPlatformPermission` (no column, no
+  money in the CSV), which every admin passes until 13g. GMV is the last 30 finished business
+  days and the sparkline the accepted orders on each of the last 7, from `metrics_usage_daily`
+  except the latest finished day: the nightly usage step at 03:00 can't store a business day that
+  ends at 04:00, so that day is counted live from orders and bills
+  (`private.restaurant_recent_usage`). A paid period set to end reads "Paid, ends …". Last active is the latest accepted order, bill, or sign-in by one of the
+  restaurant's logins. The phone has Call and WhatsApp as on Dues. The CSV has the filters and
+  sort, every column, up to 10,000 rows, refusing beyond. The old `status` and `subscription`
+  filters went (state covers both); the overview's Suspended card links `?state=suspended`. The
+  header stays in view inside the table's own scroll region, one region, not two, with scroll
+  padding so a focused row is never under it. The Review
+  badge's check (P11-13) compared each row with every restaurant, 2 s a page at 2,600
+  restaurants; each reason is now an index lookup (trigram indexes on name and address, and
+  indexes on FSSAI, GSTIN, pincode and `private.phone10(phone)`) with the same results.
+  Whoever writes a phone runs `phone10` for its index, so it is granted like
+  `is_valid_timezone`.
+- **SA-24 · Saved views:** `platform_saved_views` (owner, page, name, query, shared), read by RLS
+  (a platform admin's own views and shared ones), written only through `platform_save_view`
+  (the same name again, in any case, replaces the view) and `platform_delete_view` (the owner's
+  own). The query is the page's URL without the page number, checked as key=value pairs. The
+  built-in views live in code: Payment failed, Trial ending (a trial ending today to 3 days on),
+  Lapsed, No orders in N days (N from the settings), Never started, Slowing, Paid. A view is
+  marked current when its query is the page's. Deleting asks first, and says when a shared view
+  goes for the whole team.
+- **SA-25 · Search:** `platform_search(q)`, 2 to 80 characters, the text typed rather than a
+  pattern. Restaurants by name, code, city, any 3 or more digits of the phone (digits against
+  digits, so "+91 98765-43210" stored and "98765 43210" or "+91 9876543210" typed both match;
+  only when the text is a number, so a GSTIN's digits aren't a phone), GSTIN, FSSAI number or the owner's email, each with what matched; exact names first,
+  then names starting with the text, then trigram similarity (`restaurants_name_trgm_idx`).
+  Payments by Razorpay payment or subscription ID (4 characters or more), leads by name,
+  restaurant or phone; 8, 5 and 5 at most. Ctrl or ⌘ + K, or the Search button in the header,
+  opens it; arrows move and Enter opens. A payment opens the restaurant's Payments section, a lead
+  `/super/leads?lead=…`. Recent picks are kept in the browser only (`localStorage`), a
+  convenience that is simply empty when storage is off.
+- **SA-26 · Local load data:** `pnpm seed:platform-load` runs `supabase db query --local`, so it
+  cannot reach any other database; it removes the previous load first, and
+  `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
+  payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
+  the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
+  about 2,600 restaurants locally the list function takes 26 to 215 ms, the CSV 0.6 s and search
+  under 10 ms. `PERF=1 pnpm e2e super-perf --project=desktop` (opt-in, like the website's) checks
+  that each super-admin page answers within 1.5 s; the slowest, sorted by GMV, took 0.96 s with
+  the rest of the suite running.

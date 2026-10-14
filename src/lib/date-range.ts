@@ -78,6 +78,35 @@ export function datePresets(today: string): DatePreset[] {
   ];
 }
 
+/**
+ * Ranges for MenuMesh's own money and growth numbers, in India calendar dates
+ * (docs/SUPER_ADMIN_PLAN.md §1 Time). Quarters are calendar quarters, which
+ * are also the financial year's.
+ */
+export function platformPresets(today: string): DatePreset[] {
+  const month = Number(today.slice(5, 7));
+  const monthStart = `${today.slice(0, 8)}01`;
+  const lastMonthEnd = addDays(monthStart, -1);
+  const quarterMonth = String(Math.floor((month - 1) / 3) * 3 + 1).padStart(2, '0');
+  return [
+    { key: 'this_month', label: 'This month', from: monthStart, to: today },
+    {
+      key: 'last_month',
+      label: 'Last month',
+      from: `${lastMonthEnd.slice(0, 8)}01`,
+      to: lastMonthEnd,
+    },
+    { key: 'last_30', label: 'Last 30 days', from: addDays(today, -29), to: today },
+    {
+      key: 'this_quarter',
+      label: 'This quarter',
+      from: `${today.slice(0, 5)}${quarterMonth}-01`,
+      to: today,
+    },
+    { key: 'last_12_months', label: 'Last 12 months', from: addDays(today, -364), to: today },
+  ];
+}
+
 /** `pathname` with these search params, leaving out empty ones. */
 export function hrefWithParams(pathname: string, params: Record<string, string | undefined>) {
   const search = new URLSearchParams();

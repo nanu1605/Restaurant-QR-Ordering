@@ -45,7 +45,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-settings|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-money|super-restaurants|super-settings|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
       ],
     },
     // It changes the platform settings that the pricing and payment-link specs read,

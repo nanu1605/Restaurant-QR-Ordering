@@ -27,7 +27,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { onboardRestaurant, OnboardError } from './onboard';
-import { getPlatformSettings, getRestaurantDetail, getSetupFee } from './queries';
+import type { SearchResults } from './platform';
+import {
+  getPlatformSettings,
+  getRestaurantDetail,
+  getSetupFee,
+  searchPlatform as search,
+} from './queries';
 import { discountEndsAt, discountLastDay } from './setup-fee';
 import {
   changePlanSchema,
@@ -39,6 +45,7 @@ import {
   planFormSchema,
   platformSettingsSchema,
   restaurantIdSchema,
+  savedViewSchema,
   suspendSchema,
   type ChangePlanInput,
   type ExtendTrialInput,
@@ -48,6 +55,7 @@ import {
   type PaymentLinkInput,
   type PlanFormInput,
   type PlatformSettingsInput,
+  type SavedViewInput,
   type SuspendInput,
 } from './schemas';
 
@@ -401,11 +409,61 @@ export async function updatePlatformSettings(input: PlatformSettingsInput): Prom
       }),
       support_phone: settings.supportPhone || null,
       support_email: settings.supportEmail || null,
+      health_setup_days: settings.healthSetupDays,
+      health_inactive_days: settings.healthInactiveDays,
+      health_slowing_percent: settings.healthSlowingPercent,
+      health_slowing_min_orders: settings.healthSlowingMinOrders,
     },
   });
   if (error) return fromDbError(error, 'platform_update_settings');
   refresh();
   return actionOk();
+}
+
+/**
+ * Saves the restaurants list's current filters, sort and columns under a name
+ * (docs/DECISIONS.md SA-24); the same name again replaces the view.
+ */
+export async function saveView(
+  query: string,
+  input: SavedViewInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformPermission('restaurants.view');
+  const parsed = savedViewSchema.safeParse(input);
+  if (!parsed.success) return fromZodError(parsed.error);
+  // Rebuilt so only plain key=value pairs reach the database; the page number isn't kept.
+  const params = new URLSearchParams(query);
+  params.delete('page');
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_save_view', {
+    p_page: 'restaurants',
+    p_name: parsed.data.name,
+    p_query: params.toString(),
+    p_shared: parsed.data.shared,
+  });
+  if (error) return fromDbError(error, 'platform_save_view');
+  refresh();
+  return actionOk({ id: data });
+}
+
+export async function deleteView(viewId: string): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.view');
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_delete_view', { p_id: viewId });
+  if (error) return fromDbError(error, 'platform_delete_view');
+  refresh();
+  return actionOk();
+}
+
+/** The search box (docs/DECISIONS.md SA-25). */
+export async function searchPlatform(q: string): Promise<ActionResult<SearchResults>> {
+  await requirePlatformPermission('restaurants.view');
+  try {
+    return actionOk(await search(q.slice(0, 80)));
+  } catch (error) {
+    console.error('[platform] search failed', error);
+    return actionError(GENERIC_ERROR);
+  }
 }
 
 const NO_RAZORPAY = 'Add the Razorpay keys to the environment first.';

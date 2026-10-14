@@ -126,6 +126,12 @@ select ok(
 );
 
 -- ─── Restaurants list ───────────────────────────────────────────────────────
+-- This file's restaurants in a list's rows (local data may add others).
+create function pg_temp.mine(p_list jsonb)
+returns jsonb language sql as $$
+  select coalesce(jsonb_agg(r ->> 'slug'), '[]') from jsonb_array_elements(p_list -> 'rows') as r
+  where r ->> 'slug' in ('alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota');
+$$;
 select is(
   (select jsonb_agg(r ->> 'slug') from jsonb_array_elements(
     public.platform_list_restaurants('{"q": "gamm"}') -> 'rows') as r),
@@ -140,22 +146,16 @@ select is(
   'city filter ignores case'
 );
 select is(
-  (select jsonb_agg(r ->> 'slug') from jsonb_array_elements(
-    public.platform_list_restaurants('{"status": "suspended", "sort": "name"}') -> 'rows') as r),
+  pg_temp.mine(public.platform_list_restaurants('{"state": "suspended", "sort": "name"}')),
   '["delta", "iota"]'::jsonb,
-  'status filter'
+  'state filter'
 );
+select is(pg_temp.mine(public.platform_list_restaurants('{"plan": "pro"}')), '["gamma"]'::jsonb,
+  'plan filter');
 select is(
-  (select jsonb_agg(r ->> 'slug') from jsonb_array_elements(
-    public.platform_list_restaurants('{"plan": "pro"}') -> 'rows') as r),
-  '["gamma"]'::jsonb,
-  'plan filter'
-);
-select is(
-  (select jsonb_agg(r ->> 'slug') from jsonb_array_elements(
-    public.platform_list_restaurants('{"subscription": "past_due"}') -> 'rows') as r),
+  pg_temp.mine(public.platform_list_restaurants('{"state": "payment_failed"}')),
   '["zeta"]'::jsonb,
-  'subscription status filter'
+  'payment failed: in grace'
 );
 select is(
   (select r from jsonb_array_elements(
@@ -164,9 +164,9 @@ select is(
   'rows carry the access state'
 );
 select is(
-  public.platform_list_restaurants('{"sort": "last_order"}') #>> '{rows,0,slug}',
+  public.platform_list_restaurants('{"sort": "last_active"}') #>> '{rows,0,slug}',
   'alpha',
-  'sorted by last order: alpha has the newest order'
+  'sorted by last active: alpha has the newest order'
 );
 select is(
   (select jsonb_array_length(public.platform_list_restaurants('{"q": "pagetest"}') -> 'rows')),
@@ -194,17 +194,28 @@ select throws_ok(
 );
 
 -- ─── Subscriptions list ─────────────────────────────────────────────────────
-select is(
-  public.platform_list_subscriptions('{}') #>> '{rows,0,slug}',
-  'zeta',
+select ok(
+  not exists (
+    select 1
+    from jsonb_array_elements(public.platform_list_subscriptions('{}') -> 'rows')
+      with ordinality as a(r, i)
+    join jsonb_array_elements(public.platform_list_subscriptions('{}') -> 'rows')
+      with ordinality as b(r, i) on b.i > a.i
+    where a.r ->> 'state' <> 'payment_failed' and b.r ->> 'state' = 'payment_failed'
+  ),
   'payment problems come first'
 );
 select is(
+  pg_temp.mine(public.platform_list_subscriptions('{"state": "payment_failed"}')),
+  '["zeta"]'::jsonb,
+  'a state filter'
+);
+select is(
   (select jsonb_agg(r ->> 'slug' order by r ->> 'slug') from jsonb_array_elements(
-    public.platform_list_subscriptions('{"status": "active"}') -> 'rows') as r
+    public.platform_list_subscriptions('{"state": "paid"}') -> 'rows') as r
    where r ->> 'slug' in ('beta', 'gamma')),
   '["beta", "gamma"]'::jsonb,
-  'status filter'
+  'paid'
 );
 
 -- ─── Restaurant detail ──────────────────────────────────────────────────────

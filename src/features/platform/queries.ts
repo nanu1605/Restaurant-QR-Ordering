@@ -4,13 +4,22 @@ import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-import type { AuditFilters, RestaurantFilters, SubscriptionFilters } from './params';
+import type {
+  AuditFilters,
+  DuesFilters,
+  PaymentFilters,
+  RestaurantFilters,
+  SubscriptionFilters,
+} from './params';
 import {
   parseAuditList,
+  parseDuesList,
   parseLookalikes,
   parseOverview,
+  parsePaymentList,
   parseRestaurantDetail,
   parseRestaurantList,
+  parseSearchResults,
   parseSubscriptionList,
   planSchema,
   supportRestaurantSchema,
@@ -30,11 +39,11 @@ export async function getPlatformOverview() {
   return parseOverview(data);
 }
 
-export async function listRestaurants(filters: RestaurantFilters) {
+/** The restaurants list (docs/DECISIONS.md SA-23); `exportAll` returns every row on one page. */
+export async function listRestaurants(filters: RestaurantFilters, exportAll = false) {
   const supabase = await createClient();
-  const { page, ...rest } = filters;
   const { data, error } = await supabase.rpc('platform_list_restaurants', {
-    p_filters: { ...rest, page },
+    p_filters: exportAll ? { ...filters, page: 1, export: true } : filters,
   });
   if (error) throw new Error(`Could not load restaurants: ${error.message}`);
   return parseRestaurantList(data);
@@ -47,6 +56,27 @@ export async function listSubscriptions(filters: SubscriptionFilters) {
   });
   if (error) throw new Error(`Could not load subscriptions: ${error.message}`);
   return parseSubscriptionList(data);
+}
+
+/** The payments ledger (docs/DECISIONS.md SA-18); `exportAll` returns every row on one page. */
+export async function listPayments(filters: PaymentFilters, exportAll = false) {
+  const supabase = await createClient();
+  // `period: 'all'` is the absence of dates.
+  const { from, to, q, purpose, method, plan, page } = filters;
+  const sent = { from, to, q, purpose, method, plan, page };
+  const { data, error } = await supabase.rpc('platform_list_payments', {
+    p_filters: exportAll ? { ...sent, page: 1, export: true } : sent,
+  });
+  if (error) throw new Error(`Could not load payments: ${error.message}`);
+  return parsePaymentList(data);
+}
+
+/** Dues buckets (docs/DECISIONS.md SA-19). */
+export async function listDues(filters: DuesFilters) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_dues', { p_filters: filters });
+  if (error) throw new Error(`Could not load dues: ${error.message}`);
+  return parseDuesList(data);
 }
 
 /** Other restaurants that may be the same as each of these (docs/DECISIONS.md P11-13). */
@@ -175,14 +205,37 @@ export async function listWebhookEvents({
   return { rows: data ?? [], total: count ?? 0, page: current };
 }
 
+/** The admin's own and the team's shared views of a page, by name (docs/DECISIONS.md SA-24). */
+export async function listSavedViews(page: 'restaurants') {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('platform_saved_views')
+    .select('id, owner_id, name, query, shared')
+    .eq('page', page)
+    .order('name');
+  if (error) throw new Error(`Could not load saved views: ${error.message}`);
+  return data;
+}
+
+/** Restaurants, payments and leads matching what was typed (docs/DECISIONS.md SA-25). */
+export async function searchPlatform(q: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_search', { p_q: q });
+  if (error) throw new Error(`Could not search: ${error.message}`);
+  return parseSearchResults(data);
+}
+
 export const LEADS_PAGE_SIZE = 50;
 
-/** "Book a demo" requests from the website, newest first (docs/DECISIONS.md W-6). */
-export async function listSiteLeads(page: number) {
+/**
+ * "Book a demo" requests from the website, newest first (docs/DECISIONS.md
+ * W-6); or the one a search result points at (SA-25).
+ */
+export async function listSiteLeads(page: number, leadId?: string) {
   const supabase = await createClient();
   const load = (at: number) => {
     const from = (at - 1) * LEADS_PAGE_SIZE;
-    return supabase
+    const query = supabase
       .from('site_leads')
       .select(
         'id, name, restaurant_name, city, phone, email, plan_code, message, source, created_at',
@@ -190,6 +243,7 @@ export async function listSiteLeads(page: number) {
       )
       .order('created_at', { ascending: false })
       .range(from, from + LEADS_PAGE_SIZE - 1);
+    return leadId ? query.eq('id', leadId) : query;
   };
   let current = page;
   let { data, error, count } = await load(current);
@@ -212,7 +266,7 @@ export async function getPlatformSettings() {
   const { data, error } = await supabase
     .from('platform_settings')
     .select(
-      'trial_days, grace_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at, support_phone, support_email',
+      'trial_days, grace_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at, support_phone, support_email, health_setup_days, health_inactive_days, health_slowing_percent, health_slowing_min_orders',
     )
     .eq('id', 1)
     .single();

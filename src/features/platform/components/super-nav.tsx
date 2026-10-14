@@ -4,9 +4,11 @@ import { cn } from 'cn';
 import {
   Building2,
   CreditCard,
+  HandCoins,
   Inbox,
   LayoutDashboard,
   Menu,
+  ReceiptIndianRupee,
   ScrollText,
   Settings,
   Tags,
@@ -28,7 +30,11 @@ const NAV: NavGroup[] = [
   { title: null, items: [{ href: '/super', label: 'Overview', icon: LayoutDashboard }] },
   {
     title: 'Money',
-    items: [{ href: '/super/subscriptions', label: 'Subscriptions', icon: CreditCard }],
+    items: [
+      { href: '/super/money/payments', label: 'Payments', icon: ReceiptIndianRupee },
+      { href: '/super/money/dues', label: 'Dues', icon: HandCoins },
+      { href: '/super/money/subscriptions', label: 'Subscriptions', icon: CreditCard },
+    ],
   },
   {
     title: 'Restaurants',

@@ -309,6 +309,8 @@ Conventions for every table unless stated otherwise:
 | setup_fee_paise | bigint | the usual setup fee before GST (₹999) |
 | setup_fee_discount_paise | bigint | the launch discount off it (₹500); 0 or more and below the fee |
 | setup_fee_discount_ends_at | timestamptz null | when the discount stops applying (the day after the offer's last day in India); null: until it is set to 0 |
+| health_setup_days, health_inactive_days | int | restaurant health (docs/DECISIONS.md SA-22): days to place a first order (14, 1–90), days without one before Inactive (7, 1–60) |
+| health_slowing_percent, health_slowing_min_orders | int | Slowing: the last 7 days under this share of the weekly average of the 4 weeks before (50, 1–99), when those had at least this many orders (10) |
 
 Edited only through `platform_update_settings` (Platform settings in `/super`), which audits what changed (docs/DECISIONS.md SA-4).
 
@@ -629,7 +631,7 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 | razorpay_customer_id | text null | |
 | cancel_reason, cancel_reason_detail | text null | why the owner last turned autopay off (`too_expensive`, `not_using`, `missing_feature`, `closing`, `switching`, `other` with a few words; docs/DECISIONS.md SA-15) |
 
-**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8).
+**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
 
 **`webhook_events`**: `provider` (`razorpay`), `event_id` unique, `event_type`, `payload jsonb`, `received_at`, `processed_at`, `processing_error`.
 
@@ -638,6 +640,7 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 - **`metrics_usage_daily`** (restaurant_id, business_day): orders by who placed them and by hour, items, bills, GMV (bill totals with the restaurant's taxes), discount, tax, payments by mode, average table time and service requests, counted like the restaurant's own reports; the current business day is never stored. Recounted for the last four days by the daily cron; past days by `platform_metrics_backfill_usage` (`pnpm metrics:backfill`).
 - **`metrics_platform_daily`** (day): signups started and completed, restaurants onboarded by the team, leads; website visitors from PostHog later (null until then).
 - **`cron_runs`**: each step of the daily cron, with its result.
+- **`platform_saved_views`**: a platform admin's saved list views (owner, page, name, query, shared); written through `platform_save_view` and `platform_delete_view` (docs/DECISIONS.md SA-24).
 - **`plan_limit_events`**: refusals because of the plan (tables, staff or a feature), recorded by the server action through `member_record_plan_limit`.
 
 ### 8.10 Indexes (minimum)
@@ -1101,16 +1104,19 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a group appears once it has a page), and pages below a restaurant show breadcrumbs. §25 and docs/SUPER_ADMIN_PLAN.md describe the redesign in progress.
 
 - **Overview**: restaurants total / trialing / active / past due / read-only / suspended; MRR (sum of monthly-equivalent of active paid subscriptions: yearly ÷ 12); orders in last 24 h across platform; trials ending in next 7 days.
-- **Restaurants**: searchable, filterable table (status, plan, subscription status, city, created date, last order at). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; docs/DECISIONS.md P11-13).
+- **Search** (Ctrl or ⌘ + K, or the header's Search button): restaurants by name, code, city, part of a phone, GSTIN, FSSAI number or owner email; payments by Razorpay ID; leads (docs/DECISIONS.md SA-25).
+- **Restaurants**: state, plan, paid till, lifetime paid, 30-day GMV, a 7-day orders line, health, last active, phone with Call and WhatsApp, how they found us and created date, the columns chosen per view; filters by state, plan, health, city, Indian state, channel, created and paid-till dates; sortable; built-in and saved views, personal or shared; CSV export (docs/DECISIONS.md SA-22 to SA-24). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; P11-13).
 - **Restaurant detail**: profile (with the FSSAI licence); the storefront photo sent at signup (a signed link, valid an hour); possible duplicates, each with its reasons (the same licence, GSTIN, mobile or pincode, or a similar name or address); owner contact; plan & subscription status with dates; payment history; usage (tables, staff, orders last 7/30 days, last order time, bills count); access state; actions: extend trial (days), change plan, record manual payment (amount with GST, mode, notes; for a subscription the period start/end, or a setup fee with no period), send payment link, suspend/unsuspend (reason), reset owner password / resend invite; **read-only support view** of their menu, tables, live board and Total Orders (server-side queries via service role; every view is audit logged; no write actions).
 - **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over.
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
-- **Subscriptions**: list with status filters, past-due first.
+- **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).
+- **Dues** (Money): payment failed, lapsed, trial ending and renewal due, each restaurant in one bucket, with expected collections for 30 days, call and WhatsApp (an editable message in English or Hindi), and the payment actions (SA-19, SA-20).
+- **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled), failed payments first (SA-21).
 - **Leads**: "Book a demo" requests from the website, newest first.
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable.
-- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email. Every change is audited (docs/DECISIONS.md SA-4, SA-5).
+- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email, and the restaurant health thresholds. Every change is audited (docs/DECISIONS.md SA-4, SA-5, SA-22).
 
 ---
 
