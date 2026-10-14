@@ -3671,7 +3671,8 @@ stay at 13g, since nobody else gets `/super` before then.
 ### 13b · Onboarding checklist, Get help and the support inbox
 
 - **SA-41 · Onboarding checklist:** one SQL rule, `private.restaurants_onboarding(ids)` (one
-  query for many restaurants; `private.restaurant_onboarding(id)` for one), gives a restaurant's
+  query for many restaurants, as the list's page, its CSV and Needs attention ask; a partial
+  index finds the audit rows it needs; `private.restaurant_onboarding(id)` for one), gives a restaurant's
   seven steps (plan §5.13) with when each was done: the menu when its fifth active dish was
   added; tables at the first active table; QR codes at the first `table.qr_downloaded` or
   `table.qr_sheet_printed` audit row (SA-14), or the first QR order, since a QR order shows the
@@ -3692,13 +3693,16 @@ stay at 13g, since nobody else gets `/super` before then.
   or Settings, opens `/admin/help`: a topic, a message (up to 2,000 characters), an optional
   screenshot and how to be reached (call or WhatsApp on a 10-digit mobile, the restaurant's
   phone filled in; or email, the owner's own filled in, since other logins have made-up
-  addresses). The account menu passes the page it was opened on; the server adds the build
+  addresses, an owner set up without an email too; an address must be plain, with nothing a
+  mailto link would read as more of the email). The account menu passes the page it was opened on; the server adds the build
   (`NEXT_PUBLIC_BUILD_SHA`, "Not known" locally) and the browser, and the database the login and
   role. A screenshot (PNG, JPEG or WebP, up to 5 MB, unchanged so its words stay sharp) goes
   straight to the private `support-screenshots` bucket through a link the server signs for a
-  new name in the restaurant's folder; `admin_create_support_request` takes it only from that
-  folder and once it is there. One the form never sent is removed by the nightly job after a
-  day. Requests work while the restaurant is read-only (billing questions come then), 10 an
+  new name in the restaurant's folder (`admin_start_screenshot_upload`, 20 an hour, so a login
+  can't fill the bucket; sending again after an error reuses the upload);
+  `admin_create_support_request` takes it only from that folder and once it is there. One the
+  form never sent is removed by the nightly job after a day, 500 at a time until none are left
+  (at most 10,000 a night). Requests work while the restaurant is read-only (billing questions come then), 10 an
   hour a restaurant (`RATE_LIMITED`). Each new request emails the platform's support address
   (best effort, once: `support/<id>`). The page lists the restaurant's 50 newest requests with
   each status in its words (Received, Being worked on, Waiting for you, Resolved) and its
@@ -3720,7 +3724,9 @@ stay at 13g, since nobody else gets `/super` before then.
   day (waiting on the restaurant is the restaurant's turn), opened from the item; and
   restaurants stuck in onboarding, of the last 60 days, active with full access, stuck before
   the paying step (paying is Dues' and the trial's), with a Call button. Both can be snoozed;
-  they sit after new leads. The digest counts them too.
+  they sit after new leads. The digest counts them too. Their links say where they lead ("Open
+  the inbox", "Every stuck restaurant") rather than promising the group's count, since those lists
+  hold more.
 - **SA-45 · What the restaurant sees:** `support_requests` and `support_request_events` are read
   only by platform admins; the restaurant reads its own requests through
   `admin_list_support_requests()`, without the priority, the assignee or the notes, and only

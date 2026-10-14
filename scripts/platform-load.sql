@@ -271,13 +271,13 @@ begin
     context, status, priority, created_at, updated_at, resolved_at
   )
   select r.id, 'Load owner', 'owner',
-         (array['billing', 'menu', 'printing', 'orders_tables', 'staff', 'other'])[1 + r.n % 6],
+         (array['billing', 'menu', 'printing', 'orders_tables', 'staff', 'other'])[1 + (r.n / 6) % 6],
          'Load request on ' || r.slug || ': the bill printer prints blank pages after the update.',
-         (array['call', 'whatsapp', 'email'])[1 + r.n % 3],
-         case when r.n % 3 = 2 then 'owner' || r.n || '@load.test' else '9000000' || lpad(r.n::text, 3, '0') end,
+         (array['call', 'whatsapp', 'email'])[1 + (r.n / 6) % 3],
+         case when (r.n / 6) % 3 = 2 then 'owner' || r.n || '@load.test' else '9000000' || lpad(r.n::text, 3, '0') end,
          jsonb_build_object('page', '/admin/billing', 'browser', 'Chrome on Android'),
          (array['open', 'in_progress', 'waiting', 'resolved', 'resolved'])[1 + r.n % 5],
-         (array['normal', 'high', 'normal', 'low'])[1 + r.n % 4],
+         (array['normal', 'high', 'normal', 'low'])[1 + (r.n / 6) % 4],
          now() - make_interval(hours => 2 + (r.n * 7) % 120),
          now() - make_interval(hours => 1 + (r.n * 7) % 60),
          case when r.n % 5 in (3, 4) then now() - make_interval(hours => 1 + (r.n * 7) % 60) end

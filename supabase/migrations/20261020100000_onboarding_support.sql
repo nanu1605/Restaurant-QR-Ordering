@@ -97,6 +97,11 @@ $$;
 
 revoke execute on function private.restaurants_onboarding(uuid[]) from public, anon, authenticated;
 
+-- The audit rows the steps look for, one probe a restaurant: a busy one has
+-- thousands of others.
+create index audit_logs_onboarding_idx on public.audit_logs (restaurant_id, action, created_at)
+  where action in ('table.qr_downloaded', 'table.qr_sheet_printed', 'subscription.razorpay_updated');
+
 revoke execute on function private.restaurant_onboarding(uuid) from public, anon, authenticated;
 
 -- The owner's first-steps card reads its own restaurant's steps.
@@ -147,6 +152,8 @@ create index support_requests_restaurant_idx
   on public.support_requests (restaurant_id, created_at desc);
 create index support_requests_open_idx
   on public.support_requests (created_at) where status <> 'resolved';
+-- The activity stream and alerts read the newest across restaurants.
+create index support_requests_created_idx on public.support_requests (created_at desc);
 create index support_requests_assignee_idx
   on public.support_requests (assignee_id) where assignee_id is not null;
 
@@ -186,6 +193,51 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('support-screenshots', 'support-screenshots', false, 5242880,
   array['image/png', 'image/jpeg', 'image/webp'])
 on conflict (id) do nothing;
+
+-- Each screenshot upload the server signs: a new name in the restaurant's
+-- folder, 20 an hour, so a login can't fill the bucket. Rows older than a day
+-- go when the restaurant signs the next one.
+create table public.support_screenshot_uploads (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants (id) on delete cascade,
+  path text not null unique,
+  created_at timestamptz not null default now()
+);
+create index support_screenshot_uploads_restaurant_idx
+  on public.support_screenshot_uploads (restaurant_id, created_at);
+alter table public.support_screenshot_uploads enable row level security;
+revoke all on public.support_screenshot_uploads from anon, authenticated;
+
+-- The name to upload a screenshot to (png, jpg or webp), for the owner or a manager.
+create function public.admin_start_screenshot_upload(p_extension text)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_ctx private.member_context := private.current_member('{owner,manager}');
+  v_path text;
+begin
+  if p_extension is null or p_extension not in ('png', 'jpg', 'webp') then
+    perform private.fail('INVALID_INPUT', 'extension');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('support_screenshot:' || v_ctx.restaurant_id, 0));
+  delete from public.support_screenshot_uploads u
+  where u.restaurant_id = v_ctx.restaurant_id and u.created_at < now() - interval '1 day';
+  if (
+    select count(*) from public.support_screenshot_uploads u
+    where u.restaurant_id = v_ctx.restaurant_id and u.created_at > now() - interval '1 hour'
+  ) >= 20 then
+    perform private.fail('RATE_LIMITED');
+  end if;
+  v_path := v_ctx.restaurant_id || '/' || gen_random_uuid() || '.' || p_extension;
+  insert into public.support_screenshot_uploads (restaurant_id, path)
+  values (v_ctx.restaurant_id, v_path);
+  return v_path;
+end;
+$$;
 
 -- A request from the restaurant's owner or a manager, even while it is
 -- read-only: billing questions come then. 10 an hour per restaurant.
@@ -227,7 +279,9 @@ begin
     perform private.fail('INVALID_INPUT', 'contact_method');
   end if;
   if v_contact is null
-    or (v_method = 'email' and (length(v_contact) > 254 or v_contact !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'))
+    -- A plain address: nothing a mailto link would read as more of the email.
+    or (v_method = 'email' and (length(v_contact) > 254
+      or v_contact !~ '^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'))
     or (v_method <> 'email' and v_contact !~ '^[0-9]{10}$') then
     perform private.fail('INVALID_INPUT', 'contact');
   end if;
@@ -491,10 +545,10 @@ begin
         'actor', u.email,
         -- An assignee is a user id, shown as their email.
         'from', case when e.kind = 'assignee'
-          then (select x.email from auth.users x where x.id::text = e.from_value)
+          then (select x.email from auth.users x where x.id = e.from_value::uuid)
           else e.from_value end,
         'to', case when e.kind = 'assignee'
-          then (select x.email from auth.users x where x.id::text = e.to_value)
+          then (select x.email from auth.users x where x.id = e.to_value::uuid)
           else e.to_value end,
         'body', e.body
       ) order by e.created_at, e.id)
@@ -629,6 +683,7 @@ as $$
   limit least(greatest(coalesce(p_limit, 200), 1), 1000);
 $$;
 
+revoke execute on function public.admin_start_screenshot_upload(text) from public, anon;
 revoke execute on function public.admin_create_support_request(jsonb) from public, anon;
 revoke execute on function public.admin_list_support_requests() from public, anon;
 revoke execute on function public.platform_list_support_requests(jsonb) from public, anon;
@@ -637,6 +692,7 @@ revoke execute on function public.platform_update_support_request(uuid, jsonb) f
 revoke execute on function public.platform_add_support_note(uuid, text) from public, anon;
 revoke execute on function public.support_screenshots_to_remove(int)
   from public, anon, authenticated;
+grant execute on function public.admin_start_screenshot_upload(text) to authenticated;
 grant execute on function public.admin_create_support_request(jsonb) to authenticated;
 grant execute on function public.admin_list_support_requests() to authenticated;
 grant execute on function public.platform_list_support_requests(jsonb) to authenticated;
@@ -915,12 +971,16 @@ begin
         pg.source::text) as row_state,
       a.state as access_state,
       u.orders_7d,
-      u.gmv_30d_paise as recent_gmv
+      u.gmv_30d_paise as recent_gmv,
+      coalesce(pg.onboarding, pob.onboarding) as row_onboarding
     from page pg
     cross join lateral public.restaurant_access(pg.id) as a
     cross join lateral private.restaurant_recent_usage(
       pg.id, pg.timezone, pg.business_day_start_hour
     ) as u
+    -- The page's rows at once (a CSV is up to 10,000 of them).
+    left join private.restaurants_onboarding(array(select p.id from page p)) as pob
+      on pob.restaurant_id = pg.id
   )
   select
     (select count(*) from matching),
@@ -947,7 +1007,7 @@ begin
         'last_active', coalesce(x.last_active, private.restaurant_last_active(x.id)),
         'gmv_30d_paise', coalesce(x.gmv_30d, x.recent_gmv),
         'orders_7d', to_jsonb(x.orders_7d),
-        'onboarding', coalesce(x.onboarding, private.restaurant_onboarding(x.id)) - 'steps',
+        'onboarding', x.row_onboarding - 'steps',
         'tags', coalesce((
           select jsonb_agg(jsonb_build_object('id', t.id, 'name', t.name, 'colour', t.colour)
             order by lower(t.name))

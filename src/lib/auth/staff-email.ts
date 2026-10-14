@@ -13,6 +13,11 @@ export function normalizeLoginName(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** Whether an address is one of these made-up logins, not one that receives email. */
+export function isStaffEmail(email: string, domain: string): boolean {
+  return normalizeLoginName(email).endsWith(`.staff.${normalizeLoginName(domain)}`);
+}
+
 export function staffEmail(username: string, restaurantSlug: string, domain: string): string {
   const user = normalizeLoginName(username);
   const slug = normalizeLoginName(restaurantSlug);

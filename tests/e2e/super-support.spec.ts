@@ -55,6 +55,8 @@ test('a request goes from the admin panel to the inbox to resolved, and the owne
     .getByRole('link', { name: 'Support inbox' })
     .click();
   await expect(adminPage.getByRole('heading', { name: 'Support inbox', level: 1 })).toBeVisible();
+  // Its restaurant's requests: other runs' open ones could push it past the first page.
+  await adminPage.goto(`/super/support?restaurant=${restaurant.restaurantId}`);
   await adminPage.getByRole('link', { name: `Printing from ${restaurant.name}` }).click();
   await expect(
     adminPage.getByRole('heading', { name: `Printing: ${restaurant.name}`, level: 1 }),
@@ -94,9 +96,9 @@ test('a request goes from the admin panel to the inbox to resolved, and the owne
   await adminPage.getByRole('button', { name: 'Status: In progress' }).click();
   await adminPage.getByRole('menuitemradio', { name: 'Resolved' }).click();
   await expect(adminPage.getByRole('button', { name: 'Status: Resolved' })).toBeVisible();
-  await adminPage.goto('/super/support?status=resolved');
+  await adminPage.goto(`/super/support?status=resolved&restaurant=${restaurant.restaurantId}`);
   await expect(
-    adminPage.getByRole('link', { name: `Printing from ${restaurant.name}` }).first(),
+    adminPage.getByRole('link', { name: `Printing from ${restaurant.name}` }),
   ).toBeVisible();
 
   await page.reload();

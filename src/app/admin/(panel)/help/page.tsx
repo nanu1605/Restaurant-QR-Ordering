@@ -7,7 +7,9 @@ import { listOwnerSupportRequests } from '@/features/support/queries';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
 import { getCurrentUser } from '@/lib/auth/session';
+import { isStaffEmail } from '@/lib/auth/staff-email';
 import { firstParam } from '@/lib/date-range';
+import { getServerEnv } from '@/lib/env.server';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata: Metadata = {
@@ -27,6 +29,10 @@ export default async function GetHelpPage({ searchParams }: PageProps<'/admin/he
     supabase.from('restaurants').select('phone').eq('id', membership.restaurant.id).single(),
     getCurrentUser(),
   ]);
+  // An owner the team set up without an email has a made-up login address
+  // (lib/auth/staff-email.ts), as every other login does.
+  const email =
+    user?.email && !isStaffEmail(user.email, getServerEnv().STAFF_EMAIL_DOMAIN) ? user.email : null;
 
   return (
     <>
@@ -45,8 +51,7 @@ export default async function GetHelpPage({ searchParams }: PageProps<'/admin/he
           <GetHelpForm
             from={from?.startsWith('/admin') ? from.slice(0, 200) : null}
             phone={restaurant.data?.phone ?? null}
-            // Other logins have made-up addresses (lib/auth/staff-email.ts).
-            email={membership.role === 'owner' ? (user?.email ?? null) : null}
+            email={email}
           />
         </section>
         <section aria-labelledby="requests-title" className="flex flex-col gap-3">

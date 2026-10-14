@@ -77,11 +77,21 @@ export function phoneDigits(value: string): string {
   return digits;
 }
 
+/** A plain address: nothing a mailto link would read as more of the email (as in SQL). */
+const EMAIL = /^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
 // The Get help form.
 export const supportRequestSchema = z
   .object({
-    // A string in the form ('' until chosen), a topic once checked.
-    topic: z.string().pipe(z.enum(SUPPORT_TOPICS, 'Choose what it is about.')),
+    // A string in the form ('' until chosen), a topic once checked. A refine,
+    // not an enum, so the contact is still checked while no topic is chosen.
+    topic: z
+      .string()
+      .refine(
+        (value) => (SUPPORT_TOPICS as readonly string[]).includes(value),
+        'Choose what it is about.',
+      )
+      .transform((value) => value as SupportTopic),
     message: z
       .string()
       .trim()
@@ -92,7 +102,7 @@ export const supportRequestSchema = z
   })
   .superRefine((value, ctx) => {
     if (value.contact_method === 'email') {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.contact)) {
+      if (!EMAIL.test(value.contact)) {
         ctx.addIssue({ code: 'custom', path: ['contact'], message: 'Enter an email address.' });
       }
     } else if (!/^\d{10}$/.test(phoneDigits(value.contact))) {
@@ -134,6 +144,8 @@ export const INBOX_TAB_LABELS: Record<InboxTab, string> = {
 
 export type InboxFilters = {
   status?: InboxTab;
+  /** One restaurant's requests. */
+  restaurant?: string;
   /** 'me', 'none' or a team member's user id. */
   assignee?: string;
   priority?: SupportPriority;
@@ -148,9 +160,11 @@ const oneOf = <T extends string>(value: string | undefined, options: readonly T[
 /** The inbox's filters from the URL; anything unknown is dropped. */
 export function readInboxFilters(params: SearchParams): InboxFilters {
   const assignee = firstParam(params, 'assignee');
+  const restaurant = firstParam(params, 'restaurant');
   const page = Number(firstParam(params, 'page'));
   return {
     status: oneOf(firstParam(params, 'status'), INBOX_TABS),
+    restaurant: restaurant && UUID.test(restaurant) ? restaurant : undefined,
     assignee:
       assignee === 'me' || assignee === 'none' || (assignee && UUID.test(assignee))
         ? assignee

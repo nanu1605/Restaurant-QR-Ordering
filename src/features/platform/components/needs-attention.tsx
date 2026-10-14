@@ -36,6 +36,13 @@ const SEE_ALL: Partial<Record<AttentionGroupList['group'], string>> = {
   webhooks: '/super/webhooks?status=failed',
 };
 
+// Groups whose list holds more than the group (the inbox, every stuck restaurant):
+// their link doesn't promise the group's count.
+const SEE_ALL_LABELS: Partial<Record<AttentionGroupList['group'], string>> = {
+  support_open: 'Open the inbox',
+  stuck_onboarding: 'Every stuck restaurant',
+};
+
 const linkClass = 'font-medium text-brand underline-offset-4 hover:underline';
 const actionClass = buttonVariants({ variant: 'outline', className: 'h-11 md:h-8' });
 
@@ -197,7 +204,7 @@ function items(group: AttentionGroupList, linkDefaults: (row: DuesRow) => LinkDe
         <Row
           key={key}
           itemKey={key}
-          label={data.name}
+          label={`${data.name}, ${SUPPORT_TOPIC_LABELS[data.topic]}`}
           title={<RestaurantLink id={data.restaurant_id} name={data.name} />}
           details={[
             SUPPORT_TOPIC_LABELS[data.topic],
@@ -205,7 +212,11 @@ function items(group: AttentionGroupList, linkDefaults: (row: DuesRow) => LinkDe
             `Sent ${formatDateTime(data.created_at)}`,
           ]}
           action={
-            <Link href={`/super/support/${data.request_id}`} className={actionClass}>
+            <Link
+              href={`/super/support/${data.request_id}`}
+              aria-label={`Open the ${SUPPORT_TOPIC_LABELS[data.topic].toLowerCase()} request from ${data.name}`}
+              className={actionClass}
+            >
               Open
             </Link>
           }
@@ -337,7 +348,8 @@ export function NeedsAttention({
                       href={seeAll}
                       className="text-sm text-brand underline-offset-4 hover:underline"
                     >
-                      {more > 0 ? `See all ${group.count}` : 'See the list'}
+                      {SEE_ALL_LABELS[group.group] ??
+                        (more > 0 ? `See all ${group.count}` : 'See the list')}
                     </Link>
                   )}
                 </div>

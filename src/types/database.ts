@@ -2212,6 +2212,35 @@ export type Database = {
           },
         ]
       }
+      support_screenshot_uploads: {
+        Row: {
+          created_at: string
+          id: string
+          path: string
+          restaurant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          path: string
+          restaurant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          path?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_screenshot_uploads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_sessions: {
         Row: {
           approved_at: string | null
@@ -2547,6 +2576,10 @@ export type Database = {
       admin_set_waiter_on_duty: {
         Args: { p_on_duty: boolean; p_waiter_id: string }
         Returns: undefined
+      }
+      admin_start_screenshot_upload: {
+        Args: { p_extension: string }
+        Returns: string
       }
       admin_total_orders: { Args: { p_filters: Json }; Returns: Json }
       admin_unassign_waiter: { Args: { p_session_id: string }; Returns: Json }

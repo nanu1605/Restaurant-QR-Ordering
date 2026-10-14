@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -20,7 +22,8 @@ export async function listSupportRequests(filters: InboxFilters) {
  * works for an hour. The bucket has no storage policies, so the link is signed
  * with the service role after the platform admin's own read of the request.
  */
-export async function getSupportRequest(requestId: string) {
+// One read per request: the page's title and the page both ask.
+export const getSupportRequest = cache(async (requestId: string) => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('platform_get_support_request', {
     p_request_id: requestId,
@@ -39,4 +42,4 @@ export async function getSupportRequest(requestId: string) {
     screenshotUrl = signed.data?.signedUrl ?? null;
   }
   return { request, screenshotUrl };
-}
+});

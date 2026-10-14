@@ -108,8 +108,9 @@ export async function restaurantTab(page: Page, name: string) {
 }
 
 /**
- * A support request with an internal note, and the inbox's paths: the list
- * and the request (13b), for the sweeps over every super-admin page.
+ * A resolved support request with an internal note, and the inbox's paths:
+ * the list and the request (13b), for the sweeps over every super-admin page.
+ * Resolved, so the open ones of other tests stay on the inbox's first page.
  */
 export async function supportRequestPaths(prefix: string) {
   const restaurant = await createTestRestaurant({ prefix });
@@ -124,7 +125,9 @@ export async function supportRequestPaths(prefix: string) {
       message: 'The bill printer prints blank pages.',
       contact_method: 'whatsapp',
       contact: '9876543210',
-      context: { page: '/admin/bills', browser: 'Chrome' },
+      context: { page: '/admin/billing', browser: 'Chrome' },
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
     })
     .select('id')
     .single()

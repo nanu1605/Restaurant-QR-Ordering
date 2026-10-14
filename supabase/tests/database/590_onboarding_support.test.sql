@@ -192,6 +192,29 @@ select is_empty(
   'no storage policy mentions the screenshots bucket'
 );
 
+-- ─── Screenshot uploads: a name in the restaurant's folder, 20 an hour ───────
+insert into public.support_screenshot_uploads (restaurant_id, path, created_at)
+values (:'new', :'new' || '/old.png', now() - interval '2 days');
+select tests.authenticate_as(:'owner');
+select public.admin_start_screenshot_upload('png') as shot_path \gset
+select throws_ok($$select public.admin_start_screenshot_upload('gif')$$, 'P0001', 'INVALID_INPUT',
+  'an image type the bucket takes');
+select tests.clear_auth();
+select ok(:'shot_path' ~ ('^' || :'new' || '/[0-9a-f-]{36}\.png$'), 'in the restaurant''s folder');
+select tests.authenticate_as(:'waiter_login');
+select throws_ok($$select public.admin_start_screenshot_upload('png')$$, 'P0001', 'FORBIDDEN',
+  'not a waiter''s login');
+select tests.clear_auth();
+insert into public.support_screenshot_uploads (restaurant_id, path, created_at)
+select :'busy', :'busy' || '/' || gen_random_uuid() || '.png', now() - interval '10 minutes'
+from generate_series(1, 20);
+select tests.authenticate_as(:'busy_owner');
+select throws_ok($$select public.admin_start_screenshot_upload('jpg')$$, 'P0001', 'RATE_LIMITED',
+  'the 21st in an hour');
+select tests.clear_auth();
+select is((select count(*)::int from public.support_screenshot_uploads where path = :'new' || '/old.png'),
+  0, 'one a day old is forgotten');
+
 -- ─── Get help ───────────────────────────────────────────────────────────────
 insert into storage.objects (bucket_id, name)
 values ('support-screenshots', :'new' || '/00000000-0000-4000-8000-000000000590.png'),
@@ -220,6 +243,9 @@ select throws_ok($$select public.admin_create_support_request('{"topic": "menu",
   "contact_method": "call", "contact": "98765"}')$$, 'P0001', 'INVALID_INPUT', 'a 10-digit number');
 select throws_ok($$select public.admin_create_support_request('{"topic": "menu", "message": "Hi",
   "contact_method": "email", "contact": "owner"}')$$, 'P0001', 'INVALID_INPUT', 'an email address');
+select throws_ok($$select public.admin_create_support_request('{"topic": "menu", "message": "Hi",
+  "contact_method": "email", "contact": "me@x.co?bcc=a%40b.co"}')$$, 'P0001', 'INVALID_INPUT',
+  'a plain address, nothing more for a mailto link');
 select throws_ok($$select public.admin_create_support_request('{"topic": "menu", "message": "Hi",
   "contact_method": "call", "contact": "9876543210", "priority": "high"}')$$,
   'P0001', 'INVALID_INPUT', 'no priority from the restaurant');
@@ -406,12 +432,14 @@ select ok(not ('stuck_onboarding:' || :'other' =
 
 -- ─── Screenshots left behind ────────────────────────────────────────────────
 update storage.objects set created_at = now() - interval '2 days'
-where bucket_id = 'support-screenshots';
+where bucket_id = 'support-screenshots' and (name like :'new' || '/%' or name like :'other' || '/%');
 select tests.as_service_role();
-select is(array(select public.support_screenshots_to_remove()),
-  array[:'other' || '/00000000-0000-4000-8000-000000000591.png'],
-  'a day old and in no request');
+select array(select public.support_screenshots_to_remove(1000)) as to_remove \gset
 select tests.clear_auth();
+select ok(:'other' || '/00000000-0000-4000-8000-000000000591.png' = any(:'to_remove'::text[]),
+  'a day old and in no request');
+select ok(not (:'new' || '/00000000-0000-4000-8000-000000000590.png' = any(:'to_remove'::text[])),
+  'not one a request uses');
 select tests.authenticate_as(:'owner');
 select throws_ok('select public.support_screenshots_to_remove()', '42501', null,
   'the server''s only');

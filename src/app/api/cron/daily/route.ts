@@ -94,16 +94,22 @@ export async function GET(request: Request) {
       }
       return { deleted: paths.length };
     }),
+    // Pages of 500 until done (at most 10,000 a night).
     step(admin, 'support screenshot cleanup', async () => {
-      const { data: paths, error } = await admin.rpc('support_screenshots_to_remove', {
-        p_limit: 500,
-      });
-      if (error) throw new Error(error.message);
-      if (paths.length > 0) {
-        const removed = await admin.storage.from(SCREENSHOT_BUCKET).remove(paths);
-        if (removed.error) throw new Error(removed.error.message);
+      let deleted = 0;
+      for (let round = 0; round < 20; round++) {
+        const { data: paths, error } = await admin.rpc('support_screenshots_to_remove', {
+          p_limit: 500,
+        });
+        if (error) throw new Error(error.message);
+        if (paths.length > 0) {
+          const removed = await admin.storage.from(SCREENSHOT_BUCKET).remove(paths);
+          if (removed.error) throw new Error(removed.error.message);
+        }
+        deleted += paths.length;
+        if (paths.length < 500) break;
       }
-      return { deleted: paths.length };
+      return { deleted };
     }),
   ]);
   const ok = [

@@ -44,7 +44,12 @@ type Props = {
 export function GetHelpForm({ from, phone, email }: Props) {
   const id = useId();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [screenshot, setScreenshot] = useState<{ file: File; preview: string } | null>(null);
+  // `path` once uploaded, so sending again after an error doesn't upload it twice.
+  const [screenshot, setScreenshot] = useState<{
+    file: File;
+    preview: string;
+    path?: string;
+  } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const form = useForm<SupportRequestFields, unknown, SupportRequestInput>({
@@ -54,11 +59,13 @@ export function GetHelpForm({ from, phone, email }: Props) {
   const { errors, isSubmitting } = form.formState;
   const method = useWatch({ control: form.control, name: 'contact_method' });
 
+  // A preview's URL goes with its file (not when the upload's path is noted).
+  const preview = screenshot?.preview;
   useEffect(
     () => () => {
-      if (screenshot) URL.revokeObjectURL(screenshot.preview);
+      if (preview) URL.revokeObjectURL(preview);
     },
-    [screenshot],
+    [preview],
   );
 
   // The usual address for the way chosen, unless one was typed.
@@ -67,7 +74,13 @@ export function GetHelpForm({ from, phone, email }: Props) {
     const usual = (value: ContactMethod) => (value === 'email' ? email : phone) ?? '';
     form.setValue('contact_method', next);
     if (contact === '' || contact === usual(method)) form.setValue('contact', usual(next));
+    // An error about the old way would stay beside the new one until the next Send.
+    if (form.formState.isSubmitted) void form.trigger('contact');
   }
+
+  // The button that replaces the focused one takes the focus.
+  const focusLater = (target: 'add' | 'remove') =>
+    requestAnimationFrame(() => document.getElementById(`${id}-${target}`)?.focus());
 
   function pick(file: File | undefined) {
     setFileError(null);
@@ -78,13 +91,21 @@ export function GetHelpForm({ from, phone, email }: Props) {
       setFileError('Choose an image under 5 MB.');
     } else {
       setScreenshot({ file, preview: URL.createObjectURL(file) });
+      focusLater('remove');
     }
     if (fileRef.current) fileRef.current.value = '';
   }
 
+  function removeScreenshot() {
+    setScreenshot(null);
+    focusLater('add');
+  }
+
   async function submit(values: SupportRequestInput) {
     let screenshotPath: string | null = null;
-    if (screenshot) {
+    if (screenshot?.path) {
+      screenshotPath = screenshot.path;
+    } else if (screenshot) {
       setStatus('Uploading the screenshot…');
       const started = await startScreenshotUpload(screenshot.file.type);
       if (!started.ok) {
@@ -104,7 +125,11 @@ export function GetHelpForm({ from, phone, email }: Props) {
         });
         return;
       }
-      screenshotPath = started.data.path;
+      const path = started.data.path;
+      screenshotPath = path;
+      setScreenshot((current) =>
+        current?.file === screenshot.file ? { ...current, path } : current,
+      );
     }
     setStatus('Sending…');
     const result = await createSupportRequest({ ...values, screenshotPath, from });
@@ -178,10 +203,11 @@ export function GetHelpForm({ from, phone, email }: Props) {
               className="max-h-40 max-w-full rounded-md border border-line object-contain"
             />
             <Button
+              id={`${id}-remove`}
               type="button"
               variant="outline"
               size="touch"
-              onClick={() => setScreenshot(null)}
+              onClick={removeScreenshot}
             >
               <X aria-hidden /> Remove screenshot
             </Button>
@@ -194,11 +220,14 @@ export function GetHelpForm({ from, phone, email }: Props) {
               type="file"
               accept={Object.keys(SCREENSHOT_TYPES).join(',')}
               className="sr-only"
+              // The button below is the one stop for the keyboard.
+              tabIndex={-1}
               aria-labelledby={`${id}-shot`}
               aria-describedby={`${id}-shot-hint`}
               onChange={(event) => pick(event.target.files?.[0])}
             />
             <Button
+              id={`${id}-add`}
               type="button"
               variant="outline"
               size="touch"
@@ -262,11 +291,10 @@ export function GetHelpForm({ from, phone, email }: Props) {
         </p>
       )}
       <div className="flex flex-wrap items-center justify-end gap-3">
-        {status && (
-          <p role="status" className="text-sm text-ink-muted">
-            {status}
-          </p>
-        )}
+        {/* Always there, so screen readers announce what it says. */}
+        <p role="status" className="text-sm text-ink-muted">
+          {status}
+        </p>
         <Button type="submit" size="touch" disabled={isSubmitting}>
           {isSubmitting ? 'Sending…' : 'Send'}
         </Button>

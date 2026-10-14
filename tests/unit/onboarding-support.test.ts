@@ -70,10 +70,19 @@ describe('Get help', () => {
       contact: '9876543210',
     });
     expect(result.success).toBe(false);
+    // Every mistake at once, the contact's too while no topic is chosen.
     expect(result.error?.issues.map((issue) => [issue.path[0], issue.message])).toEqual([
       ['topic', 'Choose what it is about.'],
       ['message', 'Say what you need help with.'],
+      ['contact', 'Enter an email address.'],
     ]);
+    expect(
+      supportRequestSchema.safeParse({
+        ...request,
+        contact_method: 'email',
+        contact: 'me@x.co?bcc=a%40b.co',
+      }).success,
+    ).toBe(false);
     expect(
       supportRequestSchema.safeParse({ ...request, contact_method: 'email' }).error?.issues[0]
         ?.message,
@@ -110,14 +119,16 @@ describe('the inbox', () => {
     expect(
       readInboxFilters({ status: 'waiting', assignee: 'me', priority: 'high', topic: 'menu' }),
     ).toEqual({ status: 'waiting', assignee: 'me', priority: 'high', topic: 'menu', page: 1 });
-    expect(readInboxFilters({ assignee: UUID, page: '3' })).toMatchObject({
+    expect(readInboxFilters({ assignee: UUID, restaurant: UUID, page: '3' })).toMatchObject({
       assignee: UUID,
+      restaurant: UUID,
       page: 3,
     });
     expect(
       readInboxFilters({ status: 'closed', assignee: 'someone', priority: 'urgent', page: '0' }),
     ).toEqual({
       status: undefined,
+      restaurant: undefined,
       assignee: undefined,
       priority: undefined,
       topic: undefined,

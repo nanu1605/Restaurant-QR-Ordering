@@ -93,6 +93,7 @@ export default async function SupportInboxPage({ searchParams }: PageProps<'/sup
         className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-3 lg:grid-cols-4"
       >
         {filters.status && <input type="hidden" name="status" value={filters.status} />}
+        {filters.restaurant && <input type="hidden" name="restaurant" value={filters.restaurant} />}
         <label className={LABEL_CLASS}>
           Assignee
           <select name="assignee" defaultValue={filters.assignee ?? ''} className={SELECT_CLASS}>

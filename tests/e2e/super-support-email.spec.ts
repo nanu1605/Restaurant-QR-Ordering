@@ -53,5 +53,10 @@ test('a new request emails the support address', async ({ page, request }) => {
       .from('platform_settings')
       .update({ support_email: settings?.support_email ?? null })
       .eq('id', 1);
+    // Out of the inbox's open work, which other tests page through.
+    await admin
+      .from('support_requests')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('restaurant_id', restaurant.restaurantId);
   }
 });

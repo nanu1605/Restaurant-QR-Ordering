@@ -209,6 +209,7 @@ select set_eq(
       ('public.platform_set_account_manager'),
       -- Onboarding and support (13b)
       ('public.admin_onboarding'),
+      ('public.admin_start_screenshot_upload'),
       ('public.admin_create_support_request'),
       ('public.admin_list_support_requests'),
       ('public.platform_list_support_requests'),
@@ -258,7 +259,7 @@ from unnest(array[
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
   'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-  'support_request_events'
+  'support_request_events', 'support_screenshot_uploads'
 ]) as t;
 
 select is_empty(
@@ -271,7 +272,7 @@ select is_empty(
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
       'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-      'support_request_events'
+      'support_request_events', 'support_screenshot_uploads'
     ]) as t
     where not exists (
       select 1

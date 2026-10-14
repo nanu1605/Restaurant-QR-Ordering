@@ -1,7 +1,5 @@
 'use server';
 
-import { randomUUID } from 'node:crypto';
-
 import { refresh } from 'next/cache';
 import { after } from 'next/server';
 import { headers } from 'next/headers';
@@ -38,10 +36,22 @@ import {
 export async function startScreenshotUpload(
   type: string,
 ): Promise<ActionResult<{ path: string; token: string }>> {
-  const membership = await requireMember(ADMIN_PANEL_ROLES);
+  await requireMember(ADMIN_PANEL_ROLES);
   const extension = SCREENSHOT_TYPES[type as ScreenshotType];
   if (!extension) return actionError('Choose a PNG, JPEG or WebP image.');
-  const path = `${membership.restaurant.id}/${randomUUID()}.${extension}`;
+  // A new name in the restaurant's folder, 20 an hour (docs/DECISIONS.md SA-42).
+  const supabase = await createClient();
+  const { data: path, error } = await supabase.rpc('admin_start_screenshot_upload', {
+    p_extension: extension,
+  });
+  if (error) {
+    if (dbErrorCode(error) === 'RATE_LIMITED') {
+      return actionError(
+        'That is a lot of screenshots in an hour. Send it without one, or call us.',
+      );
+    }
+    return fromDbError(error, 'admin_start_screenshot_upload');
+  }
   const signed = await createAdminClient()
     .storage.from(SCREENSHOT_BUCKET)
     .createSignedUploadUrl(path);
