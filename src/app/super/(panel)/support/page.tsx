@@ -167,15 +167,15 @@ export default async function SupportInboxPage({ searchParams }: PageProps<'/sup
                   <TableHead>Restaurant</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Assignee</TableHead>
                   <TableHead>Age</TableHead>
+                  <TableHead>Assignee</TableHead>
                   <TableHead>Last change</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {inbox.rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="max-w-96 whitespace-normal">
+                    <TableCell className="max-w-96 min-w-64 whitespace-normal">
                       <RequestLink row={row} />
                       <p className="line-clamp-2 text-sm text-ink-muted">
                         {row.more ? `${row.message}…` : row.message}
@@ -193,12 +193,12 @@ export default async function SupportInboxPage({ searchParams }: PageProps<'/sup
                     <TableCell>
                       <PriorityBadge priority={row.priority} />
                     </TableCell>
-                    <TableCell>{row.assignee ?? '—'}</TableCell>
                     <TableCell className="tabular-nums">
                       <span title={formatDateTime(row.created_at)}>
                         {requestAge(row.created_at)}
                       </span>
                     </TableCell>
+                    <TableCell>{row.assignee ?? '—'}</TableCell>
                     <TableCell className="tabular-nums">{formatDateTime(row.updated_at)}</TableCell>
                   </TableRow>
                 ))}
