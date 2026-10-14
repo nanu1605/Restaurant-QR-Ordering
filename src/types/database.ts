@@ -1238,10 +1238,44 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_saved_views: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          page: string
+          query: string
+          shared: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          page: string
+          query: string
+          shared?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          page?: string
+          query?: string
+          shared?: boolean
+        }
+        Relationships: []
+      }
       platform_settings: {
         Row: {
           created_at: string
           grace_days: number
+          health_inactive_days: number
+          health_setup_days: number
+          health_slowing_min_orders: number
+          health_slowing_percent: number
           id: number
           setup_fee_discount_ends_at: string | null
           setup_fee_discount_paise: number
@@ -1254,6 +1288,10 @@ export type Database = {
         Insert: {
           created_at?: string
           grace_days?: number
+          health_inactive_days?: number
+          health_setup_days?: number
+          health_slowing_min_orders?: number
+          health_slowing_percent?: number
           id?: number
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
@@ -1266,6 +1304,10 @@ export type Database = {
         Update: {
           created_at?: string
           grace_days?: number
+          health_inactive_days?: number
+          health_setup_days?: number
+          health_slowing_min_orders?: number
+          health_slowing_percent?: number
           id?: number
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
@@ -2384,6 +2426,7 @@ export type Database = {
         Returns: Json
       }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_delete_view: { Args: { p_id: string }; Returns: undefined }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2423,6 +2466,16 @@ export type Database = {
         Args: { p_restaurant_ids: string[] }
         Returns: Json
       }
+      platform_save_view: {
+        Args: {
+          p_name: string
+          p_page: string
+          p_query: string
+          p_shared: boolean
+        }
+        Returns: string
+      }
+      platform_search: { Args: { p_q: string }; Returns: Json }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json

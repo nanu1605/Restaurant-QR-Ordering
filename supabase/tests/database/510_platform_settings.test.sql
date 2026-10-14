@@ -25,7 +25,8 @@ select public.platform_update_settings('{
   "support_phone": " +91 98765  43210 ", "support_email": "help@menumesh.test"
 }') as updated \gset
 select is(
-  :'updated'::jsonb,
+  -- The health thresholds (stop 12d) are 560's.
+  :'updated'::jsonb - array['health_setup_days', 'health_inactive_days', 'health_slowing_percent', 'health_slowing_min_orders'],
   '{"trial_days": 21, "grace_days": 5, "setup_fee_paise": 149900, "setup_fee_discount_paise": 0,
     "setup_fee_discount_ends_at": "2026-12-31T18:30:00+00:00", "support_phone": "+91 98765 43210",
     "support_email": "help@menumesh.test"}'::jsonb,
@@ -64,7 +65,8 @@ select is(
 );
 select is(
   public.platform_update_settings('{"support_phone": " ", "support_email": null, "setup_fee_discount_ends_at": null}')
-    - array['trial_days', 'grace_days', 'setup_fee_paise', 'setup_fee_discount_paise'],
+    - array['trial_days', 'grace_days', 'setup_fee_paise', 'setup_fee_discount_paise']
+    - array['health_setup_days', 'health_inactive_days', 'health_slowing_percent', 'health_slowing_min_orders'],
   '{"support_phone": null, "support_email": null, "setup_fee_discount_ends_at": null}'::jsonb,
   'blank or null clears the contacts and the end'
 );
