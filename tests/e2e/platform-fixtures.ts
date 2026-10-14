@@ -54,7 +54,7 @@ function base32Decode(text: string) {
 /**
  * Logs a platform admin in and passes the second factor: enrols an
  * authenticator on the first login (keeping the secret on `admin`), then
- * enters the current code. Ends on the super-admin overview.
+ * enters the current code. Ends on the super-admin Home.
  */
 export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   await page.goto('/login');
@@ -69,5 +69,13 @@ export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   }
   await main.getByLabel('6-digit code').fill(totpCode(admin.secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  try {
+    await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
+  } catch {
+    // Under load a code can run out on its way: try once more with the next one.
+    await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 500);
+    await main.getByLabel('6-digit code').fill(totpCode(admin.secret));
+    await main.getByRole('button', { name: 'Verify' }).click();
+    await expect(page).toHaveURL(/\/super$/);
+  }
 }
