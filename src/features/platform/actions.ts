@@ -27,7 +27,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { onboardRestaurant, OnboardError } from './onboard';
-import { getPlatformSettings, getRestaurantDetail } from './queries';
+import { getPlatformSettings, getRestaurantDetail, getSetupFee } from './queries';
 import { discountEndsAt, discountLastDay } from './setup-fee';
 import {
   changePlanSchema,
@@ -146,6 +146,23 @@ export async function recordManualPayment(
   if (!parsed.success) return fromZodError(parsed.error);
 
   const supabase = await createClient();
+  if (parsed.data.purpose === 'setup_fee') {
+    // The fee and discount in force, so launch-offer use can be counted (SA-8).
+    const fee = await getSetupFee();
+    const { error } = await supabase.rpc('platform_record_setup_fee', {
+      p_restaurant_id: id.data,
+      p_payment: {
+        amount_paise: parsePriceInput(parsed.data.amount),
+        mode: parsed.data.mode,
+        notes: parsed.data.notes || null,
+        list_price_paise: fee.feePaise,
+        discount_paise: fee.discountPaise,
+      },
+    });
+    if (error) return fromDbError(error, 'platform_record_setup_fee');
+    refresh();
+    return actionOk({ extended: false });
+  }
   const { data, error } = await supabase.rpc('platform_record_manual_payment', {
     p_restaurant_id: id.data,
     p_payment: {
@@ -425,6 +442,9 @@ export async function sendPaymentLink(
   }
 
   const amountPaise = parsePriceInput(parsed.data.amount) as number;
+  // A setup fee link carries the fee and discount in force; the paid webhook
+  // stores them with the payment (SA-8).
+  const fee = purpose === 'setup_fee' ? await getSetupFee() : null;
   const owner = detail.owners.find((o) => o.is_active && o.email_is_real && o.email);
   const email = detail.restaurant.email ?? owner?.email ?? undefined;
   const contact = detail.restaurant.phone ?? undefined;
@@ -436,7 +456,12 @@ export async function sendPaymentLink(
       notes:
         purpose === 'subscription'
           ? { restaurant_id: id.data, purpose, months: String(months) }
-          : { restaurant_id: id.data, purpose },
+          : {
+              restaurant_id: id.data,
+              purpose,
+              list_price_paise: String(fee!.feePaise),
+              discount_paise: String(fee!.discountPaise),
+            },
       customer: { name: detail.restaurant.name, email, contact },
     });
   } catch (error) {

@@ -27,19 +27,39 @@ function authorised(request: Request): boolean {
   return timingSafeEqual(digest(header), digest(`Bearer ${secret}`));
 }
 
-/** Runs one step; a failure is logged and doesn't stop the others. Null when it failed. */
-async function step<T>(name: string, run: () => Promise<T>): Promise<T | null> {
+type Admin = ReturnType<typeof createAdminClient>;
+
+/**
+ * Runs one step and records it in cron_runs (docs/DECISIONS.md SA-11); a
+ * failure is logged and doesn't stop the others. Null when it failed.
+ */
+async function step<T>(admin: Admin, name: string, run: () => Promise<T>): Promise<T | null> {
+  const startedAt = new Date().toISOString();
+  let result: T | null = null;
+  let detail: string;
   try {
-    return await run();
+    result = await run();
+    detail = JSON.stringify(result ?? null);
   } catch (error) {
     console.error(`[cron/daily] ${name} failed`, error);
-    return null;
+    detail = error instanceof Error ? error.message : String(error);
   }
+  const logged = await admin.from('cron_runs').insert({
+    job: 'daily',
+    step: name,
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    ok: result !== null,
+    detail: detail.slice(0, 2000),
+  });
+  if (logged.error) console.error(`[cron/daily] could not log ${name}`, logged.error.message);
+  return result;
 }
 
 /**
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
- * docs/DECISIONS.md P7-20, P8-12, HN-8): menu import photo cleanup,
+ * docs/DECISIONS.md P7-20, P8-12, HN-8): the super-admin snapshots (SA-9),
+ * first, before signups are cleaned up; then menu import photo cleanup,
  * subscription reminder emails (skipped until Resend is set up), Hindi
  * names that menu edits didn't fill (skipped without a menu import key),
  * website signups older than a week (W-9), password resets older than a day
@@ -53,26 +73,32 @@ export async function GET(request: Request) {
   const email = emailConfig();
   if (!email) console.warn('[cron/daily] reminders skipped: RESEND_API_KEY or EMAIL_FROM not set');
 
+  // Counts today's signups before the cleanup below can delete any.
+  const snapshot = await step(admin, 'metrics snapshot', async () => {
+    const { data, error } = await admin.rpc('platform_metrics_snapshot', {});
+    if (error) throw new Error(error.message);
+    return data;
+  });
   const [menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos] =
     await Promise.all([
-      step('menu import cleanup', () => removeOldImportPhotos(admin)),
+      step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
       email
-        ? step('reminders', () =>
+        ? step(admin, 'reminders', () =>
             sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL),
           )
         : Promise.resolve({ skipped: true }),
-      step('hindi names', () => fillHindiNames(admin, null, 500)),
-      step('signup cleanup', async () => {
+      step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
+      step(admin, 'signup cleanup', async () => {
         const { data, error } = await admin.rpc('site_signups_cleanup');
         if (error) throw new Error(error.message);
         return { deleted: data };
       }),
-      step('password reset cleanup', async () => {
+      step(admin, 'password reset cleanup', async () => {
         const { data, error } = await admin.rpc('password_resets_cleanup');
         if (error) throw new Error(error.message);
         return { deleted: data };
       }),
-      step('storefront photo cleanup', async () => {
+      step(admin, 'storefront photo cleanup', async () => {
         const { data: paths, error } = await admin.rpc('storefront_photos_to_remove', {
           p_limit: 500,
         });
@@ -84,11 +110,17 @@ export async function GET(request: Request) {
         return { deleted: paths.length };
       }),
     ]);
-  const ok = [menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos].every(
-    (result) => result !== null,
-  );
+  const ok = [
+    snapshot,
+    menuImports,
+    reminders,
+    hindiNames,
+    signups,
+    passwordResets,
+    storefrontPhotos,
+  ].every((result) => result !== null);
   return NextResponse.json(
-    { ok, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos },
+    { ok, snapshot, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos },
     { status: ok ? 200 : 500, headers: noStore },
   );
 }

@@ -40,6 +40,8 @@ const dateSchema = z.string().refine(isDate, 'Choose a date.');
 
 export const manualPaymentSchema = z
   .object({
+    // A setup fee has no billing cycle or period (docs/DECISIONS.md SA-8).
+    purpose: z.enum(['subscription', 'setup_fee']).default('subscription'),
     amount: z
       .string()
       .trim()
@@ -50,7 +52,7 @@ export const manualPaymentSchema = z
     periodEnd: dateSchema,
     notes: z.string().trim().max(500, 'Use 500 characters or fewer.'),
   })
-  .refine((value) => value.periodEnd >= value.periodStart, {
+  .refine((value) => value.purpose === 'setup_fee' || value.periodEnd >= value.periodStart, {
     path: ['periodEnd'],
     message: 'The last day is on or after the first.',
   });

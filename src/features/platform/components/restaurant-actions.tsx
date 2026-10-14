@@ -45,7 +45,8 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { withGst } from '@/features/subscriptions/gst';
+import { parsePriceInput } from '@/features/menu/schemas';
+import { splitGst, withGst } from '@/features/subscriptions/gst';
 import type { ActionResult } from '@/lib/action-result';
 import { APP_NAME } from '@/lib/config';
 import { formatINR } from '@/lib/money';
@@ -415,10 +416,12 @@ function ManualPaymentForm({
     setError,
     setValue,
     getValues,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<ManualPaymentInput>({
     resolver: zodResolver(manualPaymentSchema),
     defaultValues: {
+      purpose: 'subscription',
       amount: '',
       mode: 'bank_transfer',
       billingCycle: 'monthly',
@@ -437,10 +440,17 @@ function ManualPaymentForm({
     }
   };
 
+  const purpose = useWatch({ control, name: 'purpose' });
+  // The team enters what was received; the split is shown as it will be stored.
+  const amountPaise = parsePriceInput(useWatch({ control, name: 'amount' }) ?? '') ?? 0;
+  const split = amountPaise > 0 ? splitGst(amountPaise) : null;
+
   const onSubmit = handleSubmit(async (values) => {
     const result = await recordManualPayment(restaurantId, values);
     if (!applyResult(result, setError)) return;
-    if (result.ok && !result.data.extended) {
+    if (values.purpose === 'setup_fee') {
+      toast.success('Setup fee recorded');
+    } else if (result.ok && !result.data.extended) {
       toast.success('Payment recorded. That period was already covered, so access is unchanged.');
     } else {
       toast.success('Payment recorded');
@@ -450,16 +460,30 @@ function ManualPaymentForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      <Field data-invalid={errors.purpose ? true : undefined}>
+        <FieldLabel htmlFor={`${ids}-purpose`}>For</FieldLabel>
+        <select id={`${ids}-purpose`} className={SELECT_CLASS} {...register('purpose')}>
+          <option value="subscription">Subscription</option>
+          <option value="setup_fee">Setup fee</option>
+        </select>
+        <FieldError errors={[errors.purpose]} />
+      </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field data-invalid={errors.amount ? true : undefined}>
-          <FieldLabel htmlFor={`${ids}-amount`}>Amount (₹)</FieldLabel>
+          <FieldLabel htmlFor={`${ids}-amount`}>Amount received, with GST (₹)</FieldLabel>
           <Input
             id={`${ids}-amount`}
             inputMode="decimal"
             className="h-9"
-            placeholder="899"
+            placeholder="1060.82"
+            aria-describedby={split ? `${ids}-split` : undefined}
             {...register('amount')}
           />
+          {split && (
+            <FieldDescription id={`${ids}-split`} className="tabular-nums">
+              {formatINR(split.basePaise)} + GST {formatINR(split.gstPaise)}
+            </FieldDescription>
+          )}
           <FieldError errors={[errors.amount]} />
         </Field>
         <Field data-invalid={errors.mode ? true : undefined}>
@@ -474,40 +498,44 @@ function ManualPaymentForm({
           <FieldError errors={[errors.mode]} />
         </Field>
       </div>
-      <Field data-invalid={errors.billingCycle ? true : undefined}>
-        <FieldLabel htmlFor={`${ids}-cycle`}>Billing cycle</FieldLabel>
-        <select
-          id={`${ids}-cycle`}
-          className={SELECT_CLASS}
-          {...register('billingCycle', { onChange: refillEnd })}
-        >
-          <option value="monthly">Monthly</option>
-          <option value="yearly">Yearly</option>
-        </select>
-        <FieldError errors={[errors.billingCycle]} />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field data-invalid={errors.periodStart ? true : undefined}>
-          <FieldLabel htmlFor={`${ids}-start`}>First day</FieldLabel>
-          <Input
-            id={`${ids}-start`}
-            type="date"
-            className="h-9"
-            {...register('periodStart', { onChange: refillEnd })}
-          />
-          <FieldError errors={[errors.periodStart]} />
-        </Field>
-        <Field data-invalid={errors.periodEnd ? true : undefined}>
-          <FieldLabel htmlFor={`${ids}-end`}>Last day</FieldLabel>
-          <Input
-            id={`${ids}-end`}
-            type="date"
-            className="h-9"
-            {...register('periodEnd', { onChange: () => setEndEdited(true) })}
-          />
-          <FieldError errors={[errors.periodEnd]} />
-        </Field>
-      </div>
+      {purpose !== 'setup_fee' && (
+        <>
+          <Field data-invalid={errors.billingCycle ? true : undefined}>
+            <FieldLabel htmlFor={`${ids}-cycle`}>Billing cycle</FieldLabel>
+            <select
+              id={`${ids}-cycle`}
+              className={SELECT_CLASS}
+              {...register('billingCycle', { onChange: refillEnd })}
+            >
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <FieldError errors={[errors.billingCycle]} />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field data-invalid={errors.periodStart ? true : undefined}>
+              <FieldLabel htmlFor={`${ids}-start`}>First day</FieldLabel>
+              <Input
+                id={`${ids}-start`}
+                type="date"
+                className="h-9"
+                {...register('periodStart', { onChange: refillEnd })}
+              />
+              <FieldError errors={[errors.periodStart]} />
+            </Field>
+            <Field data-invalid={errors.periodEnd ? true : undefined}>
+              <FieldLabel htmlFor={`${ids}-end`}>Last day</FieldLabel>
+              <Input
+                id={`${ids}-end`}
+                type="date"
+                className="h-9"
+                {...register('periodEnd', { onChange: () => setEndEdited(true) })}
+              />
+              <FieldError errors={[errors.periodEnd]} />
+            </Field>
+          </div>
+        </>
+      )}
       <Field data-invalid={errors.notes ? true : undefined}>
         <FieldLabel htmlFor={`${ids}-notes`}>Notes</FieldLabel>
         <Textarea

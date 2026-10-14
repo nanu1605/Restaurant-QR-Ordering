@@ -345,7 +345,22 @@ test('the daily cleanup deletes old import photos and refuses callers without th
 
   const response = await request.get('/api/cron/daily', { headers: secret });
   expect(response.status()).toBe(200);
-  expect((await response.json()).menuImports.imports).toBeGreaterThanOrEqual(1);
+  const body = await response.json();
+  expect(body.menuImports.imports).toBeGreaterThanOrEqual(1);
+  // The super-admin snapshot runs first, and every step is logged (SA-9, SA-11).
+  expect(body.snapshot.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  const { data: logged } = await db
+    .from('cron_runs')
+    .select('step, ok')
+    .eq('job', 'daily')
+    .gte('started_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .throwOnError();
+  expect(logged).toEqual(
+    expect.arrayContaining([
+      { step: 'metrics snapshot', ok: true },
+      { step: 'menu import cleanup', ok: true },
+    ]),
+  );
 
   const { data: row } = await db
     .from('menu_imports')
