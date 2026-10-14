@@ -121,3 +121,30 @@ test('without consent the team stays out, and a session ends on time', async ({ 
   await page.goto('/admin/menu');
   await expect(page).toHaveURL(/\/super$/);
 });
+
+test('in person, onboarding starts a 24-hour setup session', async ({ page }) => {
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('setup'));
+  await page.goto('/super/restaurants/new');
+  const main = page.getByRole('main');
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  await main.getByLabel('Restaurant name').fill(`Setup Dhaba ${id}`);
+  await main.getByLabel('How did they find MenuMesh?').selectOption({ label: 'Field visit' });
+  await main.getByRole('button', { name: 'Next' }).click();
+  await main.getByLabel("Owner's name").fill('Meera Shah');
+  await main.getByRole('button', { name: 'Next' }).click();
+  await main.getByRole('button', { name: 'Next' }).click();
+
+  await main
+    .getByRole('checkbox', { name: /The owner agrees that MenuMesh may set up the restaurant/ })
+    .check();
+  await main.getByRole('button', { name: 'Create restaurant' }).click();
+  await expect(main.getByText('Enter your name, as the restaurant will see it.')).toBeVisible();
+  await main.getByLabel('Your name').fill('Asha');
+  await main.getByRole('button', { name: 'Create restaurant' }).click();
+
+  await main.getByRole('link', { name: 'Set up in admin panel' }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole('status').filter({ hasText: 'Support session in' })).toContainText(
+    `Support session in Setup Dhaba ${id}. Ends at`,
+  );
+});
