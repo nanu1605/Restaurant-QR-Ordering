@@ -550,6 +550,27 @@ revoke execute on function private.end_support_sessions_of_removed_admin()
 create trigger end_support_sessions after delete on public.platform_admins
   for each row execute function private.end_support_sessions_of_removed_admin();
 
+-- Deleting the team member's login can null user_id before the trigger above
+-- matches it: a session that loses its team member ends there too.
+create function private.end_support_session_without_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.user_id is null and old.user_id is not null and new.ended_at is null then
+    new.ended_at := least(now(), new.ends_at);
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.end_support_session_without_user()
+  from public, anon, authenticated;
+create trigger end_support_session_without_user before update of user_id
+  on public.support_sessions
+  for each row execute function private.end_support_session_without_user();
+
 -- Daily cron: windows that ran out are closed (access already ended on time;
 -- this only tidies them up).
 create function public.support_sessions_close_expired()
@@ -2961,6 +2982,14 @@ begin
       perform private.fail('SUPPORT_REFUSED', v_key);
     end if;
   end if;
+  -- A logo replaced under the same name changes no column; a session's is
+  -- still listed for the owner (SA-50).
+  if v_after is null and p_patch ? 'logo_path' then
+    perform private.audit_support(
+      v_ctx, 'settings.logo_replaced', 'restaurant', v_ctx.restaurant_id,
+      jsonb_build_object('logo_path', v_new.logo_path)
+    );
+  end if;
 
   if v_after is not null then
     perform private.audit_as(
@@ -3306,6 +3335,181 @@ begin
   );
   return v_counts;
 end;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.activity(p_restaurant_id uuid, p_kinds text[], p_before_at timestamp with time zone, p_before_key text, p_limit integer, p_money boolean)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  with params as (
+    select
+      coalesce(p_before_at, 'infinity'::timestamptz) as before_at,
+      coalesce(p_before_key, '') as before_key,
+      -- The newest snapshot day a lapse below the cursor can be on.
+      coalesce((p_before_at at time zone 'Asia/Kolkata')::date,
+        (now() at time zone 'Asia/Kolkata')::date) as lapse_to
+  ),
+  items as (
+    (select k.kind, r.created_at as at, 'restaurant:' || r.id as key, r.id as restaurant_id,
+      null::uuid as actor_id,
+      jsonb_build_object('city', r.city, 'channel', r.acquisition_channel) as data
+    from public.restaurants r
+    cross join params pr
+    cross join lateral (
+      select case when exists (select 1 from public.trial_claims c where c.restaurant_id = r.id)
+        then 'signup' else 'onboarded' end as kind
+    ) as k
+    where k.kind = any(p_kinds)
+      and (p_restaurant_id is null or r.id = p_restaurant_id)
+      and r.created_at <= pr.before_at
+      and (r.created_at, 'restaurant:' || r.id) < (pr.before_at, pr.before_key)
+    order by r.created_at desc, 'restaurant:' || r.id desc
+    limit p_limit)
+    union all
+    (select 'payment', p.created_at, 'payment:' || p.id, p.restaurant_id, p.recorded_by,
+      jsonb_build_object(
+        'purpose', p.purpose,
+        'method', case p.source
+          when 'razorpay' then 'autopay'
+          when 'payment_link' then 'payment_link'
+          else p.manual_mode::text
+        end,
+        'base_paise', case when p_money then p.base_paise end,
+        'gst_paise', case when p_money then p.gst_paise end
+      )
+    from public.subscription_payments p, params pr
+    where 'payment' = any(p_kinds)
+      and (p_restaurant_id is null or p.restaurant_id = p_restaurant_id)
+      and p.created_at <= pr.before_at
+      and (p.created_at, 'payment:' || p.id) < (pr.before_at, pr.before_key)
+    order by p.created_at desc, 'payment:' || p.id desc
+    limit p_limit)
+    union all
+    -- A Razorpay charge that failed: the webhook moved the subscription into
+    -- retrying.
+    (select 'payment_failed', a.created_at, 'audit:' || a.id, a.restaurant_id, null::uuid,
+      jsonb_build_object('grace_until', a.after -> 'grace_until')
+    from public.audit_logs a, params pr
+    where 'payment_failed' = any(p_kinds)
+      and a.action = 'subscription.razorpay_updated'
+      and a.after ->> 'status' in ('past_due', 'halted')
+      and coalesce(a.before ->> 'status', '') not in ('past_due', 'halted')
+      and (p_restaurant_id is null or a.restaurant_id = p_restaurant_id)
+      and a.created_at <= pr.before_at
+      and (a.created_at, 'audit:' || a.id) < (pr.before_at, pr.before_key)
+    order by a.created_at desc, 'audit:' || a.id desc
+    limit p_limit)
+    union all
+    -- Became read-only for not paying, by the night's snapshot: at the end of
+    -- that India day. Read-only days are walked newest first
+    -- (metrics_subscription_daily_read_only_idx), each checked against the day
+    -- before.
+    (select 'lapsed', (m.day + 1)::timestamp at time zone 'Asia/Kolkata',
+      'lapsed:' || m.restaurant_id || ':' || m.day, m.restaurant_id, null::uuid,
+      jsonb_build_object('day', m.day, 'was', p.state)
+    from public.metrics_subscription_daily m
+    join public.metrics_subscription_daily p
+      on p.restaurant_id = m.restaurant_id and p.day = m.day - 1
+    cross join params pr
+    where 'lapsed' = any(p_kinds)
+      and m.state = 'read_only' and p.state <> 'read_only'
+      and m.day <= pr.lapse_to
+      and (p_restaurant_id is null or m.restaurant_id = p_restaurant_id)
+      and ((m.day + 1)::timestamp at time zone 'Asia/Kolkata', 'lapsed:' || m.restaurant_id || ':' || m.day)
+        < (pr.before_at, pr.before_key)
+    order by m.day desc, m.restaurant_id desc
+    limit p_limit)
+    union all
+    (select 'reminder', sr.sent_at, 'reminder:' || sr.id, sr.restaurant_id, null::uuid,
+      jsonb_build_object('reminder', sr.kind)
+    from public.subscription_reminders sr, params pr
+    where 'reminder' = any(p_kinds)
+      and (p_restaurant_id is null or sr.restaurant_id = p_restaurant_id)
+      and sr.sent_at <= pr.before_at
+      and (sr.sent_at, 'reminder:' || sr.id) < (pr.before_at, pr.before_key)
+    order by sr.sent_at desc, 'reminder:' || sr.id desc
+    limit p_limit)
+    union all
+    (select 'lead', l.created_at, 'lead:' || l.id, null::uuid, null::uuid,
+      jsonb_build_object(
+        'lead_id', l.id, 'name', l.name, 'restaurant_name', l.restaurant_name, 'city', l.city
+      )
+    from public.site_leads l, params pr
+    where 'lead' = any(p_kinds) and p_restaurant_id is null
+      and l.created_at <= pr.before_at
+      and (l.created_at, 'lead:' || l.id) < (pr.before_at, pr.before_key)
+    order by l.created_at desc, 'lead:' || l.id desc
+    limit p_limit)
+    union all
+    (select 'menu_import', mi.completed_at, 'import:' || mi.id, mi.restaurant_id, mi.created_by,
+      jsonb_build_object(
+        'import_id', mi.id, 'status', mi.status, 'source', mi.source,
+        'counts', mi.imported_counts
+      )
+    from public.menu_imports mi, params pr
+    where 'menu_import' = any(p_kinds)
+      and mi.status in ('imported', 'failed') and mi.completed_at is not null
+      and (p_restaurant_id is null or mi.restaurant_id = p_restaurant_id)
+      and mi.completed_at <= pr.before_at
+      and (mi.completed_at, 'import:' || mi.id) < (pr.before_at, pr.before_key)
+    order by mi.completed_at desc, 'import:' || mi.id desc
+    limit p_limit)
+    union all
+    -- What the team did, less what the other kinds already show.
+    (select 'team', a.created_at, 'audit:' || a.id, a.restaurant_id, a.actor_user_id,
+      jsonb_build_object('action', a.action, 'reason', a.reason)
+    from public.audit_logs a, params pr
+    where 'team' = any(p_kinds)
+      and a.actor_type = 'platform_admin'
+      and a.action not in ('subscription.payment_recorded', 'restaurant.created', 'menu.imported')
+      and coalesce(a.entity_type, '') <> 'restaurant_note'
+      -- A support session's edits are listed for the owner and in the audit
+      -- log; the stream shows the session starting and ending (SA-50).
+      and a.support_session_id is null
+      and (p_restaurant_id is null or a.restaurant_id = p_restaurant_id)
+      and a.created_at <= pr.before_at
+      and (a.created_at, 'audit:' || a.id) < (pr.before_at, pr.before_key)
+    order by a.created_at desc, 'audit:' || a.id desc
+    limit p_limit)
+    union all
+    -- The team's notes on a restaurant (SA-38): a note is itself the item,
+    -- so its audit rows aren't team items too.
+    (select 'note', n.created_at, 'note:' || n.id, n.restaurant_id, n.author_id,
+      jsonb_build_object('note_id', n.id, 'body', left(n.body, 200), 'more', length(n.body) > 200,
+        'pinned', n.pinned)
+    from public.restaurant_notes n, params pr
+    where 'note' = any(p_kinds)
+      and (p_restaurant_id is null or n.restaurant_id = p_restaurant_id)
+      and n.created_at <= pr.before_at
+      and (n.created_at, 'note:' || n.id) < (pr.before_at, pr.before_key)
+    order by n.created_at desc, 'note:' || n.id desc
+    limit p_limit)
+    union all
+    (select 'support', q.created_at, 'support:' || q.id, q.restaurant_id, q.created_by,
+      jsonb_build_object('request_id', q.id, 'topic', q.topic, 'message', left(q.message, 200),
+        'more', length(q.message) > 200, 'name', q.created_by_name)
+    from public.support_requests q, params pr
+    where 'support' = any(p_kinds)
+      and (p_restaurant_id is null or q.restaurant_id = p_restaurant_id)
+      and q.created_at <= pr.before_at
+      and (q.created_at, 'support:' || q.id) < (pr.before_at, pr.before_key)
+    order by q.created_at desc, 'support:' || q.id desc
+    limit p_limit)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'key', t.key,
+    'kind', t.kind,
+    'at', t.at,
+    'restaurant_id', t.restaurant_id,
+    'restaurant_name', r.name,
+    'actor', u.email,
+    'data', t.data
+  ) order by t.at desc, t.key desc), '[]'::jsonb)
+  from (select * from items i order by i.at desc, i.key desc limit p_limit) as t
+  left join public.restaurants r on r.id = t.restaurant_id
+  left join auth.users u on u.id = t.actor_id;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.platform_list_audit(p_filters jsonb)

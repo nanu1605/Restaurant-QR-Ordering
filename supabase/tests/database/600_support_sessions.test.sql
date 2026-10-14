@@ -213,6 +213,33 @@ select ok(
   'the team''s audit log shows the session'
 );
 
+-- A logo replaced under the same name is listed too.
+select tests.authenticate_as_platform_admin(:'team');
+select lives_ok(format($$ select public.admin_update_settings(%L) $$,
+  jsonb_build_object('logo_path', :'rest_a' || '/logo.png')), 'a logo is set');
+select lives_ok(format($$ select public.admin_update_settings(%L) $$,
+  jsonb_build_object('logo_path', :'rest_a' || '/logo.png')), 'and replaced under the same name');
+select tests.clear_auth();
+select is(
+  (select count(*)::int from public.audit_logs
+    where support_session_id = :'window_a' and action = 'settings.logo_replaced'),
+  1, 'the replacement is listed for the owner'
+);
+
+-- The team's stream shows the session starting, not each of its edits.
+select is(
+  (select count(*)::int
+    from jsonb_array_elements(private.activity(:'rest_a', array['team'], null, null, 500, false)) as x
+    where x -> 'data' ->> 'action' = 'menu_category.created'),
+  0, 'edits in a session are not team items'
+);
+select ok(
+  exists (select 1
+    from jsonb_array_elements(private.activity(:'rest_a', array['team'], null, null, 500, false)) as x
+    where x -> 'data' ->> 'action' = 'support_session.started'),
+  'the session starting is'
+);
+
 -- ─── It ends on time ────────────────────────────────────────────────────────
 select tests.clear_auth();
 update public.support_sessions
@@ -320,6 +347,18 @@ select tests.authenticate_as_platform_admin(:'team_c');
 select lives_ok($$ select public.platform_end_support_session() $$, 'ended');
 select throws_ok(format($$ select public.platform_onboarding_support_session(%L, 'Asha') $$, :'rest_new'),
   'P0001', 'NO_SUPPORT_ACCESS', 'only the restaurant''s first window');
+
+-- Deleting a team member's login ends their session too.
+select tests.clear_auth();
+select tests.create_platform_admin('team600d@admin.test') as team_d \gset
+insert into public.support_sessions (restaurant_id, consent, granted_by, ends_at, user_id, staff_name, started_at)
+values (:'rest_new', 'owner', :'team_c', now() + interval '1 hour', :'team_d', 'Dev', now());
+-- rest_new's onboarding window is closed above; this is its open one.
+delete from auth.users where id = :'team_d';
+select isnt(
+  (select s.ended_at from public.support_sessions s where s.restaurant_id = :'rest_new' and s.staff_name = 'Dev'),
+  null, 'a session whose team member is deleted ends'
+);
 
 -- ─── Every write a session can reach is classified ──────────────────────────
 -- A new function that resolves a member must refuse sessions or be listed here.
