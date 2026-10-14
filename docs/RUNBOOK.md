@@ -104,6 +104,12 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 - There are no down migrations. To undo, write a new migration.
 - To see what a deploy would apply: `pnpm exec supabase link --project-ref <ref>` then
   `pnpm exec supabase db push --dry-run`.
+- **Once per environment after the super-admin metrics migration** (stop 12b,
+  `20261015100100_metrics_snapshots.sql`): fill past days' usage with `pnpm metrics:backfill`,
+  run with that environment's `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` (it reads
+  `.env.local`, so point a copy at the environment, run it, then put it back). It recounts each
+  day, so running it twice is harmless. Subscription history can't be backfilled: it starts with
+  the first nightly snapshot (03:00 India time).
 
 ## Rolling back
 
@@ -132,6 +138,10 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
 - **Health 503 with `Invalid API key`** in Vercel's function log: `SUPABASE_SECRET_KEY` belongs
   to another Supabase project. Put in the project's own key and deploy again: a changed variable
   reaches only new deployments.
+- **A daily cron step failed:** `cron_runs` has one row per step with `ok` and the error in
+  `detail` (SQL editor: `select * from cron_runs order by started_at desc limit 20;`). Each step
+  is independent; the next night's run repeats it. If `metrics snapshot` failed, that day's
+  subscription snapshot is missing for good (usage is recounted the next night).
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.

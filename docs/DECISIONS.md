@@ -3325,3 +3325,64 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-6 · Testing the shared row:** the settings e2e test changes the one settings row that the
   pricing and payment-link tests read, so it runs as its own Playwright project after all the
   others and restores the row. If any earlier project fails, it is skipped.
+
+### 12b · Data foundations
+
+- **SA-7 · One rule for state and MRR:** `private.subscription_state` (plan §5.1: suspended,
+  read-only, trial, payment failed, paid, else cancelled, first match wins) and
+  `private.restaurant_mrr_paise` (the plan's monthly price, or yearly ÷ 12, while Paid). The
+  overview and the snapshot both use them. One change from before: an active subscription with
+  no source (never paid) used to count as Active on the overview; it is now Cancelled, as MRR
+  already treated it. The overview's JSON keys stay (trialing, active, past_due).
+- **SA-8 · Payments: purpose and GST:** `subscription_payments` keeps what was paid, GST
+  included, and generates `base_paise` and `gst_paise` from it at `gst_bps` (1800, from
+  `private.fee_gst_bps()`; a unit test pins `FEE_GST_BPS` to the same number). Generated columns
+  mean no insert path can forget the split. `purpose` is `setup_fee` for a payment without a
+  period (backfilled that way; manual rows' free-text notes were not guessed at). A setup-fee
+  link carries the fee and the discount in force in its notes, stored as `list_price_paise` and
+  `discount_paise`, so launch-offer use can be counted; the amount itself may have been edited.
+  A setup fee paid outside Razorpay is recorded with `platform_record_setup_fee` (the manual
+  payment dialog's "For: Setup fee"), which changes no subscription. The dialog shows the split
+  as the team types the total received.
+- **SA-9 · Daily snapshot:** `platform_metrics_snapshot()` runs first in the 03:00 cron, before
+  the signup cleanup, and its state counts as the end of the previous India day. Running it again
+  for a day stores nothing more (first run wins); usage for the last few business days is
+  recounted. Signups are counted as started and completed only: the email code and the password
+  arrive in the same request that creates the restaurant, so "email verified" is the same step
+  as "restaurant created". A self-signup has trial claims; every other restaurant counts as
+  onboarded by the team (scripts included). PostHog visitor columns stay null until its keys are
+  added (13d).
+- **SA-10 · Usage counts like the reports:** bills, GMV (with the restaurants' own taxes),
+  discount, tax, payments by mode, items and table time by the business day the bill was made,
+  exactly as `admin_report_sales` and the items and tables reports count them (a test compares
+  them); orders and the hourly spread by when the order was placed (accepted orders only).
+  Rebuilding a range deletes and recounts it, so voids and late payments settle. A restaurant's
+  current business day is never stored. `pnpm metrics:backfill` fills the past once per
+  environment.
+- **SA-11 · Cron log:** every daily step writes a `cron_runs` row (ok, the result or error), from
+  the route itself; a failed log write doesn't fail the step.
+- **SA-12 · Acquisition channel:** `restaurants.acquisition_channel`, set in SQL by signup
+  (`website`, or `website_lead` when a demo request has the same mobile) and asked, required, by
+  the onboarding wizard (every channel but self-signup). Scripts leave it null (unknown).
+  Restaurants with trial claims were backfilled as website or website_lead. Editing it later
+  comes with the restaurant page (13a).
+- **SA-13 · Plan-limit hits:** the refusing SQL function rolls back, so the server action that got
+  `PLAN_LIMIT_TABLES`, `PLAN_LIMIT_STAFF` or `FEATURE_NOT_IN_PLAN` records it afterwards
+  (`notePlanLimit` → `member_record_plan_limit`): adding tables, turning a table back on, adding
+  or reactivating a staff login, the UPI QR setting, discounts on a bill and split payments.
+  Reports are left out: their pages check the plan on every view, so the count would be page
+  views, not attempts.
+- **SA-14 · QR code use:** `table.qr_downloaded` when the PNG route serves a table's code, and
+  `table.qr_sheet_printed` when the Print button is pressed on the cards page (not on rendering
+  it, which prefetch and reloads would repeat). Both are audit rows (singular `table.`, like
+  `table.qr_regenerated`) and work while read-only.
+- **SA-15 · Cancellation reason:** the owner's "Cancel autopay" dialog asks why (too expensive,
+  not using it enough, missing a feature, restaurant closing, moving to another system, other
+  with a few words) before anything is sent to Razorpay. The latest reason is kept on the
+  subscription and each one in the audit log, for a trial's mandate cancelled at once too. The
+  super-admin's own cancel doesn't ask.
+- **SA-16 · Deferred from 12b:** the local load data (plan §4.6) is built in the stop that first
+  needs it for charts and timing (12c to 12e), like the shared components (SA-1).
+- **Release:** subscription history starts the night 12b reaches production. That release also
+  ships everything else waiting on main, including the website, so its timing is the owner's
+  call.
