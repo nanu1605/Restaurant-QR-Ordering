@@ -5,6 +5,9 @@ import type { ReactNode } from 'react';
 import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 
+import { ONBOARDING_STEP_LABELS } from '@/features/onboarding/onboarding';
+import { SUPPORT_STATUS_LABELS, SUPPORT_TOPIC_LABELS } from '@/features/support/support';
+
 import { duesMessage, formatMobile, telHref } from '../dues-messages';
 import { attentionGroupLabel, type Attention, type AttentionGroupList } from '../home';
 import {
@@ -12,6 +15,7 @@ import {
   formatDateTime,
   formatShortDate,
   LOOKALIKE_REASON_LABELS,
+  ONBOARDING_VIEW_COLUMNS,
   periodLastDay,
   type DuesRow,
 } from '../platform';
@@ -25,6 +29,8 @@ const SEE_ALL: Partial<Record<AttentionGroupList['group'], string>> = {
   trial_ending: '/super/money/dues?bucket=trial_ending',
   needs_payment: '/super/money/dues?bucket=renewal_due&days=7',
   new_leads: '/super/leads',
+  support_open: '/super/support',
+  stuck_onboarding: `/super/restaurants?onboarding=stuck&cols=${ONBOARDING_VIEW_COLUMNS}`,
   inactive: '/super/restaurants?health=inactive',
   slowing: '/super/restaurants?health=slowing',
   webhooks: '/super/webhooks?status=failed',
@@ -184,6 +190,40 @@ function items(group: AttentionGroupList, linkDefaults: (row: DuesRow) => LinkDe
               Open
             </Link>
           }
+        />
+      ));
+    case 'support_open':
+      return group.items.map(({ key, data }) => (
+        <Row
+          key={key}
+          itemKey={key}
+          label={data.name}
+          title={<RestaurantLink id={data.restaurant_id} name={data.name} />}
+          details={[
+            SUPPORT_TOPIC_LABELS[data.topic],
+            SUPPORT_STATUS_LABELS[data.status],
+            `Sent ${formatDateTime(data.created_at)}`,
+          ]}
+          action={
+            <Link href={`/super/support/${data.request_id}`} className={actionClass}>
+              Open
+            </Link>
+          }
+        />
+      ));
+    case 'stuck_onboarding':
+      return group.items.map(({ key, data }) => (
+        <Row
+          key={key}
+          itemKey={key}
+          label={data.name}
+          title={<RestaurantLink id={data.restaurant_id} name={data.name} />}
+          details={[
+            `Next: ${ONBOARDING_STEP_LABELS[data.next]}`,
+            `Nothing done since ${formatShortDate(data.since)}`,
+            data.city,
+          ]}
+          action={<CallButton phone={data.phone} name={data.name} />}
         />
       ));
     case 'inactive':

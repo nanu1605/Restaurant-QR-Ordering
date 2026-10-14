@@ -52,12 +52,13 @@ const monthLabel = new Intl.DateTimeFormat('en-IN', {
 export default async function SuperHomePage({ searchParams }: PageProps<'/super'>) {
   await requirePlatformPermission('restaurants.view');
   const params = readHomeParams(await searchParams);
-  const [money, growth, audit] = await Promise.all([
+  const [money, growth, support, audit] = await Promise.all([
     hasPlatformPermission('money.view'),
     hasPlatformPermission('growth.manage'),
+    hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
   ]);
-  const kinds = activityKindsFor({ money, growth, audit });
+  const kinds = activityKindsFor({ money, growth, support, audit });
   const activityKinds: ActivityKind[] | undefined = params.kind ? [params.kind] : [...kinds];
   const [home, attention, activity, plans, setupFee] = await Promise.all([
     getHome(params.period),

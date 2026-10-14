@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+import { ONBOARDING_STEPS } from '@/features/onboarding/onboarding';
+import {
+  SUPPORT_STATUSES,
+  SUPPORT_TOPIC_LABELS,
+  SUPPORT_TOPICS,
+  type SupportTopic,
+} from '@/features/support/support';
 import { formatINR } from '@/lib/money';
 
 import {
@@ -65,6 +72,8 @@ export const ATTENTION_GROUPS = [
   'trial_ending',
   'needs_payment',
   'new_leads',
+  'support_open',
+  'stuck_onboarding',
   'inactive',
   'slowing',
   'duplicates',
@@ -77,6 +86,8 @@ const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string
   trial_ending: 'Trial ends in 3 days, no autopay',
   needs_payment: 'Needs a payment within 7 days',
   new_leads: 'Leads from the last 24 hours',
+  support_open: 'Support requests open over 24 hours',
+  stuck_onboarding: 'Stuck in onboarding',
   slowing: 'Orders slowing down',
   duplicates: 'Possible duplicate signups',
   webhooks: 'Failed webhooks',
@@ -118,6 +129,35 @@ const attentionGroupSchema = z.discriminatedUnion('group', [
         city: z.string(),
         phone: z.string(),
         created_at: iso,
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('support_open'),
+    count,
+    items: item(
+      z.object({
+        request_id: z.string(),
+        restaurant_id: z.string(),
+        name: z.string(),
+        topic: z.enum(SUPPORT_TOPICS),
+        status: z.enum(SUPPORT_STATUSES),
+        created_at: iso,
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('stuck_onboarding'),
+    count,
+    items: item(
+      z.object({
+        restaurant_id: z.string(),
+        name: z.string(),
+        slug: z.string(),
+        city: z.string().nullable(),
+        phone: z.string().nullable(),
+        next: z.enum(ONBOARDING_STEPS),
+        since: iso,
       }),
     ),
   }),
@@ -185,6 +225,7 @@ export const ACTIVITY_KINDS = [
   'reminder',
   'lead',
   'menu_import',
+  'support',
   'note',
   'team',
 ] as const;
@@ -198,25 +239,37 @@ export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
   reminder: 'Reminders',
   lead: 'Leads',
   menu_import: 'Menu imports',
+  support: 'Support requests',
   note: 'Notes',
   team: 'Team',
 };
 
-/** The kinds an admin may see: money, leads and the team's actions need their permission. */
+/**
+ * The kinds an admin may see: money, leads, support requests and the team's
+ * actions need their permission.
+ */
 export function activityKindsFor(can: {
   money: boolean;
   growth: boolean;
+  support: boolean;
   audit: boolean;
 }): ActivityKind[] {
   return ACTIVITY_KINDS.filter(
     (kind) =>
       (can.money || (kind !== 'payment' && kind !== 'payment_failed')) &&
       (can.growth || kind !== 'lead') &&
+      (can.support || kind !== 'support') &&
       (can.audit || kind !== 'team'),
   );
 }
-/** The kinds that raise an alert (docs/DECISIONS.md SA-30). */
-export const ALERT_KINDS: readonly ActivityKind[] = ['signup', 'payment', 'payment_failed', 'lead'];
+/** The kinds that raise an alert (docs/DECISIONS.md SA-30, SA-43). */
+export const ALERT_KINDS: readonly ActivityKind[] = [
+  'signup',
+  'payment',
+  'payment_failed',
+  'lead',
+  'support',
+];
 
 const activityItemSchema = z.object({
   key: z.string(),
@@ -343,6 +396,17 @@ export function activityLine(item: ActivityItem): ActivityLine {
           .filter(Boolean)
           .join(', ') || null,
         restaurant && importId && `${restaurant}/menu-import/${importId}`,
+      );
+    }
+    case 'support': {
+      const topic = text(data.topic) as SupportTopic | null;
+      const message = text(data.message) ?? '';
+      return line(
+        'Support request',
+        [topic && SUPPORT_TOPIC_LABELS[topic], data.more === true ? `${message}…` : message]
+          .filter(Boolean)
+          .join(': ') || null,
+        `/super/support/${text(data.request_id) ?? ''}`,
       );
     }
     case 'note': {

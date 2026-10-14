@@ -29,12 +29,13 @@ export default async function RestaurantActivityPage({
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
   const query = readActivityParams(await searchParams);
-  const [money, audit] = await Promise.all([
+  const [money, support, audit] = await Promise.all([
     hasPlatformPermission('money.view'),
+    hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
   ]);
   // Leads aren't any restaurant's.
-  const kinds = activityKindsFor({ money, growth: false, audit });
+  const kinds = activityKindsFor({ money, growth: false, support, audit });
   const asked: ActivityKind[] =
     query.kind && kinds.includes(query.kind) ? [query.kind] : [...kinds];
   const page = await listActivity({ restaurantId, kinds: asked, before: query.before }).catch(() =>

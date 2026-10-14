@@ -7,6 +7,7 @@ import {
   HandCoins,
   Inbox,
   House,
+  LifeBuoy,
   Menu,
   ReceiptIndianRupee,
   ScrollText,
@@ -40,7 +41,10 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'Restaurants',
-    items: [{ href: '/super/restaurants', label: 'Restaurants', icon: Building2 }],
+    items: [
+      { href: '/super/restaurants', label: 'Restaurants', icon: Building2 },
+      { href: '/super/support', label: 'Support inbox', icon: LifeBuoy },
+    ],
   },
   { title: 'Growth', items: [{ href: '/super/leads', label: 'Leads', icon: Inbox }] },
   { title: 'System', items: [{ href: '/super/webhooks', label: 'Webhooks', icon: Webhook }] },
