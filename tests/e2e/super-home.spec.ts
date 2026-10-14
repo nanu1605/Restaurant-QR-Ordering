@@ -69,6 +69,8 @@ test('a new payment raises an alert and shows in the activity', async ({ page })
       source: 'manual',
       amount_paise: 118000,
       manual_mode: 'upi',
+      period_start: new Date().toISOString(),
+      period_end: new Date(Date.now() + 30 * 24 * HOUR).toISOString(),
       // The column's default reads a private function only the database's own functions may call.
       gst_bps: 1800,
     })
