@@ -21,7 +21,7 @@ const PATHS = [
   '/super/leads',
   '/super/restaurants?manager=none',
 ];
-// A busy load restaurant's page, every tab of its own (13a).
+// A busy load restaurant with notes and a tag: its page, every tab of its own (13a).
 const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents'];
 
 test('each super-admin page answers within 1.5 s', async ({ page }) => {
@@ -29,7 +29,7 @@ test('each super-admin page answers within 1.5 s', async ({ page }) => {
   const { data: load } = await adminClient()
     .from('restaurants')
     .select('id')
-    .eq('slug', 'load-010')
+    .eq('slug', 'load-033')
     .single()
     .throwOnError();
   await logInAsPlatformAdmin(page, await createPlatformAdmin('perf'));

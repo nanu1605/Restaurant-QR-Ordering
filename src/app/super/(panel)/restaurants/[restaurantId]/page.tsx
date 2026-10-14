@@ -70,11 +70,14 @@ export default async function RestaurantOverviewPage({
           <Figure label="Average bill" note={`${last30.bills.toLocaleString('en-IN')} bills`}>
             {average === null ? '—' : <Money paise={average} fraction="auto" />}
           </Figure>
-          <Figure label="QR orders" note="Of accepted orders">
-            {qr ?? '—'}
+          <Figure label="QR orders" note={qr?.note ?? 'Of accepted orders'}>
+            {qr?.value ?? '—'}
           </Figure>
-          <Figure label="Last active">
-            {detail.last_active ? formatDateTime(detail.last_active) : 'Never'}
+          <Figure
+            label="Last active"
+            note={detail.last_active ? formatDateTime(detail.last_active) : undefined}
+          >
+            {detail.last_active ? formatShortDate(detail.last_active) : 'Never'}
           </Figure>
         </dl>
         <p className="text-xs text-ink-muted">
@@ -83,7 +86,7 @@ export default async function RestaurantOverviewPage({
         </p>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <ChartPanel
           id="chart-usage"
           title="Orders and GMV, 90 days"
@@ -173,7 +176,10 @@ export default async function RestaurantOverviewPage({
           </Section>
 
           <Section title="Owner login">
-            <ul className="flex flex-col divide-y divide-line">
+            {detail.owners.length === 0 && (
+              <p className="text-sm text-ink-muted">No owner login.</p>
+            )}
+            <ul className="flex flex-col divide-y divide-line empty:hidden">
               {detail.owners.map((owner) => (
                 <li
                   key={owner.member_id}

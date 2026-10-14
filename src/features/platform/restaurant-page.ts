@@ -46,14 +46,16 @@ export type RestaurantOverview = z.infer<typeof overviewSchema>;
 export const parseOverview = (json: unknown) => overviewSchema.parse(json);
 
 /**
- * QR orders as a share of all orders (plan §5.10), honest with small numbers
- * (plan §1): "71% (430 of 612)", or just "2 of 3" below 5 orders.
+ * QR orders as a share of accepted orders (plan §5.10), honest with small
+ * numbers (plan §1): "70%" over "430 of 612 orders", or just "2 of 3" below 5.
  */
-export function qrShare(customer: number, staff: number): string | null {
+export function qrShare(customer: number, staff: number): { value: string; note: string } | null {
   const total = customer + staff;
   if (total === 0) return null;
   const fraction = `${customer.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')}`;
-  return total < 5 ? fraction : `${Math.round((customer / total) * 100)}% (${fraction})`;
+  return total < 5
+    ? { value: fraction, note: 'Of accepted orders' }
+    : { value: `${Math.round((customer / total) * 100)}%`, note: `${fraction} orders` };
 }
 
 // ─── Billing ─────────────────────────────────────────────────────────────────

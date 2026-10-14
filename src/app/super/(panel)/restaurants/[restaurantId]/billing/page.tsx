@@ -19,6 +19,7 @@ import {
   formatPeriod,
   MANUAL_MODE_LABELS,
   PAYMENT_PURPOSE_LABELS,
+  periodLastDay,
   PAYMENT_SOURCE_LABELS,
   REMINDER_LABELS,
   RENEWAL_KIND_LABELS,
@@ -262,8 +263,8 @@ function DuesSection({ dues }: { dues: RestaurantBilling['dues'] }) {
     facts.push(['Read-only since', formatDateTime(dues.restriction_at)]);
   if (dues.bucket === 'trial_ending')
     facts.push(['Trial ends', formatDateTime(dues.trial_ends_at)]);
-  if (dues.bucket === 'renewal_due') {
-    facts.push(['Paid period ends', formatDateTime(dues.current_period_end)]);
+  if (dues.bucket === 'renewal_due' && dues.current_period_end) {
+    facts.push(['Paid till', formatDate(periodLastDay(dues.current_period_end))]);
   }
   return (
     <Section title="Dues">

@@ -18,11 +18,11 @@ const UUID = '0b8e3f0e-6a4c-4b7d-9a51-5f2a8c1d2e3f';
 
 describe('QR orders', () => {
   it('shows the share with its fraction', () => {
-    expect(qrShare(430, 182)).toBe('70% (430 of 612)');
+    expect(qrShare(430, 182)).toEqual({ value: '70%', note: '430 of 612 orders' });
   });
 
   it('shows only the fraction below 5 orders', () => {
-    expect(qrShare(2, 1)).toBe('2 of 3');
+    expect(qrShare(2, 1)).toEqual({ value: '2 of 3', note: 'Of accepted orders' });
   });
 
   it('is empty without orders', () => {

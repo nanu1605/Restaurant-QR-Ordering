@@ -25,7 +25,7 @@ export function RestaurantTabs({ restaurantId }: { restaurantId: string }) {
                 aria-current={current ? 'page' : undefined}
                 className={buttonVariants({
                   variant: 'ghost',
-                  className: `h-11 rounded-b-none border-b-2 md:h-9 ${
+                  className: `h-11 rounded-b-none border-0 border-b-2 md:h-9 ${
                     current
                       ? 'border-brand font-semibold text-ink'
                       : 'border-transparent text-ink-muted'

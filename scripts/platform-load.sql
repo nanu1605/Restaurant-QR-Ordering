@@ -132,11 +132,15 @@ begin
   -- Daily usage since joining, shaped by the profile: never started has none,
   -- inactive stopped 12 days ago, slowing dropped in the last week.
   insert into public.metrics_usage_daily (
-    restaurant_id, business_day, orders, customer_orders, staff_orders, items, bills, gmv_paise
+    restaurant_id, business_day, orders, customer_orders, staff_orders, items, bills, gmv_paise,
+    hourly_orders
   )
   select
     u.id, u.day, u.orders, u.orders * 2 / 3, u.orders - u.orders * 2 / 3, u.orders * 3,
-    u.orders / 2, u.orders * (25000 + floor(random() * 35000)::bigint)
+    u.orders / 2, u.orders * (25000 + floor(random() * 35000)::bigint),
+    -- A third at lunch (1 pm), the rest at dinner (8 pm).
+    array_fill(0, array[13]) || (u.orders / 3) || array_fill(0, array[6])
+      || (u.orders - u.orders / 3) || array_fill(0, array[3])
   from (
     select
       r.id, d.day::date as day,
@@ -231,6 +235,6 @@ begin
          now() - make_interval(days => k * 7 + r.n % 7)
   from load_r r
   cross join generate_series(1, 5) as k
-  where r.n % 5 = 0;
+  where r.n % 5 = 3;
 end
 $$;
