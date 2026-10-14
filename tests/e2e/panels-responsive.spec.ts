@@ -152,6 +152,8 @@ test('admin sections are in a menu sheet below laptop width', async ({ page }) =
   await openMenu.click();
   await nav.getByRole('link', { name: 'Reports' }).click();
   await expect(page).toHaveURL(/\/admin\/reports$/);
+  // Until the sheet has slid away, its nav and the sidebar's both match.
+  await expect(page.getByRole('dialog')).toBeHidden();
 
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(openMenu).toBeHidden();

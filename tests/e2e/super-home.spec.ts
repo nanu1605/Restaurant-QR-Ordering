@@ -47,15 +47,15 @@ test('Home lists a failed payment, and a snooze puts it aside', async ({ page })
     await expect(page.getByText('Snoozed for 1 day')).toBeVisible();
     await expect(row).toHaveCount(0);
 
-    // The charts load after the page, each with its numbers as a table.
+    // The charts load after the page, each with its numbers as a table. A fresh
+    // database (CI) has no orders yet, so the chart is a note instead.
     const usage = page.getByRole('region', { name: 'GMV and orders, 30 days' });
-    await expect(
-      usage
-        .getByRole('img', { name: /^GMV and orders for the 30 days/ })
-        .or(usage.getByText('No orders in the last 30 days.')),
-    ).toBeVisible();
-    await usage.getByText('Show as a table').click();
-    await expect(usage.getByRole('columnheader', { name: 'Orders' })).toBeVisible();
+    const chart = usage.getByRole('img', { name: /^GMV and orders for the 30 days/ });
+    await expect(chart.or(usage.getByText('No orders in the last 30 days.'))).toBeVisible();
+    if (await chart.isVisible()) {
+      await usage.getByText('Show as a table').click();
+      await expect(usage.getByRole('columnheader', { name: 'Orders' })).toBeVisible();
+    }
   } finally {
     // Paid, so it leaves everyone else's Payment failed group.
     await db
