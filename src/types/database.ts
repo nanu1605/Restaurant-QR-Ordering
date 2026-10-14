@@ -1225,14 +1225,17 @@ export type Database = {
       }
       platform_admins: {
         Row: {
+          alerts_seen_at: string | null
           created_at: string
           user_id: string
         }
         Insert: {
+          alerts_seen_at?: string | null
           created_at?: string
           user_id: string
         }
         Update: {
+          alerts_seen_at?: string | null
           created_at?: string
           user_id?: string
         }
@@ -1316,6 +1319,27 @@ export type Database = {
           support_phone?: string | null
           trial_days?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_snoozes: {
+        Row: {
+          admin_id: string
+          created_at: string
+          item_key: string
+          until: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          item_key: string
+          until: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          item_key?: string
+          until?: string
         }
         Relationships: []
       }
@@ -2416,7 +2440,17 @@ export type Database = {
       }
       menu_set_hindi_names: { Args: { p_names: Json }; Returns: number }
       password_resets_cleanup: { Args: never; Returns: number }
+      platform_activity: {
+        Args: {
+          p_before?: string
+          p_kinds?: string[]
+          p_limit?: number
+          p_restaurant_id?: string
+        }
+        Returns: Json
+      }
       platform_admin_status: { Args: never; Returns: string }
+      platform_alerts: { Args: never; Returns: Json }
       platform_audit_payment_link: {
         Args: { p_link: Json; p_restaurant_id: string }
         Returns: undefined
@@ -2427,6 +2461,7 @@ export type Database = {
       }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
       platform_delete_view: { Args: { p_id: string }; Returns: undefined }
+      platform_digest: { Args: { p_day?: string }; Returns: Json }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2435,16 +2470,19 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_home: { Args: { p_period?: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
+      platform_mark_alerts_seen: { Args: never; Returns: string }
       platform_metrics_backfill_usage: {
         Args: { p_from: string; p_to: string }
         Returns: number
       }
       platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
+      platform_needs_attention: { Args: never; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
       platform_record_manual_payment: {
         Args: { p_payment: Json; p_restaurant_id: string }
@@ -2479,6 +2517,10 @@ export type Database = {
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
+      }
+      platform_snooze: {
+        Args: { p_days: number; p_key: string }
+        Returns: string
       }
       platform_support_view: {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }

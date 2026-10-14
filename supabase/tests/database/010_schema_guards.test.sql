@@ -186,7 +186,14 @@ select set_eq(
       ('private.phone10'),
       ('public.member_record_plan_limit'),
       ('public.admin_record_qr_use'),
-      ('public.admin_record_cancel_reason')
+      ('public.admin_record_cancel_reason'),
+      -- Home (12e)
+      ('public.platform_home'),
+      ('public.platform_needs_attention'),
+      ('public.platform_snooze'),
+      ('public.platform_activity'),
+      ('public.platform_alerts'),
+      ('public.platform_mark_alerts_seen')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
