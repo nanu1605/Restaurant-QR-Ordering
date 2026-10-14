@@ -2,8 +2,16 @@ import { firstParam, isDate, type SearchParams } from '@/lib/date-range';
 
 import {
   ACTOR_TYPES,
+  DUES_BUCKETS,
+  PAYMENT_METHODS,
+  PAYMENT_PURPOSES,
+  SUBSCRIPTION_STATES,
   SUBSCRIPTION_STATUSES,
   type ActorType,
+  type DuesBucket,
+  type PaymentMethod,
+  type PaymentPurpose,
+  type SubscriptionState,
   type SubscriptionStatus,
 } from './platform';
 
@@ -55,11 +63,53 @@ export function readRestaurantFilters(params: SearchParams): RestaurantFilters {
   };
 }
 
-export type SubscriptionFilters = { status?: SubscriptionStatus; page: number };
+export type SubscriptionFilters = { state?: SubscriptionState; page: number };
 
 export function readSubscriptionFilters(params: SearchParams): SubscriptionFilters {
   return {
-    status: oneOf(firstParam(params, 'status'), SUBSCRIPTION_STATUSES),
+    state: oneOf(firstParam(params, 'state'), SUBSCRIPTION_STATES),
+    page: page(params),
+  };
+}
+
+export type PaymentFilters = {
+  /** 'all' for every payment ever; otherwise from and to (default: this month). */
+  period?: 'all';
+  from?: string;
+  to?: string;
+  q?: string;
+  purpose?: PaymentPurpose;
+  method?: PaymentMethod;
+  plan?: string;
+  page: number;
+};
+
+/** Payments ledger filters; with no dates and no `period=all`, this month so far (India). */
+export function readPaymentFilters(params: SearchParams, today: string): PaymentFilters {
+  const plan = firstParam(params, 'plan');
+  const common = {
+    q: firstParam(params, 'q')?.slice(0, 80),
+    purpose: oneOf(firstParam(params, 'purpose'), PAYMENT_PURPOSES),
+    method: oneOf(firstParam(params, 'method'), PAYMENT_METHODS),
+    plan: plan && /^[a-z_]{2,30}$/.test(plan) ? plan : undefined,
+    page: page(params),
+  };
+  const from = firstParam(params, 'from');
+  const to = firstParam(params, 'to');
+  const validFrom = isDate(from) ? from : undefined;
+  const validTo = isDate(to) && (!validFrom || to >= validFrom) ? to : undefined;
+  if (validFrom || validTo) return { from: validFrom, to: validTo, ...common };
+  if (firstParam(params, 'period') === 'all') return { period: 'all', ...common };
+  return { from: `${today.slice(0, 8)}01`, to: today, ...common };
+}
+
+export type DuesFilters = { bucket: DuesBucket; days: 7 | 30; q?: string; page: number };
+
+export function readDuesFilters(params: SearchParams): DuesFilters {
+  return {
+    bucket: oneOf(firstParam(params, 'bucket'), DUES_BUCKETS) ?? 'payment_failed',
+    days: firstParam(params, 'days') === '7' ? 7 : 30,
+    q: firstParam(params, 'q')?.slice(0, 80),
     page: page(params),
   };
 }

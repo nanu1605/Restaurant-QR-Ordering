@@ -23,6 +23,7 @@ import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { AccessBadge, SubscriptionBadge } from '@/features/platform/components/status-badges';
 import {
   ACCESS_REASON_LABELS,
+  firstUnpaidDay,
   formatDate,
   formatDateTime,
   formatPeriod,
@@ -31,8 +32,6 @@ import {
   PAYMENT_SOURCE_LABELS,
   SUPPORT_SECTION_LABELS,
   SUPPORT_SECTIONS,
-  todayInIndia,
-  type RestaurantDetail,
 } from '@/features/platform/platform';
 import { listMenuImports } from '@/features/menu-import/queries';
 import {
@@ -118,7 +117,13 @@ export default async function SuperRestaurantPage({
                 : null
             }
             plans={plans.filter((plan) => plan.is_active).map(({ code, name }) => ({ code, name }))}
-            paymentStart={firstUnpaidDay(detail)}
+            paymentStart={firstUnpaidDay(
+              subscription && {
+                status: subscription.status,
+                restrictionAt: access.restriction_at,
+                currentPeriodEnd: subscription.current_period_end,
+              },
+            )}
             razorpay={
               razorpayConfig()
                 ? {
@@ -425,19 +430,6 @@ export default async function SuperRestaurantPage({
       </Section>
     </>
   );
-}
-
-/**
- * The first business day a new payment would pay for: after the trial or the
- * paid period when either still runs, otherwise today (India).
- */
-function firstUnpaidDay({ subscription, access }: RestaurantDetail): string {
-  const today = todayInIndia();
-  let covered: string | null = null;
-  if (subscription?.status === 'trialing') covered = access.restriction_at;
-  else if (subscription?.status === 'active') covered = subscription.current_period_end;
-  const day = covered ? todayInIndia(new Date(covered)) : today;
-  return day > today ? day : today;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

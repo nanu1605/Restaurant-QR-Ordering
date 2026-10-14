@@ -4,11 +4,19 @@ import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-import type { AuditFilters, RestaurantFilters, SubscriptionFilters } from './params';
+import type {
+  AuditFilters,
+  DuesFilters,
+  PaymentFilters,
+  RestaurantFilters,
+  SubscriptionFilters,
+} from './params';
 import {
   parseAuditList,
+  parseDuesList,
   parseLookalikes,
   parseOverview,
+  parsePaymentList,
   parseRestaurantDetail,
   parseRestaurantList,
   parseSubscriptionList,
@@ -47,6 +55,27 @@ export async function listSubscriptions(filters: SubscriptionFilters) {
   });
   if (error) throw new Error(`Could not load subscriptions: ${error.message}`);
   return parseSubscriptionList(data);
+}
+
+/** The payments ledger (docs/DECISIONS.md SA-18); `exportAll` returns every row on one page. */
+export async function listPayments(filters: PaymentFilters, exportAll = false) {
+  const supabase = await createClient();
+  // `period: 'all'` is the absence of dates.
+  const { from, to, q, purpose, method, plan, page } = filters;
+  const sent = { from, to, q, purpose, method, plan, page };
+  const { data, error } = await supabase.rpc('platform_list_payments', {
+    p_filters: exportAll ? { ...sent, page: 1, export: true } : sent,
+  });
+  if (error) throw new Error(`Could not load payments: ${error.message}`);
+  return parsePaymentList(data);
+}
+
+/** Dues buckets (docs/DECISIONS.md SA-19). */
+export async function listDues(filters: DuesFilters) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_dues', { p_filters: filters });
+  if (error) throw new Error(`Could not load dues: ${error.message}`);
+  return parseDuesList(data);
 }
 
 /** Other restaurants that may be the same as each of these (docs/DECISIONS.md P11-13). */

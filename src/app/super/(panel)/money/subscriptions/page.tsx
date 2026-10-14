@@ -14,13 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AccessBadge, SubscriptionBadge } from '@/features/platform/components/status-badges';
+import { SubscriptionStateBadge } from '@/features/platform/components/status-badges';
 import { filterParams, readSubscriptionFilters } from '@/features/platform/params';
 import {
   formatDateTime,
   PAYMENT_SOURCE_LABELS,
+  SUBSCRIPTION_STATE_LABELS,
+  SUBSCRIPTION_STATES,
   SUBSCRIPTION_STATUS_LABELS,
-  SUBSCRIPTION_STATUSES,
 } from '@/features/platform/platform';
 import { listSubscriptions } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
@@ -30,12 +31,15 @@ export const metadata: Metadata = {
   title: 'Subscriptions',
 };
 
-const PATH = '/super/subscriptions';
+const PATH = '/super/money/subscriptions';
 
-/** Subscriptions (spec §13.4): status filter, payment problems first. */
+/**
+ * Subscriptions (spec §13.4), by state (docs/SUPER_ADMIN_PLAN.md §5.1):
+ * failed payments first, then whatever ends soonest.
+ */
 export default async function SuperSubscriptionsPage({
   searchParams,
-}: PageProps<'/super/subscriptions'>) {
+}: PageProps<'/super/money/subscriptions'>) {
   await requirePlatformAdmin();
   const filters = readSubscriptionFilters(await searchParams);
   const list = await listSubscriptions(filters);
@@ -46,18 +50,18 @@ export default async function SuperSubscriptionsPage({
         title="Subscriptions"
         description="Failed payments first, then whatever ends soonest."
       />
-      <nav aria-label="Subscription status" className="flex flex-wrap gap-2">
-        {[undefined, ...SUBSCRIPTION_STATUSES].map((status) => (
+      <nav aria-label="Subscription state" className="flex flex-wrap gap-2">
+        {[undefined, ...SUBSCRIPTION_STATES].map((state) => (
           <Link
-            key={status ?? 'all'}
-            href={hrefWithParams(PATH, { status })}
-            aria-current={filters.status === status ? 'page' : undefined}
+            key={state ?? 'all'}
+            href={hrefWithParams(PATH, { state })}
+            aria-current={filters.state === state ? 'page' : undefined}
             className={buttonVariants({
-              variant: filters.status === status ? 'default' : 'outline',
+              variant: filters.state === state ? 'default' : 'outline',
               size: 'touch',
             })}
           >
-            {status ? SUBSCRIPTION_STATUS_LABELS[status] : 'All'}
+            {state ? SUBSCRIPTION_STATE_LABELS[state] : 'All'}
           </Link>
         ))}
       </nav>
@@ -71,10 +75,9 @@ export default async function SuperSubscriptionsPage({
               <TableRow>
                 <TableHead>Restaurant</TableHead>
                 <TableHead>Plan</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>State</TableHead>
                 <TableHead>Trial or period ends</TableHead>
                 <TableHead>Grace until</TableHead>
-                <TableHead>Access</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -98,10 +101,13 @@ export default async function SuperSubscriptionsPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    <SubscriptionBadge status={row.status} />
-                    {row.cancel_at_period_end && (
-                      <div className="text-xs text-ink-muted">Cancels at period end</div>
-                    )}
+                    <SubscriptionStateBadge
+                      state={row.state}
+                      endsAt={row.ending ? row.current_period_end : null}
+                    />
+                    <div className="text-xs text-ink-muted">
+                      Status: {SUBSCRIPTION_STATUS_LABELS[row.status]}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {formatDateTime(
@@ -109,9 +115,6 @@ export default async function SuperSubscriptionsPage({
                     )}
                   </TableCell>
                   <TableCell>{formatDateTime(row.grace_until)}</TableCell>
-                  <TableCell>
-                    <AccessBadge status={row.restaurant_status} accessState={row.access_state} />
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

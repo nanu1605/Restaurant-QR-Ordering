@@ -24,11 +24,19 @@ export default async function SuperOverviewPage() {
     {
       label: 'On trial',
       value: restaurants.trialing,
-      href: '/super/subscriptions?status=trialing',
+      href: '/super/money/subscriptions?state=trial',
     },
-    { label: 'Paid', value: restaurants.active, href: '/super/subscriptions?status=active' },
-    { label: 'Payment failed', value: restaurants.past_due, href: '/super/subscriptions' },
-    { label: 'Read-only', value: restaurants.read_only, href: '/super/restaurants' },
+    { label: 'Paid', value: restaurants.active, href: '/super/money/subscriptions?state=paid' },
+    {
+      label: 'Payment failed',
+      value: restaurants.past_due,
+      href: '/super/money/subscriptions?state=payment_failed',
+    },
+    {
+      label: 'Read-only',
+      value: restaurants.read_only,
+      href: '/super/money/subscriptions?state=read_only',
+    },
     {
       label: 'Suspended',
       value: restaurants.suspended,
