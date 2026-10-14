@@ -28,6 +28,8 @@ export type CurrentMembership = {
     status: Enums<'restaurant_status'>;
     timezone: string;
   };
+  /** A MenuMesh team member in a support session (docs/DECISIONS.md SA-46). */
+  support: { sessionId: string; endsAt: string } | null;
 };
 
 /**
@@ -45,6 +47,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 /**
  * The user's active membership. MVP: an account belongs to one restaurant
  * (spec §3); the schema allows more, so take the oldest if that ever changes.
+ * Without one, a team member's support session acts as a manager membership
+ * until it ends; the database checks the same on every call (SA-46, SA-48).
  */
 export const getCurrentMembership = cache(async (): Promise<CurrentMembership | null> => {
   const user = await getCurrentUser();
@@ -63,7 +67,7 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
     .maybeSingle();
 
   if (error) throw new Error(`Could not load membership: ${error.message}`);
-  if (!data) return null;
+  if (!data) return getSupportMembership(user.id);
 
   return {
     memberId: data.id,
@@ -72,8 +76,36 @@ export const getCurrentMembership = cache(async (): Promise<CurrentMembership | 
     username: data.username,
     uiLang: data.ui_lang === 'hi' ? 'hi' : 'en',
     restaurant: data.restaurant,
+    support: null,
   };
 });
+
+/** Only a platform admin at the second factor reads sessions (RLS). */
+async function getSupportMembership(userId: string): Promise<CurrentMembership | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('support_sessions')
+    .select(
+      'id, staff_name, ends_at, restaurant:restaurants!inner (id, name, slug, status, timezone)',
+    )
+    .eq('user_id', userId)
+    .is('ended_at', null)
+    .not('started_at', 'is', null)
+    .gt('ends_at', new Date().toISOString())
+    .maybeSingle();
+  if (error) throw new Error(`Could not load the support session: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    memberId: data.id,
+    role: 'manager',
+    displayName: data.staff_name ?? 'MenuMesh support',
+    username: 'menumesh_support',
+    uiLang: 'en',
+    restaurant: data.restaurant,
+    support: { sessionId: data.id, endsAt: data.ends_at },
+  };
+}
 
 export type PlatformAdminStatus = 'none' | 'mfa_required' | 'ok';
 

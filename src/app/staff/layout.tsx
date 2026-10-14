@@ -1,5 +1,6 @@
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
@@ -23,6 +24,8 @@ export const metadata: Metadata = INSTALLABLE;
 
 export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
   const membership = await requireMember(STAFF_PANEL_ROLES);
+  // Live service is the restaurant's own; a support session works in /admin (SA-49).
+  if (membership.support) redirect('/admin');
   const canOpenAdmin = (ADMIN_PANEL_ROLES as readonly string[]).includes(membership.role);
   const [plan, board] = await Promise.all([getPlanFeatures(membership.restaurant.id), getBoard()]);
 
