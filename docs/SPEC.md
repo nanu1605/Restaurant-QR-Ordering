@@ -629,7 +629,7 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 | razorpay_customer_id | text null | |
 | cancel_reason, cancel_reason_detail | text null | why the owner last turned autopay off (`too_expensive`, `not_using`, `missing_feature`, `closing`, `switching`, `other` with a few words; docs/DECISIONS.md SA-15) |
 
-**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8).
+**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
 
 **`webhook_events`**: `provider` (`razorpay`), `event_id` unique, `event_type`, `payload jsonb`, `received_at`, `processed_at`, `processing_error`.
 
@@ -1106,7 +1106,9 @@ The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a gr
 - **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over.
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
-- **Subscriptions**: list with status filters, past-due first.
+- **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).
+- **Dues** (Money): payment failed, lapsed, trial ending and renewal due, each restaurant in one bucket, with expected collections for 30 days, call and WhatsApp (an editable message in English or Hindi), and the payment actions (SA-19, SA-20).
+- **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled), failed payments first (SA-21).
 - **Leads**: "Book a demo" requests from the website, newest first.
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable.

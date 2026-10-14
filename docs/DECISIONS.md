@@ -3398,3 +3398,48 @@ stay at 13g, since nobody else gets `/super` before then.
 - **Release:** subscription history starts the night 12b reaches production. That release also
   ships everything else waiting on main, including the website, so its timing is the owner's
   call.
+
+### 12c · Money: payments and dues
+
+- **SA-17 · What a payment paid for:** `subscription_payments.plan_id` and `billing_cycle`,
+  stamped by a before-insert trigger, so every insert path sets them and a later plan change
+  doesn't rewrite history. A Razorpay charge pays for the plan its mandate was set up with
+  (`next_plan_id` until the charge applies it); anything else pays for the current plan. The
+  cycle is yearly for a paid period of 360 days or more, otherwise monthly (an 18-month link
+  would read yearly; none is sold). Setup fees have neither. Earlier payments were filled in
+  from the restaurant's current plan, the best there is.
+- **SA-18 · Payments ledger:** `/super/money/payments` (money.view, the first page and function
+  to use the permission check for reading) through `platform_list_payments`. Payments are dated
+  by when they were recorded, in India dates; the page opens on this month, with This month,
+  Last month, Last 30 days, This quarter (calendar quarters are also the financial year's), Last
+  12 months and All time, or any two dates. Amount (before GST), GST and the total paid are
+  separate columns, and the totals cover every matching row, not just the page, split by
+  purpose. The method is Autopay (a Razorpay subscription charge), Payment link, or the manual
+  mode. The CSV has the same rows and columns with the reports' escaping, up to 10,000 rows;
+  beyond that the page asks for fewer days and the download refuses, rather than cutting the
+  file short. A row opens the restaurant's Payments section (its Billing tab from 13a). On a
+  phone the rows become cards. Compare-with-previous-period comes with Home (12e).
+- **SA-19 · Dues:** `/super/money/dues` through `platform_list_dues`, the buckets of plan §5.6,
+  first match wins. Suspended restaurants are in no bucket: suspending is the team's own call,
+  handled on the restaurant's page. Payment failed needs full access; once grace ends the
+  restaurant is Lapsed. Renewals are split by `private.renewal_kind`: Ending (set to end at the
+  period's end, or a Razorpay subscription whose mandate is off), On autopay (a live mandate),
+  Needs a payment (source manual, which covers payment links too). The amount due is the plan's
+  price for its cycle (monthly when none) with GST, rounded like `withGst()`
+  (`private.fee_with_gst`). Expected collections are the next 30 days' renewals on autopay and
+  needing a payment, as two figures; ending ones aren't expected. The search narrows the counts
+  too. The last reminder email comes from `subscription_reminders`. The row's actions are the
+  restaurant page's own dialogs: Send payment link, Record payment, and Extend trial on trials.
+- **SA-20 · Call and WhatsApp:** `tel:+91…` and `https://wa.me/91…` from `restaurants.phone`, the
+  only phone stored (a 10-digit mobile). Each bucket has a message in English and in Hindi, with
+  the restaurant, plan, amount and day filled in on the server (Hindi month names in the Hindi
+  one); the team edits it in a dialog and WhatsApp opens with it. MenuMesh sends nothing itself.
+  The templates live in `src/features/platform/dues-messages.ts`; the Hindi wording awaits the
+  owner's reading, like the worker panel's did.
+- **SA-21 · Subscriptions under Money:** `/super/money/subscriptions` (the old URL redirects,
+  keeping its query) filters by the six states of plan §5.1 instead of Razorpay's statuses, with
+  the raw status under the badge; the Access column went, the state covers it.
+  `SubscriptionStateBadge` pairs an icon and words with the status colours through
+  `--color-sub-*` aliases (contrast-checked in both themes) and reads "Paid, ends 13 Nov" when a
+  paid period is set to end. The other pages keep the old badge until they are rebuilt (12d,
+  13a).
