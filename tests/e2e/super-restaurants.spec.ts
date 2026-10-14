@@ -113,6 +113,10 @@ test('filters, sorts, columns, saved views and the CSV', async ({ page }) => {
   await expect(table.getByRole('columnheader', { name: 'Found us' })).toBeVisible();
 
   await views.getByRole('button', { name: `Delete view ${name}` }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm).toContainText('goes for the whole team too');
+  await confirm.getByRole('button', { name: 'Delete view' }).click();
+  await expect(confirm).toBeHidden();
   await expect(views.getByRole('link', { name })).toHaveCount(0);
 
   // A built-in view.
@@ -133,7 +137,8 @@ test('Ctrl+K finds a restaurant by part of its phone or its GSTIN', async ({ pag
   const gstin = `27${letters}${digits(4)}F1Z5`;
   await adminClient()
     .from('restaurants')
-    .update({ phone, gstin })
+    // Stored as typed: search still finds it by its digits.
+    .update({ phone: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`, gstin })
     .eq('id', restaurant.restaurantId)
     .throwOnError();
 
@@ -148,7 +153,7 @@ test('Ctrl+K finds a restaurant by part of its phone or its GSTIN', async ({ pag
   const search = dialog.getByRole('combobox', { name: 'Search' });
   await search.fill(phone.slice(3));
   const byPhone = dialog.getByRole('option', { name: new RegExp(restaurant.name) });
-  await expect(byPhone).toContainText(`Phone ${phone}`);
+  await expect(byPhone).toContainText(`Phone +91 ${phone.slice(0, 5)} ${phone.slice(5)}`);
   await search.press('Enter');
   await expect(page).toHaveURL(new RegExp(`/super/restaurants/${restaurant.restaurantId}$`));
   await expect(page.getByRole('heading', { name: restaurant.name, level: 1 })).toBeVisible();

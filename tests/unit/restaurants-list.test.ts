@@ -101,6 +101,7 @@ const row: RestaurantRow = {
   access_state: 'full',
   // The period ends at the start of 1 Nov (India), so it is paid till 31 Oct.
   paid_till: '2026-10-31T18:30:00Z',
+  ending: false,
   health: 'slowing',
   last_active: null,
   gmv_30d_paise: 1234550,
@@ -148,6 +149,16 @@ describe('restaurants CSV', () => {
       null,
       '2026-10-01',
     ]);
+  });
+});
+
+describe('restaurants CSV without money.view', () => {
+  it('leaves out what was paid', () => {
+    const csv = restaurantsCsv([{ ...row, paid: null }], false);
+    expect(csv.headers).toHaveLength(15);
+    expect(csv.headers).not.toContain('GST paid');
+    expect(csv.rows[0]).toHaveLength(15);
+    expect(csv.rows[0]?.[9]).toBe('12345.50');
   });
 });
 
