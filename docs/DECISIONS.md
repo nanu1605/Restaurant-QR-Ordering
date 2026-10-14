@@ -3464,17 +3464,22 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-23 · Restaurants list:** `platform_list_restaurants` rebuilt. Filters: state (plan §5.1),
   plan, health, city, Indian state, how they found us (or not known), created and paid-till
   ranges in India dates. Paid till is a trial's end or a paid period's last day (the day before
-  it ends), on screen, in the filter and in the CSV alike. Sorts: created, name, last active, paid
-  till, GMV, with `aria-sort` on the header. Health, last active and GMV are worked out for every
+  it ends), on screen, in the filter, in the sort and in the CSV alike. Sorts: created, name, last
+  active, paid till, GMV, with `aria-sort` on the header. Health, last active and GMV are worked out for every
   match only when a filter or the sort needs them, otherwise for the page's 50 rows. Columns are
   chosen in the URL (`cols`), all but Found us by default. Lifetime paid is subscriptions and
-  setup fees before GST, the GST apart (money.view; every admin until 13g). GMV is the last 30
-  finished business days of `metrics_usage_daily`, and the sparkline its accepted orders on each
-  of the last 7. Last active is the latest accepted order, bill, or sign-in by one of the
+  setup fees before GST, the GST apart; it needs money.view, checked by
+  `private.has_platform_permission` (null in the rows) and `hasPlatformPermission` (no column, no
+  money in the CSV), which every admin passes until 13g. GMV is the last 30 finished business
+  days and the sparkline the accepted orders on each of the last 7, from `metrics_usage_daily`
+  except the latest finished day: the nightly usage step at 03:00 can't store a business day that
+  ends at 04:00, so that day is counted live from orders and bills
+  (`private.restaurant_recent_usage`). A paid period set to end reads "Paid, ends …". Last active is the latest accepted order, bill, or sign-in by one of the
   restaurant's logins. The phone has Call and WhatsApp as on Dues. The CSV has the filters and
   sort, every column, up to 10,000 rows, refusing beyond. The old `status` and `subscription`
   filters went (state covers both); the overview's Suspended card links `?state=suspended`. The
-  header stays in view inside the table's own scroll region, one region, not two. The Review
+  header stays in view inside the table's own scroll region, one region, not two, with scroll
+  padding so a focused row is never under it. The Review
   badge's check (P11-13) compared each row with every restaurant, 2 s a page at 2,600
   restaurants; each reason is now an index lookup (trigram indexes on name and address, and
   indexes on FSSAI, GSTIN, pincode and `private.phone10(phone)`) with the same results.
@@ -3486,10 +3491,12 @@ stay at 13g, since nobody else gets `/super` before then.
   own). The query is the page's URL without the page number, checked as key=value pairs. The
   built-in views live in code: Payment failed, Trial ending (a trial ending today to 3 days on),
   Lapsed, No orders in N days (N from the settings), Never started, Slowing, Paid. A view is
-  marked current when its query is the page's.
+  marked current when its query is the page's. Deleting asks first, and says when a shared view
+  goes for the whole team.
 - **SA-25 · Search:** `platform_search(q)`, 2 to 80 characters, the text typed rather than a
-  pattern. Restaurants by name, code, city, any 3 or more digits of the phone (spaces and dashes
-  ignored), GSTIN, FSSAI number or the owner's email, each with what matched; exact names first,
+  pattern. Restaurants by name, code, city, any 3 or more digits of the phone (digits against
+  digits, so "+91 98765-43210" stored and "98765 43210" or "+91 9876543210" typed both match;
+  only when the text is a number, so a GSTIN's digits aren't a phone), GSTIN, FSSAI number or the owner's email, each with what matched; exact names first,
   then names starting with the text, then trigram similarity (`restaurants_name_trgm_idx`).
   Payments by Razorpay payment or subscription ID (4 characters or more), leads by name,
   restaurant or phone; 8, 5 and 5 at most. Ctrl or ⌘ + K, or the Search button in the header,
@@ -3501,5 +3508,7 @@ stay at 13g, since nobody else gets `/super` before then.
   `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
   payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
   the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
-  about 2,600 restaurants locally the list function takes 26 to 103 ms, the page answers in about
-  0.2 s, the CSV takes 0.6 s and search under 10 ms.
+  about 2,600 restaurants locally the list function takes 26 to 215 ms, the CSV 0.6 s and search
+  under 10 ms. `PERF=1 pnpm e2e super-perf --project=desktop` (opt-in, like the website's) checks
+  that each super-admin page answers within 1.5 s; the slowest, sorted by GMV, took 0.96 s with
+  the rest of the suite running.
