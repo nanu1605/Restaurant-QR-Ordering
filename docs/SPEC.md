@@ -325,7 +325,7 @@ Edited only through `platform_update_settings` (Platform settings in `/super`), 
 | user_id, staff_name, started_at | null until used | the team member and the name the restaurant sees; one open session per team member |
 | ended_at | timestamptz null | ended by the owner or the team member, or closed by the daily cron once run out |
 
-Read by the restaurant's owner and platform admins; written only by `admin_allow_support_access`, `admin_end_support_access`, `platform_start_support_session`, `platform_onboarding_support_session`, `platform_end_support_session` and the cron's `support_sessions_close_expired`.
+Read by the restaurant's owner and platform admins; written only by `admin_allow_support_access`, `admin_end_support_access`, `platform_start_support_session`, `platform_onboarding_support_session`, `platform_end_support_session` and the cron's `support_sessions_close_expired`, and ended by triggers when its team member leaves the team or their login is deleted.
 
 **`site_leads`** (website "Book a demo" requests; written only by `site_create_lead`, read by platform admins)
 | Column | Type | Notes |

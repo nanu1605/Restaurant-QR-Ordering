@@ -3762,7 +3762,8 @@ stay at 13g, since nobody else gets `/super` before then.
   over a session, and a team member who has one can't start a session, so the two never mix.
   The admin panel shows a banner on every page (the restaurant, when it ends, Back to MenuMesh
   admin, End session); the account menu says MenuMesh support and switches to the restaurant's
-  page in /super; Get help and the worker panel are closed to it, and analytics don't count it.
+  page in /super; Get help, bill print pages and the worker panel are closed to it, and
+  analytics don't count it. A team member whose login is deleted loses the session too.
 - **SA-49 · What a session can and can't do:** allowed: the menu (categories, dishes, add-ons,
   availability, menu import), tables and QR codes, waiters, waiter and kitchen logins, the
   restaurant's details and logo, ordering settings and the bill layout; it reads what a manager
@@ -3773,8 +3774,8 @@ stay at 13g, since nobody else gets `/super` before then.
   orders, closing or moving tables, calls, waiter assignment) and Get help. In
   `admin_update_settings`, changing a key that moves money is refused: the tax tab, the legal
   name (printed on tax invoices), the invoice prefix, UPI ID, payee name and the UPI QR, the
-  reopen window, removing served dishes and the business-day start; the rest of a tab still
-  saves. The subscription and the first-steps card stay owner-only. Limit hits in a session
+  reopen window, removing served dishes and the business-day start. A tab whose money settings
+  are unchanged still saves; a refused change rolls the save back and marks its field. The subscription and the first-steps card stay owner-only. Limit hits in a session
   aren't counted as the restaurant's. A pgTAP guard lists every function that resolves a member:
   each refuses sessions or is on the allowed list, so a new one has to be classified.
 - **SA-50 · Audited as the team member:** `audit_logs.support_session_id` names the session.
@@ -3782,8 +3783,10 @@ stay at 13g, since nobody else gets `/super` before then.
   "MenuMesh support", so the restaurant never sees a team email and /super shows whose they
   were. Menu and table edits, which aren't audited for the restaurant's own staff, write one row
   per call in a session (a reorder is one row), with the name of what changed; a menu import
-  carries its session. The restaurant sees the name the team member typed when starting
-  (prefilled from their last session), never their email.
+  carries its session, and a logo replaced under the same name is listed too. The restaurant sees
+  the name the team member typed when starting (prefilled from their last session), never their
+  email. These rows aren't team items in the activity stream (the session's start and end are),
+  so a long setup doesn't bury the team's own actions; /super's audit log has them all.
 - **SA-51 · Consent in person at onboarding:** the wizard's last step has "The owner agrees that
   MenuMesh may set up the restaurant for the next 24 hours" and the team member's name. After the
   restaurant is created, `platform_onboarding_support_session` records the consent (`onboarding`,
@@ -3794,7 +3797,16 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-52 · The owner's view and the wording:** Settings has a "MenuMesh support access" card for
   the owner only: the consent text approved by the owner on 2026-10-15, the choice of hours, the
   open window (who is working, until when) with End access now, and the last 10 sessions with
-  "Changes made by MenuMesh support", one line each. Logins created or reset are named so the
+  "Changes made by MenuMesh support", one line each (the latest 1,000 changes, with a note when
+  older ones are left out). The approved text: "Let the MenuMesh team sign in to your restaurant
+  to set it up or fix something, for example while you're on a call with us. During a session
+  they can change your menu, tables and QR codes, waiters, waiter and kitchen logins, restaurant
+  details, ordering settings and bill layout, and they can see what a manager sees, including
+  orders, bills and reports. They can't create or void bills, record payments, change tax,
+  invoice or UPI payment settings, change your subscription, or change your login or a
+  manager's. Every change they make is listed here, including any login they create or reset,
+  so you can change that password afterwards. You can end access at any time." Within
+  "restaurant details" and "ordering settings", the few that move money are refused (SA-49). Logins created or reset are named so the
   owner can change those passwords. The owner has no other activity page, so this card is
   where they see the changes (the plan said "in their activity"). Outside sessions, two team
   tools stay as they were (owner's choice, 2026-10-15): resetting the owner's password from
