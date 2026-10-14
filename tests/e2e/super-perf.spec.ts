@@ -20,6 +20,8 @@ const PATHS = [
   '/super/money/subscriptions',
   '/super/leads',
   '/super/restaurants?manager=none',
+  '/super/restaurants?onboarding=stuck',
+  '/super/support',
 ];
 // A busy load restaurant with notes and a tag: its page, every tab of its own (13a).
 const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents'];

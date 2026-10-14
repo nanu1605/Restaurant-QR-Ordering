@@ -13,6 +13,7 @@ import {
   createPlatformAdmin,
   logInAsPlatformAdmin,
   restaurantPagePaths,
+  supportRequestPaths,
 } from './platform-fixtures';
 
 // Security hardening (spec §19 Phase 9, docs/DECISIONS.md P9-9): every page
@@ -75,6 +76,7 @@ test('every panel runs under the content security policy without violations', as
     '/admin/settings',
     '/admin/settings/test-print',
     '/admin/subscription',
+    '/admin/help',
   ]) {
     await visit(owner.page, path);
   }
@@ -108,6 +110,8 @@ test('the platform admin pages run under the policy without violations', async (
     '/super/audit',
     // A restaurant's Overview (its chart) and Billing.
     ...(await restaurantPagePaths('csp')).slice(0, 2),
+    // The support inbox and a request with its screenshot link (13b).
+    ...(await supportRequestPaths('csp')),
   ]) {
     await visit(page, path);
   }

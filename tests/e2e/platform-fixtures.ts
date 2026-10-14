@@ -72,8 +72,10 @@ export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   try {
     await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
   } catch {
-    // Under load a code can run out on its way: try once more with the next one.
+    // Under load a code can run out on its way: try once more with the next one,
+    // unless Home was only slow to arrive.
     await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 500);
+    if (new URL(page.url()).pathname === '/super') return;
     await main.getByLabel('6-digit code').fill(totpCode(admin.secret));
     await main.getByRole('button', { name: 'Verify' }).click();
     await expect(page).toHaveURL(/\/super$/);
@@ -103,6 +105,40 @@ export async function restaurantTab(page: Page, name: string) {
     .getByRole('navigation', { name: 'Restaurant sections' })
     .getByRole('link', { name, exact: true })
     .click();
+}
+
+/**
+ * A support request with an internal note, and the inbox's paths: the list
+ * and the request (13b), for the sweeps over every super-admin page.
+ */
+export async function supportRequestPaths(prefix: string) {
+  const restaurant = await createTestRestaurant({ prefix });
+  const admin = adminClient();
+  const { data } = await admin
+    .from('support_requests')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      created_by_name: 'Test Owner',
+      created_by_role: 'owner',
+      topic: 'printing',
+      message: 'The bill printer prints blank pages.',
+      contact_method: 'whatsapp',
+      contact: '9876543210',
+      context: { page: '/admin/bills', browser: 'Chrome' },
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  await admin
+    .from('support_request_events')
+    .insert({
+      request_id: data.id,
+      restaurant_id: restaurant.restaurantId,
+      kind: 'note',
+      body: 'Asked them to restart the printer.',
+    })
+    .throwOnError();
+  return ['/super/support', `/super/support/${data.id}`];
 }
 
 /**

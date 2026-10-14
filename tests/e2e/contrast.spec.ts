@@ -6,6 +6,7 @@ import {
   createPlatformAdmin,
   logInAsPlatformAdmin,
   restaurantPagePaths,
+  supportRequestPaths,
 } from './platform-fixtures';
 
 /**
@@ -86,6 +87,7 @@ test('admin panel', async ({ page }) => {
     '/admin/staff',
     '/admin/settings',
     '/admin/subscription',
+    '/admin/help',
     // Paper inside a dark page (docs/DECISIONS.md B-4).
     '/admin/tables/print',
     '/admin/settings/test-print',
@@ -108,6 +110,8 @@ test('platform admin panel', async ({ page }) => {
     '/super/money/subscriptions',
     // A restaurant's page, every tab (13a).
     ...(await restaurantPagePaths('contrast')),
+    // The support inbox and a request (13b).
+    ...(await supportRequestPaths('contrast')),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });
