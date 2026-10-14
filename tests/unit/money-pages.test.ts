@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { duesMessage, telHref, whatsappHref } from '@/features/platform/dues-messages';
+import {
+  duesMessage,
+  formatMobile,
+  telHref,
+  whatsappHref,
+} from '@/features/platform/dues-messages';
 import {
   readDuesFilters,
   readPaymentFilters,
@@ -310,5 +315,12 @@ describe('dues messages', () => {
     expect(telHref('9876543210')).toBe('tel:+919876543210');
     expect(whatsappHref('12345', 'Hi')).toBeNull();
     expect(telHref(null)).toBeNull();
+  });
+
+  it('reads a mobile stored with +91, spaces or dashes', () => {
+    expect(telHref('+91 98765-43210')).toBe('tel:+919876543210');
+    expect(whatsappHref('098765 43210', '')).toBe('https://wa.me/919876543210?text=');
+    expect(formatMobile('+91-9876543210')).toBe('98765 43210');
+    expect(formatMobile('022 2345 6789')).toBeNull();
   });
 });

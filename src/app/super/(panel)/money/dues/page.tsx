@@ -193,7 +193,7 @@ export default async function DuesPage({ searchParams }: PageProps<'/super/money
             <section key={kind} aria-labelledby={`renewal-${kind}`} className="flex flex-col gap-3">
               <h2 id={`renewal-${kind}`} className="text-base font-semibold text-ink">
                 {RENEWAL_KIND_LABELS[kind]}{' '}
-                <span className="text-ink-muted tabular-nums">({rows.length})</span>
+                <span className="text-ink-muted tabular-nums">({list.kinds[kind] ?? 0})</span>
               </h2>
               {items(rows)}
             </section>

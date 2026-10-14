@@ -8,7 +8,6 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { Money } from '@/components/shared/money';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pager } from '@/components/shared/pager';
-import { ScrollRegion } from '@/components/shared/scroll-region';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -196,7 +195,9 @@ export default async function PaymentsPage({ searchParams }: PageProps<'/super/m
         <h2 id="payments-totals" className="text-sm font-medium text-ink-muted">
           {filters.period === 'all'
             ? 'Every payment'
-            : `${formatDate(filters.from ?? null)} to ${formatDate(filters.to ?? today)}`}
+            : filters.from
+              ? `${formatDate(filters.from)} to ${formatDate(filters.to ?? today)}`
+              : `Up to ${formatDate(filters.to ?? today)}`}
           , {totals.count} {totals.count === 1 ? 'payment' : 'payments'}
         </h2>
         <p className="text-lg font-semibold text-ink tabular-nums" data-testid="payments-collected">
@@ -222,10 +223,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<'/super/m
               <PaymentCard key={row.payment_id} row={row} />
             ))}
           </ul>
-          <ScrollRegion
-            label="Payments"
-            className="hidden rounded-lg border border-line bg-surface md:block"
-          >
+          <div className="hidden rounded-lg border border-line bg-surface md:block">
             <Table label="Payments">
               <TableHeader>
                 <TableRow>
@@ -287,7 +285,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<'/super/m
                 </TableRow>
               </TableFooter>
             </Table>
-          </ScrollRegion>
+          </div>
         </>
       )}
       <Pager
@@ -335,7 +333,10 @@ function PaymentCard({ row }: { row: PaymentRow }) {
     <li className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
       <div className="flex items-start justify-between gap-3">
         <RestaurantLink row={row} />
-        <Money paise={row.amount_paise} className="font-semibold text-ink" />
+        <p className="flex shrink-0 flex-col items-end">
+          <Money paise={row.amount_paise} className="font-semibold text-ink" />
+          <span className="text-xs text-ink-muted">incl. GST</span>
+        </p>
       </div>
       <p className="text-sm text-ink-muted">
         {formatDate(row.created_at)}, {paymentPlanLabel(row)}, {PAYMENT_METHOD_LABELS[row.method]}

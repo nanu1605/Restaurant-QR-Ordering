@@ -19,9 +19,9 @@ export async function GET(request: Request) {
     return new Response('Too many payments for one file: choose fewer days.', { status: 413 });
   }
   const name =
-    filters.period === 'all'
-      ? `payments-to-${today}.csv`
-      : csvFilename('payments', filters.from ?? filters.to ?? today, filters.to ?? today);
+    filters.period === 'all' || !filters.from
+      ? `payments-to-${filters.to ?? today}.csv`
+      : csvFilename('payments', filters.from, filters.to ?? today);
 
   return new Response(toCsv(paymentsCsv(list.rows)), {
     headers: {

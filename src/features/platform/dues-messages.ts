@@ -89,8 +89,17 @@ export function duesMessage(bucket: DuesBucket, row: DuesRow, language: MessageL
 }
 
 /** An Indian mobile as stored (10 digits starting 6 to 9), or null. */
+// The phone is free text ('+91 98765-43210' too): its last 10 digits, as
+// private.phone10 reads it, when they are a mobile number.
 function mobile(phone: string | null): string | null {
-  return phone && /^[6-9]\d{9}$/.test(phone) ? phone : null;
+  const digits = (phone ?? '').replace(/\D/g, '').slice(-10);
+  return /^[6-9]\d{9}$/.test(digits) ? digits : null;
+}
+
+/** A mobile number to read out: '98765 43210'; null without one. */
+export function formatMobile(phone: string | null): string | null {
+  const number = mobile(phone);
+  return number ? `${number.slice(0, 5)} ${number.slice(5)}` : null;
 }
 
 /** wa.me opens a chat with the text filled in; null without a mobile number. */

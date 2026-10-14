@@ -357,6 +357,8 @@ const duesListSchema = z.object({
   page_size: z.number(),
   total: z.number(),
   counts: z.record(z.enum(DUES_BUCKETS), z.number()),
+  // Renewals of each kind in the chosen window, across every page.
+  kinds: z.record(z.enum(RENEWAL_KINDS), z.number()),
   expected: z.object({
     autopay_paise: z.number(),
     autopay_count: z.number(),

@@ -268,7 +268,10 @@ grant execute on function public.platform_list_payments(jsonb) to authenticated;
 -- match wins: payment_failed (Razorpay is retrying, still full access),
 -- lapsed (read-only), trial_ending (within 3 days, no autopay mandate) and
 -- renewal_due (a paid period ending within p_filters.days, 7 or 30). The
--- amount due is the plan's price for its cycle (monthly when none) with GST.
+-- amount due is the plan's price for its cycle (monthly when none) with GST;
+-- while a Razorpay mandate is live, its plan and cycle, which is what Razorpay
+-- charges (as private.stamp_payment_plan). Renewals come by kind: autopay,
+-- needs a payment, ending, with each kind's count.
 -- Expected collections are the next 30 days' renewals, by autopay and by
 -- hand. p_filters: bucket, days, q (restaurant name or code), page.
 create function public.platform_list_dues(p_filters jsonb)
@@ -287,6 +290,7 @@ declare
   v_page_size constant int := 50;
   v_counts jsonb;
   v_expected jsonb;
+  v_kinds jsonb;
   v_total bigint;
   v_rows jsonb;
 begin
@@ -323,13 +327,19 @@ begin
       private.razorpay_managed(s) as autopay,
       private.renewal_kind(s) as renewal_kind,
       pl.code as plan_code, pl.name as plan_name,
-      private.fee_with_gst(
-        private.cycle_price_paise(pl, coalesce(s.billing_cycle, 'monthly'))
-      ) as due_paise,
+      private.fee_with_gst(private.cycle_price_paise(pl, coalesce(
+        case when m.live then s.next_billing_cycle end, s.billing_cycle, 'monthly'
+      ))) as due_paise,
       a.state as access_state, a.reason as access_reason, a.restriction_at
     from public.restaurants r
     join public.restaurant_subscriptions s on s.restaurant_id = r.id
-    join public.plans pl on pl.id = s.plan_id
+    -- A mandate Razorpay charges or retries; one not yet paid for has its plan
+    -- waiting in next_plan_id.
+    cross join lateral (
+      select coalesce(s.razorpay_status in ('authenticated', 'active', 'pending', 'halted'), false)
+        as live
+    ) as m
+    join public.plans pl on pl.id = coalesce(case when m.live then s.next_plan_id end, s.plan_id)
     cross join lateral public.restaurant_access(r.id) as a
     where r.status = 'active'
       and (v_q is null or r.name ilike '%' || v_q || '%' or r.slug ilike '%' || v_q || '%')
@@ -365,8 +375,10 @@ begin
     select d.*
     from dues d
     where d.chosen
-    -- Lapsed: most recent first; the rest: soonest first.
+    -- Renewals by kind; lapsed: most recent first; the rest: soonest first.
     order by
+      case when v_bucket = 'renewal_due'
+        then array_position(array['autopay', 'needs_payment', 'ending'], d.renewal_kind) end,
       case when v_bucket <> 'lapsed' then d.sort_at end asc nulls last,
       case when v_bucket = 'lapsed' then d.sort_at end desc nulls last,
       d.name, d.restaurant_id
@@ -391,6 +403,11 @@ begin
         where d.bucket = 'renewal_due' and d.renewal_kind = 'needs_payment'), 0),
       'needs_payment_count', count(*) filter (
         where d.bucket = 'renewal_due' and d.renewal_kind = 'needs_payment')
+    ),
+    jsonb_build_object(
+      'autopay', count(*) filter (where d.chosen and d.renewal_kind = 'autopay'),
+      'needs_payment', count(*) filter (where d.chosen and d.renewal_kind = 'needs_payment'),
+      'ending', count(*) filter (where d.chosen and d.renewal_kind = 'ending')
     ),
     count(*) filter (where d.chosen),
     coalesce((
@@ -420,6 +437,8 @@ begin
         'last_reminder_kind', rem.kind,
         'last_reminder_at', rem.sent_at
       ) order by
+        case when v_bucket = 'renewal_due'
+          then array_position(array['autopay', 'needs_payment', 'ending'], pg.renewal_kind) end,
         case when v_bucket <> 'lapsed' then pg.sort_at end asc nulls last,
         case when v_bucket = 'lapsed' then pg.sort_at end desc nulls last,
         pg.name, pg.restaurant_id)
@@ -432,7 +451,7 @@ begin
         limit 1
       ) as rem on true
     ), '[]'::jsonb)
-  into v_counts, v_expected, v_total, v_rows
+  into v_counts, v_expected, v_kinds, v_total, v_rows
   from dues d;
 
   return jsonb_build_object(
@@ -443,6 +462,7 @@ begin
     'total', v_total,
     'counts', v_counts,
     'expected', v_expected,
+    'kinds', v_kinds,
     'rows', v_rows
   );
 end;

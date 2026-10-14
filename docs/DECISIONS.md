@@ -3418,22 +3418,30 @@ stay at 13g, since nobody else gets `/super` before then.
   mode. The CSV has the same rows and columns with the reports' escaping, up to 10,000 rows;
   beyond that the page asks for fewer days and the download refuses, rather than cutting the
   file short. A row opens the restaurant's Payments section (its Billing tab from 13a). On a
-  phone the rows become cards. Compare-with-previous-period comes with Home (12e).
+  phone the rows become cards, their total marked "incl. GST". With only an end date the
+  heading reads "Up to" that day and the file is named `payments-to-<day>.csv`.
+  Compare-with-previous-period comes with Home (12e).
 - **SA-19 · Dues:** `/super/money/dues` through `platform_list_dues`, the buckets of plan §5.6,
   first match wins. Suspended restaurants are in no bucket: suspending is the team's own call,
   handled on the restaurant's page. Payment failed needs full access; once grace ends the
   restaurant is Lapsed. Renewals are split by `private.renewal_kind`: Ending (set to end at the
   period's end, or a Razorpay subscription whose mandate is off), On autopay (a live mandate),
-  Needs a payment (source manual, which covers payment links too). The amount due is the plan's
-  price for its cycle (monthly when none) with GST, rounded like `withGst()`
-  (`private.fee_with_gst`). Expected collections are the next 30 days' renewals on autopay and
+  Needs a payment (source manual, which covers payment links too), listed in that order with each
+  kind's count across every page. The amount due is the plan's price for its cycle (monthly when
+  none) with GST, rounded like `withGst()` (`private.fee_with_gst`); while a Razorpay mandate is
+  live (authenticated, active, or retrying a failed charge) it is the mandate's plan and cycle
+  (`next_plan_id`, `next_billing_cycle`), what Razorpay will charge, as SA-17 does for the
+  payment itself. Expected collections are the next 30 days' renewals on autopay and
   needing a payment, as two figures; ending ones aren't expected. The search narrows the counts
   too. The last reminder email comes from `subscription_reminders`. The row's actions are the
   restaurant page's own dialogs: Send payment link, Record payment, and Extend trial on trials.
 - **SA-20 · Call and WhatsApp:** `tel:+91…` and `https://wa.me/91…` from `restaurants.phone`, the
-  only phone stored (a 10-digit mobile). Each bucket has a message in English and in Hindi, with
-  the restaurant, plan, amount and day filled in on the server (Hindi month names in the Hindi
-  one); the team edits it in a dialog and WhatsApp opens with it. MenuMesh sends nothing itself.
+  only phone stored. It is free text, so its last 10 digits are used when they are a mobile
+  number (as `private.phone10` reads it: "+91 98765-43210" works), shown on the row as
+  "98765 43210"; anything else shows as typed, with no buttons. Each bucket has a message in
+  English and in Hindi, with the restaurant, plan, amount and day filled in on the server (Hindi
+  month names in the Hindi one); the team edits it in a dialog and WhatsApp opens with it.
+  MenuMesh sends nothing itself.
   The templates live in `src/features/platform/dues-messages.ts`; the Hindi wording awaits the
   owner's reading, like the worker panel's did.
 - **SA-21 · Subscriptions under Money:** `/super/money/subscriptions` (the old URL redirects,

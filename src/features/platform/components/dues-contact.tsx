@@ -16,7 +16,7 @@ import {
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 
-import { telHref, whatsappHref, type MessageLanguage } from '../dues-messages';
+import { formatMobile, telHref, whatsappHref, type MessageLanguage } from '../dues-messages';
 
 const LANGUAGES: { value: MessageLanguage; label: string; lang: string }[] = [
   { value: 'en', label: 'English', lang: 'en' },
@@ -44,7 +44,9 @@ export function DuesContact({
   const tel = telHref(phone);
   const whatsapp = whatsappHref(phone, text);
 
-  if (!tel) return <p className="text-sm text-ink-muted">No mobile number</p>;
+  if (!tel) {
+    return <p className="text-sm text-ink-muted">{phone ? phone : 'No mobile number'}</p>;
+  }
 
   function choose(next: MessageLanguage) {
     setLanguage(next);
@@ -53,6 +55,7 @@ export function DuesContact({
 
   return (
     <>
+      <span className="text-sm text-ink tabular-nums">{formatMobile(phone)}</span>
       <a
         href={tel}
         aria-label={`Call ${restaurantName}`}

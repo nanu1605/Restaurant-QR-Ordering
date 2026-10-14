@@ -18,7 +18,7 @@ test('a failed payment is chased from Dues and lands in the ledger and its CSV',
   const db = adminClient();
   await db
     .from('restaurants')
-    .update({ phone: '9876500550', city: 'Indore' })
+    .update({ phone: '+91 98765-00550', city: 'Indore' })
     .eq('id', restaurant.restaurantId)
     .throwOnError();
   await db
@@ -53,6 +53,8 @@ test('a failed payment is chased from Dues and lands in the ledger and its CSV',
   await expect(row).toContainText('3 days left');
   await expect(row).toContainText('Razorpay is retrying the charge');
   await expect(row).toContainText('₹1,060.82');
+  // The phone is stored as typed; the row reads out the mobile number.
+  await expect(row).toContainText('98765 00550');
   await expect(row.getByRole('link', { name: `Call ${restaurant.name}` })).toHaveAttribute(
     'href',
     'tel:+919876500550',
@@ -72,6 +74,19 @@ test('a failed payment is chased from Dues and lands in the ledger and its CSV',
     'https://wa.me/919876500550?text=Hello%20%26%20thanks',
   );
   await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  // On a phone the row stacks, every action in reach, nothing sideways.
+  await page.setViewportSize({ width: 360, height: 740 });
+  for (const action of [
+    row.getByRole('link', { name: `Call ${restaurant.name}` }),
+    row.getByRole('button', { name: `WhatsApp ${restaurant.name}` }),
+    row.getByRole('button', { name: 'Record payment' }),
+  ]) {
+    await action.scrollIntoViewIfNeeded();
+    await expect(action).toBeInViewport({ ratio: 1 });
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // Taking the payment here moves the restaurant out of the bucket.
   await row.getByRole('button', { name: 'Record payment' }).click();
@@ -110,6 +125,15 @@ test('a failed payment is chased from Dues and lands in the ledger and its CSV',
     'Collected ₹899.00 + GST ₹161.82 = ₹1,060.82',
   );
   await expect(table.locator('tfoot')).toContainText('Total, 1 payment');
+
+  // On a phone each payment is a card, its total marked as including GST.
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expect(table).toBeHidden();
+  const card = main.getByRole('list', { name: 'Payments' }).getByRole('listitem');
+  await expect(card).toContainText(/₹1,060\.82\s*incl\. GST/);
+  await expect(card).toContainText('UTR 550550');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // The CSV holds the same rows as the screen.
   const download = page.waitForEvent('download');

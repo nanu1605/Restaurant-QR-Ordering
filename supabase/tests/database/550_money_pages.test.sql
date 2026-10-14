@@ -58,6 +58,39 @@ update public.restaurant_subscriptions set status = 'past_due', source = 'razorp
   grace_until = now() + interval '3 days', current_period_end = now() - interval '1 day'
   where restaurant_id = :'suspended';
 select tests.suspend(:'suspended');
+
+-- Overlaps that first match wins settles (SA-19): grace over, and a paid
+-- period more than 2 days past, are Lapsed (not Payment failed or Renewal due).
+select tests.create_restaurant('sa550-grace-over') as grace_over \gset
+select tests.create_restaurant('sa550-expired') as expired \gset
+update public.restaurant_subscriptions set status = 'past_due', source = 'razorpay',
+  razorpay_subscription_id = 'sub_SA550graceover', razorpay_status = 'halted',
+  billing_cycle = 'monthly', current_period_end = now() - interval '10 days',
+  grace_until = now() - interval '1 day', trial_ends_at = null
+  where restaurant_id = :'grace_over';
+update public.restaurant_subscriptions set status = 'active', source = 'manual',
+  billing_cycle = 'monthly', current_period_end = now() - interval '5 days',
+  trial_ends_at = null
+  where restaurant_id = :'expired';
+
+-- A live mandate is priced at the plan and cycle Razorpay charges: a manual
+-- Starter payer switching to Growth yearly, and a trial whose first Growth
+-- yearly charge failed.
+select tests.create_restaurant('sa550-mandate') as mandate \gset
+select tests.create_restaurant('sa550-retry') as retry \gset
+update public.restaurant_subscriptions set status = 'active', source = 'manual',
+  plan_id = :'starter', billing_cycle = 'monthly',
+  current_period_end = now() + interval '10 days', trial_ends_at = null,
+  razorpay_subscription_id = 'sub_SA550mandate', razorpay_status = 'authenticated',
+  next_plan_id = :'growth', next_billing_cycle = 'yearly'
+  where restaurant_id = :'mandate';
+update public.restaurant_subscriptions set status = 'past_due', source = 'razorpay',
+  plan_id = :'starter', billing_cycle = null, trial_ends_at = null,
+  current_period_end = now() - interval '1 day', grace_until = now() + interval '5 days',
+  razorpay_subscription_id = 'sub_SA550retry', razorpay_status = 'pending',
+  next_plan_id = :'growth', next_billing_cycle = 'yearly'
+  where restaurant_id = :'retry';
+
 insert into public.subscription_reminders (restaurant_id, kind, due_key, sent_at)
 values (:'failed', 'payment_failed', current_date - 1, now() - interval '1 day'),
        (:'failed', 'payment_failed', current_date, now() - interval '1 hour');
@@ -82,13 +115,23 @@ select pg_temp.dues('renewal_due') as d_renew \gset
 select pg_temp.dues('renewal_due', 7) as d_renew7 \gset
 select tests.clear_auth();
 
-select is(pg_temp.slugs(:'d_failed'), array['sa550-failed'], 'payment failed: Razorpay retrying, in grace');
-select is(pg_temp.slugs(:'d_lapsed'), array['sa550-lapsed'], 'lapsed: read-only, not suspended');
+select is(pg_temp.slugs(:'d_failed'), array['sa550-failed', 'sa550-retry'],
+  'payment failed: Razorpay retrying, in grace');
+select is(pg_temp.slugs(:'d_lapsed'), array['sa550-expired', 'sa550-grace-over', 'sa550-lapsed'],
+  'lapsed: read-only, not suspended; grace over or a period long past is lapsed, nothing else');
 select is(pg_temp.slugs(:'d_trial'), array['sa550-trial'],
   'trial ending: within 3 days and no autopay (a mandate or a later end is left out)');
 select is(pg_temp.slugs(:'d_renew'),
-  array['sa550-renew-auto', 'sa550-renew-ending', 'sa550-renew-manual'],
+  array['sa550-mandate', 'sa550-renew-auto', 'sa550-renew-ending', 'sa550-renew-manual'],
   'renewal due within 30 days');
+select is(
+  (select array_agg(r ->> 'slug' order by n) from jsonb_array_elements((:'d_renew'::jsonb) -> 'rows')
+     with ordinality as x(r, n)),
+  array['sa550-renew-auto', 'sa550-mandate', 'sa550-renew-manual', 'sa550-renew-ending'],
+  'renewals by kind (autopay, needs a payment, ending), then soonest first'
+);
+select is((:'d_renew'::jsonb) -> 'kinds', '{"autopay": 2, "needs_payment": 1, "ending": 1}'::jsonb,
+  'each kind''s count covers every page');
 select is(pg_temp.slugs(:'d_renew7'), array['sa550-renew-auto', 'sa550-renew-ending'],
   'within 7 days');
 select is(
@@ -102,7 +145,7 @@ select is(
 );
 select is(
   (:'d_renew'::jsonb) -> 'counts',
-  '{"payment_failed": 1, "lapsed": 1, "trial_ending": 1, "renewal_due": 3}'::jsonb,
+  '{"payment_failed": 2, "lapsed": 3, "trial_ending": 1, "renewal_due": 4}'::jsonb,
   'the tab counts'
 );
 select is(((:'d_renew7'::jsonb) -> 'counts' ->> 'renewal_due')::int, 2, 'the renewal count follows the window');
@@ -111,18 +154,31 @@ select is(
   (select jsonb_object_agg(r ->> 'slug', r ->> 'renewal_kind')
    from jsonb_array_elements((:'d_renew'::jsonb) -> 'rows') as r),
   '{"sa550-renew-auto": "autopay", "sa550-renew-manual": "needs_payment",
-    "sa550-renew-ending": "ending"}'::jsonb,
+    "sa550-renew-ending": "ending", "sa550-mandate": "autopay"}'::jsonb,
   'renewals: on autopay, needs a payment, ending'
 );
 select is(
   (:'d_renew'::jsonb) -> 'expected',
   jsonb_build_object(
-    'autopay_paise', private.fee_with_gst((select price_monthly_paise from public.plans where code = 'growth')),
-    'autopay_count', 1,
+    'autopay_paise', private.fee_with_gst((select price_monthly_paise from public.plans where code = 'growth'))
+      + private.fee_with_gst((select price_yearly_paise from public.plans where code = 'growth')),
+    'autopay_count', 2,
     'needs_payment_paise', private.fee_with_gst((select price_yearly_paise from public.plans where code = 'growth')),
     'needs_payment_count', 1
   ),
   'expected collections: autopay and by hand apart, at the cycle price with GST; ending left out'
+);
+select is(
+  (select jsonb_object_agg(r ->> 'slug', jsonb_build_array(r ->> 'plan_code', (r ->> 'due_paise')::bigint))
+   from jsonb_array_elements(((:'d_renew'::jsonb) -> 'rows') || ((:'d_failed'::jsonb) -> 'rows')) as r
+   where r ->> 'slug' in ('sa550-mandate', 'sa550-retry')),
+  jsonb_build_object(
+    'sa550-mandate', jsonb_build_array('growth',
+      private.fee_with_gst((select price_yearly_paise from public.plans where code = 'growth'))),
+    'sa550-retry', jsonb_build_array('growth',
+      private.fee_with_gst((select price_yearly_paise from public.plans where code = 'growth')))
+  ),
+  'a live mandate is due at its own plan and cycle, as Razorpay charges'
 );
 select is(
   (:'d_failed'::jsonb) #>> '{rows,0,due_paise}',
@@ -138,7 +194,10 @@ select is(
   'the latest reminder email is shown'
 );
 select is(
-  (:'d_lapsed'::jsonb) #>> '{rows,0,access_reason}', 'trial_ended', 'why it lapsed'
+  (select jsonb_object_agg(r ->> 'slug', r ->> 'access_reason')
+   from jsonb_array_elements((:'d_lapsed'::jsonb) -> 'rows') as r),
+  '{"sa550-lapsed": "trial_ended", "sa550-grace-over": "payment_failed", "sa550-expired": "subscription_lapsed"}'::jsonb,
+  'why each lapsed'
 );
 select is(
   (:'d_failed'::jsonb) #>> '{rows,0,state}', 'payment_failed', 'each row has its state'
