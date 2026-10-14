@@ -138,6 +138,147 @@ $$;
 revoke execute on function private.platform_usage(date, date, uuid)
   from public, anon, authenticated;
 
+-- ─── Usage rebuild, one at a time ───────────────────────────────────────────
+create or replace function private.metrics_usage_rebuild(
+  p_from date,
+  p_to date,
+  p_restaurant_id uuid default null
+)
+returns int
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  r record;
+  v_to date;
+  v_starts timestamptz;
+  v_ends timestamptz;
+  v_rows int := 0;
+  v_count int;
+begin
+  -- One rebuild at a time: two at once (the nightly job run twice) would both
+  -- delete the same days, then both insert them.
+  perform pg_advisory_xact_lock(hashtextextended('metrics_usage_rebuild', 0));
+  for r in
+    select x.id, x.timezone as tz, x.business_day_start_hour as h
+    from public.restaurants x
+    where p_restaurant_id is null or x.id = p_restaurant_id
+  loop
+    v_to := least(p_to, private.business_date(now(), r.tz, r.h) - 1);
+    continue when v_to < p_from;
+    select b.starts_at, b.ends_at into v_starts, v_ends
+    from private.business_day_bounds(p_from, v_to, r.tz, r.h) as b;
+
+    delete from public.metrics_usage_daily m
+    where m.restaurant_id = r.id and m.business_day between p_from and v_to;
+
+    insert into public.metrics_usage_daily (
+      restaurant_id, business_day, orders, customer_orders, staff_orders, items,
+      sessions_billed, avg_session_minutes, bills, gmv_paise, discount_paise, tax_paise,
+      paid_cash_paise, paid_upi_paise, paid_card_paise, paid_other_paise,
+      service_requests, hourly_orders
+    )
+    with bill_days as (
+      select
+        ((b.generated_at at time zone r.tz) - make_interval(hours => r.h))::date as day,
+        count(*)::int as bills,
+        sum(b.grand_total_paise) as gmv,
+        sum(b.discount_paise) as discount,
+        sum(b.total_tax_paise) as tax,
+        round(avg(extract(epoch from b.generated_at - s.opened_at) / 60))::int as minutes,
+        sum(pay.cash) as cash,
+        sum(pay.upi) as upi,
+        sum(pay.card) as card,
+        sum(pay.other) as other,
+        sum(it.items)::int as items
+      from public.bills b
+      join public.table_sessions s on s.id = b.session_id
+      cross join lateral (
+        select
+          coalesce(sum(p.amount_paise) filter (where p.mode = 'cash'), 0) as cash,
+          coalesce(sum(p.amount_paise) filter (where p.mode = 'upi'), 0) as upi,
+          coalesce(sum(p.amount_paise) filter (where p.mode = 'card'), 0) as card,
+          coalesce(sum(p.amount_paise) filter (where p.mode = 'other'), 0) as other
+        from public.bill_payments p
+        where p.restaurant_id = r.id and p.bill_id = b.id and not p.is_void
+      ) as pay
+      cross join lateral (
+        select coalesce(sum(i.quantity), 0) as items
+        from public.order_items i
+        join public.orders o on o.restaurant_id = i.restaurant_id and o.id = i.order_id
+        where i.restaurant_id = r.id
+          and i.session_id = b.session_id
+          and o.status = 'accepted'
+          and i.status in ('placed', 'preparing', 'ready', 'served')
+      ) as it
+      where b.restaurant_id = r.id
+        and b.status = 'active'
+        and b.generated_at >= v_starts and b.generated_at < v_ends
+      group by 1
+    ),
+    placed as (
+      select
+        ((o.created_at at time zone r.tz) - make_interval(hours => r.h))::date as day,
+        extract(hour from o.created_at at time zone r.tz)::int as hour,
+        o.placed_via
+      from public.orders o
+      where o.restaurant_id = r.id
+        and o.status = 'accepted'
+        and o.created_at >= v_starts and o.created_at < v_ends
+    ),
+    placed_hours as (
+      select pl.day, pl.hour, count(*)::int as n from placed pl group by pl.day, pl.hour
+    ),
+    order_days as (
+      select
+        pl.day,
+        count(*)::int as orders,
+        (count(*) filter (where pl.placed_via = 'customer'))::int as customer_orders,
+        (count(*) filter (where pl.placed_via = 'staff'))::int as staff_orders,
+        array(
+          select coalesce((select h.n from placed_hours h where h.day = pl.day and h.hour = g), 0)
+          from generate_series(0, 23) as g
+          order by g
+        ) as hourly
+      from placed pl
+      group by pl.day
+    ),
+    request_days as (
+      select
+        ((q.created_at at time zone r.tz) - make_interval(hours => r.h))::date as day,
+        count(*)::int as requests
+      from public.service_requests q
+      where q.restaurant_id = r.id
+        and q.created_at >= v_starts and q.created_at < v_ends
+      group by 1
+    ),
+    days as (
+      select day from bill_days
+      union select day from order_days
+      union select day from request_days
+    )
+    select
+      r.id, d.day,
+      coalesce(od.orders, 0), coalesce(od.customer_orders, 0), coalesce(od.staff_orders, 0),
+      coalesce(bd.items, 0), coalesce(bd.bills, 0), bd.minutes, coalesce(bd.bills, 0),
+      coalesce(bd.gmv, 0), coalesce(bd.discount, 0), coalesce(bd.tax, 0),
+      coalesce(bd.cash, 0), coalesce(bd.upi, 0), coalesce(bd.card, 0), coalesce(bd.other, 0),
+      coalesce(rd.requests, 0), coalesce(od.hourly, array_fill(0, array[24]))
+    from days d
+    left join bill_days bd on bd.day = d.day
+    left join order_days od on od.day = d.day
+    left join request_days rd on rd.day = d.day
+    where d.day between p_from and v_to;
+
+    get diagnostics v_count = row_count;
+    v_rows := v_rows + v_count;
+  end loop;
+  return v_rows;
+end;
+$$;
+
 -- ─── The restaurant ─────────────────────────────────────────────────────────
 -- The header and the facts every tab shares (SA-34): the list's state, health,
 -- paid till and last active, tags, account manager, plan limits and the
