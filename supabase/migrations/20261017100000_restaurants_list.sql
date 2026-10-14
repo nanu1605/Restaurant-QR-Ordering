@@ -268,6 +268,77 @@ begin
 end;
 $$;
 
+-- Whether the platform admin holds a permission, without failing: for what
+-- only some see, like money on the restaurants list. A misspelt name still fails.
+create function private.has_platform_permission(p_permission text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_platform_permission(p_permission);
+  return true;
+exception
+  when sqlstate 'P0001' then
+    if sqlerrm in ('FORBIDDEN', 'MFA_REQUIRED') then
+      return false;
+    end if;
+    raise;
+end;
+$$;
+revoke execute on function private.has_platform_permission(text) from public, anon, authenticated;
+
+-- Accepted orders on each of the last 7 finished business days (oldest first)
+-- and the last 30 days' GMV. The nightly usage step (03:00 India time) can't
+-- store a business day that ends after it, so the latest finished day is
+-- counted live, from orders and bills as private.metrics_usage_rebuild counts.
+create function private.restaurant_recent_usage(
+  p_restaurant_id uuid,
+  p_tz text,
+  p_start_hour int
+)
+returns table (orders_7d int[], gmv_30d_paise bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with d as (
+    select private.business_date(now(), p_tz, p_start_hour) - 1 as last_day
+  ),
+  live as (
+    select
+      (select count(*)::int from public.orders o
+       where o.restaurant_id = p_restaurant_id and o.status = 'accepted'
+         and o.created_at >= b.starts_at and o.created_at < b.ends_at) as orders,
+      (select coalesce(sum(x.grand_total_paise), 0) from public.bills x
+       where x.restaurant_id = p_restaurant_id and x.status = 'active'
+         and x.generated_at >= b.starts_at and x.generated_at < b.ends_at) as gmv
+    from d
+    cross join private.business_day_bounds(d.last_day, d.last_day, p_tz, p_start_hour) as b
+  )
+  select
+    array(
+      select case when g.day = d.last_day then l.orders else coalesce(m.orders, 0) end
+      from generate_series(6, 0, -1) as n
+      cross join lateral (select d.last_day - n as day) as g
+      left join public.metrics_usage_daily m
+        on m.restaurant_id = p_restaurant_id and m.business_day = g.day
+      order by g.day
+    ),
+    (l.gmv + coalesce((
+      select sum(m.gmv_paise) from public.metrics_usage_daily m
+      where m.restaurant_id = p_restaurant_id
+        and m.business_day between d.last_day - 29 and d.last_day - 1
+    ), 0))::bigint
+  from d
+  cross join live l;
+$$;
+revoke execute on function private.restaurant_recent_usage(uuid, text, int)
+  from public, anon, authenticated;
+
 -- ─── Restaurants list (plan 12d) ────────────────────────────────────────────
 -- Filters: q (name, code or city), state (plan §5.1), plan (code), health,
 -- city, region (Indian state), channel (acquisition channel, or 'unknown'),
@@ -275,7 +346,8 @@ $$;
 -- India dates), sort (created | name | last_active | paid_till | gmv), dir
 -- (asc | desc), page; export: true returns up to 10,000 rows on one page.
 -- Health, last active and GMV are worked out for every match only when a
--- filter or the sort needs them, otherwise for the page's rows.
+-- filter or the sort needs them, otherwise for the page's rows. Money paid is
+-- for money.view only (null without it).
 create or replace function public.platform_list_restaurants(p_filters jsonb)
 returns jsonb
 language plpgsql
@@ -304,8 +376,10 @@ declare
   v_rows jsonb;
   v_cities jsonb;
   v_regions jsonb;
+  v_money boolean;
 begin
   perform private.require_platform_permission('restaurants.view');
+  v_money := private.has_platform_permission('money.view');
   perform private.assert_keys(v_filters, array[
     'q', 'state', 'plan', 'health', 'city', 'region', 'channel', 'from', 'to', 'paid_from',
     'paid_to', 'sort', 'dir', 'page', 'export'
@@ -377,6 +451,10 @@ begin
       s.current_period_end,
       case when s.status = 'trialing' then s.trial_ends_at else s.current_period_end end
         as paid_till,
+      -- Sorted by the day shown: a paid period's last day is the day before it ends.
+      case when s.status = 'trialing' then s.trial_ends_at
+        else s.current_period_end - interval '1 day' end as paid_last,
+      s.cancel_at_period_end,
       case when v_state is not null then (
         select private.subscription_state(r.status::text, a.state, s.status::text, s.source::text)
         from public.restaurant_access(r.id) as a
@@ -413,10 +491,8 @@ begin
       case when v_sort = 'last_active' then private.restaurant_last_active(b.id) end
         as last_active,
       case when v_sort = 'gmv' then (
-        select coalesce(sum(m.gmv_paise), 0)
-        from public.metrics_usage_daily m
-        where m.restaurant_id = b.id
-          and m.business_day >= private.business_date(now(), b.timezone, b.business_day_start_hour) - 30
+        select u.gmv_30d_paise
+        from private.restaurant_recent_usage(b.id, b.timezone, b.business_day_start_hour) as u
       ) end as gmv_30d
     from base b
     where v_state is null or b.state = v_state
@@ -432,8 +508,8 @@ begin
       case when v_sort = 'name' and v_dir = 'desc' then lower(m.name) end desc,
       case when v_sort = 'last_active' and v_dir = 'asc' then m.last_active end asc nulls first,
       case when v_sort = 'last_active' and v_dir = 'desc' then m.last_active end desc nulls last,
-      case when v_sort = 'paid_till' and v_dir = 'asc' then m.paid_till end asc nulls last,
-      case when v_sort = 'paid_till' and v_dir = 'desc' then m.paid_till end desc nulls last,
+      case when v_sort = 'paid_till' and v_dir = 'asc' then m.paid_last end asc nulls last,
+      case when v_sort = 'paid_till' and v_dir = 'desc' then m.paid_last end desc nulls last,
       case when v_sort = 'gmv' and v_dir = 'asc' then m.gmv_30d end asc,
       case when v_sort = 'gmv' and v_dir = 'desc' then m.gmv_30d end desc,
       case when v_sort = 'created' and v_dir = 'asc' then m.created_at end asc,
@@ -447,9 +523,13 @@ begin
       private.subscription_state(pg.status::text, a.state, pg.subscription_status::text,
         pg.source::text) as row_state,
       a.state as access_state,
-      private.business_date(now(), pg.timezone, pg.business_day_start_hour) as today
+      u.orders_7d,
+      u.gmv_30d_paise as recent_gmv
     from page pg
     cross join lateral public.restaurant_access(pg.id) as a
+    cross join lateral private.restaurant_recent_usage(
+      pg.id, pg.timezone, pg.business_day_start_hour
+    ) as u
   )
   select
     (select count(*) from matching),
@@ -471,19 +551,12 @@ begin
         'state', x.row_state,
         'access_state', x.access_state,
         'paid_till', x.paid_till,
+        'ending', coalesce(x.cancel_at_period_end, false),
         'health', coalesce(x.health, private.restaurant_health(x.id, x.created_at)),
         'last_active', coalesce(x.last_active, private.restaurant_last_active(x.id)),
-        'gmv_30d_paise', coalesce(x.gmv_30d, (
-          select coalesce(sum(m.gmv_paise), 0) from public.metrics_usage_daily m
-          where m.restaurant_id = x.id and m.business_day >= x.today - 30
-        )),
-        'orders_7d', (
-          select array_agg(coalesce(m.orders, 0) order by d.day)
-          from generate_series(x.today - 7, x.today - 1, interval '1 day') as d(day)
-          left join public.metrics_usage_daily m
-            on m.restaurant_id = x.id and m.business_day = d.day::date
-        ),
-        'paid', (
+        'gmv_30d_paise', coalesce(x.gmv_30d, x.recent_gmv),
+        'orders_7d', to_jsonb(x.orders_7d),
+        'paid', case when v_money then (
           select jsonb_build_object(
             'subscription_paise', coalesce(sum(sp.base_paise) filter (where sp.purpose = 'subscription'), 0),
             'setup_fee_paise', coalesce(sum(sp.base_paise) filter (where sp.purpose = 'setup_fee'), 0),
@@ -491,14 +564,14 @@ begin
           )
           from public.subscription_payments sp
           where sp.restaurant_id = x.id
-        )
+        ) end
       ) order by
         case when v_sort = 'name' and v_dir = 'asc' then lower(x.name) end asc,
         case when v_sort = 'name' and v_dir = 'desc' then lower(x.name) end desc,
         case when v_sort = 'last_active' and v_dir = 'asc' then x.last_active end asc nulls first,
         case when v_sort = 'last_active' and v_dir = 'desc' then x.last_active end desc nulls last,
-        case when v_sort = 'paid_till' and v_dir = 'asc' then x.paid_till end asc nulls last,
-        case when v_sort = 'paid_till' and v_dir = 'desc' then x.paid_till end desc nulls last,
+        case when v_sort = 'paid_till' and v_dir = 'asc' then x.paid_last end asc nulls last,
+        case when v_sort = 'paid_till' and v_dir = 'desc' then x.paid_last end desc nulls last,
         case when v_sort = 'gmv' and v_dir = 'asc' then x.gmv_30d end asc,
         case when v_sort = 'gmv' and v_dir = 'desc' then x.gmv_30d end desc,
         case when v_sort = 'created' and v_dir = 'asc' then x.created_at end asc,
@@ -720,6 +793,10 @@ begin
   v_digits := case
     when v_q ~ '^[0-9 +().-]+$' then nullif(regexp_replace(v_q, '\D', '', 'g'), '')
   end;
+  -- Typed with +91 or a leading 0: the 10-digit number.
+  if length(v_digits) > 10 then
+    v_digits := right(v_digits, 10);
+  end if;
   if length(v_digits) < 3 then
     v_digits := null;
   end if;
@@ -734,7 +811,8 @@ begin
         when r.name ilike v_like then null
         when r.slug ilike v_like then 'Code ' || r.slug
         when r.city ilike v_like then null
-        when v_digits is not null and r.phone like '%' || v_digits || '%' then 'Phone ' || r.phone
+        when v_digits is not null and regexp_replace(r.phone, '\D', '', 'g') like '%' || v_digits || '%'
+          then 'Phone ' || r.phone
         when r.gstin ilike v_like then 'GSTIN ' || r.gstin
         when v_digits is not null and r.fssai_license like '%' || v_digits || '%'
           then 'FSSAI ' || r.fssai_license
@@ -750,7 +828,7 @@ begin
     from public.restaurants r
     where r.name ilike v_like or r.slug ilike v_like or r.city ilike v_like
       or r.gstin ilike v_like
-      or (v_digits is not null and (r.phone like '%' || v_digits || '%'
+      or (v_digits is not null and (regexp_replace(r.phone, '\D', '', 'g') like '%' || v_digits || '%'
         or r.fssai_license like '%' || v_digits || '%'))
       or exists (
         select 1 from public.restaurant_members m

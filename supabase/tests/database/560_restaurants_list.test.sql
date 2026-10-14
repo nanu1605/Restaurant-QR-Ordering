@@ -96,11 +96,17 @@ select is(private.restaurant_last_active(:'new'), now() - interval '1 hour', 'a 
 select is(private.restaurant_last_active(:'busy'), now() - interval '2 days',
   'the latest accepted order counts');
 select is(private.restaurant_last_active(:'never'), null, 'rejected orders don''t count');
+select tests.create_restaurant('sa560-billed') as billed \gset
+select tests.create_full_fixture(:'billed');
+-- Its order turned down, so the bill is all it has done.
+update public.orders set status = 'rejected' where restaurant_id = :'billed';
+update public.bills set generated_at = now() - interval '1 day' where restaurant_id = :'billed';
+select is(private.restaurant_last_active(:'billed'), now() - interval '1 day', 'a bill counts');
 
 -- ─── List fixtures ──────────────────────────────────────────────────────────
 update public.restaurants set city = 'Indore', state = 'Madhya Pradesh' where id = :'idle';
 update public.restaurants set acquisition_channel = 'referral' where id = :'never';
-update public.restaurants set phone = '9876556001', gstin = '23ABCDE1234F1Z5',
+update public.restaurants set phone = '+91 98765-56001', gstin = '23ABCDE1234F1Z5',
   fssai_license = '12345678901234' where id = :'busy';
 update public.restaurant_subscriptions set status = 'active', source = 'manual',
   billing_cycle = 'monthly', trial_ends_at = null,
@@ -161,10 +167,11 @@ select pg_temp.list('{"sort": "paid_till"}') as l_paid_desc \gset
 select pg_temp.list('{"export": true}') as l_export \gset
 select tests.clear_auth();
 
-select is((:'l_all'::jsonb) ->> 'total', '6', 'the search finds the six');
+select is((:'l_all'::jsonb) ->> 'total', '7', 'the search finds the seven');
 select is(pg_temp.slugs(:'l_slowing'), array['sa560-slowing'], 'a health filter');
 select is(pg_temp.slugs(:'l_inactive'), array['sa560-idle'], 'inactive');
-select is(pg_temp.slugs(:'l_setting_up'), array['sa560-new'], 'setting up');
+-- Both made in this transaction, so they share a created_at: compared in any order.
+select is(pg_temp.sorted(:'l_setting_up'), array['sa560-billed', 'sa560-new'], 'setting up');
 select is(pg_temp.slugs(:'l_failed'), array['sa560-slowing'], 'a state filter');
 select is(pg_temp.slugs(:'l_paid'), array['sa560-busy'], 'paid');
 select is(pg_temp.slugs(:'l_starter'), array['sa560-small'], 'a plan filter');
@@ -173,15 +180,15 @@ select is(pg_temp.slugs(:'l_region'), array['sa560-idle'], 'an Indian state, wha
 select ok((:'l_all'::jsonb) -> 'cities' ? 'Indore' and (:'l_all'::jsonb) -> 'regions' ? 'Madhya Pradesh',
   'the cities and states to choose from');
 select is(pg_temp.slugs(:'l_referral'), array['sa560-never'], 'how they found us');
-select is(cardinality(pg_temp.slugs(:'l_unknown')), 5, 'not known');
-select is(pg_temp.slugs(:'l_today'), array['sa560-new'], 'created from a day (India)');
+select is(cardinality(pg_temp.slugs(:'l_unknown')), 6, 'not known');
+select is(pg_temp.sorted(:'l_today'), array['sa560-billed', 'sa560-new'], 'created from a day (India)');
 select is(pg_temp.slugs(:'l_paid_till'), array['sa560-busy'],
   'paid till its last day: the period ends at the start of the next');
 select is(pg_temp.slugs(:'l_paid_after'), '{}'::text[], 'not paid past its last day');
 select is(pg_temp.slugs(:'l_name'), pg_temp.sorted(:'l_all'), 'by name');
 select is(pg_temp.slugs(:'l_name_desc'),
   (select array_agg(s order by s desc) from unnest(pg_temp.slugs(:'l_all')) as s), 'by name, Z to A');
-select is((pg_temp.slugs(:'l_gmv'))[1:2], array['sa560-busy', 'sa560-idle'],
+select is((pg_temp.slugs(:'l_gmv'))[1:3], array['sa560-busy', 'sa560-billed', 'sa560-idle'],
   'by GMV over the last 30 days, highest first');
 select is((pg_temp.slugs(:'l_active_desc'))[1], 'sa560-new', 'most recently active first');
 select is((pg_temp.slugs(:'l_active_asc'))[1], 'sa560-never', 'never active first, going up');
@@ -193,9 +200,9 @@ select is(
    from jsonb_array_elements((:'l_all'::jsonb) -> 'rows') as r where r ->> 'slug' = 'sa560-busy'),
   jsonb_build_object(
     'name', 'Sa560-Busy', 'slug', 'sa560-busy', 'city', null, 'region', null,
-    'phone', '9876556001', 'status', 'active', 'acquisition_channel', null,
+    'phone', '+91 98765-56001', 'status', 'active', 'acquisition_channel', null,
     'plan_code', 'growth', 'plan_name', (select name from public.plans where code = 'growth'),
-    'billing_cycle', 'monthly', 'subscription_status', 'active', 'state', 'paid',
+    'billing_cycle', 'monthly', 'subscription_status', 'active', 'state', 'paid', 'ending', false,
     'health', 'active', 'gmv_30d_paise', 50000, 'orders_7d', jsonb_build_array(0, 0, 0, 0, 0, 5, 0),
     'paid', jsonb_build_object('subscription_paise', 89900, 'setup_fee_paise', 0, 'gst_paise', 16182)
   ),
@@ -206,6 +213,18 @@ select is(
    where r ->> 'slug' = 'sa560-busy'),
   '2030-01-01T00:00:00+05:30'::timestamptz,
   'paid till is the end of the paid period'
+);
+select is(
+  (select r -> 'orders_7d' -> 6 from jsonb_array_elements((:'l_all'::jsonb) -> 'rows') as r
+   where r ->> 'slug' = 'sa560-small'),
+  '1'::jsonb,
+  'the latest finished day is counted live, before the nightly usage step stores it'
+);
+select is(
+  (select (r ->> 'gmv_30d_paise')::bigint from jsonb_array_elements((:'l_all'::jsonb) -> 'rows') as r
+   where r ->> 'slug' = 'sa560-billed'),
+  32000::bigint,
+  'and its bills count toward GMV'
 );
 
 select tests.authenticate_as_platform_admin(:'admin');
@@ -227,6 +246,12 @@ select throws_ok(
 select tests.authenticate_as_platform_admin(:'admin', 'aal1');
 select throws_ok($$select public.platform_list_restaurants('{}')$$,
   'P0001', 'MFA_REQUIRED', 'the list needs the second factor');
+select throws_ok($$select public.platform_save_view('restaurants', 'Mine', 'state=paid', false)$$,
+  'P0001', 'MFA_REQUIRED', 'so does saving a view');
+select throws_ok(format('select public.platform_delete_view(%L)', gen_random_uuid()),
+  'P0001', 'MFA_REQUIRED', 'deleting one');
+select throws_ok($$select public.platform_search('sa560')$$,
+  'P0001', 'MFA_REQUIRED', 'and searching');
 select tests.authenticate_as(:'n_owner');
 select throws_ok($$select public.platform_list_restaurants('{}')$$,
   'P0001', 'FORBIDDEN', 'a restaurant owner cannot list restaurants');
@@ -258,13 +283,16 @@ select throws_ok(
   $$insert into public.platform_saved_views (owner_id, page, name, query) values (auth.uid(), 'restaurants', 'Direct', '')$$,
   '42501', null, 'views are saved only through the function');
 select is(
-  (select array_agg(row(name, query, shared)::text order by name) from public.platform_saved_views),
+  (select array_agg(row(name, query, shared)::text order by name) from public.platform_saved_views
+   where owner_id = :'admin'),
   array['(failed,"state=paid&cols=state,phone",f)', '(Team,health=inactive,t)'],
   'an admin sees their own views'
 );
 select tests.authenticate_as_platform_admin(:'admin_b');
-select is((select array_agg(name) from public.platform_saved_views), array['Team'],
-  'another admin sees only the shared ones');
+select is((select array_agg(name) from public.platform_saved_views where owner_id = :'admin'),
+  array['Team'], 'another admin sees only the shared ones');
+select is((select count(*)::int from public.platform_saved_views where not shared and owner_id <> auth.uid()),
+  0, 'and nobody else''s unshared ones');
 select throws_ok(format('select public.platform_delete_view(%L)', :'v_team'),
   'P0001', 'NOT_FOUND', 'and cannot delete them');
 select tests.authenticate_as(:'n_owner');
@@ -276,7 +304,8 @@ select throws_ok($$select public.platform_save_view('restaurants', 'Mine', 'stat
   '42501', null, 'anon cannot save');
 select tests.authenticate_as_platform_admin(:'admin');
 select lives_ok(format('select public.platform_delete_view(%L)', :'v_mine'), 'the owner deletes a view');
-select is((select array_agg(name) from public.platform_saved_views), array['Team'], 'and it is gone');
+select is((select array_agg(name) from public.platform_saved_views where owner_id = :'admin'),
+  array['Team'], 'and it is gone');
 select tests.clear_auth();
 
 -- ─── Search ─────────────────────────────────────────────────────────────────
@@ -293,6 +322,8 @@ $$;
 select tests.authenticate_as_platform_admin(:'admin');
 select pg_temp.found('56001') as s_phone \gset
 select pg_temp.found('98765 56001') as s_spaced \gset
+select pg_temp.found('+91 98765 56001') as s_country \gset
+select pg_temp.found('6556') as s_dash \gset
 select pg_temp.found('abcde1234') as s_gstin \gset
 select pg_temp.found('5678901') as s_fssai \gset
 select pg_temp.found('idle_boss@sa560') as s_owner \gset
@@ -308,9 +339,14 @@ create function pg_temp.match(p_found jsonb, p_slug text)
 returns text language sql as $$
   select r ->> 'match' from jsonb_array_elements(p_found) as r where r ->> 'slug' = p_slug;
 $$;
-select is(pg_temp.match(:'s_phone', 'sa560-busy'), 'Phone 9876556001', 'a restaurant by part of its phone');
-select is(pg_temp.match(:'s_spaced', 'sa560-busy'), 'Phone 9876556001',
+select is(pg_temp.match(:'s_phone', 'sa560-busy'), 'Phone +91 98765-56001',
+  'a restaurant by part of its phone, stored as typed');
+select is(pg_temp.match(:'s_spaced', 'sa560-busy'), 'Phone +91 98765-56001',
   'spaces in a typed phone are ignored');
+select is(pg_temp.match(:'s_country', 'sa560-busy'), 'Phone +91 98765-56001',
+  'and +91 in front');
+select is(pg_temp.match(:'s_dash', 'sa560-busy'), 'Phone +91 98765-56001',
+  'digits either side of a stored dash');
 select is(pg_temp.match(:'s_gstin', 'sa560-busy'), 'GSTIN 23ABCDE1234F1Z5', 'by part of the GSTIN, any case');
 select ok(not jsonb_path_exists(:'s_gstin'::jsonb, '$[*] ? (@.match starts with "Phone")'),
   'the digits in a GSTIN are not a phone');
@@ -333,6 +369,31 @@ select throws_ok($$select public.platform_search('sa560')$$, 'P0001', 'FORBIDDEN
   'a restaurant owner cannot search the platform');
 select tests.as_anon();
 select throws_ok($$select public.platform_search('sa560')$$, '42501', null, 'anon cannot');
+select tests.clear_auth();
+
+-- ─── Health in the daily snapshot ───────────────────────────────────────────
+select public.platform_metrics_snapshot((now() at time zone 'Asia/Kolkata')::date - 1);
+select is(
+  (select jsonb_object_agg(r.slug, m.health)
+   from public.metrics_subscription_daily m
+   join public.restaurants r on r.id = m.restaurant_id
+   where m.day = (now() at time zone 'Asia/Kolkata')::date - 1
+     and r.slug in ('sa560-never', 'sa560-idle', 'sa560-slowing', 'sa560-busy', 'sa560-small')),
+  '{"sa560-never": "never_started", "sa560-idle": "inactive", "sa560-slowing": "slowing",
+    "sa560-busy": "active", "sa560-small": "active"}'::jsonb,
+  'the snapshot stores each restaurant''s health at the end of the day'
+);
+
+-- ─── Permissions that only show or hide ─────────────────────────────────────
+-- The signed-in user's claims, run as postgres: private functions aren't callable directly.
+select tests.authenticate_as_platform_admin(:'admin');
+select set_config('role', 'none', true);
+select is(private.has_platform_permission('money.view'), true, 'an admin holds money.view (until 13g)');
+select throws_ok($$select private.has_platform_permission('money.veiw')$$,
+  'P0001', null, 'a misspelt permission still fails');
+select tests.authenticate_as(:'n_owner');
+select set_config('role', 'none', true);
+select is(private.has_platform_permission('money.view'), false, 'a restaurant owner does not');
 select tests.clear_auth();
 
 -- ─── Health settings ────────────────────────────────────────────────────────
