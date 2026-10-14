@@ -52,6 +52,7 @@ describe('changes made by MenuMesh support', () => {
     );
     expect(line('tables.created', { labels: ['1', '2'] })).toBe('Added tables 1, 2');
     expect(line('menu_category.added', { count: 5 })).toBe('Added 5 suggested categories');
+    expect(line('settings.logo_replaced')).toBe('Replaced the logo');
   });
 
   it('names every login created or reset, so its password can be changed', () => {

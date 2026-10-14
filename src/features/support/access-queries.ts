@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
 
-import { supportChangeLine } from './support-access';
+import { supportChangeLine, untilText } from './support-access';
 
 /** A restaurant's support window, open now (docs/DECISIONS.md SA-47). */
 export type SupportWindow = {
@@ -17,34 +17,43 @@ export type SupportSessionHistory = {
   id: string;
   consent: 'owner' | 'onboarding';
   startedAt: string;
-  endedAt: string;
   staffName: string;
   changes: string[];
 };
 
 const COLUMNS = 'id, consent, created_at, ends_at, started_at, ended_at, user_id, staff_name';
-
-function isOpen(row: { ended_at: string | null; ends_at: string }, now: number): boolean {
-  return row.ended_at === null && Date.parse(row.ends_at) > now;
-}
+// The changes of the last 10 sessions, newest kept when there are more.
+const CHANGES_LIMIT = 1000;
 
 /**
- * The owner's card: the open window, and the last 10 sessions with every
- * change made in each (RLS: the restaurant's owner).
+ * The owner's card: the open window (with when it ends, worked out here so the
+ * page and the browser agree), and the last 10 sessions with every change made
+ * in each (RLS: the restaurant's owner).
  */
-export async function getSupportAccess(restaurantId: string) {
+export async function getSupportAccess(restaurantId: string, timezone: string) {
   const supabase = await createClient();
-  const { data: rows, error } = await supabase
-    .from('support_sessions')
-    .select(COLUMNS)
-    .eq('restaurant_id', restaurantId)
-    .order('created_at', { ascending: false })
-    .limit(20);
-  if (error) throw new Error(`Could not load support access: ${error.message}`);
-
-  const now = Date.now();
-  const open = rows.find((row) => isOpen(row, now));
-  const used = rows.filter((row) => row.started_at !== null).slice(0, 10);
+  const [openResult, usedResult] = await Promise.all([
+    supabase
+      .from('support_sessions')
+      .select(COLUMNS)
+      .eq('restaurant_id', restaurantId)
+      .is('ended_at', null)
+      .gt('ends_at', new Date().toISOString())
+      .maybeSingle(),
+    supabase
+      .from('support_sessions')
+      .select(COLUMNS)
+      .eq('restaurant_id', restaurantId)
+      .not('started_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(10),
+  ]);
+  if (openResult.error)
+    throw new Error(`Could not load support access: ${openResult.error.message}`);
+  if (usedResult.error)
+    throw new Error(`Could not load support sessions: ${usedResult.error.message}`);
+  const open = openResult.data;
+  const used = usedResult.data;
 
   const changes = used.length
     ? await supabase
@@ -55,13 +64,14 @@ export async function getSupportAccess(restaurantId: string) {
           'support_session_id',
           used.map((row) => row.id),
         )
-        .order('created_at')
-        .limit(1000)
+        .order('created_at', { ascending: false })
+        .limit(CHANGES_LIMIT)
     : { data: [], error: null };
   if (changes.error) throw new Error(`Could not load support changes: ${changes.error.message}`);
+  const rows = [...changes.data].reverse();
 
   // Logins are named by username, so the owner can change their passwords.
-  const loginIds = changes.data
+  const loginIds = rows
     .filter((row) => row.action.startsWith('staff.') && row.entity_id)
     .map((row) => row.entity_id!);
   const logins: Record<string, string> = {};
@@ -78,12 +88,8 @@ export async function getSupportAccess(restaurantId: string) {
     id: row.id,
     consent: row.consent === 'onboarding' ? 'onboarding' : 'owner',
     startedAt: row.started_at!,
-    endedAt:
-      row.ended_at && Date.parse(row.ended_at) < Date.parse(row.ends_at)
-        ? row.ended_at
-        : row.ends_at,
     staffName: row.staff_name ?? 'MenuMesh support',
-    changes: changes.data
+    changes: rows
       .filter((change) => change.support_session_id === row.id)
       .map((change) =>
         supportChangeLine(
@@ -102,12 +108,19 @@ export async function getSupportAccess(restaurantId: string) {
       ? {
           id: open.id,
           endsAt: open.ends_at,
+          until: untilText(open.ends_at, timezone),
           userId: open.user_id,
           staffName: open.started_at ? open.staff_name : null,
         }
       : null,
     history,
-  } satisfies { open: SupportWindow | null; history: SupportSessionHistory[] };
+    /** Older changes were left out. */
+    truncated: changes.data.length === CHANGES_LIMIT,
+  } satisfies {
+    open: (SupportWindow & { until: string }) | null;
+    history: SupportSessionHistory[];
+    truncated: boolean;
+  };
 }
 
 /**

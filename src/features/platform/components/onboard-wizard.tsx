@@ -153,7 +153,7 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
       <Handover
         handover={handover}
         loginUrl={loginUrl}
-        support={support}
+        support={support?.restaurantId === handover.restaurantId ? support : null}
         onRetrySupport={async () =>
           setSupport(await startSetupSession(handover.restaurantId, staffName))
         }
@@ -507,11 +507,13 @@ function Summary({ values, planName }: { values: OnboardFormInput; planName?: st
 }
 
 /** The setup session after create: started, or why not (it can be tried again). */
-type SupportStart = { ok: true } | { ok: false; error: string } | null;
+// Tied to its restaurant: a late answer never shows on the next handover.
+type SupportStart =
+  { restaurantId: string; ok: true } | { restaurantId: string; ok: false; error: string } | null;
 
 async function startSetupSession(restaurantId: string, staffName: string): Promise<SupportStart> {
   const result = await startOnboardingSupportSession(restaurantId, staffName);
-  return result.ok ? { ok: true } : { ok: false, error: result.error };
+  return result.ok ? { restaurantId, ok: true } : { restaurantId, ok: false, error: result.error };
 }
 
 function Handover({
@@ -593,11 +595,6 @@ function Handover({
         </div>
       )}
       <div className="flex flex-wrap gap-2">
-        {support?.ok && (
-          <Link href="/admin" className={buttonVariants({ size: 'touch' })}>
-            Set up in admin panel
-          </Link>
-        )}
         <Button type="button" size="touch" onClick={copy}>
           <Copy aria-hidden />
           Copy login details
@@ -611,6 +608,11 @@ function Handover({
         <Button type="button" variant="ghost" size="touch" onClick={onAnother}>
           Onboard another
         </Button>
+        {support?.ok && (
+          <Link href="/admin" className={buttonVariants({ size: 'touch' })}>
+            Set up in admin panel
+          </Link>
+        )}
       </div>
     </section>
   );

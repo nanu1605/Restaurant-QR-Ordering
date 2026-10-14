@@ -27,7 +27,7 @@ export default async function SettingsPage() {
     getPlanFeatures(membership.restaurant.id),
     getRestaurantAccess(membership.restaurant.id),
     // MenuMesh support access is the owner's to give (docs/DECISIONS.md SA-47).
-    owner ? getSupportAccess(membership.restaurant.id) : null,
+    owner ? getSupportAccess(membership.restaurant.id, membership.restaurant.timezone) : null,
   ]);
 
   return (
@@ -58,6 +58,7 @@ export default async function SettingsPage() {
         <SupportAccessCard
           open={supportAccess.open}
           history={supportAccess.history}
+          truncated={supportAccess.truncated}
           timezone={membership.restaurant.timezone}
         />
       )}

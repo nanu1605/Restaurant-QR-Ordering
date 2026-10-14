@@ -64,6 +64,8 @@ test('the owner lets support in and sees every change it made', async ({ page, b
     await expect(team).toHaveURL(/\/admin$/);
     await team.goto('/staff');
     await expect(team).toHaveURL(/\/admin$/);
+    await team.goto('/admin/help');
+    await expect(team).toHaveURL(/\/admin$/);
 
     await team.getByRole('button', { name: 'End session' }).click();
     await expect(team).toHaveURL(new RegExp(`/super/restaurants/${restaurant.restaurantId}$`));
@@ -126,6 +128,9 @@ test('in person, onboarding starts a 24-hour setup session', async ({ page }) =>
   await logInAsPlatformAdmin(page, await createPlatformAdmin('setup'));
   await page.goto('/super/restaurants/new');
   const main = page.getByRole('main');
+  // A first Next checks the empty step, so the form has hydrated before typing.
+  await main.getByRole('button', { name: 'Next' }).click();
+  await expect(main.getByText('Enter the restaurant name.')).toBeVisible();
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
   await main.getByLabel('Restaurant name').fill(`Setup Dhaba ${id}`);
   await main.getByLabel('How did they find MenuMesh?').selectOption({ label: 'Field visit' });
@@ -146,5 +151,9 @@ test('in person, onboarding starts a 24-hour setup session', async ({ page }) =>
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole('status').filter({ hasText: 'Support session in' })).toContainText(
     `Support session in Setup Dhaba ${id}. Ends at`,
+  );
+  // 24 hours from now.
+  await expect(page.getByRole('status').filter({ hasText: 'Support session in' })).toContainText(
+    'tomorrow',
   );
 });

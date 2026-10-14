@@ -129,6 +129,8 @@ export function supportChangeLine(change: SupportChange, logins: Record<string, 
       return `Set a new password for ${login}`;
     case 'settings.updated':
       return 'Changed the restaurant settings';
+    case 'settings.logo_replaced':
+      return 'Replaced the logo';
     default: {
       const words = change.action.replace(/[._]/g, ' ');
       return words.charAt(0).toUpperCase() + words.slice(1);

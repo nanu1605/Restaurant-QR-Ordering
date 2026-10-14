@@ -24,10 +24,12 @@ import {
 export function SupportAccessCard({
   open,
   history,
+  truncated,
   timezone,
 }: {
-  open: SupportWindow | null;
+  open: (SupportWindow & { until: string }) | null;
   history: SupportSessionHistory[];
+  truncated: boolean;
   timezone: string;
 }) {
   const ids = useId();
@@ -69,8 +71,8 @@ export function SupportAccessCard({
         <div className="flex flex-wrap items-center gap-3">
           <p role="status" className="min-w-0 flex-1 text-sm text-ink">
             {open.staffName
-              ? `${open.staffName} from MenuMesh support is working in your restaurant until ${untilText(open.endsAt, timezone)}.`
-              : `MenuMesh support can sign in until ${untilText(open.endsAt, timezone)}. No one has signed in yet.`}
+              ? `${open.staffName} from MenuMesh support is working in your restaurant until ${open.until}.`
+              : `MenuMesh support can sign in until ${open.until}. No one has signed in yet.`}
           </p>
           <Button variant="outline" size="touch" onClick={end} disabled={pending}>
             {pending ? 'Ending…' : 'End access now'}
@@ -110,6 +112,9 @@ export function SupportAccessCard({
           <h3 id={`${ids}-changes`} className="text-sm font-semibold text-ink">
             Changes made by MenuMesh support
           </h3>
+          {truncated && (
+            <p className="text-sm text-ink-muted">The latest 1,000 changes are shown.</p>
+          )}
           <ul aria-labelledby={`${ids}-changes`} className="flex flex-col gap-3">
             {history.map((session) => (
               <li key={session.id} className="flex flex-col gap-1 text-sm">
