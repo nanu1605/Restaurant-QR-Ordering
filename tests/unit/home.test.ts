@@ -34,7 +34,7 @@ describe('activity lines', () => {
     expect(line).toEqual({
       title: 'Payment received',
       detail: 'UPI, recorded by team@menumesh.in',
-      href: '/super/restaurants/r1#section-payments',
+      href: '/super/restaurants/r1/billing#section-payments',
       amount: { basePaise: 89900, gstPaise: 16182 },
     });
     expect(amountWithGst(line.amount!)).toBe('₹899 + GST ₹161.82');

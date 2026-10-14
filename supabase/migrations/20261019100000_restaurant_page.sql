@@ -1151,7 +1151,8 @@ as $$
     -- The team's notes on a restaurant (SA-38): a note is itself the item,
     -- so its audit rows aren't team items too.
     (select 'note', n.created_at, 'note:' || n.id, n.restaurant_id, n.author_id,
-      jsonb_build_object('note_id', n.id, 'body', left(n.body, 200), 'pinned', n.pinned)
+      jsonb_build_object('note_id', n.id, 'body', left(n.body, 200), 'more', length(n.body) > 200,
+        'pinned', n.pinned)
     from public.restaurant_notes n, params pr
     where 'note' = any(p_kinds)
       and (p_restaurant_id is null or n.restaurant_id = p_restaurant_id)

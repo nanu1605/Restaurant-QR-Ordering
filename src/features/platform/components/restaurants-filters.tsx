@@ -5,6 +5,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 import type { RestaurantFilters } from '../params';
+import type { TeamMember } from '../restaurant-page';
 import {
   ACQUISITION_CHANNEL_LABELS,
   ACQUISITION_CHANNELS,
@@ -15,6 +16,7 @@ import {
   SUBSCRIPTION_STATE_LABELS,
   SUBSCRIPTION_STATES,
   type RestaurantColumn,
+  type Tag,
 } from '../platform';
 
 const PATH = '/super/restaurants';
@@ -31,6 +33,8 @@ type RestaurantsFiltersProps = {
   cities: string[];
   regions: string[];
   plans: { code: string; name: string }[];
+  tags: Tag[];
+  team: TeamMember[];
 };
 
 /**
@@ -44,6 +48,8 @@ export function RestaurantsFilters({
   cities,
   regions,
   plans,
+  tags,
+  team,
 }: RestaurantsFiltersProps) {
   const select = (
     name: keyof RestaurantFilters,
@@ -129,6 +135,17 @@ export function RestaurantsFilters({
         'Anywhere',
         regions.map((region) => [region, region]),
       )}
+      {select(
+        'tag',
+        'Tag',
+        'Any tag',
+        tags.map((tag) => [tag.id, tag.name]),
+      )}
+      {select('manager', 'Account manager', 'Anyone', [
+        ['me', 'Me'],
+        ['none', 'No one'],
+        ...team.map((member): [string, string] => [member.user_id, member.email]),
+      ])}
       {date('from', 'Created from')}
       {date('to', 'Created to')}
       {date('paid_from', 'Paid till from')}

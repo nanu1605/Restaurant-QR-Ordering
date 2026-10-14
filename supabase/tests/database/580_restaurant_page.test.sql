@@ -374,7 +374,8 @@ select ok(
 );
 select is(
   (select jsonb_agg((e -> 'data') - 'note_id') from jsonb_array_elements((:'act_notes'::jsonb) -> 'items') as e),
-  '[{"body": "Owner is travelling", "pinned": false}, {"body": "Prefers calls after 5 pm", "pinned": true}]'::jsonb,
+  '[{"body": "Owner is travelling", "more": false, "pinned": false},
+    {"body": "Prefers calls after 5 pm", "more": false, "pinned": true}]'::jsonb,
   'notes, newest first'
 );
 select is(

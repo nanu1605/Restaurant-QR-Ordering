@@ -185,6 +185,7 @@ export const ACTIVITY_KINDS = [
   'reminder',
   'lead',
   'menu_import',
+  'note',
   'team',
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
@@ -197,8 +198,23 @@ export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
   reminder: 'Reminders',
   lead: 'Leads',
   menu_import: 'Menu imports',
+  note: 'Notes',
   team: 'Team',
 };
+
+/** The kinds an admin may see: money, leads and the team's actions need their permission. */
+export function activityKindsFor(can: {
+  money: boolean;
+  growth: boolean;
+  audit: boolean;
+}): ActivityKind[] {
+  return ACTIVITY_KINDS.filter(
+    (kind) =>
+      (can.money || (kind !== 'payment' && kind !== 'payment_failed')) &&
+      (can.growth || kind !== 'lead') &&
+      (can.audit || kind !== 'team'),
+  );
+}
 /** The kinds that raise an alert (docs/DECISIONS.md SA-30). */
 export const ALERT_KINDS: readonly ActivityKind[] = ['signup', 'payment', 'payment_failed', 'lead'];
 
@@ -244,6 +260,10 @@ const TEAM_ACTIONS: Record<string, string> = {
   'webhook.reprocessed': 'Webhook run again',
   'plan.updated': 'Plan updated',
   'platform_settings.updated': 'Platform settings changed',
+  'restaurant.tags_changed': 'Tags changed',
+  'restaurant.account_manager_changed': 'Account manager changed',
+  'platform_tag.created': 'Tag created',
+  'platform_tag.deleted': 'Tag deleted',
 };
 
 export type ActivityLine = {
@@ -286,7 +306,7 @@ export function activityLine(item: ActivityItem): ActivityLine {
           [method && PAYMENT_METHOD_LABELS[method], item.actor && `recorded by ${item.actor}`]
             .filter(Boolean)
             .join(', ') || null,
-        href: restaurant && `${restaurant}#section-payments`,
+        href: restaurant && `${restaurant}/billing#section-payments`,
         amount: base === null || gst === null ? null : { basePaise: base, gstPaise: gst },
       };
     }
@@ -323,6 +343,15 @@ export function activityLine(item: ActivityItem): ActivityLine {
           .filter(Boolean)
           .join(', ') || null,
         restaurant && importId && `${restaurant}/menu-import/${importId}`,
+      );
+    }
+    case 'note': {
+      const body = text(data.body) ?? '';
+      return line(
+        data.pinned === true ? 'Pinned note' : 'Note',
+        // The stream carries the first 200 characters.
+        data.more === true ? `${body}…` : body,
+        restaurant && `${restaurant}/notes`,
       );
     }
     case 'team': {

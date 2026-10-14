@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -30,8 +32,10 @@ import {
   parseSubscriptionList,
   planSchema,
   supportRestaurantSchema,
+  tagSchema,
   type SupportSection,
 } from './platform';
+import { parseBilling, parseNotes, parseOverview, parseTeam, parseUsage } from './restaurant-page';
 import { setupFeeDiscountPaise } from './setup-fee';
 
 /**
@@ -163,7 +167,8 @@ export async function getSignupReview(restaurantId: string) {
 }
 
 /** One restaurant, or null when there is no such restaurant. */
-export async function getRestaurantDetail(restaurantId: string) {
+// One read per request: the restaurant page's layout and its tab both ask.
+export const getRestaurantDetail = cache(async (restaurantId: string) => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('platform_get_restaurant', {
     p_restaurant_id: restaurantId,
@@ -173,6 +178,57 @@ export async function getRestaurantDetail(restaurantId: string) {
     throw new Error(`Could not load the restaurant: ${error.message}`);
   }
   return parseRestaurantDetail(data);
+});
+
+// ─── A restaurant's tabs (docs/DECISIONS.md SA-35 to SA-38) ──────────────────
+async function restaurantRpc(
+  fn: 'platform_restaurant_overview' | 'platform_restaurant_billing' | 'platform_restaurant_usage',
+  restaurantId: string,
+) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(fn, { p_restaurant_id: restaurantId });
+  if (error) throw new Error(`${fn} failed: ${error.message}`);
+  return data;
+}
+
+export async function getRestaurantOverview(restaurantId: string) {
+  return parseOverview(await restaurantRpc('platform_restaurant_overview', restaurantId));
+}
+
+export async function getRestaurantBilling(restaurantId: string) {
+  return parseBilling(await restaurantRpc('platform_restaurant_billing', restaurantId));
+}
+
+export async function getRestaurantUsage(restaurantId: string) {
+  return parseUsage(await restaurantRpc('platform_restaurant_usage', restaurantId));
+}
+
+export async function listNotes(restaurantId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_notes', {
+    p_restaurant_id: restaurantId,
+  });
+  if (error) throw new Error(`Could not load the notes: ${error.message}`);
+  return parseNotes(data);
+}
+
+/** Every tag, by name (docs/DECISIONS.md SA-39). */
+export async function listTags() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('platform_tags')
+    .select('id, name, colour')
+    .order('name');
+  if (error) throw new Error(`Could not load the tags: ${error.message}`);
+  return tagSchema.array().parse(data);
+}
+
+/** The MenuMesh team, for choosing an account manager. */
+export async function getTeam() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_team');
+  if (error) throw new Error(`Could not load the team: ${error.message}`);
+  return parseTeam(data);
 }
 
 /**

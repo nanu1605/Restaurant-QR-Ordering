@@ -21,6 +21,7 @@ import { RestaurantsFilters } from '@/features/platform/components/restaurants-f
 import { DeleteViewButton, SaveViewButton } from '@/features/platform/components/saved-views';
 import { Sparkline } from '@/features/platform/components/sparkline';
 import { HealthBadge, SubscriptionStateBadge } from '@/features/platform/components/status-badges';
+import { TagBadge } from '@/features/platform/components/tag-badge';
 import { formatMobile, telHref, whatsappHref } from '@/features/platform/dues-messages';
 import {
   readRestaurantColumns,
@@ -41,9 +42,11 @@ import {
 import {
   getLookalikes,
   getPlatformSettings,
+  getTeam,
   listPlans,
   listRestaurants,
   listSavedViews,
+  listTags,
 } from '@/features/platform/queries';
 import { paidTillDay } from '@/features/platform/restaurants-csv';
 import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
@@ -89,11 +92,13 @@ export default async function SuperRestaurantsPage({
   // Lifetime paid is money (docs/DECISIONS.md SA-23).
   const money = await hasPlatformPermission('money.view');
   const columns = readRestaurantColumns(params).filter((column) => money || column !== 'lifetime');
-  const [list, plans, views, settings] = await Promise.all([
+  const [list, plans, views, settings, tags, team] = await Promise.all([
     listRestaurants(filters),
     listPlans(),
     listSavedViews('restaurants'),
     getPlatformSettings(),
+    listTags(),
+    getTeam(),
   ]);
   // Restaurants that may be the same as another: worth a look (docs/DECISIONS.md P11-13).
   // Only a badge, so the list still shows when the check fails or runs out of time.
@@ -109,6 +114,8 @@ export default async function SuperRestaurantsPage({
   ).some((key) => key !== 'cols');
   const today = todayInIndia();
   const builtIn: { name: string; params: Record<string, string> }[] = [
+    // The restaurants this admin looks after (docs/DECISIONS.md SA-39).
+    { name: 'My restaurants', params: { manager: 'me' } },
     { name: 'Payment failed', params: { state: 'payment_failed' } },
     {
       name: 'Trial ending',
@@ -226,6 +233,8 @@ export default async function SuperRestaurantsPage({
         cities={list.cities}
         regions={list.regions}
         plans={plans.map((plan) => ({ code: plan.code, name: plan.name }))}
+        tags={tags}
+        team={team}
       />
 
       {list.rows.length === 0 ? (
@@ -378,6 +387,18 @@ function cell(column: RestaurantColumn, row: RestaurantRow): ReactNode {
         </span>
       );
     }
+    case 'tags':
+      return row.tags.length === 0 ? (
+        '—'
+      ) : (
+        <span className="flex flex-wrap gap-1">
+          {row.tags.map((tag) => (
+            <TagBadge key={tag.id} tag={tag} />
+          ))}
+        </span>
+      );
+    case 'manager':
+      return row.account_manager ?? '—';
     case 'channel':
       return row.acquisition_channel
         ? ACQUISITION_CHANNEL_LABELS[row.acquisition_channel]

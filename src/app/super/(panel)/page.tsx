@@ -10,9 +10,14 @@ import {
   NewRestaurantsChart,
   UsageChart,
 } from '@/features/platform/components/home-charts';
-import { ActivityFeed, ChartPanel, KeyNumbers } from '@/features/platform/components/home-sections';
+import {
+  ActivityFeed,
+  ChartPanel,
+  homeHref,
+  KeyNumbers,
+} from '@/features/platform/components/home-sections';
 import { NeedsAttention } from '@/features/platform/components/needs-attention';
-import { ACTIVITY_KINDS, type ActivityKind } from '@/features/platform/home';
+import { activityKindsFor, type ActivityKind } from '@/features/platform/home';
 import { readHomeParams } from '@/features/platform/params';
 import { duesLinkDefaults } from '@/features/platform/payment-links';
 import { formatDate, formatShortDate, todayInIndia } from '@/features/platform/platform';
@@ -52,12 +57,7 @@ export default async function SuperHomePage({ searchParams }: PageProps<'/super'
     hasPlatformPermission('growth.manage'),
     hasPlatformPermission('audit.view'),
   ]);
-  const kinds = ACTIVITY_KINDS.filter(
-    (kind) =>
-      (money || (kind !== 'payment' && kind !== 'payment_failed')) &&
-      (growth || kind !== 'lead') &&
-      (audit || kind !== 'team'),
-  );
+  const kinds = activityKindsFor({ money, growth, audit });
   const activityKinds: ActivityKind[] | undefined = params.kind ? [params.kind] : [...kinds];
   const [home, attention, activity, plans, setupFee] = await Promise.all([
     getHome(params.period),
@@ -174,7 +174,12 @@ export default async function SuperHomePage({ searchParams }: PageProps<'/super'
         />
       </div>
 
-      <ActivityFeed page={activity} params={params} kinds={kinds} />
+      <ActivityFeed
+        page={activity}
+        params={params}
+        kinds={kinds}
+        hrefFor={(next) => homeHref(params, next)}
+      />
     </>
   );
 }

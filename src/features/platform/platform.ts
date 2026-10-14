@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { CANCEL_REASONS } from '@/features/subscriptions/cancel-reasons';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
 /**
@@ -194,6 +195,25 @@ const lookalikesSchema = z.record(z.string(), z.array(lookalikeSchema));
 export type Lookalike = z.infer<typeof lookalikeSchema>;
 export const parseLookalikes = (json: unknown) => lookalikesSchema.parse(json);
 
+// ─── Tags (docs/DECISIONS.md SA-39) ──────────────────────────────────────────
+// Each colour is a swatch beside ink text, so every one reads in both themes.
+export const TAG_COLOURS = ['orange', 'teal', 'amber', 'green', 'red', 'slate'] as const;
+export type TagColour = (typeof TAG_COLOURS)[number];
+export const TAG_COLOUR_LABELS: Record<TagColour, string> = {
+  orange: 'Orange',
+  teal: 'Teal',
+  amber: 'Amber',
+  green: 'Green',
+  red: 'Red',
+  slate: 'Grey',
+};
+export const tagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  colour: z.enum(TAG_COLOURS),
+});
+export type Tag = z.infer<typeof tagSchema>;
+
 // ─── Restaurants list ────────────────────────────────────────────────────────
 const restaurantRowSchema = z.object({
   restaurant_id: z.string(),
@@ -228,6 +248,9 @@ const restaurantRowSchema = z.object({
       gst_paise: z.number(),
     })
     .nullable(),
+  tags: z.array(tagSchema),
+  // The account manager's email.
+  account_manager: z.string().nullable(),
 });
 const restaurantListSchema = z.object({
   page: z.number(),
@@ -252,6 +275,8 @@ export const RESTAURANT_COLUMNS = [
   'health',
   'last_active',
   'phone',
+  'tags',
+  'manager',
   'channel',
   'created',
 ] as const;
@@ -266,11 +291,13 @@ export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
   health: 'Health',
   last_active: 'Last active',
   phone: 'Phone',
+  tags: 'Tags',
+  manager: 'Account manager',
   channel: 'Found us',
   created: 'Created',
 };
 export const DEFAULT_RESTAURANT_COLUMNS: RestaurantColumn[] = RESTAURANT_COLUMNS.filter(
-  (column) => column !== 'channel',
+  (column) => column !== 'channel' && column !== 'manager',
 );
 
 // ─── Search (docs/DECISIONS.md SA-25) ────────────────────────────────────────
@@ -452,10 +479,18 @@ const restaurantDetailSchema = z.object({
     gstin: z.string().nullable(),
     gst_mode: z.string(),
     timezone: z.string(),
+    business_day_start_hour: z.number(),
     status: restaurantStatus,
     suspended_reason: z.string().nullable(),
+    acquisition_channel: z.enum(ACQUISITION_CHANNELS).nullable(),
     created_at: iso,
   }),
+  // As the restaurants list has them (docs/DECISIONS.md SA-34).
+  state: subscriptionState,
+  health: z.enum(HEALTHS),
+  last_active: isoOrNull,
+  account_manager: z.object({ user_id: z.string(), email: z.string().nullable() }).nullable(),
+  tags: z.array(tagSchema),
   owners: z.array(
     z.object({
       member_id: z.string(),
@@ -484,14 +519,27 @@ const restaurantDetailSchema = z.object({
       razorpay_status: z.string().nullable(),
       next_plan_name: z.string().nullable(),
       next_billing_cycle: billingCycle.nullable(),
+      cancel_reason: z.enum(CANCEL_REASONS).nullable(),
+      cancel_reason_detail: z.string().nullable(),
+      max_tables: z.number().nullable(),
+      max_staff: z.number().nullable(),
     })
     .nullable(),
+  // Whether this admin sees money; payments are empty without it.
+  money: z.boolean(),
   payments: z.array(
     z.object({
       payment_id: z.string(),
       source: z.string(),
+      purpose: z.enum(PAYMENT_PURPOSES),
       amount_paise: z.number(),
+      base_paise: z.number(),
+      gst_paise: z.number(),
       manual_mode: z.enum(MANUAL_MODES).nullable(),
+      plan_name: z.string().nullable(),
+      billing_cycle: billingCycle.nullable(),
+      razorpay_payment_id: z.string().nullable(),
+      recorded_by: z.string().nullable(),
       period_start: isoOrNull,
       period_end: isoOrNull,
       notes: z.string().nullable(),

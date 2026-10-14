@@ -17,14 +17,14 @@ import {
   type ActivityPage,
   type Home,
 } from '../home';
-import type { HomeParams } from '../params';
+import type { ActivityParams, HomeParams } from '../params';
 import { formatDate, formatDateTime } from '../platform';
 
 const linkClass = 'underline-offset-4 hover:underline';
 // Key numbers in whole rupees; the pages they link to have the paise.
 const rupees = (paise: number) => Math.round(paise / 100) * 100;
 
-function homeHref(params: HomeParams, next: Partial<HomeParams>) {
+export function homeHref(params: HomeParams, next: Partial<HomeParams>) {
   const merged = { ...params, ...next };
   return hrefWithParams('/super', {
     period: merged.period === 'today' ? undefined : merged.period,
@@ -33,7 +33,8 @@ function homeHref(params: HomeParams, next: Partial<HomeParams>) {
   });
 }
 
-function Figure({
+/** One key number: its label (a link to the rows behind it), the figure and a note. */
+export function Figure({
   label,
   href,
   children,
@@ -254,27 +255,39 @@ export function ChartPanel({
   );
 }
 
-/** The activity stream (docs/SUPER_ADMIN_PLAN.md §4.5, docs/DECISIONS.md SA-29). */
+/**
+ * The activity stream (docs/SUPER_ADMIN_PLAN.md §4.5, docs/DECISIONS.md SA-29),
+ * on Home and as a restaurant's timeline (SA-33), where each item is that
+ * restaurant's.
+ */
 export function ActivityFeed({
   page,
   params,
   kinds,
+  hrefFor,
+  heading = 'Activity',
+  oneRestaurant = false,
 }: {
   page: ActivityPage;
-  params: HomeParams;
+  params: ActivityParams;
   /** The kinds this admin may see. */
   kinds: readonly ActivityKind[];
+  /** The page's URL with another kind or page of the stream. */
+  hrefFor: (next: Partial<ActivityParams>) => string;
+  heading?: string;
+  /** A restaurant's timeline: no restaurant name on each item. */
+  oneRestaurant?: boolean;
 }) {
   return (
     <section id="activity" aria-labelledby="activity-heading" className="flex flex-col gap-3">
       <h2 id="activity-heading" className="text-lg font-semibold text-ink">
-        Activity
+        {heading}
       </h2>
       <nav aria-label="Activity kinds" className="flex flex-wrap gap-2">
         {[undefined, ...ACTIVITY_KINDS.filter((kind) => kinds.includes(kind))].map((kind) => (
           <Link
             key={kind ?? 'all'}
-            href={`${homeHref(params, { kind, before: undefined })}#activity`}
+            href={`${hrefFor({ kind, before: undefined })}#activity`}
             aria-current={params.kind === kind ? 'page' : undefined}
             className={buttonVariants({
               variant: params.kind === kind ? 'default' : 'outline',
@@ -319,7 +332,7 @@ export function ActivityFeed({
                     ) : (
                       <span className="font-medium">{line.title}</span>
                     )}
-                    {item.restaurant_name && <> · {item.restaurant_name}</>}
+                    {item.restaurant_name && !oneRestaurant && <> · {item.restaurant_name}</>}
                   </p>
                   {line.detail && <p className="text-sm text-ink-muted">{line.detail}</p>}
                 </div>
@@ -334,7 +347,7 @@ export function ActivityFeed({
       <div className="flex gap-2">
         {params.before && (
           <Link
-            href={`${homeHref(params, { before: undefined })}#activity`}
+            href={`${hrefFor({ before: undefined })}#activity`}
             className={buttonVariants({ variant: 'outline', size: 'touch' })}
           >
             Newest
@@ -342,7 +355,7 @@ export function ActivityFeed({
         )}
         {page.next && (
           <Link
-            href={`${homeHref(params, { before: page.next })}#activity`}
+            href={`${hrefFor({ before: page.next })}#activity`}
             className={buttonVariants({ variant: 'outline', size: 'touch' })}
           >
             Older

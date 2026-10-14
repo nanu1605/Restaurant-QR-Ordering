@@ -267,7 +267,7 @@ function DuesItem({
       <div className="grid gap-3 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_auto_minmax(0,1fr)] md:items-start">
         <div className="flex min-w-0 flex-col gap-1">
           <Link
-            href={`/super/restaurants/${row.restaurant_id}`}
+            href={`/super/restaurants/${row.restaurant_id}/billing`}
             className="font-medium break-words text-brand underline-offset-4 hover:underline"
           >
             {row.name}

@@ -54,6 +54,9 @@ const MESSAGES: Record<string, Message> = {
   INVALID_PERIOD: 'Check the period: the last day is on or after the first, within 3 years.',
   MEMBER_NOT_FOUND: 'That owner login no longer exists.',
   SLUG_TAKEN: 'That restaurant code is taken. Choose another.',
+  NOTE_LOCKED: 'Only its author can edit a note, within 15 minutes of writing it.',
+  TAG_EXISTS: 'There is a tag with that name already. Choose it from the list.',
+  ADMIN_NOT_FOUND: 'That person is no longer on the MenuMesh team.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Subscriptions (spec §14)
