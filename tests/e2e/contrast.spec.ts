@@ -98,6 +98,9 @@ test('platform admin panel', async ({ page }) => {
     '/super/plans',
     '/super/audit',
     '/super/settings',
+    '/super/money/payments',
+    '/super/money/dues',
+    '/super/money/subscriptions',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });
