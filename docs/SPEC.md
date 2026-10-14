@@ -314,6 +314,19 @@ Conventions for every table unless stated otherwise:
 
 Edited only through `platform_update_settings` (Platform settings in `/super`), which audits what changed (docs/DECISIONS.md SA-4).
 
+**`support_sessions`** (the owner's consent for MenuMesh support, and the team member using it; docs/DECISIONS.md SA-46 to SA-52)
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| restaurant_id | uuid → restaurants | one open window at a time |
+| consent | text | `owner` (Settings) or `onboarding` (in person, in the wizard) |
+| granted_by | uuid null → auth.users | the owner, or the team member for onboarding |
+| created_at, ends_at | timestamptz | the window: 1, 4 or 24 hours |
+| user_id, staff_name, started_at | null until used | the team member and the name the restaurant sees; one open session per team member |
+| ended_at | timestamptz null | ended by the owner or the team member, or closed by the daily cron once run out |
+
+Read by the restaurant's owner and platform admins; written only by `admin_allow_support_access`, `admin_end_support_access`, `platform_start_support_session`, `platform_onboarding_support_session`, `platform_end_support_session` and the cron's `support_sessions_close_expired`.
+
 **`site_leads`** (website "Book a demo" requests; written only by `site_create_lead`, read by platform admins)
 | Column | Type | Notes |
 |---|---|---|
@@ -597,6 +610,7 @@ Every new restaurant is created with a set of **default categories** so the menu
 | entity_type, entity_id | | |
 | before, after | jsonb null | |
 | reason | text null | |
+| support_session_id | uuid null → support_sessions | set on every row written in a support session, whose actor is the team member labelled "MenuMesh support" (docs/DECISIONS.md SA-50) |
 
 Must log at least: dish removal (who, role, reason), whole-order deletion, waiter assigned/reassigned/unassigned, waiter profile created/edited/deleted/on-duty changed, customer cancellation, order approve/reject, discount applied, bill generated, bill voided, session reopened, session closed unbilled, payment recorded, settings changed (tax/bill settings), staff created/deactivated/role changed/password reset, table QR regenerated, and all platform admin actions.
 
@@ -677,6 +691,8 @@ Enable RLS on **every** table in the public schema. Helper functions (`SECURITY 
 - `is_platform_admin() returns boolean`
 - `member_role(p_restaurant_id uuid) returns member_role` — role of `auth.uid()` in that restaurant if active, else null
 - `has_role(p_restaurant_id uuid, p_roles member_role[]) returns boolean`
+
+A team member's open support session counts as a manager membership of that restaurant in these helpers (and in `private.my_restaurant_ids`, which the policies use) while it is unexpired, they are still a platform admin and they signed in with the second factor; a real membership wins (docs/DECISIONS.md SA-46, SA-48).
 
 Policies (authenticated role):
 
@@ -1089,13 +1105,16 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - Add waiter: full name (required), phone, employee code, joined on, notes; optionally "Create a login for this waiter" (username + password → creates a `waiter` login and links it) or link an existing waiter login.
 - Edit details; switch on/off duty (e.g. at shift start or for leave); **Delete waiter** with confirmation — blocked while they have open tables ("Reassign Table 3 first"); past bills and reports keep their name.
 
-**Staff logins**: list (name, username, role, active, last login if available), add staff (name, username, role, password), edit name, role and worker panel language (a हिन्दी badge marks Hindi logins), reset password, deactivate. Enforce role hierarchy and `max_staff`.
+**Staff logins**: list (name, username, role, active, last login if available), add staff (name, username, role, password), edit name, role and worker panel language (a हिन्दी badge marks Hindi logins), reset password, deactivate. Enforce role hierarchy and `max_staff`. A MenuMesh support session never appears here and never counts.
 
 **Settings** (tabs)
 - Restaurant: name, legal name, address, phone, email, logo, accent colour.
 - Tax & charges: GST mode, rate, prices include tax, service charge (enabled, %), GSTIN, FSSAI. Note to confirm with accountant.
 - Bill: invoice prefix (changes apply to new bills), paper width, footer text, print waiter name on bill, UPI QR (toggle, VPA, payee name) with test preview.
 - Ordering: require first-order approval, customer cancel window (0–600 s), reopen window (0–120 min), business day start hour, max tables per waiter (1–20), allow worker panel staff to remove served dishes.
+- **MenuMesh support access** (owner only, below the tabs): allow the MenuMesh team in for 1, 4 or 24 hours, see who is working and until when, end it now, and read "Changes made by MenuMesh support" for the last 10 sessions (docs/DECISIONS.md SA-47, SA-52).
+
+**Support session** (a MenuMesh team member, docs/DECISIONS.md SA-46 to SA-50): the admin panel as a manager of the restaurant that allowed it, with a banner on every page (restaurant, end time, Back to MenuMesh admin, End session). Allowed: menu, menu import, tables and QR codes, waiters, waiter and kitchen logins, restaurant details, ordering settings and the bill layout. Refused ("MenuMesh support can't do this. Ask the restaurant owner."): bills and payments, live service, Get help, the subscription, and the settings that move money (tax, legal name, invoice prefix, UPI, reopen window, removing served dishes, business-day start). The worker panel is closed to it.
 
 **Subscription** (owner only): Phase 8.
 
@@ -1110,7 +1129,8 @@ The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a gr
 - **Restaurants**: state, plan, paid till, lifetime paid, 30-day GMV, a 7-day orders line, health, last active, phone with Call and WhatsApp, how they found us and created date, the columns chosen per view, and where onboarding stands; filters by state, plan, health, onboarding (not finished, stuck, done), city, Indian state, channel, created and paid-till dates; sortable; built-in and saved views, personal or shared; CSV export (docs/DECISIONS.md SA-22 to SA-24). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; P11-13).
 - **Restaurant page** (docs/DECISIONS.md SA-33 to SA-40): a header with the name, code, city, state and health badges, plan and cycle, paid or trial till, last active, the owner with the phone (Call, WhatsApp) and email, tags (chosen, added or deleted in a dialog) and the account manager (a platform admin), and an **Actions** menu: extend trial (days), change plan, record manual payment (amount with GST, mode, notes; for a subscription the period start/end, or a setup fee with no period), send payment link, sync with Razorpay, cancel autopay, add note, suspend/unsuspend (reason). Tabs, each its own page: **Overview** (orders, GMV, average bill, QR orders and last active over the last 30 finished business days; 90 days of orders and GMV; the onboarding checklist: menu of 5 dishes, tables, QR codes, team, first QR order, first bill, first payment or autopay, each with its date, the next step and whether it is stuck (SA-41); pinned and latest notes; latest activity; the owner's login with reset password); **Billing** (subscription with dates and cancellation reason, Dues state and amount due, access state, payments with GST, payment links sent and whether paid, reminders emailed, plan and subscription history); **Usage** (tables and staff against the plan's limits, waiters, orders 7/30 days, last order, bills; plan limits reached in 90 days; orders by weekday and hour); **Activity** (the restaurant's timeline by kind, and its audit log); **Notes** (the team's, pinned first; anyone writes or pins, the author edits within 15 minutes; never shown to the restaurant); **Documents** (profile with the FSSAI licence and GSTIN, how they found us, the storefront photo sent at signup as a signed link valid an hour, possible duplicates with their reasons); **Support view** (read-only menu, tables, live board and Total Orders: server-side queries via service role, every view audit logged, no write actions); **Menu imports**.
 - **Support inbox** (`/super/support`, restaurants.support): what restaurants sent from Get help, by status (not resolved, open, in progress, waiting on restaurant, resolved, each with its count), filtered by assignee, priority and topic, highest priority and oldest first, with its age. A request shows its message, screenshot (a signed link valid an hour), who asked and how to reach them, the page, app version and browser; its status, priority and assignee are set from menus, and internal notes and every change form its history. A new request emails the platform's support address and is an alert (docs/DECISIONS.md SA-43, SA-44).
-- **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over.
+- **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over. When the owner agrees in person, the last step starts a 24-hour support session for setting the restaurant up (docs/DECISIONS.md SA-51).
+- **Support sessions**: a restaurant's page shows its support access (not allowed, allowed until, or who is using it until when), and Actions → **Start support session** (with the name the restaurant sees) once the owner allows it, or **Open admin panel** while the session is yours (docs/DECISIONS.md SA-47).
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
 - **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).

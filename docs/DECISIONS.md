@@ -3733,3 +3733,69 @@ stay at 13g, since nobody else gets `/super` before then.
   status changes as history. Another restaurant's requests and screenshots are out of reach: no
   storage policy names the bucket, and a screenshot is only shown through a link signed for the
   team.
+
+### 13c · Support sessions
+
+- **SA-46 · A session, not a staff login:** the plan's "temporary restaurant membership (role
+  manager)" is built as an open `support_sessions` row that acts as a manager membership inside
+  the access helpers only (`member_context_for`, `my_restaurant_ids`, `member_role`,
+  `menu_import_actor`) and in `getCurrentMembership`. A real `restaurant_members` row would have
+  shown in Staff and counted toward `max_staff`, plan usage, the onboarding team step and last
+  active; let the restaurant code, a username and the team member's password sign in without the
+  second factor; let waiters read it; and let the owner reset its password, which is the team
+  member's real one. None of that can happen without a row. A session's member id is its own id,
+  which no login has, so "your own login" checks never match it.
+- **SA-47 · The consent window:** the owner alone, in Settings, opens a window for 1, 4 or 24
+  hours (`admin_allow_support_access`); one is open at a time per restaurant. A team member with
+  restaurants.support takes it (`platform_start_support_session`, with the name the restaurant
+  sees): one update that only matches an unused window, so two can't take the same one, and one
+  open session per team member. The session lasts as long as the window. The owner ("End access
+  now") or the team member ("End session") ends the window; a new session needs a new window. A
+  window that ran out is closed before a new one opens or a session starts, and by the daily
+  cron. Allowing and ending are audited as the owner, starting and ending as the team member.
+- **SA-48 · Who is in, and until when:** a session counts only while it is unexpired and not
+  ended, the person is still in `platform_admins`, and it is them at the second factor (aal2);
+  removing someone from the team ends their session. This is checked on every database call
+  (RLS, every function, storage and Realtime) and every page, so access ends on time without
+  waiting for the cron. The one service-role caller that passes a user id,
+  `admin_create_staff`, runs after the page found the session at aal2. A real membership wins
+  over a session, and a team member who has one can't start a session, so the two never mix.
+  The admin panel shows a banner on every page (the restaurant, when it ends, Back to MenuMesh
+  admin, End session); the account menu says MenuMesh support and switches to the restaurant's
+  page in /super; Get help and the worker panel are closed to it, and analytics don't count it.
+- **SA-49 · What a session can and can't do:** allowed: the menu (categories, dishes, add-ons,
+  availability, menu import), tables and QR codes, waiters, waiter and kitchen logins, the
+  restaurant's details and logo, ordering settings and the bill layout; it reads what a manager
+  reads. A manager can't manage the owner's or other managers' logins, so neither can a session
+  (narrower than the plan's "every login but the owner's"). Refused with `SUPPORT_REFUSED`
+  through `private.refuse_in_support_session()`: generating, voiding and reprinting bills,
+  recording payments, every live-service action (approving, placing, serving and removing
+  orders, closing or moving tables, calls, waiter assignment) and Get help. In
+  `admin_update_settings`, changing a key that moves money is refused: the tax tab, the legal
+  name (printed on tax invoices), the invoice prefix, UPI ID, payee name and the UPI QR, the
+  reopen window, removing served dishes and the business-day start; the rest of a tab still
+  saves. The subscription and the first-steps card stay owner-only. Limit hits in a session
+  aren't counted as the restaurant's. A pgTAP guard lists every function that resolves a member:
+  each refuses sessions or is on the allowed list, so a new one has to be classified.
+- **SA-50 · Audited as the team member:** `audit_logs.support_session_id` names the session.
+  Rows written in a session are the team member's (`platform_admin`, their user id) labelled
+  "MenuMesh support", so the restaurant never sees a team email and /super shows whose they
+  were. Menu and table edits, which aren't audited for the restaurant's own staff, write one row
+  per call in a session (a reorder is one row), with the name of what changed; a menu import
+  carries its session. The restaurant sees the name the team member typed when starting
+  (prefilled from their last session), never their email.
+- **SA-51 · Consent in person at onboarding:** the wizard's last step has "The owner agrees that
+  MenuMesh may set up the restaurant for the next 24 hours" and the team member's name. After the
+  restaurant is created, `platform_onboarding_support_session` records the consent (`onboarding`,
+  audited as such) and starts a 24-hour session at once; the handover offers "Set up in admin
+  panel". It works only for a restaurant this team member created in the last hour that has
+  never had a window; if it fails (another session open), the handover says why and can try
+  again. The create function shared with website signups is unchanged.
+- **SA-52 · The owner's view and the wording:** Settings has a "MenuMesh support access" card for
+  the owner only: the consent text approved by the owner on 2026-10-15, the choice of hours, the
+  open window (who is working, until when) with End access now, and the last 10 sessions with
+  "Changes made by MenuMesh support", one line each. Logins created or reset are named so the
+  owner can change those passwords. The owner has no other activity page, so this card is
+  where they see the changes (the plan said "in their activity"). Outside sessions, two team
+  tools stay as they were (owner's choice, 2026-10-15): resetting the owner's password from
+  /super for an owner locked out, and the /super menu import.
