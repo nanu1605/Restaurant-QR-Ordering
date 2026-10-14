@@ -147,7 +147,9 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(main.getByRole('region', { name: 'Subscription' })).toContainText('Starter');
 
   await main.getByRole('button', { name: 'Record payment' }).click();
-  await dialog.getByLabel('Amount (₹)').fill('399');
+  await dialog.getByLabel('Amount received, with GST (₹)').fill('399');
+  // The split is shown as it will be stored (SA-8).
+  await expect(dialog.getByText('₹338.14 + GST ₹60.86')).toBeVisible();
   await dialog.getByLabel('Paid by').selectOption({ label: 'UPI' });
   await dialog.getByLabel('Notes').fill('UTR 998877');
   await dialog.getByRole('button', { name: 'Record payment' }).click();
@@ -169,9 +171,19 @@ test('extends a trial, changes the plan and records a manual payment', async ({
   await expect(ownerPayments).not.toContainText('UTR 998877');
   await ownerContext.close();
 
+  // A setup fee paid in cash covers no period.
+  await main.getByRole('button', { name: 'Record payment' }).click();
+  await dialog.getByLabel('For').selectOption({ label: 'Setup fee' });
+  await expect(dialog.getByLabel('First day')).toHaveCount(0);
+  await dialog.getByLabel('Amount received, with GST (₹)').fill('588.82');
+  await dialog.getByLabel('Paid by').selectOption({ label: 'Cash' });
+  await dialog.getByRole('button', { name: 'Record payment' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(main.getByRole('table', { name: 'Payments' })).toContainText('₹588.82');
+
   // The actions are in the audit log.
   await main.getByRole('link', { name: 'Audit log' }).click();
-  await expect(page.locator('tr[data-action="subscription.payment_recorded"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-action="subscription.payment_recorded"]')).toHaveCount(2);
   await expect(page.locator('tr[data-action="subscription.plan_changed"]')).toHaveCount(1);
   await expect(page.locator('tr[data-action="subscription.trial_extended"]')).toHaveCount(1);
 });
