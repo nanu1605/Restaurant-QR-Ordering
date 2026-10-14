@@ -30,6 +30,9 @@ test('a new request emails the support address', async ({ page, request }) => {
   try {
     await logInAsOwner(page, restaurant);
     await page.goto('/admin/help');
+    // The header's sound button appears once the page has hydrated; anything
+    // typed before that is reset to the form's defaults.
+    await expect(page.getByRole('button', { name: 'Enable sound' })).toBeVisible();
     const form = page.getByRole('region', { name: 'New request' });
     await form.getByLabel('What is it about?').selectOption({ label: 'Billing' });
     await form.getByLabel('What do you need help with?').fill(`Invoice for ${restaurant.slug}`);
