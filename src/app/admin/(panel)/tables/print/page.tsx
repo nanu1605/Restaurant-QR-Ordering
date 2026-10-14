@@ -59,7 +59,7 @@ export default async function PrintQrCardsPage({ searchParams }: PageProps<'/adm
               >
                 <ArrowLeft aria-hidden /> Tables
               </Link>
-              <PrintButton disabled={cards.length === 0} />
+              <PrintButton tableIds={cards.map((card) => card.id)} />
             </>
           }
         />

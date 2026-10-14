@@ -3,6 +3,7 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
+import { notePlanLimit } from '@/features/plans/plan-limit-events';
 import {
   actionError,
   actionOk,
@@ -68,6 +69,7 @@ export async function generateBill(input: GenerateBillInput): Promise<GenerateBi
     if (dbErrorCode(error) === 'BILL_CHANGED') {
       return { ok: false, error: dbErrorMessage(error)!, changed: true };
     }
+    await notePlanLimit(error);
     return fromDbError(error, 'admin_generate_bill');
   }
   return actionOk({ billId: generatedJson.parse(data).bill_id, alreadyBilled: false });
@@ -88,7 +90,10 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ActionRe
   });
   // Refused or not, show the bill as it is now (someone may have paid or voided it).
   refresh();
-  if (error) return fromDbError(error, 'admin_record_payment');
+  if (error) {
+    await notePlanLimit(error);
+    return fromDbError(error, 'admin_record_payment');
+  }
   return actionOk();
 }
 

@@ -3,6 +3,7 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
+import { notePlanLimit } from '@/features/plans/plan-limit-events';
 import { actionError, actionOk, fromDbError, type ActionResult } from '@/lib/action-result';
 import { requireMember } from '@/lib/auth/guards';
 import { ADMIN_PANEL_ROLES } from '@/lib/auth/roles';
@@ -17,6 +18,19 @@ function firstIssue(error: z.ZodError): ActionResult<never> {
   return actionError(error.issues[0]?.message ?? GENERIC_ERROR);
 }
 
+/** Records that the QR cards were printed (docs/DECISIONS.md SA-14); never blocks printing. */
+export async function recordQrSheetPrinted(tableIds: string[]): Promise<void> {
+  await requireMember(ADMIN_PANEL_ROLES);
+  const ids = z.array(z.uuid()).min(1).max(500).safeParse(tableIds);
+  if (!ids.success) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('admin_record_qr_use', {
+    p_action: 'sheet_printed',
+    p_table_ids: ids.data,
+  });
+  if (error) console.error('[tables] QR sheet print not recorded:', error.message);
+}
+
 export async function createTables(input: string): Promise<ActionResult<{ count: number }>> {
   await requireMember(ADMIN_PANEL_ROLES);
   const parsed = parseTableLabels(typeof input === 'string' ? input : '');
@@ -24,7 +38,10 @@ export async function createTables(input: string): Promise<ActionResult<{ count:
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('admin_create_tables', { p_labels: parsed.labels });
-  if (error) return fromDbError(error, 'admin_create_tables');
+  if (error) {
+    await notePlanLimit(error);
+    return fromDbError(error, 'admin_create_tables');
+  }
   refresh();
   return actionOk({ count: Array.isArray(data) ? data.length : parsed.labels.length });
 }
@@ -57,7 +74,10 @@ export async function updateTable(
       ...(parsed.data.isActive !== undefined ? { is_active: parsed.data.isActive } : {}),
     },
   });
-  if (error) return fromDbError(error, 'admin_update_table');
+  if (error) {
+    await notePlanLimit(error);
+    return fromDbError(error, 'admin_update_table');
+  }
   refresh();
   return actionOk();
 }

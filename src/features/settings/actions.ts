@@ -3,6 +3,7 @@
 import { refresh } from 'next/cache';
 
 import { imageExtension, MAX_IMAGE_BYTES, MENU_IMAGE_TYPES } from '@/features/menu/schemas';
+import { notePlanLimit } from '@/features/plans/plan-limit-events';
 import {
   actionError,
   actionOk,
@@ -71,6 +72,7 @@ export async function saveSettings(tab: SettingsTabName, values: unknown): Promi
     p_patch: settingsPatch(tab, parsed.data),
   });
   if (error) {
+    await notePlanLimit(error);
     const result = fromDbError(error, 'admin_update_settings');
     const code = dbErrorCode(error);
     const field = FIELD_FOR[error.details?.trim() || ''] ?? FIELD_FOR[code ?? ''];

@@ -24,6 +24,12 @@ export async function GET(_request: Request, ctx: RouteContext<'/admin/tables/[t
     .eq('id', tableId)
     .maybeSingle();
   if (!table) return new Response('Not found', { status: 404 });
+  // For super-admin's onboarding view (docs/DECISIONS.md SA-14); the download goes ahead anyway.
+  const recorded = await supabase.rpc('admin_record_qr_use', {
+    p_action: 'downloaded',
+    p_table_ids: [tableId],
+  });
+  if (recorded.error) console.error('[tables] QR download not recorded:', recorded.error.message);
 
   const png = await qrPng(tableUrl(getPublicEnv().NEXT_PUBLIC_APP_URL, table.qr_token));
   return new Response(new Uint8Array(png), {
