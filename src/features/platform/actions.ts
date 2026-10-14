@@ -252,6 +252,7 @@ export async function onboardNewRestaurant(
       name: form.name,
       slug: form.slug,
       cuisine: form.cuisine,
+      acquisitionChannel: form.acquisitionChannel,
       legalName: optional(form.legalName),
       addressLine: optional(form.addressLine),
       city: optional(form.city),

@@ -29,6 +29,8 @@ export type OnboardInput = {
   plan?: string;
   city?: string;
   cuisine?: CuisineSet;
+  /** How they found MenuMesh (the wizard asks; signup sets it in SQL). */
+  acquisitionChannel?: string;
   /** More details from the super-admin wizard (all optional). */
   legalName?: string;
   addressLine?: string;
@@ -133,6 +135,7 @@ export async function onboardRestaurant(
         gst_rate_bps: input.gstRateBps,
         prices_include_tax: input.pricesIncludeTax,
         trial_days: input.trialDays,
+        acquisition_channel: input.acquisitionChannel,
         plan_code: input.plan ?? 'growth',
         actor_user_id: input.actorUserId,
         categories: [...DEFAULT_CATEGORY_SETS[input.cuisine ?? DEFAULT_CUISINE]],

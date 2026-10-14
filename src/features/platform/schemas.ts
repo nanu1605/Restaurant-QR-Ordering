@@ -7,7 +7,7 @@ import { GST_RATES_BPS } from '@/features/settings/schemas';
 import { RESTAURANT_CODE_PATTERN, USERNAME_PATTERN } from '@/lib/auth/staff-email';
 import { addDays, isDate } from '@/lib/date-range';
 
-import { MANUAL_MODES } from './platform';
+import { ACQUISITION_CHANNELS, MANUAL_MODES } from './platform';
 
 /** Super-admin forms (spec §13.4), shared by the dialogs and the server actions. */
 
@@ -144,6 +144,9 @@ export const onboardDetailsSchema = z.object({
       'Use 3–32 lowercase letters, numbers or hyphens, starting and ending with a letter or number.',
     ),
   cuisine: z.enum(CUISINE_SETS, { message: 'Choose a menu style.' }),
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS, {
+    message: 'Choose how they found MenuMesh.',
+  }),
   legalName: optionalText(160),
   addressLine: optionalText(300),
   city: optionalText(80),
