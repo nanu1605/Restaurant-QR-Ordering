@@ -193,7 +193,20 @@ select set_eq(
       ('public.platform_snooze'),
       ('public.platform_activity'),
       ('public.platform_alerts'),
-      ('public.platform_mark_alerts_seen')
+      ('public.platform_mark_alerts_seen'),
+      -- Restaurant page (13a)
+      ('public.platform_restaurant_overview'),
+      ('public.platform_restaurant_billing'),
+      ('public.platform_restaurant_usage'),
+      ('public.platform_list_notes'),
+      ('public.platform_add_note'),
+      ('public.platform_edit_note'),
+      ('public.platform_pin_note'),
+      ('public.platform_create_tag'),
+      ('public.platform_delete_tag'),
+      ('public.platform_set_restaurant_tags'),
+      ('public.platform_team'),
+      ('public.platform_set_account_manager')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -235,7 +248,8 @@ from unnest(array[
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-  'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
+  'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
+  'restaurant_tags', 'restaurant_notes'
 ]) as t;
 
 select is_empty(
@@ -246,7 +260,8 @@ select is_empty(
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-      'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
+      'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
+      'restaurant_tags', 'restaurant_notes'
     ]) as t
     where not exists (
       select 1

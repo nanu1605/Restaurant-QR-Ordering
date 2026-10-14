@@ -1343,6 +1343,30 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_tags: {
+        Row: {
+          colour: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          colour: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          colour?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       restaurant_members: {
         Row: {
           created_at: string
@@ -1383,6 +1407,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "restaurant_members_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_notes: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          edited_at: string | null
+          id: string
+          pinned: boolean
+          restaurant_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          pinned?: boolean
+          restaurant_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          pinned?: boolean
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_notes_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -1490,9 +1552,46 @@ export type Database = {
           },
         ]
       }
+      restaurant_tags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          restaurant_id: string
+          tag_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          restaurant_id: string
+          tag_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          restaurant_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_tags_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "platform_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           accent_color: string
+          account_manager_user_id: string | null
           acquisition_channel: string | null
           address_line: string | null
           bill_footer_text: string | null
@@ -1535,6 +1634,7 @@ export type Database = {
         }
         Insert: {
           accent_color?: string
+          account_manager_user_id?: string | null
           acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
@@ -1577,6 +1677,7 @@ export type Database = {
         }
         Update: {
           accent_color?: string
+          account_manager_user_id?: string | null
           acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
@@ -1617,7 +1718,15 @@ export type Database = {
           upi_payee_name?: string | null
           upi_vpa?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "restaurants_account_manager_user_id_fkey"
+            columns: ["account_manager_user_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       service_requests: {
         Row: {
@@ -2449,6 +2558,10 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_add_note: {
+        Args: { p_body: string; p_pinned?: boolean; p_restaurant_id: string }
+        Returns: string
+      }
       platform_admin_status: { Args: never; Returns: string }
       platform_alerts: { Args: never; Returns: Json }
       platform_audit_payment_link: {
@@ -2460,8 +2573,17 @@ export type Database = {
         Returns: Json
       }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_create_tag: {
+        Args: { p_colour: string; p_name: string }
+        Returns: string
+      }
+      platform_delete_tag: { Args: { p_tag_id: string }; Returns: undefined }
       platform_delete_view: { Args: { p_id: string }; Returns: undefined }
       platform_digest: { Args: { p_day?: string }; Returns: Json }
+      platform_edit_note: {
+        Args: { p_body: string; p_note_id: string }
+        Returns: undefined
+      }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2473,6 +2595,7 @@ export type Database = {
       platform_home: { Args: { p_period?: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_notes: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
@@ -2484,6 +2607,10 @@ export type Database = {
       platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
       platform_needs_attention: { Args: never; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
+      platform_pin_note: {
+        Args: { p_note_id: string; p_pinned: boolean }
+        Returns: undefined
+      }
       platform_record_manual_payment: {
         Args: { p_payment: Json; p_restaurant_id: string }
         Returns: Json
@@ -2500,8 +2627,20 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: string
       }
+      platform_restaurant_billing: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
       platform_restaurant_lookalikes: {
         Args: { p_restaurant_ids: string[] }
+        Returns: Json
+      }
+      platform_restaurant_overview: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_restaurant_usage: {
+        Args: { p_restaurant_id: string }
         Returns: Json
       }
       platform_save_view: {
@@ -2514,9 +2653,17 @@ export type Database = {
         Returns: string
       }
       platform_search: { Args: { p_q: string }; Returns: Json }
+      platform_set_account_manager: {
+        Args: { p_restaurant_id: string; p_user_id: string }
+        Returns: undefined
+      }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
+      }
+      platform_set_restaurant_tags: {
+        Args: { p_restaurant_id: string; p_tag_ids: string[] }
+        Returns: undefined
       }
       platform_snooze: {
         Args: { p_days: number; p_key: string }
@@ -2526,6 +2673,7 @@ export type Database = {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
         Returns: Json
       }
+      platform_team: { Args: never; Returns: Json }
       platform_update_plan: {
         Args: { p_patch: Json; p_plan_id: string }
         Returns: Json
