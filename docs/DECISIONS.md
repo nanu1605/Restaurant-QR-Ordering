@@ -3420,7 +3420,8 @@ stay at 13g, since nobody else gets `/super` before then.
   file short. A row opens the restaurant's Payments section (its Billing tab from 13a). On a
   phone the rows become cards, their total marked "incl. GST". With only an end date the
   heading reads "Up to" that day and the file is named `payments-to-<day>.csv`.
-  Compare-with-previous-period comes with Home (12e).
+  Comparing with the period before starts with Home's MRR (12e, SA-27); the ledger's own
+  comparison waits for Revenue (13f).
 - **SA-19 · Dues:** `/super/money/dues` through `platform_list_dues`, the buckets of plan §5.6,
   first match wins. Suspended restaurants are in no bucket: suspending is the team's own call,
   handled on the restaurant's page. Payment failed needs full access; once grace ends the
@@ -3507,8 +3508,77 @@ stay at 13g, since nobody else gets `/super` before then.
   cannot reach any other database; it removes the previous load first, and
   `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
   payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
-  the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
+  the same seed gives the same data, with a year of nightly snapshots from 12e (a 14-day trial,
+  then each kind's path) for Home's MRR chart and the lapses in the activity. With it and
   about 2,600 restaurants locally the list function takes 26 to 215 ms, the CSV 0.6 s and search
   under 10 ms. `PERF=1 pnpm e2e super-perf --project=desktop` (opt-in, like the website's) checks
   that each super-admin page answers within 1.5 s; the slowest, sorted by GMV, took 0.96 s with
   the rest of the suite running.
+
+### 12e · Home
+
+- **SA-27 · Key numbers and charts:** `platform_home(period)` for Today (the default) or This
+  month. MenuMesh money is by India date (payments since midnight, or this month); orders and GMV
+  are each restaurant's current business day, or the business days in this India month, summed
+  as their own dashboards count them. Paid, on trial and payment failed use the shared state rule
+  (they match `platform_overview`, which a test checks). MRR is compared with the same India date
+  a month ago, from that night's snapshot, as "Up 8% in a month"; nothing is shown until history
+  reaches back. Home shows whole rupees; the pages behind each figure have the paise. MRR and
+  collected need money.view (null in the function, absent on the page); GMV, the restaurants'
+  own sales with their taxes, is shown to all and never added to MenuMesh money. Open tables are
+  the open sessions of active restaurants. Charts: each night's MRR for 12 months and today's;
+  GMV (`--chart-2`) and accepted orders for the last 30 finished business days; new restaurants
+  per India week from Monday, signups (trial claims) and the team's apart. Usage reads
+  `metrics_usage_daily` up to the day before each restaurant's last finished one and counts that
+  day and today live (`private.platform_usage`, the rule of SA-23). The charts are `next/dynamic`
+  client components without server rendering, so recharts isn't part of the panel's first load;
+  they don't animate, and each has its numbers as a table under "Show as a table" and a summary
+  for screen readers. A CSV of a chart waits for Revenue (13f): every figure links to a page
+  that already exports its rows.
+- **SA-28 · Needs attention:** `platform_needs_attention()` (`private.attention`), groups in
+  order: Payment failed, Trial ends in 3 days with no autopay, Needs a payment within 7 days
+  (manual and payment-link payers), Leads from the last 24 hours (until leads get a status in
+  13d), No orders in 7 days, Slowing (both only with full access: a lapsed or suspended
+  restaurant is quiet for a known reason), Possible duplicate signups (a signup of the last 7
+  days that looks like another restaurant, reviewed on its page; with no dismiss flag, a snooze
+  sets one aside and it ages out after the week), Failed webhooks (until run again) and Failed
+  scheduled steps (each job and step whose latest run in two days failed). The money groups read
+  `private.dues_rows`, the Dues bucket rule now shared with `platform_list_dues` (same results;
+  550 still passes), so an item is a Dues row and uses the same dialogs and messages: a payment
+  item offers Send payment link (Record payment while the Razorpay keys are unset), a trial Call
+  and WhatsApp, a quiet restaurant Call. Five items a group, with its count and a link to the
+  full list. Each admin snoozes an item for 1, 3 or 7 days (`platform_snoozes`, keyed
+  `group:id`, written only through `platform_snooze`; an expired one is replaced or cleared by
+  the admin's next snooze); nothing else is stored, so a resolved item simply stops being
+  listed. Home's entry in the sidebar shows the count, from the alerts bell's latest look. Money
+  groups need money.view, leads growth.manage, webhooks and steps system.view.
+- **SA-29 · Activity:** `platform_activity(restaurant, kinds, before, limit)`, newest first, from
+  where each event already lives: signups and restaurants the team onboarded, payments (who
+  recorded a manual one), failed payments (the audit row of a Razorpay webhook moving the
+  subscription into retrying), lapses (a nightly snapshot turning read-only, compared over the
+  90 days below the cursor), reminder emails, leads, finished or failed menu imports, and what
+  the team did (platform-admin audit rows, less those the other kinds show). Support requests and
+  notes join with 13b and 13a. Paged by time and key, so equal times never drop an item; an old
+  cursor in a link starts again from the newest. Amounts are null without money.view, and kinds
+  follow permissions (payments money.view, leads growth.manage, the team's audit.view). The
+  function returns the facts; the page words them (`activityLine`). Home filters by one kind.
+- **SA-30 · Alerts:** the bell in the header asks `/super/alerts` (a route handler: 401 without
+  the second factor, never a redirect) every 60 s while the tab is in view, and at once when it
+  comes back; a server action would queue behind the admin's own actions. It counts signups,
+  payments, failed payments and leads since `platform_admins.alerts_seen_at` (from becoming an
+  admin, the first time), lists the latest ten, and opening it marks them seen. After the first
+  look, each new one is a toast (three at most, then "And N more"). The same answer carries the
+  Needs attention count for the sidebar.
+- **SA-31 · Daily digest:** a second Vercel cron, `/api/cron/digest` at 03:15 UTC (08:45 India
+  time), behind `CRON_SECRET`, recorded in `cron_runs` as job `digest`. `platform_digest(day)`
+  (service role only) gives yesterday's state at the end of the day (that night's snapshot, or
+  as it stands), money collected, signups, restaurants onboarded, leads, GMV and orders for that
+  business day, and today's Needs attention counts without anyone's snoozes; it goes to every
+  platform admin until 13g (one email per 50 addresses, all in To: they are the team). Once a
+  day: a successful run that sent that day's digest makes the next say "already sent", and
+  Resend's idempotency key is the day and the recipients. Without Resend it is skipped and
+  recorded, and staging's team gets staging's digest. The cron route helpers moved to
+  `src/lib/cron.ts`, shared with the nightly job.
+- **SA-32 · Overview becomes Home:** the sidebar's first entry is Home; the old trials list is
+  the trial group of Needs attention, orders in 24 hours are orders today.
+  `platform_overview` stays in the database for its tests and as Home's cross-check.

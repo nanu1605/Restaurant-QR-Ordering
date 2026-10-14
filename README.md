@@ -236,6 +236,8 @@ through Resend; without these the step is skipped:
 | `RESEND_API_URL` | Defaults to `https://api.resend.com` (tests use a mock)            |
 
 Run it by hand with `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/daily`.
+A second cron, `/api/cron/digest` at 08:45 India time, emails the platform team yesterday's
+numbers and today's Needs attention counts, once a day (docs/DECISIONS.md SA-31).
 With a real key it emails the addresses in your local database.
 
 ### Admin panel

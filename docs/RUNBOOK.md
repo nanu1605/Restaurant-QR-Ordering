@@ -147,6 +147,11 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   `select public.platform_metrics_snapshot('<yesterday>');` in the SQL editor (it states the day
   as of now, close enough on the morning after; signups older than a week can no longer be
   counted). A failed `usage snapshot` needs nothing: the next night recounts the last four days.
+  Home's Needs attention lists a failed step until a later run of it works.
+- **The daily digest didn't arrive** (08:45 India time, `/api/cron/digest`): `cron_runs` rows
+  with `job = 'digest'` say what happened (`skipped` when Resend isn't set up). Run it by hand
+  with `curl -H "Authorization: Bearer <CRON_SECRET>" https://<domain>/api/cron/digest`; it goes
+  out once a day, so a second run answers "already sent".
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.
