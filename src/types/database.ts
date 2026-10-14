@@ -24,6 +24,7 @@ export type Database = {
           id: string
           reason: string | null
           restaurant_id: string | null
+          support_session_id: string | null
         }
         Insert: {
           action: string
@@ -39,6 +40,7 @@ export type Database = {
           id?: string
           reason?: string | null
           restaurant_id?: string | null
+          support_session_id?: string | null
         }
         Update: {
           action?: string
@@ -54,6 +56,7 @@ export type Database = {
           id?: string
           reason?: string | null
           restaurant_id?: string | null
+          support_session_id?: string | null
         }
         Relationships: [
           {
@@ -61,6 +64,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_support_session_id_fkey"
+            columns: ["support_session_id"]
+            isOneToOne: false
+            referencedRelation: "support_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -2241,6 +2251,53 @@ export type Database = {
           },
         ]
       }
+      support_sessions: {
+        Row: {
+          consent: string
+          created_at: string
+          ended_at: string | null
+          ends_at: string
+          granted_by: string | null
+          id: string
+          restaurant_id: string
+          staff_name: string | null
+          started_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          consent: string
+          created_at?: string
+          ended_at?: string | null
+          ends_at: string
+          granted_by?: string | null
+          id?: string
+          restaurant_id: string
+          staff_name?: string | null
+          started_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          consent?: string
+          created_at?: string
+          ended_at?: string | null
+          ends_at?: string
+          granted_by?: string | null
+          id?: string
+          restaurant_id?: string
+          staff_name?: string | null
+          started_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_sessions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_sessions: {
         Row: {
           approved_at: string | null
@@ -2466,6 +2523,7 @@ export type Database = {
     }
     Functions: {
       admin_add_categories: { Args: { p_names: string[] }; Returns: number }
+      admin_allow_support_access: { Args: { p_hours: number }; Returns: string }
       admin_assign_waiter: {
         Args: { p_force?: boolean; p_session_id: string; p_waiter_id: string }
         Returns: Json
@@ -2494,6 +2552,7 @@ export type Database = {
         Returns: number
       }
       admin_delete_waiter: { Args: { p_waiter_id: string }; Returns: undefined }
+      admin_end_support_access: { Args: never; Returns: undefined }
       admin_generate_bill: {
         Args: {
           p_apply_service_charge: boolean
@@ -2775,6 +2834,7 @@ export type Database = {
         Args: { p_body: string; p_note_id: string }
         Returns: undefined
       }
+      platform_end_support_session: { Args: never; Returns: undefined }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2805,6 +2865,10 @@ export type Database = {
       }
       platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
       platform_needs_attention: { Args: never; Returns: Json }
+      platform_onboarding_support_session: {
+        Args: { p_restaurant_id: string; p_staff_name: string }
+        Returns: string
+      }
       platform_overview: { Args: never; Returns: Json }
       platform_pin_note: {
         Args: { p_note_id: string; p_pinned: boolean }
@@ -2866,6 +2930,10 @@ export type Database = {
       }
       platform_snooze: {
         Args: { p_days: number; p_key: string }
+        Returns: string
+      }
+      platform_start_support_session: {
+        Args: { p_restaurant_id: string; p_staff_name: string }
         Returns: string
       }
       platform_support_view: {
@@ -3028,6 +3096,7 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: string[]
       }
+      support_sessions_close_expired: { Args: never; Returns: number }
     }
     Enums: {
       actor_type: "staff" | "customer" | "system" | "platform_admin"
