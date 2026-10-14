@@ -206,7 +206,15 @@ select set_eq(
       ('public.platform_delete_tag'),
       ('public.platform_set_restaurant_tags'),
       ('public.platform_team'),
-      ('public.platform_set_account_manager')
+      ('public.platform_set_account_manager'),
+      -- Onboarding and support (13b)
+      ('public.admin_onboarding'),
+      ('public.admin_create_support_request'),
+      ('public.admin_list_support_requests'),
+      ('public.platform_list_support_requests'),
+      ('public.platform_get_support_request'),
+      ('public.platform_update_support_request'),
+      ('public.platform_add_support_note')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -249,7 +257,8 @@ from unnest(array[
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
-  'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers'
+  'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
+  'support_request_events'
 ]) as t;
 
 select is_empty(
@@ -261,7 +270,8 @@ select is_empty(
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
-      'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers'
+      'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
+      'support_request_events'
     ]) as t
     where not exists (
       select 1

@@ -2086,6 +2086,132 @@ export type Database = {
           },
         ]
       }
+      support_request_events: {
+        Row: {
+          actor_id: string | null
+          body: string | null
+          created_at: string
+          from_value: string | null
+          id: string
+          kind: string
+          request_id: string
+          restaurant_id: string
+          to_value: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind: string
+          request_id: string
+          restaurant_id: string
+          to_value?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind?: string
+          request_id?: string
+          restaurant_id?: string
+          to_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_request_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "support_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_request_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_requests: {
+        Row: {
+          assignee_id: string | null
+          contact: string
+          contact_method: string
+          context: Json
+          created_at: string
+          created_by: string | null
+          created_by_name: string
+          created_by_role: Database["public"]["Enums"]["member_role"]
+          id: string
+          message: string
+          priority: string
+          resolved_at: string | null
+          restaurant_id: string
+          screenshot_path: string | null
+          status: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_id?: string | null
+          contact: string
+          contact_method: string
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          created_by_name: string
+          created_by_role: Database["public"]["Enums"]["member_role"]
+          id?: string
+          message: string
+          priority?: string
+          resolved_at?: string | null
+          restaurant_id: string
+          screenshot_path?: string | null
+          status?: string
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_id?: string | null
+          contact?: string
+          contact_method?: string
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string
+          created_by_role?: Database["public"]["Enums"]["member_role"]
+          id?: string
+          message?: string
+          priority?: string
+          resolved_at?: string | null
+          restaurant_id?: string
+          screenshot_path?: string | null
+          status?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_requests_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "support_requests_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_sessions: {
         Row: {
           approved_at: string | null
@@ -2321,6 +2447,10 @@ export type Database = {
         Args: { p_actor_user_id: string; p_payload: Json }
         Returns: string
       }
+      admin_create_support_request: {
+        Args: { p_request: Json }
+        Returns: string
+      }
       admin_create_tables: { Args: { p_labels: string[] }; Returns: Json }
       admin_deactivate_staff: {
         Args: { p_member_id: string }
@@ -2366,6 +2496,8 @@ export type Database = {
           waiter_name: string
         }[]
       }
+      admin_list_support_requests: { Args: never; Returns: Json }
+      admin_onboarding: { Args: never; Returns: Json }
       admin_preview_bill: {
         Args: {
           p_apply_service_charge: boolean
@@ -2584,6 +2716,10 @@ export type Database = {
         Args: { p_body: string; p_pinned?: boolean; p_restaurant_id: string }
         Returns: string
       }
+      platform_add_support_note: {
+        Args: { p_body: string; p_request_id: string }
+        Returns: string
+      }
       platform_admin_status: { Args: never; Returns: string }
       platform_alerts: { Args: never; Returns: Json }
       platform_audit_payment_link: {
@@ -2614,6 +2750,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_get_support_request: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
       platform_home: { Args: { p_period?: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
@@ -2621,6 +2761,10 @@ export type Database = {
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_support_requests: {
+        Args: { p_filters: Json }
+        Returns: Json
+      }
       platform_mark_alerts_seen: { Args: { p_seen: string }; Returns: string }
       platform_metrics_backfill_usage: {
         Args: { p_from: string; p_to: string }
@@ -2701,6 +2845,10 @@ export type Database = {
         Returns: Json
       }
       platform_update_settings: { Args: { p_patch: Json }; Returns: Json }
+      platform_update_support_request: {
+        Args: { p_patch: Json; p_request_id: string }
+        Returns: undefined
+      }
       razorpay_record_webhook: {
         Args: { p_event_id: string; p_payload: Json }
         Returns: string
@@ -2842,6 +2990,10 @@ export type Database = {
           timezone: string
           trial_ends_at: string
         }[]
+      }
+      support_screenshots_to_remove: {
+        Args: { p_limit?: number }
+        Returns: string[]
       }
     }
     Enums: {

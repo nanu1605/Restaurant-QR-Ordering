@@ -205,7 +205,9 @@ select is(
     'billing_cycle', 'monthly', 'subscription_status', 'active', 'state', 'paid', 'ending', false,
     'health', 'active', 'gmv_30d_paise', 50000, 'orders_7d', jsonb_build_array(0, 0, 0, 0, 0, 5, 0),
     'paid', jsonb_build_object('subscription_paise', 89900, 'setup_fee_paise', 0, 'gst_paise', 16182),
-    'tags', '[]'::jsonb, 'account_manager', null
+    'tags', '[]'::jsonb, 'account_manager', null,
+    'onboarding', private.restaurant_onboarding(
+      (select id from public.restaurants where slug = 'sa560-busy')) - 'steps'
   ),
   'a row: state, plan, health, 30-day GMV, orders on each of the last 7 days, money paid before GST'
 );

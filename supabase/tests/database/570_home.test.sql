@@ -137,7 +137,8 @@ select is(
   (select array_agg(g ->> 'group' order by n) from jsonb_array_elements((:'att'::jsonb) -> 'groups')
      with ordinality as x(g, n)),
   (select array_agg(g order by n) from unnest(array['payment_failed', 'trial_ending',
-     'needs_payment', 'new_leads', 'inactive', 'slowing', 'duplicates', 'webhooks', 'cron'])
+     'needs_payment', 'new_leads', 'support_open', 'stuck_onboarding', 'inactive', 'slowing',
+     'duplicates', 'webhooks', 'cron'])
      with ordinality as x(g, n)
    where g in (select e ->> 'group' from jsonb_array_elements((:'att'::jsonb) -> 'groups') as e)),
   'groups in the plan''s order'
