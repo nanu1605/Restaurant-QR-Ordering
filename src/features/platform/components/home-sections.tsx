@@ -20,6 +20,8 @@ import type { HomeParams } from '../params';
 import { formatDate, formatDateTime } from '../platform';
 
 const linkClass = 'underline-offset-4 hover:underline';
+// Key numbers in whole rupees; the pages they link to have the paise.
+const rupees = (paise: number) => Math.round(paise / 100) * 100;
 
 function homeHref(params: HomeParams, next: Partial<HomeParams>) {
   const merged = { ...params, ...next };
@@ -98,7 +100,7 @@ export function KeyNumbers({
           ))}
         </nav>
       </div>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg border border-line bg-surface p-4 sm:grid-cols-4 xl:grid-cols-8">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg border border-line bg-surface p-4 sm:grid-cols-4">
         {home.mrr_paise !== null && (
           <Figure
             label="MRR"
@@ -118,7 +120,7 @@ export function KeyNumbers({
               )
             }
           >
-            <Money paise={home.mrr_paise} fraction="auto" />
+            <Money paise={rupees(home.mrr_paise)} fraction="auto" />
           </Figure>
         )}
         {home.collected && (
@@ -136,7 +138,7 @@ export function KeyNumbers({
               </>
             }
           >
-            <Money paise={home.collected.base_paise} fraction="auto" />
+            <Money paise={rupees(home.collected.base_paise)} fraction="auto" />
           </Figure>
         )}
         <Figure label="Paid" href="/super/money/subscriptions?state=paid">
@@ -153,7 +155,7 @@ export function KeyNumbers({
           href="/super/restaurants?sort=gmv"
           note="Diners' bills, taxes included"
         >
-          <Money paise={home.gmv_paise} fraction="auto" />
+          <Money paise={rupees(home.gmv_paise)} fraction="auto" />
         </Figure>
         <Figure
           label={month ? 'Orders this month' : 'Orders today'}
@@ -298,7 +300,7 @@ export function ActivityFeed({
               >
                 <time
                   dateTime={item.at}
-                  className="w-32 shrink-0 text-sm text-ink-muted tabular-nums"
+                  className="shrink-0 text-sm text-ink-muted tabular-nums sm:w-44"
                 >
                   {lapsed && typeof item.data.day === 'string'
                     ? formatDate(item.data.day)
