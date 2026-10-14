@@ -50,6 +50,18 @@ export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
   cancelled: 'Cancelled',
 };
 
+// A restaurant's health, first match wins (docs/SUPER_ADMIN_PLAN.md §5.11,
+// private.restaurant_health in SQL).
+export const HEALTHS = ['setting_up', 'never_started', 'inactive', 'slowing', 'active'] as const;
+export type Health = (typeof HEALTHS)[number];
+export const HEALTH_LABELS: Record<Health, string> = {
+  setting_up: 'Setting up',
+  never_started: 'Never started',
+  inactive: 'Inactive',
+  slowing: 'Slowing',
+  active: 'Active',
+};
+
 export const ACCESS_STATE_LABELS: Record<string, string> = {
   full: 'Full access',
   read_only: 'Read-only',
@@ -219,15 +231,29 @@ const restaurantRowSchema = z.object({
   name: z.string(),
   slug: z.string(),
   city: z.string().nullable(),
+  region: z.string().nullable(),
+  phone: z.string().nullable(),
   status: restaurantStatus,
   created_at: iso,
+  acquisition_channel: z.enum(ACQUISITION_CHANNELS).nullable(),
   plan_code: z.string().nullable(),
   plan_name: z.string().nullable(),
+  billing_cycle: billingCycle.nullable(),
   subscription_status: subscriptionStatus.nullable(),
-  trial_ends_at: isoOrNull,
-  current_period_end: isoOrNull,
+  state: subscriptionState,
   access_state: z.string(),
-  last_order_at: isoOrNull,
+  // The trial's end while trialing, otherwise the paid period's (plan §5.5).
+  paid_till: isoOrNull,
+  health: z.enum(HEALTHS),
+  last_active: isoOrNull,
+  gmv_30d_paise: z.number(),
+  // Accepted orders on each of the last 7 finished business days, oldest first.
+  orders_7d: z.array(z.number()).nullable(),
+  paid: z.object({
+    subscription_paise: z.number(),
+    setup_fee_paise: z.number(),
+    gst_paise: z.number(),
+  }),
 });
 const restaurantListSchema = z.object({
   page: z.number(),
@@ -235,10 +261,75 @@ const restaurantListSchema = z.object({
   total: z.number(),
   rows: z.array(restaurantRowSchema),
   cities: z.array(z.string()),
+  regions: z.array(z.string()),
 });
 export type RestaurantList = z.infer<typeof restaurantListSchema>;
 export type RestaurantRow = z.infer<typeof restaurantRowSchema>;
 export const parseRestaurantList = (json: unknown) => restaurantListSchema.parse(json);
+
+// The restaurants list's optional columns (docs/DECISIONS.md SA-23), in order.
+export const RESTAURANT_COLUMNS = [
+  'state',
+  'plan',
+  'paid_till',
+  'lifetime',
+  'gmv',
+  'orders',
+  'health',
+  'last_active',
+  'phone',
+  'channel',
+  'created',
+] as const;
+export type RestaurantColumn = (typeof RESTAURANT_COLUMNS)[number];
+export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
+  state: 'State',
+  plan: 'Plan',
+  paid_till: 'Paid till',
+  lifetime: 'Lifetime paid',
+  gmv: 'GMV, 30 days',
+  orders: 'Orders, 7 days',
+  health: 'Health',
+  last_active: 'Last active',
+  phone: 'Phone',
+  channel: 'Found us',
+  created: 'Created',
+};
+export const DEFAULT_RESTAURANT_COLUMNS: RestaurantColumn[] = RESTAURANT_COLUMNS.filter(
+  (column) => column !== 'channel',
+);
+
+// ─── Search (docs/DECISIONS.md SA-25) ────────────────────────────────────────
+const searchResultsSchema = z.object({
+  restaurants: z.array(
+    z.object({
+      restaurant_id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+      city: z.string().nullable(),
+      match: z.string().nullable(),
+    }),
+  ),
+  payments: z.array(
+    z.object({
+      restaurant_id: z.string(),
+      name: z.string(),
+      kind: z.enum(['payment', 'subscription']),
+      ref: z.string(),
+    }),
+  ),
+  leads: z.array(
+    z.object({
+      lead_id: z.string(),
+      name: z.string(),
+      restaurant_name: z.string().nullable(),
+      phone: z.string().nullable(),
+      created_at: iso,
+    }),
+  ),
+});
+export type SearchResults = z.infer<typeof searchResultsSchema>;
+export const parseSearchResults = (json: unknown) => searchResultsSchema.parse(json);
 
 // ─── Subscriptions list ──────────────────────────────────────────────────────
 const subscriptionRowSchema = z.object({

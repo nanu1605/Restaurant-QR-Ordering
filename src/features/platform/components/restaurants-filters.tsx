@@ -1,138 +1,166 @@
-'use client';
+import Form from 'next/form';
+import Link from 'next/link';
 
-import { usePathname, useRouter } from 'next/navigation';
-import type { FormEvent } from 'react';
-
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { hrefWithParams } from '@/lib/date-range';
 
-import { filterParams, type RestaurantFilters } from '../params';
-import { SUBSCRIPTION_STATUS_LABELS, SUBSCRIPTION_STATUSES } from '../platform';
+import type { RestaurantFilters } from '../params';
+import {
+  ACQUISITION_CHANNEL_LABELS,
+  ACQUISITION_CHANNELS,
+  HEALTH_LABELS,
+  HEALTHS,
+  RESTAURANT_COLUMN_LABELS,
+  RESTAURANT_COLUMNS,
+  SUBSCRIPTION_STATE_LABELS,
+  SUBSCRIPTION_STATES,
+  type RestaurantColumn,
+} from '../platform';
+
+const PATH = '/super/restaurants';
 
 const SELECT_CLASS =
-  'h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
+  'h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9 md:text-sm';
+const LABEL_CLASS = 'flex flex-col gap-1 text-sm font-medium text-ink';
 
 type RestaurantsFiltersProps = {
   filters: RestaurantFilters;
+  columns: RestaurantColumn[];
   cities: string[];
+  regions: string[];
   plans: { code: string; name: string }[];
 };
 
-/** Search and filters for the restaurants list (spec §13.4); everything lives in the URL. */
-export function RestaurantsFilters({ filters, cities, plans }: RestaurantsFiltersProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const current = filterParams(filters);
-
-  function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => {
-      const value = form.get(name);
-      return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-    };
-    router.push(
-      hrefWithParams(pathname, {
-        q: text('q'),
-        status: text('status'),
-        plan: text('plan'),
-        subscription: text('subscription'),
-        city: text('city'),
-        from: text('from'),
-        to: text('to'),
-        sort: text('sort'),
-      }),
-    );
-  }
+/**
+ * Search, filters and columns for the restaurants list (docs/DECISIONS.md
+ * SA-23); everything lives in the URL, so a view can be shared or saved.
+ */
+export function RestaurantsFilters({
+  filters,
+  columns,
+  cities,
+  regions,
+  plans,
+}: RestaurantsFiltersProps) {
+  const select = (
+    name: keyof RestaurantFilters,
+    label: string,
+    any: string,
+    options: [string, string][],
+  ) => (
+    <label className={LABEL_CLASS}>
+      {label}
+      <select name={name} defaultValue={String(filters[name] ?? '')} className={SELECT_CLASS}>
+        <option value="">{any}</option>
+        {options.map(([value, text]) => (
+          <option key={value} value={value}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  const date = (name: keyof RestaurantFilters, label: string) => (
+    <label className={LABEL_CLASS}>
+      {label}
+      <Input
+        type="date"
+        name={name}
+        defaultValue={String(filters[name] ?? '')}
+        className="h-11 md:h-9"
+      />
+    </label>
+  );
 
   return (
-    <form
-      key={JSON.stringify(current)}
-      onSubmit={apply}
+    <Form
+      key={JSON.stringify([filters, columns])}
+      action={PATH}
       role="search"
       aria-label="Restaurants"
-      className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
     >
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink sm:col-span-2">
+      {filters.sort && <input type="hidden" name="sort" value={filters.sort} />}
+      {filters.dir && <input type="hidden" name="dir" value={filters.dir} />}
+      <label className={`${LABEL_CLASS} sm:col-span-2`}>
         Search
         <Input
           type="search"
           name="q"
           defaultValue={filters.q}
           placeholder="Name, code or city"
-          className="h-11"
+          className="h-11 md:h-9"
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Status
-        <select name="status" defaultValue={filters.status ?? ''} className={SELECT_CLASS}>
-          <option value="">Active and suspended</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Subscription
-        <select
-          name="subscription"
-          defaultValue={filters.subscription ?? ''}
-          className={SELECT_CLASS}
-        >
-          <option value="">Any subscription</option>
-          {SUBSCRIPTION_STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {SUBSCRIPTION_STATUS_LABELS[status]}
-            </option>
+      {select(
+        'state',
+        'State',
+        'Any state',
+        SUBSCRIPTION_STATES.map((state) => [state, SUBSCRIPTION_STATE_LABELS[state]]),
+      )}
+      {select(
+        'plan',
+        'Plan',
+        'Any plan',
+        plans.map((plan) => [plan.code, plan.name]),
+      )}
+      {select(
+        'health',
+        'Health',
+        'Any health',
+        HEALTHS.map((health) => [health, HEALTH_LABELS[health]]),
+      )}
+      {select('channel', 'Found us', 'Any way', [
+        ...ACQUISITION_CHANNELS.map((c): [string, string] => [c, ACQUISITION_CHANNEL_LABELS[c]]),
+        ['unknown', 'Not known'],
+      ])}
+      {select(
+        'city',
+        'City',
+        'Any city',
+        cities.map((city) => [city, city]),
+      )}
+      {select(
+        'region',
+        'Indian state',
+        'Anywhere',
+        regions.map((region) => [region, region]),
+      )}
+      {date('from', 'Created from')}
+      {date('to', 'Created to')}
+      {date('paid_from', 'Paid till from')}
+      {date('paid_to', 'Paid till to')}
+      <details className="sm:col-span-2 lg:col-span-4 xl:col-span-6">
+        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-ink md:min-h-9">
+          Columns
+        </summary>
+        <fieldset className="mt-2 grid gap-x-4 sm:grid-cols-3 lg:grid-cols-6">
+          <legend className="sr-only">Columns to show</legend>
+          {RESTAURANT_COLUMNS.map((column) => (
+            <label
+              key={column}
+              className="flex min-h-11 items-center gap-2 text-sm text-ink md:min-h-8"
+            >
+              <input
+                type="checkbox"
+                name="cols"
+                value={column}
+                defaultChecked={columns.includes(column)}
+                className="size-4 accent-brand"
+              />
+              {RESTAURANT_COLUMN_LABELS[column]}
+            </label>
           ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Plan
-        <select name="plan" defaultValue={filters.plan ?? ''} className={SELECT_CLASS}>
-          <option value="">Any plan</option>
-          {plans.map((plan) => (
-            <option key={plan.code} value={plan.code}>
-              {plan.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        City
-        <select name="city" defaultValue={filters.city ?? ''} className={SELECT_CLASS}>
-          <option value="">Any city</option>
-          {cities.map((city) => (
-            <option key={city} value={city}>
-              {city}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Created from
-        <Input type="date" name="from" defaultValue={filters.from} className="h-11" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Created to
-        <Input type="date" name="to" defaultValue={filters.to} className="h-11" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-        Sort by
-        <select name="sort" defaultValue={filters.sort ?? 'created'} className={SELECT_CLASS}>
-          <option value="created">Newest first</option>
-          <option value="name">Name</option>
-          <option value="last_order">Last order</option>
-        </select>
-      </label>
-      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
+        </fieldset>
+      </details>
+      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4 xl:col-span-6">
         <Button type="submit" size="touch">
           Apply
         </Button>
-        <Button type="button" size="touch" variant="ghost" onClick={() => router.push(pathname)}>
+        <Link href={PATH} className={buttonVariants({ variant: 'ghost', size: 'touch' })}>
           Clear
-        </Button>
+        </Link>
       </div>
-    </form>
+    </Form>
   );
 }

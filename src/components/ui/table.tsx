@@ -7,11 +7,17 @@ import { ScrollRegion } from '@/components/shared/scroll-region';
 
 /**
  * `label` names the table; the region it scrolls in on narrow screens is "<label> table", so it
- * never repeats the name of the section around it (docs/DECISIONS.md B-6).
+ * never repeats the name of the section around it (docs/DECISIONS.md B-6). `regionClassName`
+ * lets a long table scroll down in that same region, under a sticky header.
  */
-function Table({ className, label, ...props }: React.ComponentProps<'table'> & { label: string }) {
+function Table({
+  className,
+  label,
+  regionClassName,
+  ...props
+}: React.ComponentProps<'table'> & { label: string; regionClassName?: string }) {
   return (
-    <ScrollRegion label={`${label} table`} className="w-full">
+    <ScrollRegion label={`${label} table`} className={cn('w-full', regionClassName)}>
       <table
         data-slot="table"
         aria-label={label}

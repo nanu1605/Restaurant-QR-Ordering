@@ -1,5 +1,6 @@
 import { Inbox } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
@@ -9,7 +10,7 @@ import { describeSource } from '@/features/analytics/attribution';
 import { formatDateTime } from '@/features/platform/platform';
 import { LEADS_PAGE_SIZE, listSiteLeads } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
-import { hrefWithParams } from '@/lib/date-range';
+import { firstParam, hrefWithParams } from '@/lib/date-range';
 
 export const metadata: Metadata = {
   title: 'Leads',
@@ -22,7 +23,10 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
   await requirePlatformAdmin();
   const params = await searchParams;
   const requested = Math.max(1, Number.parseInt(String(params.page ?? '1'), 10) || 1);
-  const list = await listSiteLeads(requested);
+  // One lead, from a search result (docs/DECISIONS.md SA-25).
+  const lead = firstParam(params, 'lead');
+  const leadId = lead && /^[0-9a-f-]{36}$/i.test(lead) ? lead : undefined;
+  const list = await listSiteLeads(requested, leadId);
 
   return (
     <>
@@ -30,6 +34,14 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
         title="Leads"
         description="Demo requests from the website’s contact page. Times are India time."
       />
+      {leadId && (
+        <p className="text-sm text-ink">
+          Showing one demo request.{' '}
+          <Link href={PATH} className="font-medium text-brand underline underline-offset-4">
+            Show all
+          </Link>
+        </p>
+      )}
       {list.rows.length === 0 ? (
         <EmptyState
           icon={Inbox}

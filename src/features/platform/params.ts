@@ -1,18 +1,23 @@
 import { firstParam, isDate, type SearchParams } from '@/lib/date-range';
 
 import {
+  ACQUISITION_CHANNELS,
   ACTOR_TYPES,
+  DEFAULT_RESTAURANT_COLUMNS,
   DUES_BUCKETS,
+  HEALTHS,
   PAYMENT_METHODS,
   PAYMENT_PURPOSES,
+  RESTAURANT_COLUMNS,
   SUBSCRIPTION_STATES,
-  SUBSCRIPTION_STATUSES,
+  type AcquisitionChannel,
   type ActorType,
   type DuesBucket,
+  type Health,
   type PaymentMethod,
   type PaymentPurpose,
+  type RestaurantColumn,
   type SubscriptionState,
-  type SubscriptionStatus,
 } from './platform';
 
 /**
@@ -29,38 +34,66 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
   return allowed.includes(value as T) ? (value as T) : undefined;
 }
 
-export const RESTAURANT_SORTS = ['created', 'name', 'last_order'] as const;
+/** A from/to pair of dates; an end before the start is dropped. */
+function dateRange(params: SearchParams, fromKey: string, toKey: string) {
+  const from = firstParam(params, fromKey);
+  const to = firstParam(params, toKey);
+  const validFrom = isDate(from) ? from : undefined;
+  return [validFrom, isDate(to) && (!validFrom || to >= validFrom) ? to : undefined] as const;
+}
+
+export const RESTAURANT_SORTS = ['created', 'name', 'last_active', 'paid_till', 'gmv'] as const;
 export type RestaurantSort = (typeof RESTAURANT_SORTS)[number];
 
 export type RestaurantFilters = {
   q?: string;
-  status?: 'active' | 'suspended';
+  state?: SubscriptionState;
   plan?: string;
-  subscription?: SubscriptionStatus;
+  health?: Health;
   city?: string;
+  region?: string;
+  channel?: AcquisitionChannel | 'unknown';
   from?: string;
   to?: string;
+  paid_from?: string;
+  paid_to?: string;
   sort?: RestaurantSort;
+  dir?: 'asc' | 'desc';
   page: number;
 };
 
+/** Restaurants list filters (docs/DECISIONS.md SA-23); `cols` is the page's, not the database's. */
 export function readRestaurantFilters(params: SearchParams): RestaurantFilters {
-  const from = firstParam(params, 'from');
-  const to = firstParam(params, 'to');
-  const validFrom = isDate(from) ? from : undefined;
-  const validTo = isDate(to) && (!validFrom || to >= validFrom) ? to : undefined;
+  const [from, to] = dateRange(params, 'from', 'to');
+  const [paidFrom, paidTo] = dateRange(params, 'paid_from', 'paid_to');
   const plan = firstParam(params, 'plan');
   return {
     q: firstParam(params, 'q')?.slice(0, 80),
-    status: oneOf(firstParam(params, 'status'), ['active', 'suspended'] as const),
+    state: oneOf(firstParam(params, 'state'), SUBSCRIPTION_STATES),
     plan: plan && /^[a-z_]{2,30}$/.test(plan) ? plan : undefined,
-    subscription: oneOf(firstParam(params, 'subscription'), SUBSCRIPTION_STATUSES),
+    health: oneOf(firstParam(params, 'health'), HEALTHS),
     city: firstParam(params, 'city')?.slice(0, 80),
-    from: validFrom,
-    to: validTo,
+    region: firstParam(params, 'region')?.slice(0, 80),
+    channel: oneOf(firstParam(params, 'channel'), [...ACQUISITION_CHANNELS, 'unknown'] as const),
+    from,
+    to,
+    paid_from: paidFrom,
+    paid_to: paidTo,
     sort: oneOf(firstParam(params, 'sort'), RESTAURANT_SORTS),
+    dir: oneOf(firstParam(params, 'dir'), ['asc', 'desc'] as const),
     page: page(params),
   };
+}
+
+/** The restaurants list's chosen columns; none chosen means the default set. */
+export function readRestaurantColumns(params: SearchParams): RestaurantColumn[] {
+  // A comma list in links, one value per checkbox from the filter form.
+  const value = params.cols;
+  const chosen = (Array.isArray(value) ? value : [value ?? ''])
+    .flatMap((text) => text.split(','))
+    .map((text) => text.trim());
+  const columns = RESTAURANT_COLUMNS.filter((column) => chosen.includes(column));
+  return columns.length > 0 ? columns : DEFAULT_RESTAURANT_COLUMNS;
 }
 
 export type SubscriptionFilters = { state?: SubscriptionState; page: number };
@@ -139,6 +172,14 @@ export function readAuditFilters(params: SearchParams): AuditFilters {
     to: isDate(to) && (!validFrom || to >= validFrom) ? to : undefined,
     page: page(params),
   };
+}
+
+/** The restaurants list's URL params: filters, sort and the columns when not the default. */
+export function restaurantParams(filters: RestaurantFilters, columns: RestaurantColumn[]) {
+  const isDefault =
+    columns.length === DEFAULT_RESTAURANT_COLUMNS.length &&
+    columns.every((column, index) => column === DEFAULT_RESTAURANT_COLUMNS[index]);
+  return { ...filterParams(filters), cols: isDefault ? undefined : columns.join(',') };
 }
 
 /** Filters as URL params (page 1 is the default and left out). */

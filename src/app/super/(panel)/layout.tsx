@@ -1,6 +1,7 @@
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { SuperMobileNav, SuperNav } from '@/features/platform/components/super-nav';
+import { SuperSearch } from '@/features/platform/components/super-search';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 
@@ -16,7 +17,9 @@ export default async function SuperPanelLayout({ children }: LayoutProps<'/super
         userName={user.email ?? 'Platform admin'}
         roleLabel="Platform admin"
         leading={<SuperMobileNav />}
-      />
+      >
+        <SuperSearch />
+      </PanelHeader>
       <div className="flex flex-1">
         <aside className="hidden w-56 shrink-0 border-r border-line bg-surface lg:block print:hidden">
           <div className="sticky top-0 max-h-dvh overflow-y-auto p-3">

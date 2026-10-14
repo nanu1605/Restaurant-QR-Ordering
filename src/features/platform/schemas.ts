@@ -312,6 +312,10 @@ export const platformSettingsSchema = z
         (value) => value === '' || z.email().safeParse(value).success,
         'Enter a valid email.',
       ),
+    healthSetupDays: daysSchema(1, 90),
+    healthInactiveDays: daysSchema(1, 60),
+    healthSlowingPercent: daysSchema(1, 99),
+    healthSlowingMinOrders: daysSchema(1, 10000),
   })
   .refine(
     (input) =>
@@ -319,3 +323,10 @@ export const platformSettingsSchema = z
     { message: 'Keep the discount below the fee.', path: ['setupFeeDiscount'] },
   );
 export type PlatformSettingsInput = z.input<typeof platformSettingsSchema>;
+
+/** A saved view of a list page (docs/DECISIONS.md SA-24): its name and whether the team sees it. */
+export const savedViewSchema = z.object({
+  name: z.string().trim().min(1, 'Give the view a name.').max(60, 'Use 60 characters or fewer.'),
+  shared: z.boolean(),
+});
+export type SavedViewInput = z.input<typeof savedViewSchema>;

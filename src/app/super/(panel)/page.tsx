@@ -40,7 +40,7 @@ export default async function SuperOverviewPage() {
     {
       label: 'Suspended',
       value: restaurants.suspended,
-      href: '/super/restaurants?status=suspended',
+      href: '/super/restaurants?state=suspended',
     },
   ];
 
