@@ -3526,22 +3526,27 @@ stay at 13g, since nobody else gets `/super` before then.
   reaches back. Home shows whole rupees; the pages behind each figure have the paise. MRR and
   collected need money.view (null in the function, absent on the page); GMV, the restaurants'
   own sales with their taxes, is shown to all and never added to MenuMesh money. Open tables are
-  the open sessions of active restaurants. Charts: each night's MRR for 12 months and today's;
-  GMV (`--chart-2`) and accepted orders for the last 30 finished business days; new restaurants
+  the open sessions of active restaurants. Charts: each night's MRR for 12 months and today's,
+  its axis by month and year; GMV (`--chart-2`) and accepted orders for the last 30 business days
+  every restaurant has finished (before 04:00 India time that ends the day before yesterday, so
+  the last bar is never a half day); new restaurants
   per India week from Monday, signups (trial claims) and the team's apart. Usage reads
   `metrics_usage_daily` up to the day before each restaurant's last finished one and counts that
   day and today live (`private.platform_usage`, the rule of SA-23). The charts are `next/dynamic`
   client components without server rendering, so recharts isn't part of the panel's first load;
-  they don't animate, and each has its numbers as a table under "Show as a table" and a summary
-  for screen readers. A CSV of a chart waits for Revenue (13f): every figure links to a page
+  they don't animate, and each has its numbers as a table under "Show as a table" (a focusable
+  scroll region) and a summary for screen readers. Recharts' own keyboard layer is off, here and
+  in the reports' charts: inside `role="img"` it was a nameless tab stop. Legend names are ink,
+  only the swatch takes the series colour, since teal and amber text fail 4.5:1. A CSV of a chart waits for Revenue (13f): every figure links to a page
   that already exports its rows.
 - **SA-28 · Needs attention:** `platform_needs_attention()` (`private.attention`), groups in
   order: Payment failed, Trial ends in 3 days with no autopay, Needs a payment within 7 days
   (manual and payment-link payers), Leads from the last 24 hours (until leads get a status in
-  13d), No orders in 7 days, Slowing (both only with full access: a lapsed or suspended
-  restaurant is quiet for a known reason), Possible duplicate signups (a signup of the last 7
-  days that looks like another restaurant, reviewed on its page; with no dismiss flag, a snooze
-  sets one aside and it ages out after the week), Failed webhooks (until run again) and Failed
+  13d), No orders in N days (N from the health settings, as on the restaurants list), Slowing
+  (both only with full access: a lapsed or suspended restaurant is quiet for a known reason),
+  Possible duplicate signups (an active signup of the last 7 days that looks like another
+  restaurant, reviewed on its page; suspending it resolves it, and with no dismiss flag a snooze
+  sets one aside until it ages out after the week), Failed webhooks (until run again) and Failed
   scheduled steps (each job and step whose latest run in two days failed). The money groups read
   `private.dues_rows`, the Dues bucket rule now shared with `platform_list_dues` (same results;
   550 still passes), so an item is a Dues row and uses the same dialogs and messages: a payment
@@ -3555,9 +3560,11 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-29 · Activity:** `platform_activity(restaurant, kinds, before, limit)`, newest first, from
   where each event already lives: signups and restaurants the team onboarded, payments (who
   recorded a manual one), failed payments (the audit row of a Razorpay webhook moving the
-  subscription into retrying), lapses (a nightly snapshot turning read-only, compared over the
-  90 days below the cursor), reminder emails, leads, finished or failed menu imports, and what
-  the team did (platform-admin audit rows, less those the other kinds show). Support requests and
+  subscription into retrying), lapses (a nightly snapshot turning read-only, read-only days walked
+  newest first below the cursor through a partial index, each compared with the day before),
+  reminder emails, leads, finished or failed menu imports (dishes added and updated), and what
+  the team did (platform-admin audit rows, less those the other kinds show, the team's own menu
+  imports included). Support requests and
   notes join with 13b and 13a. Paged by time and key, so equal times never drop an item; an old
   cursor in a link starts again from the newest. Amounts are null without money.view, and kinds
   follow permissions (payments money.view, leads growth.manage, the team's audit.view). The
@@ -3566,9 +3573,12 @@ stay at 13g, since nobody else gets `/super` before then.
   the second factor, never a redirect) every 60 s while the tab is in view, and at once when it
   comes back; a server action would queue behind the admin's own actions. It counts signups,
   payments, failed payments and leads since `platform_admins.alerts_seen_at` (from becoming an
-  admin, the first time), lists the latest ten, and opening it marks them seen. After the first
-  look, each new one is a toast (three at most, then "And N more"). The same answer carries the
-  Needs attention count for the sidebar.
+  admin, the first time), lists the latest ten, and opening it marks them seen up to the newest
+  one shown (`platform_mark_alerts_seen(seen)`, never moving back), so one that arrived after the
+  list was fetched stays new; a look sent before the opening can't bring the count back. After the
+  first look, each new one is a toast (three at most, then "And N more"). A look that fails says
+  so in the menu instead of "Nothing yet". Alerts open as page links, closing the menu. The same
+  answer carries the Needs attention count for the sidebar.
 - **SA-31 · Daily digest:** a second Vercel cron, `/api/cron/digest` at 03:15 UTC (08:45 India
   time), behind `CRON_SECRET`, recorded in `cron_runs` as job `digest`. `platform_digest(day)`
   (service role only) gives yesterday's state at the end of the day (that night's snapshot, or
@@ -3576,7 +3586,9 @@ stay at 13g, since nobody else gets `/super` before then.
   business day, and today's Needs attention counts without anyone's snoozes; it goes to every
   platform admin until 13g (one email per 50 addresses, all in To: they are the team). Once a
   day: a successful run that sent that day's digest makes the next say "already sent", and
-  Resend's idempotency key is the day and the recipients. Without Resend it is skipped and
+  Resend's idempotency key is the day and the recipients. A rerun after a send that went out but
+  wasn't recorded (a timeout) gets Resend's 409 for that key with the morning's counts, and counts
+  it as sent. Without Resend it is skipped and
   recorded, and staging's team gets staging's digest. The cron route helpers moved to
   `src/lib/cron.ts`, shared with the nightly job.
 - **SA-32 · Overview becomes Home:** the sidebar's first entry is Home; the old trials list is

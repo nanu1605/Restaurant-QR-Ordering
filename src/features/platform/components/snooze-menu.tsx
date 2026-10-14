@@ -23,9 +23,14 @@ export function SnoozeMenu({ itemKey, label }: { itemKey: string; label: string 
 
   function snooze(days: SnoozeDays) {
     startTransition(async () => {
-      const result = await snoozeAttention(itemKey, days);
-      if (result.ok) toast.success(`Snoozed for ${LABELS[days]}`);
-      else toast.error(result.error);
+      const result = await snoozeAttention(itemKey, days).catch(() => null);
+      if (!result?.ok) {
+        toast.error(result?.error ?? 'Could not snooze it. Try again.');
+        return;
+      }
+      toast.success(`Snoozed for ${LABELS[days]}`);
+      // The row goes, and its button with it: keep the place in the list.
+      document.getElementById('attention-heading')?.focus();
     });
   }
 

@@ -308,6 +308,7 @@ declare
   v_mrr_series jsonb;
   v_usage_series jsonb;
   v_new_series jsonb;
+  v_last date;
 begin
   perform private.require_platform_permission('restaurants.view');
   v_money := private.has_platform_permission('money.view');
@@ -357,9 +358,13 @@ begin
 
   -- Today is each restaurant's current business day, as its own dashboard
   -- shows it; This month is the business days in this India month. The chart
-  -- has the last 30 finished days.
+  -- has the last 30 days every restaurant has finished: before 04:00 India
+  -- time yesterday is still open for most.
+  select coalesce(min(private.business_date(now(), r.timezone, r.business_day_start_hour)), v_today) - 1
+  into v_last
+  from public.restaurants r;
   with u as (
-    select * from private.platform_usage(v_today - 30, v_today)
+    select * from private.platform_usage(least(v_from, v_last - 29), v_today)
   ),
   numbers as (
     select coalesce(sum(u.gmv_paise), 0) as gmv, coalesce(sum(u.orders), 0) as orders
@@ -369,7 +374,7 @@ begin
   days as (
     select u.business_day as day, sum(u.gmv_paise) as gmv, sum(u.orders) as orders
     from u
-    where not u.today and u.business_day < v_today
+    where not u.today and u.business_day between v_last - 29 and v_last
     group by u.business_day
   )
   select
@@ -379,7 +384,7 @@ begin
        'gmv_paise', coalesce(d.gmv, 0),
        'orders', coalesce(d.orders, 0)
      ) order by g.day)
-     from generate_series(v_today - 30, v_today - 1, interval '1 day') as g(day)
+     from generate_series(v_last - 29, v_last, interval '1 day') as g(day)
      left join days d on d.day = g.day::date)
   into v_gmv, v_orders, v_usage_series
   from numbers n;
@@ -544,7 +549,7 @@ as $$
       )
     from public.restaurants r
     cross join lateral (select private.restaurant_lookalikes(r.id) as matches) as lk
-    where r.created_at >= now() - interval '7 days'
+    where r.created_at >= now() - interval '7 days' and r.status = 'active'
       and exists (select 1 from public.trial_claims c where c.restaurant_id = r.id)
       and jsonb_array_length(lk.matches) > 0
     union all
@@ -588,6 +593,7 @@ as $$
   )
   select jsonb_build_object(
     'total', coalesce((select sum(g.total) from groups g), 0),
+    'inactive_days', (select s.health_inactive_days from public.platform_settings s where s.id = 1),
     'groups', coalesce((
       select jsonb_agg(jsonb_build_object('group', g.grp, 'count', g.total, 'items', g.items)
         order by array_position(array['payment_failed', 'trial_ending', 'needs_payment',
@@ -675,9 +681,9 @@ as $$
     select
       coalesce(p_before_at, 'infinity'::timestamptz) as before_at,
       coalesce(p_before_key, '') as before_key,
-      -- The lapses window: snapshots are compared day by day.
+      -- The newest snapshot day a lapse below the cursor can be on.
       coalesce((p_before_at at time zone 'Asia/Kolkata')::date,
-        (now() at time zone 'Asia/Kolkata')::date) - 90 as lapse_from
+        (now() at time zone 'Asia/Kolkata')::date) as lapse_to
   ),
   items as (
     (select k.kind, r.created_at as at, 'restaurant:' || r.id as key, r.id as restaurant_id,
@@ -731,9 +737,9 @@ as $$
     limit p_limit)
     union all
     -- Became read-only for not paying, by the night's snapshot: at the end of
-    -- that India day.
-    -- ponytail: compared over 90 days below the cursor; a stored transition
-    -- table if the stream needs older lapses.
+    -- that India day. Read-only days are walked newest first
+    -- (metrics_subscription_daily_read_only_idx), each checked against the day
+    -- before.
     (select 'lapsed', (m.day + 1)::timestamp at time zone 'Asia/Kolkata',
       'lapsed:' || m.restaurant_id || ':' || m.day, m.restaurant_id, null::uuid,
       jsonb_build_object('day', m.day, 'was', p.state)
@@ -743,7 +749,7 @@ as $$
     cross join params pr
     where 'lapsed' = any(p_kinds)
       and m.state = 'read_only' and p.state <> 'read_only'
-      and m.day >= pr.lapse_from
+      and m.day <= pr.lapse_to
       and (p_restaurant_id is null or m.restaurant_id = p_restaurant_id)
       and ((m.day + 1)::timestamp at time zone 'Asia/Kolkata', 'lapsed:' || m.restaurant_id || ':' || m.day)
         < (pr.before_at, pr.before_key)
@@ -791,7 +797,7 @@ as $$
     from public.audit_logs a, params pr
     where 'team' = any(p_kinds)
       and a.actor_type = 'platform_admin'
-      and a.action not in ('subscription.payment_recorded', 'restaurant.created')
+      and a.action not in ('subscription.payment_recorded', 'restaurant.created', 'menu.imported')
       and (p_restaurant_id is null or a.restaurant_id = p_restaurant_id)
       and a.created_at <= pr.before_at
       and (a.created_at, 'audit:' || a.id) < (pr.before_at, pr.before_key)
@@ -947,7 +953,9 @@ begin
 end;
 $$;
 
-create function public.platform_mark_alerts_seen()
+-- Seen up to p_seen, the newest alert the admin was shown (an alert that
+-- arrived after the list was fetched stays new); never moves back.
+create function public.platform_mark_alerts_seen(p_seen timestamptz)
 returns timestamptz
 language plpgsql
 volatile
@@ -956,16 +964,23 @@ set search_path = ''
 as $$
 declare
   v_admin private.platform_admin_context := private.require_platform_permission('restaurants.view');
+  v_seen timestamptz;
 begin
-  update public.platform_admins a set alerts_seen_at = now() where a.user_id = v_admin.user_id;
-  return now();
+  if p_seen is null then
+    perform private.fail('INVALID_INPUT', 'seen');
+  end if;
+  update public.platform_admins a
+  set alerts_seen_at = greatest(coalesce(a.alerts_seen_at, a.created_at), least(p_seen, now()))
+  where a.user_id = v_admin.user_id
+  returning a.alerts_seen_at into v_seen;
+  return v_seen;
 end;
 $$;
 
 revoke execute on function public.platform_alerts() from public, anon;
-revoke execute on function public.platform_mark_alerts_seen() from public, anon;
+revoke execute on function public.platform_mark_alerts_seen(timestamptz) from public, anon;
 grant execute on function public.platform_alerts() to authenticated;
-grant execute on function public.platform_mark_alerts_seen() to authenticated;
+grant execute on function public.platform_mark_alerts_seen(timestamptz) to authenticated;
 
 -- ─── Daily digest ───────────────────────────────────────────────────────────
 -- Yesterday's numbers and today's Needs attention counts for the 08:45 email
@@ -1049,6 +1064,7 @@ begin
     ),
     'attention', jsonb_build_object(
       'total', v_attention -> 'total',
+      'inactive_days', v_attention -> 'inactive_days',
       'groups', coalesce((
         select jsonb_agg(jsonb_build_object('group', g ->> 'group', 'count', g -> 'count'))
         from jsonb_array_elements(v_attention -> 'groups') as g
@@ -1077,3 +1093,6 @@ create index webhook_events_failed_idx on public.webhook_events (received_at des
 create index audit_logs_action_created_idx on public.audit_logs (action, created_at desc);
 create index audit_logs_platform_created_idx on public.audit_logs (created_at desc)
   where actor_type = 'platform_admin';
+create index metrics_subscription_daily_read_only_idx
+  on public.metrics_subscription_daily (day desc, restaurant_id desc)
+  where state = 'read_only';

@@ -1,6 +1,7 @@
 'use client';
 
 import { Bell } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react';
 import { toast } from 'sonner';
 
@@ -62,22 +63,32 @@ function describe(item: ActivityItem): string {
  */
 export function AlertsBell() {
   const [alerts, setAlerts] = useState<Alerts | null>(null);
+  // The last look failed (offline, signed out, the database unwell).
+  const [failed, setFailed] = useState(false);
   const [, startTransition] = useTransition();
   // Keys already shown; null until the first answer, which stays quiet.
   const seen = useRef<Set<string> | null>(null);
+  // When the menu was last opened: a look sent before then counts nothing as new.
+  const openedAt = useRef(0);
 
   useEffect(() => {
     let stopped = false;
     const deployment = (globalThis as { NEXT_DEPLOYMENT_ID?: string }).NEXT_DEPLOYMENT_ID;
     async function poll() {
+      const sentAt = Date.now();
       try {
         const response = await fetch('/super/alerts', {
           cache: 'no-store',
           headers: deployment ? { 'x-deployment-id': deployment } : undefined,
         });
-        if (!response.ok || stopped) return;
-        const next = parseAlerts(await response.json());
         if (stopped) return;
+        if (!response.ok) {
+          setFailed(true);
+          return;
+        }
+        let next = parseAlerts(await response.json());
+        if (stopped) return;
+        if (sentAt < openedAt.current) next = { ...next, unread: 0 };
         if (seen.current) {
           const fresh = next.items.filter((item) => !seen.current!.has(item.key)).reverse();
           for (const item of fresh.slice(-3)) {
@@ -90,9 +101,11 @@ export function AlertsBell() {
         }
         next.items.forEach((item) => seen.current!.add(item.key));
         setAlerts(next);
+        setFailed(false);
         setAttention(next.attention);
       } catch {
-        // Offline or signed out: the next look tries again.
+        // Offline: the next look tries again.
+        if (!stopped) setFailed(true);
       }
     }
     const first = window.setTimeout(() => void poll(), 0);
@@ -115,10 +128,13 @@ export function AlertsBell() {
   const label = unread > 0 ? `Alerts, ${unread >= 50 ? '50 or more' : unread} new` : 'Alerts';
 
   function opened(open: boolean) {
-    if (!open || unread === 0) return;
+    const newest = alerts?.items[0]?.at;
+    if (!open || unread === 0 || !newest) return;
+    openedAt.current = Date.now();
     setAlerts((current) => current && { ...current, unread: 0 });
     startTransition(async () => {
-      await markAlertsSeen();
+      // Not seen on the server: the next look shows them again.
+      await markAlertsSeen(newest).catch(() => null);
     });
   }
 
@@ -144,7 +160,7 @@ export function AlertsBell() {
           <DropdownMenuLabel>Alerts</DropdownMenuLabel>
           {(alerts?.items.length ?? 0) === 0 ? (
             <DropdownMenuItem disabled className="min-h-11 px-2">
-              Nothing yet.
+              {failed ? 'Couldn’t load the alerts. Trying again in a minute.' : 'Nothing yet.'}
             </DropdownMenuItem>
           ) : (
             alerts!.items.map((item) => {
@@ -154,7 +170,8 @@ export function AlertsBell() {
               return (
                 <DropdownMenuLinkItem
                   key={item.key}
-                  href={line.href ?? '/super#activity'}
+                  closeOnClick
+                  render={<Link href={line.href ?? '/super#activity'} />}
                   className="flex min-h-11 flex-col items-start gap-0.5 px-2 py-1.5"
                 >
                   <span className="font-medium">
@@ -170,7 +187,11 @@ export function AlertsBell() {
           )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuLinkItem href="/super#activity" className="min-h-11 px-2">
+        <DropdownMenuLinkItem
+          closeOnClick
+          render={<Link href="/super#activity" />}
+          className="min-h-11 px-2"
+        >
           All activity
         </DropdownMenuLinkItem>
       </DropdownMenuContent>

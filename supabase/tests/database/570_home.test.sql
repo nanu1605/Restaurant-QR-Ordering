@@ -151,6 +151,9 @@ select is(((:'att'::jsonb) ->> 'total')::int,
   (select sum((g ->> 'count')::int)::int from jsonb_array_elements((:'att'::jsonb) -> 'groups') as g),
   'the total is the sum of the groups');
 select is(pg_temp.item(:'att', 'cron:sa570:broken') ->> 'detail', 'boom', 'a failed step says why');
+select is(((:'att'::jsonb) ->> 'inactive_days')::int,
+  (select health_inactive_days from public.platform_settings where id = 1),
+  'the inactive group''s days come from the settings');
 select is(
   jsonb_array_length(pg_temp.item(:'att', 'duplicates:' || :'signup') -> 'matches'), 1,
   'and a possible duplicate names what it looks like'
@@ -264,11 +267,15 @@ select is(((:'h_today'::jsonb) ->> 'open_tables')::int,
   'open tables right now');
 select ok(((:'h_today'::jsonb) ->> 'orders')::int >= 1 and ((:'h_today'::jsonb) ->> 'gmv_paise')::bigint >= 32000,
   'today''s orders and GMV include a bill made now');
+-- Before 04:00 India time yesterday is still open for most restaurants.
+select min(private.business_date(now(), timezone, business_day_start_hour)) - 1 as last_done
+from public.restaurants \gset
 select is(
-  (select array[count(*), min((e ->> 'day')::date) - :'today'::date, max((e ->> 'day')::date) - :'today'::date]
+  (select array[count(*), min((e ->> 'day')::date) - :'last_done'::date,
+     max((e ->> 'day')::date) - :'last_done'::date]
    from jsonb_array_elements((:'h_today'::jsonb) -> 'charts' -> 'usage') as e),
-  array[30::bigint, -30, -1],
-  'the usage chart has the last 30 finished days'
+  array[30::bigint, -29, 0],
+  'the usage chart has the last 30 days every restaurant has finished'
 );
 select is(
   (select e from jsonb_array_elements((:'h_today'::jsonb) -> 'charts' -> 'mrr') as e
@@ -332,7 +339,17 @@ insert into public.metrics_subscription_daily (day, restaurant_id, state) values
   (:'today'::date - 2, :'idle_lapsed', 'read_only'),
   (:'today'::date - 1, :'idle_lapsed', 'read_only');
 insert into public.menu_imports (restaurant_id, source, status, page_count, completed_at, imported_counts)
-values (:'busy', 'csv', 'imported', 0, now() - interval '4 minutes', '{"items": 12}');
+values (:'busy', 'csv', 'imported', 0, now() - interval '4 minutes',
+  '{"categories_created": 2, "categories_shown": 0, "items_created": 12, "items_updated": 0, "items_skipped": 1}');
+-- The team's own import is the import, not a second team item.
+insert into public.audit_logs (
+  restaurant_id, actor_type, actor_user_id, actor_label, action, entity_type, created_at
+) values (:'busy', 'platform_admin', :'admin', 'Platform admin', 'menu.imported', 'menu_import',
+  now() - interval '4 minutes');
+-- A lapse long ago is still in the stream.
+insert into public.metrics_subscription_daily (day, restaurant_id, state) values
+  (:'today'::date - 201, :'manual_far', 'trial'),
+  (:'today'::date - 200, :'manual_far', 'read_only');
 
 create function pg_temp.kinds(p jsonb)
 returns text[] language sql as $$
@@ -352,6 +369,8 @@ select public.platform_activity(:'busy', null, (:'a_page1'::jsonb) ->> 'next', 2
 select public.platform_activity(:'failed', array['payment_failed']) as a_failed \gset
 select public.platform_activity(:'idle_lapsed', array['lapsed']) as a_lapsed \gset
 select public.platform_activity(:'trial', array['team']) as a_team \gset
+select public.platform_activity(:'busy', array['team']) as a_busy_team \gset
+select public.platform_activity(:'manual_far', array['lapsed']) as a_old_lapse \gset
 select public.platform_activity(null, array['lead', 'signup'], null, 100) as a_new \gset
 select throws_ok($$select public.platform_activity(null, array['orders'])$$,
   'P0001', 'INVALID_INPUT', 'known kinds only');
@@ -378,9 +397,15 @@ select is(
   (select e -> 'data' from jsonb_array_elements((:'a_busy'::jsonb) -> 'items') as e
    where e ->> 'kind' = 'menu_import'),
   jsonb_build_object('import_id', (select id from public.menu_imports where restaurant_id = :'busy'
-     and status = 'imported'), 'status', 'imported', 'source', 'csv', 'counts', '{"items": 12}'::jsonb),
+     and status = 'imported'), 'status', 'imported', 'source', 'csv',
+     'counts', '{"categories_created": 2, "categories_shown": 0, "items_created": 12, "items_updated": 0, "items_skipped": 1}'::jsonb),
   'a finished menu import (a discarded one is left out)'
 );
+select is(jsonb_array_length((:'a_busy_team'::jsonb) -> 'items'), 0,
+  'the team''s menu import is not a team item too');
+select is((:'a_old_lapse'::jsonb) -> 'items' -> 0 -> 'data',
+  jsonb_build_object('day', :'today'::date - 200, 'was', 'trial'),
+  'a lapse of long ago, below any cursor');
 select is(pg_temp.keys(:'a_page1') || pg_temp.keys(:'a_page2'), (pg_temp.keys(:'a_busy'))[1:4],
   'pages follow on from the cursor, ties broken by key');
 select ok(
@@ -426,8 +451,14 @@ select public.platform_alerts() as alerts \gset
 select public.platform_activity(null, array['signup', 'payment', 'payment_failed', 'lead'], null, 100)
   as alert_kinds \gset
 select public.platform_needs_attention() -> 'total' as attention_total \gset
-select public.platform_mark_alerts_seen();
+-- Seen up to the newest alert shown: one that came later stays new.
+select public.platform_mark_alerts_seen(now() - interval '30 seconds');
+select public.platform_alerts() as alerts_partly \gset
+select public.platform_mark_alerts_seen(now());
 select public.platform_alerts() as alerts_after \gset
+select ok(public.platform_mark_alerts_seen(now() - interval '1 day') = now(), 'seen never moves back');
+select throws_ok($$select public.platform_mark_alerts_seen(null)$$, 'P0001', 'INVALID_INPUT',
+  'up to when');
 select tests.clear_auth();
 
 select is(((:'alerts'::jsonb) ->> 'unread')::int,
@@ -443,6 +474,10 @@ select ok(
 );
 select is((:'alerts'::jsonb) -> 'attention', :'attention_total'::jsonb,
   'with the Needs attention count for the sidebar');
+select is(((:'alerts_partly'::jsonb) ->> 'unread')::int,
+  (select count(*)::int from jsonb_array_elements((:'alert_kinds'::jsonb) -> 'items') as e
+   where (e ->> 'at')::timestamptz > now() - interval '30 seconds'),
+  'what came after the newest one shown stays new');
 select is(((:'alerts_after'::jsonb) ->> 'unread')::int, 0, 'opening them marks them seen');
 select is(((:'alerts_after'::jsonb) ->> 'seen_at')::timestamptz, now(), 'now');
 
@@ -472,6 +507,7 @@ select ok(
     where g ->> 'group' = 'payment_failed' and (g ->> 'count')::int >= 1),
   'with today''s Needs attention counts, nobody''s snoozes'
 );
+select ok((:'dg'::jsonb) -> 'attention' ? 'inactive_days', 'and how long inactive is');
 select ok((:'dg'::jsonb) -> 'states' ?& array['mrr_paise', 'paid', 'trial', 'payment_failed']
   and (:'dg'::jsonb) -> 'usage' ?& array['gmv_paise', 'orders'], 'and the day''s key numbers');
 
@@ -481,9 +517,11 @@ update public.restaurant_subscriptions set status = 'active', source = 'manual',
   current_period_end = now() + interval '60 days'
   where restaurant_id = :'failed';
 delete from public.webhook_events where id = :'webhook';
+select tests.suspend(:'signup');
 select pg_temp.attention(:'admin_b') as att_after \gset
 select is(pg_temp.mine(:'att_after', 'payment_failed'), '{}'::text[], 'paid: no longer listed');
 select is(pg_temp.mine(:'att_after', 'webhooks'), '{}'::text[], 'a webhook run again: gone');
+select is(pg_temp.mine(:'att_after', 'duplicates'), '{}'::text[], 'a duplicate suspended: gone');
 
 -- ─── Who may ────────────────────────────────────────────────────────────────
 select tests.authenticate_as(:'owner');
@@ -491,7 +529,7 @@ select throws_ok($$select public.platform_home()$$, 'P0001', 'FORBIDDEN', 'not a
 select throws_ok($$select public.platform_needs_attention()$$, 'P0001', 'FORBIDDEN', 'attention');
 select throws_ok($$select public.platform_activity()$$, 'P0001', 'FORBIDDEN', 'activity');
 select throws_ok($$select public.platform_alerts()$$, 'P0001', 'FORBIDDEN', 'alerts');
-select throws_ok($$select public.platform_mark_alerts_seen()$$, 'P0001', 'FORBIDDEN', 'seen');
+select throws_ok($$select public.platform_mark_alerts_seen(now())$$, 'P0001', 'FORBIDDEN', 'seen');
 select throws_ok($$select public.platform_snooze('cron:x', 1)$$, 'P0001', 'FORBIDDEN', 'snooze');
 select tests.authenticate_as_platform_admin(:'admin', 'aal1');
 select throws_ok($$select public.platform_home()$$, 'P0001', 'MFA_REQUIRED', 'needs the second factor');

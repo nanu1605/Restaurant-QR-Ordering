@@ -31,7 +31,14 @@ export const metadata: Metadata = {
   title: 'Home',
 };
 
-const dayLabel = (day: string) => formatShortDate(`${day}T12:00:00+05:30`);
+const noon = (day: string) => `${day}T12:00:00+05:30`;
+const dayLabel = (day: string) => formatShortDate(noon(day));
+// A year of MRR: the axis needs the year too ("Oct 25").
+const monthLabel = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  month: 'short',
+  year: '2-digit',
+});
 
 /**
  * Home (docs/SUPER_ADMIN_PLAN.md 12e, docs/DECISIONS.md SA-27 to SA-30): key
@@ -101,10 +108,11 @@ export default async function SuperHomePage({ searchParams }: PageProps<'/super'
             chart={
               <MrrChart
                 points={mrrPoints.map((point) => ({
-                  label: dayLabel(point.day),
+                  label: monthLabel.format(new Date(noon(point.day))),
+                  title: formatDate(noon(point.day)),
                   mrrPaise: point.mrr_paise,
                 }))}
-                summary={`MRR from ${dayLabel(mrrPoints[0]?.day ?? today)} to today, now ${formatINR(home.mrr_paise ?? 0)}.`}
+                summary={`MRR from ${formatDate(noon(mrrPoints[0]?.day ?? today))} to today, now ${formatINR(home.mrr_paise ?? 0)}.`}
               />
             }
             table={{

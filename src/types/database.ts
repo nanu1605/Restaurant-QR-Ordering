@@ -2476,7 +2476,7 @@ export type Database = {
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
-      platform_mark_alerts_seen: { Args: never; Returns: string }
+      platform_mark_alerts_seen: { Args: { p_seen: string }; Returns: string }
       platform_metrics_backfill_usage: {
         Args: { p_from: string; p_to: string }
         Returns: number

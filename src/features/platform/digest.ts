@@ -7,11 +7,11 @@ import { z } from 'zod';
 
 import { APP_NAME } from '@/lib/config';
 import { addDays } from '@/lib/date-range';
-import { escapeHtml, sendEmail, type EmailConfig } from '@/lib/email/resend';
+import { EmailError, escapeHtml, sendEmail, type EmailConfig } from '@/lib/email/resend';
 import { formatINR } from '@/lib/money';
 import type { Database } from '@/types/database';
 
-import { ATTENTION_GROUP_LABELS, ATTENTION_GROUPS } from './home';
+import { ATTENTION_GROUPS, attentionGroupLabel } from './home';
 import { formatDate, todayInIndia } from './platform';
 
 /**
@@ -35,6 +35,7 @@ const digestSchema = z.object({
   usage: z.object({ gmv_paise: z.number(), orders: z.number() }),
   attention: z.object({
     total: z.number(),
+    inactive_days: z.number(),
     groups: z.array(z.object({ group: z.enum(ATTENTION_GROUPS), count: z.number() })),
   }),
   recipients: z.array(z.string()),
@@ -56,7 +57,7 @@ export function digestEmail(digest: Digest, appUrl: string) {
     `Restaurants took ${plural(usage.orders, 'order', 'orders')}; diners paid ${rupees(usage.gmv_paise)} (GMV, taxes included).`,
   ];
   const groups = attention.groups.map(
-    ({ group, count }) => `${ATTENTION_GROUP_LABELS[group]}: ${count}`,
+    ({ group, count }) => `${attentionGroupLabel(group, attention.inactive_days)}: ${count}`,
   );
   const needs =
     attention.total === 0
@@ -125,7 +126,13 @@ export async function sendDigest(
   let sent = 0;
   for (let start = 0; start < digest.recipients.length; start += CHUNK) {
     const to = digest.recipients.slice(start, start + CHUNK);
-    await sendEmail(config, { to, ...email, idempotencyKey: digestKey(day, to) });
+    try {
+      await sendEmail(config, { to, ...email, idempotencyKey: digestKey(day, to) });
+    } catch (error) {
+      // 409: this key went out earlier with that morning's counts (a run that
+      // timed out after Resend took it); count it as sent and go on.
+      if (!(error instanceof EmailError && error.status === 409)) throw error;
+    }
     sent += to.length;
   }
   return { day, sent };

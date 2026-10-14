@@ -6,7 +6,7 @@ import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 
 import { duesMessage, formatMobile, telHref } from '../dues-messages';
-import { ATTENTION_GROUP_LABELS, type Attention, type AttentionGroupList } from '../home';
+import { attentionGroupLabel, type Attention, type AttentionGroupList } from '../home';
 import {
   firstUnpaidDay,
   formatDateTime,
@@ -267,7 +267,11 @@ export function NeedsAttention({
 }) {
   return (
     <section aria-labelledby="attention-heading" className="flex flex-col gap-3">
-      <h2 id="attention-heading" className="text-lg font-semibold text-ink">
+      <h2
+        id="attention-heading"
+        tabIndex={-1}
+        className="text-lg font-semibold text-ink outline-none"
+      >
         Needs attention <span className="tabular-nums">({attention.total})</span>
       </h2>
       {attention.groups.length === 0 ? (
@@ -285,7 +289,7 @@ export function NeedsAttention({
               <section key={group.group} aria-labelledby={id} className="flex flex-col py-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2 px-3 pt-2">
                   <h3 id={id} className="text-sm font-semibold text-ink">
-                    {ATTENTION_GROUP_LABELS[group.group]}{' '}
+                    {attentionGroupLabel(group.group, attention.inactive_days)}{' '}
                     <span className="tabular-nums">({group.count})</span>
                   </h3>
                   {seeAll && (

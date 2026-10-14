@@ -467,11 +467,15 @@ export async function snoozeAttention(key: string, days: SnoozeDays): Promise<Ac
   return actionOk();
 }
 
-/** The alerts were opened: nothing in them is new any more (docs/DECISIONS.md SA-30). */
-export async function markAlertsSeen(): Promise<ActionResult> {
+/**
+ * The alerts were opened: nothing up to `seen`, the newest one shown, is new
+ * any more (docs/DECISIONS.md SA-30).
+ */
+export async function markAlertsSeen(seen: string): Promise<ActionResult> {
   await requirePlatformPermission('restaurants.view');
+  if (Number.isNaN(Date.parse(seen))) return actionError(GENERIC_ERROR);
   const supabase = await createClient();
-  const { error } = await supabase.rpc('platform_mark_alerts_seen');
+  const { error } = await supabase.rpc('platform_mark_alerts_seen', { p_seen: seen });
   if (error) return fromDbError(error, 'platform_mark_alerts_seen');
   return actionOk();
 }

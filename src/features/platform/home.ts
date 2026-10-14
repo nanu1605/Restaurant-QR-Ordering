@@ -72,17 +72,23 @@ export const ATTENTION_GROUPS = [
   'cron',
 ] as const;
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
-export const ATTENTION_GROUP_LABELS: Record<AttentionGroup, string> = {
+const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string> = {
   payment_failed: 'Payment failed',
   trial_ending: 'Trial ends in 3 days, no autopay',
   needs_payment: 'Needs a payment within 7 days',
   new_leads: 'Leads from the last 24 hours',
-  inactive: 'No orders in 7 days',
   slowing: 'Orders slowing down',
   duplicates: 'Possible duplicate signups',
   webhooks: 'Failed webhooks',
   cron: 'Failed scheduled steps',
 };
+
+/** A group's heading; how long "inactive" is comes from the health settings. */
+export function attentionGroupLabel(group: AttentionGroup, inactiveDays: number): string {
+  return group === 'inactive'
+    ? `No orders in ${inactiveDays} ${inactiveDays === 1 ? 'day' : 'days'}`
+    : ATTENTION_GROUP_LABELS[group];
+}
 
 const item = <T extends z.ZodType>(data: T) => z.object({ key: z.string(), data }).array();
 const count = z.number();
@@ -155,7 +161,12 @@ const attentionGroupSchema = z.discriminatedUnion('group', [
     ),
   }),
 ]);
-const attentionSchema = z.object({ total: z.number(), groups: z.array(attentionGroupSchema) });
+const attentionSchema = z.object({
+  total: z.number(),
+  // platform_settings.health_inactive_days, for the inactive group's heading.
+  inactive_days: z.number(),
+  groups: z.array(attentionGroupSchema),
+});
 export type Attention = z.infer<typeof attentionSchema>;
 export type AttentionGroupList = Attention['groups'][number];
 export const parseAttention = (json: unknown) => attentionSchema.parse(json);
@@ -230,7 +241,6 @@ const TEAM_ACTIONS: Record<string, string> = {
   'subscription.payment_link_sent': 'Payment link sent',
   'staff.password_reset': 'Password reset for a login',
   'support.viewed': 'Support view opened',
-  'menu.imported': 'Menu imported for them',
   'webhook.reprocessed': 'Webhook run again',
   'plan.updated': 'Plan updated',
   'platform_settings.updated': 'Platform settings changed',
@@ -299,11 +309,19 @@ export function activityLine(item: ActivityItem): ActivityLine {
         `/super/leads?lead=${text(data.lead_id) ?? ''}`,
       );
     case 'menu_import': {
-      const items = number((data.counts as Record<string, unknown> | null)?.items);
+      // menu_imports.imported_counts, as the import's commit writes it.
+      const counts = (data.counts ?? {}) as Record<string, unknown>;
+      const added = number(counts.items_created);
+      const updated = number(counts.items_updated);
       const importId = text(data.import_id);
       return line(
         data.status === 'failed' ? 'Menu import failed' : 'Menu imported',
-        items === null ? null : `${items} ${items === 1 ? 'item' : 'items'}`,
+        [
+          added !== null && `${added} ${added === 1 ? 'dish' : 'dishes'} added`,
+          updated ? `${updated} updated` : null,
+        ]
+          .filter(Boolean)
+          .join(', ') || null,
         restaurant && importId && `${restaurant}/menu-import/${importId}`,
       );
     }

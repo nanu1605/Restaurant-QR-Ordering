@@ -24,7 +24,7 @@ import { formatINR } from '@/lib/money';
  * under each carries the exact numbers.
  */
 
-export type MrrPoint = { label: string; mrrPaise: number };
+export type MrrPoint = { label: string; title: string; mrrPaise: number };
 export type UsagePoint = { label: string; gmvPaise: number; orders: number };
 export type NewPoint = { label: string; signup: number; team: number };
 
@@ -33,6 +33,15 @@ const axis = {
   tick: { fill: 'var(--ink-muted)', fontSize: 12 },
 } as const;
 const grid = <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />;
+// The names stay ink; only the swatch takes the series colour (text contrast).
+const legend = (
+  <Legend
+    wrapperStyle={{ fontSize: 12 }}
+    formatter={(value: string) => <span style={{ color: 'var(--ink-muted)' }}>{value}</span>}
+  />
+);
+// Inside role="img" with the table beside it: no keyboard layer of its own.
+const quiet = { accessibilityLayer: false, margin: { top: 8, right: 8, bottom: 0, left: 8 } };
 
 function Frame({ summary, children }: { summary: string; children: React.ReactElement }) {
   return (
@@ -60,7 +69,7 @@ function Tip({ title, lines }: { title: string; lines: string[] }) {
 export function MrrChart({ points, summary }: { points: MrrPoint[]; summary: string }) {
   return (
     <Frame summary={summary}>
-      <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+      <LineChart data={points} {...quiet}>
         {grid}
         <XAxis
           dataKey="label"
@@ -73,7 +82,7 @@ export function MrrChart({ points, summary }: { points: MrrPoint[]; summary: str
         <Tooltip
           content={({ active, payload }) => {
             const point = active ? (payload?.[0]?.payload as MrrPoint | undefined) : undefined;
-            return point ? <Tip title={point.label} lines={[formatINR(point.mrrPaise)]} /> : null;
+            return point ? <Tip title={point.title} lines={[formatINR(point.mrrPaise)]} /> : null;
           }}
         />
         <Line
@@ -93,7 +102,7 @@ export function MrrChart({ points, summary }: { points: MrrPoint[]; summary: str
 export function UsageChart({ points, summary }: { points: UsagePoint[]; summary: string }) {
   return (
     <Frame summary={summary}>
-      <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+      <ComposedChart data={points} {...quiet}>
         {grid}
         <XAxis
           dataKey="label"
@@ -117,12 +126,15 @@ export function UsageChart({ points, summary }: { points: UsagePoint[]; summary:
             return point ? (
               <Tip
                 title={point.label}
-                lines={[`GMV ${formatINR(point.gmvPaise)}`, `${point.orders} orders`]}
+                lines={[
+                  `GMV ${formatINR(point.gmvPaise)}`,
+                  `${point.orders.toLocaleString('en-IN')} ${point.orders === 1 ? 'order' : 'orders'}`,
+                ]}
               />
             ) : null;
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--ink-muted)' }} />
+        {legend}
         <Bar
           yAxisId="gmv"
           dataKey="gmvPaise"
@@ -150,7 +162,7 @@ export function UsageChart({ points, summary }: { points: UsagePoint[]; summary:
 export function NewRestaurantsChart({ points, summary }: { points: NewPoint[]; summary: string }) {
   return (
     <Frame summary={summary}>
-      <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+      <BarChart data={points} {...quiet}>
         {grid}
         <XAxis
           dataKey="label"
@@ -172,7 +184,7 @@ export function NewRestaurantsChart({ points, summary }: { points: NewPoint[]; s
             ) : null;
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--ink-muted)' }} />
+        {legend}
         <Bar
           dataKey="signup"
           name="Signed up"

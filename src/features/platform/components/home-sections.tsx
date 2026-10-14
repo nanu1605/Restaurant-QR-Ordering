@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Money } from '@/components/shared/money';
+import { ScrollRegion } from '@/components/shared/scroll-region';
 import { buttonVariants } from '@/components/ui/button';
 import { hrefWithParams } from '@/lib/date-range';
 
@@ -212,7 +213,7 @@ export function ChartPanel({
           {chart}
           <details className="text-sm text-ink">
             <summary className="cursor-pointer text-ink-muted">Show as a table</summary>
-            <div className="mt-2 max-h-72 overflow-y-auto">
+            <ScrollRegion label={`${title} as a table`} className="mt-2 max-h-72 overflow-y-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-line text-left text-ink-muted">
@@ -245,7 +246,7 @@ export function ChartPanel({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           </details>
         </>
       )}

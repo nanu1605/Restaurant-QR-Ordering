@@ -4,6 +4,7 @@ import { digestEmail, digestKey, type Digest } from '@/features/platform/digest'
 import {
   activityLine,
   amountWithGst,
+  attentionGroupLabel,
   mrrChange,
   type ActivityItem,
 } from '@/features/platform/home';
@@ -88,12 +89,16 @@ describe('activity lines', () => {
       activityLine(
         item({
           kind: 'menu_import',
-          data: { import_id: 'i1', status: 'imported', counts: { items: 1 } },
+          data: {
+            import_id: 'i1',
+            status: 'imported',
+            counts: { categories_created: 1, items_created: 1, items_updated: 3, items_skipped: 0 },
+          },
         }),
       ),
     ).toMatchObject({
       title: 'Menu imported',
-      detail: '1 item',
+      detail: '1 dish added, 3 updated',
       href: '/super/restaurants/r1/menu-import/i1',
     });
   });
@@ -102,6 +107,14 @@ describe('activity lines', () => {
     expect(
       activityLine(item({ kind: 'lapsed', data: { day: '2026-10-12', was: 'trial' } })).detail,
     ).toBe('Was Trial');
+  });
+});
+
+describe('Needs attention headings', () => {
+  it('say how long inactive is, from the settings', () => {
+    expect(attentionGroupLabel('inactive', 7)).toBe('No orders in 7 days');
+    expect(attentionGroupLabel('inactive', 1)).toBe('No orders in 1 day');
+    expect(attentionGroupLabel('payment_failed', 7)).toBe('Payment failed');
   });
 });
 
@@ -142,9 +155,11 @@ const digest: Digest = {
   usage: { gmv_paise: 31000000, orders: 1204 },
   attention: {
     total: 5,
+    inactive_days: 14,
     groups: [
       { group: 'payment_failed', count: 3 },
       { group: 'new_leads', count: 2 },
+      { group: 'inactive', count: 1 },
     ],
   },
   recipients: ['a@menumesh.in', 'b@menumesh.in'],
@@ -161,12 +176,16 @@ describe('daily digest email', () => {
     expect(email.text).toContain('Collected ₹61,240 + GST ₹11,023.20 in 7 payments.');
     expect(email.text).toContain('1 signup, 2 onboarded by the team, 3 leads.');
     expect(email.text).toContain('- Payment failed: 3');
+    expect(email.text).toContain('- No orders in 14 days: 1');
     expect(email.text).toContain('Home: https://menumesh.in/super');
     expect(email.html).toContain('<a href="https://menumesh.in/super">Open Home</a>');
   });
 
   it('says when nothing needs attention', () => {
-    const quiet = digestEmail({ ...digest, attention: { total: 0, groups: [] } }, 'https://x.test');
+    const quiet = digestEmail(
+      { ...digest, attention: { total: 0, inactive_days: 7, groups: [] } },
+      'https://x.test',
+    );
     expect(quiet.subject).toContain('0 things need attention');
     expect(quiet.text).toContain('Nothing needs attention today.');
   });
