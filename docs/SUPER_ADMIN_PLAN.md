@@ -497,6 +497,8 @@ Acceptance:
 
 ### 13b. Onboarding checklist and support inbox
 
+Built 2026-10-14 (docs/DECISIONS.md SA-41 to SA-45). The QR step's audit actions are `table.qr_downloaded` and `table.qr_sheet_printed` (SA-14); a QR order also counts.
+
 Ships:
 
 - **Onboarding checklist** (§5.13) on the restaurant page, and an Onboarding saved view on the Restaurants list showing the current step and a Stuck filter. The restaurant owner's first-steps card switches to the shared rules.

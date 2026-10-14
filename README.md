@@ -125,10 +125,10 @@ platform admin nothing.
 
 - **Home**: key numbers, what needs attention, charts, the activity stream; an alerts bell and a
   daily digest email.
-- **Restaurants**: search, filters (tags and account manager among them) and saved views, My
-  restaurants first. Each restaurant's page has its state, health, owner, tags and account manager
-  over tabs: Overview, Billing, Usage, Activity, Notes (the team's only), Documents, Support view
-  and Menu imports. Its Actions menu extends the trial, changes the plan, records a payment
+- **Restaurants**: search, filters (tags, account manager and onboarding among them) and saved
+  views, My restaurants and Onboarding first. Each restaurant's page has its state, health, owner,
+  tags and account manager over tabs: Overview (with its onboarding checklist), Billing, Usage,
+  Activity, Notes (the team's only), Documents, Support view and Menu imports. Its Actions menu extends the trial, changes the plan, records a payment
   received outside Razorpay, sends a Razorpay payment link (months of the plan, or the setup fee),
   syncs with Razorpay, cancels autopay, adds a note, and suspends or unsuspends; the owner's login
   on Overview gets a new password.
@@ -139,6 +139,9 @@ platform admin nothing.
 - **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids), **Webhooks** (what
   Razorpay sent; a failed one can be reprocessed) and the **Audit log**.
 - **Leads**: "Book a demo" requests from the website's contact page.
+- **Support inbox**: what restaurants send from Get help, by status, with priority, assignee,
+  the screenshot, internal notes and history. A new request emails the support address set in
+  Platform settings and shows in the alerts bell.
 - **Platform settings**: trial and grace days, the setup fee, its launch discount and the offer's
   last day, and the support phone and email. Every change is in the audit log.
 
@@ -259,6 +262,8 @@ Owners and managers set the restaurant up at `/admin`:
 - **Waiters**: waiter profiles (no login needed), on/off duty, optional linked login.
 - **Staff logins**: logins for managers, waiters and kitchen staff; password resets.
 - **Settings**: restaurant details and logo, tax and charges, bill options, ordering rules.
+- **Get help** (account menu, or Settings): ask the MenuMesh team, with a screenshot if it
+  helps, and see where each request stands.
 
 ### Website
 

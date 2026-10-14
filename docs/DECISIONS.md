@@ -3564,7 +3564,7 @@ stay at 13g, since nobody else gets `/super` before then.
   newest first below the cursor through a partial index, each compared with the day before),
   reminder emails, leads, finished or failed menu imports (dishes added and updated), and what
   the team did (platform-admin audit rows, less those the other kinds show, the team's own menu
-  imports included). Notes joined in 13a (SA-38); support requests join with 13b. Paged by time
+  imports included). Notes joined in 13a (SA-38), support requests in 13b (SA-43). Paged by time
   and key, so equal times never drop an item; an old
   cursor in a link starts again from the newest. Amounts are null without money.view, and kinds
   follow permissions (payments money.view, leads growth.manage, the team's audit.view). The
@@ -3667,3 +3667,63 @@ stay at 13g, since nobody else gets `/super` before then.
   `account_manager`) name the restaurant, so the team finds them by restaurant, but are left out
   of the restaurant's own audit log: the policy that lets its owner and managers read their
   restaurant's audit rows now skips those three entity types. Their other rows read as before.
+
+### 13b · Onboarding checklist, Get help and the support inbox
+
+- **SA-41 · Onboarding checklist:** one SQL rule, `private.restaurants_onboarding(ids)` (one
+  query for many restaurants; `private.restaurant_onboarding(id)` for one), gives a restaurant's
+  seven steps (plan §5.13) with when each was done: the menu when its fifth active dish was
+  added; tables at the first active table; QR codes at the first `table.qr_downloaded` or
+  `table.qr_sheet_printed` audit row (SA-14), or the first QR order, since a QR order shows the
+  codes are out and QR use is only recorded since 12b; the team at the first active login that
+  isn't the owner or the first waiter profile; the first accepted QR order; the first bill (void
+  ones too: one was made); and paid at the first subscription payment (not a setup fee) or, while
+  autopay is on and not ending, since Razorpay first reported it authenticated or active. A step
+  undone later (dishes or tables turned off) is to do again. The next step is the first to do;
+  it is stuck when a step is to do and none was done in 3 days, counted from its creation before
+  the first. The Overview shows the steps with their dates, the next one and a "Stuck since"
+  badge; the Restaurants list has an Onboarding column (the next step, how many are done, stuck),
+  a filter (not finished, stuck, done) and a built-in Onboarding view. The owner's first-steps
+  card (W-9) keeps its five steps and words but reads the same rules through `admin_onboarding()`:
+  "Add your menu" now needs 5 dishes, "Give your staff their logins" is done by a waiter profile
+  too, and "Set up autopay" by a subscription payment; the address step and the online-payment
+  check stay in the page.
+- **SA-42 · Get help:** the owner or a manager, from the account menu (the admin panel's only)
+  or Settings, opens `/admin/help`: a topic, a message (up to 2,000 characters), an optional
+  screenshot and how to be reached (call or WhatsApp on a 10-digit mobile, the restaurant's
+  phone filled in; or email, the owner's own filled in, since other logins have made-up
+  addresses). The account menu passes the page it was opened on; the server adds the build
+  (`NEXT_PUBLIC_BUILD_SHA`, "Not known" locally) and the browser, and the database the login and
+  role. A screenshot (PNG, JPEG or WebP, up to 5 MB, unchanged so its words stay sharp) goes
+  straight to the private `support-screenshots` bucket through a link the server signs for a
+  new name in the restaurant's folder; `admin_create_support_request` takes it only from that
+  folder and once it is there. One the form never sent is removed by the nightly job after a
+  day. Requests work while the restaurant is read-only (billing questions come then), 10 an
+  hour a restaurant (`RATE_LIMITED`). Each new request emails the platform's support address
+  (best effort, once: `support/<id>`). The page lists the restaurant's 50 newest requests with
+  each status in its words (Received, Being worked on, Waiting for you, Resolved) and its
+  changes. There is no reply in the app: the team calls, messages or emails as asked, and a
+  restaurant with more to say sends another request.
+- **SA-43 · Support inbox:** `/super/support` for restaurants.support. Status tabs with counts
+  (not resolved first, then open, in progress, waiting on restaurant, resolved), filters by
+  assignee (me, no one, anyone on the team), priority (high, normal, low; new ones are normal)
+  and topic; open work highest priority first, then oldest, with its age; resolved newest
+  first. A request's page has the message, the screenshot (a signed link for an hour), who asked
+  and how to reach them (Call, WhatsApp or email links), the restaurant, page, version and
+  browser, and menus for status, priority and assignee that save when chosen. Each change, and
+  each internal note, is a row in `support_request_events` (by whom, from and to), which is the
+  request's history: these aren't audit rows, so nothing about a request reaches the
+  restaurant's audit log or the team items of the activity stream. Resolving sets when; any
+  other status clears it. A new request is an activity item of its own kind (support), so it is
+  an alert and a toast for whoever works the inbox.
+- **SA-44 · Needs attention:** two groups. Support requests open or in progress for more than a
+  day (waiting on the restaurant is the restaurant's turn), opened from the item; and
+  restaurants stuck in onboarding, of the last 60 days, active with full access, stuck before
+  the paying step (paying is Dues' and the trial's), with a Call button. Both can be snoozed;
+  they sit after new leads. The digest counts them too.
+- **SA-45 · What the restaurant sees:** `support_requests` and `support_request_events` are read
+  only by platform admins; the restaurant reads its own requests through
+  `admin_list_support_requests()`, without the priority, the assignee or the notes, and only
+  status changes as history. Another restaurant's requests and screenshots are out of reach: no
+  storage policy names the bucket, and a screenshot is only shown through a link signed for the
+  team.

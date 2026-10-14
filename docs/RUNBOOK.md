@@ -172,6 +172,15 @@ login, then the owner adds tables, prints QR codes (only once production is live
 `menumesh.in`: the codes carry `NEXT_PUBLIC_APP_URL`), enters the menu and installs the staff
 app on each tablet.
 
+## Support requests
+
+Restaurants ask from **Get help** in the admin panel. Each request emails the support address in
+`/super/settings` (set it, or only the inbox and the alerts bell show them) and lands in
+`/super/support`. Take it (**Assignee**), set **In progress**, reach them the way they asked (the
+Call, WhatsApp or email link on the request), and **Resolved** when done; use **Waiting on
+restaurant** while they owe an answer. Internal notes are the team's only. Requests open or in
+progress for more than a day show on Home under Needs attention.
+
 ## Failed subscription payments
 
 - Razorpay retries the autopay charge. Meanwhile the restaurant has 7 days' grace (a banner for
