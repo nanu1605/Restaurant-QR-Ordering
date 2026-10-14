@@ -86,7 +86,8 @@ export function SuperSearch() {
     <>
       <Button
         variant="outline"
-        className="h-11 gap-2 px-3 md:h-9"
+        // 44 px like every header control (spec §16.3).
+        className="h-11 min-w-11 gap-2 px-3"
         aria-label="Search restaurants, phones and payments"
         aria-keyshortcuts="Control+K Meta+K"
         onClick={() => setOpen(true)}

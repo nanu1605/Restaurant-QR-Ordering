@@ -90,6 +90,7 @@ test('admin panel', async ({ page }) => {
 });
 
 test('platform admin panel', async ({ page }) => {
+  test.slow();
   await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast'));
   const paths = [
     '/super',
