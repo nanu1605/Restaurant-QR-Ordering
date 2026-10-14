@@ -266,6 +266,7 @@ export function DuesActions({
   canExtendTrial,
   paymentStart,
   linkDefaults,
+  single = false,
 }: {
   restaurantId: string;
   restaurantName: string;
@@ -274,6 +275,8 @@ export function DuesActions({
   paymentStart: string;
   /** Null while the Razorpay keys aren't set. */
   linkDefaults: LinkDefaults | null;
+  /** One action, for Home: a payment link, or recording a payment without Razorpay. */
+  single?: boolean;
 }) {
   const [open, setOpen] = useState<'trial' | 'payment' | 'link' | null>(null);
   const close = () => setOpen(null);
@@ -287,11 +290,13 @@ export function DuesActions({
           Send payment link
         </Button>
       )}
-      <Button variant="outline" className={size} onClick={() => setOpen('payment')}>
-        <CreditCard aria-hidden />
-        Record payment
-      </Button>
-      {canExtendTrial && (
+      {!(single && linkDefaults) && (
+        <Button variant="outline" className={size} onClick={() => setOpen('payment')}>
+          <CreditCard aria-hidden />
+          Record payment
+        </Button>
+      )}
+      {canExtendTrial && !single && (
         <Button variant="outline" className={size} onClick={() => setOpen('trial')}>
           <CalendarPlus aria-hidden />
           Extend trial

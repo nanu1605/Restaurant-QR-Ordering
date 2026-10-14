@@ -26,6 +26,7 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
+import { SNOOZE_DAYS, type SnoozeDays } from './home';
 import { onboardRestaurant, OnboardError } from './onboard';
 import type { SearchResults } from './platform';
 import {
@@ -452,6 +453,26 @@ export async function deleteView(viewId: string): Promise<ActionResult> {
   const { error } = await supabase.rpc('platform_delete_view', { p_id: viewId });
   if (error) return fromDbError(error, 'platform_delete_view');
   refresh();
+  return actionOk();
+}
+
+/** Puts a Needs attention item aside for this admin (docs/DECISIONS.md SA-28). */
+export async function snoozeAttention(key: string, days: SnoozeDays): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.view');
+  if (!SNOOZE_DAYS.includes(days) || key.length > 120) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_snooze', { p_key: key, p_days: days });
+  if (error) return fromDbError(error, 'platform_snooze');
+  refresh();
+  return actionOk();
+}
+
+/** The alerts were opened: nothing in them is new any more (docs/DECISIONS.md SA-30). */
+export async function markAlertsSeen(): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.view');
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_mark_alerts_seen');
+  if (error) return fromDbError(error, 'platform_mark_alerts_seen');
   return actionOk();
 }
 

@@ -4,6 +4,14 @@ import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
+import {
+  parseActivityPage,
+  parseAlerts,
+  parseAttention,
+  parseHome,
+  type ActivityKind,
+  type HomePeriod,
+} from './home';
 import type {
   AuditFilters,
   DuesFilters,
@@ -15,7 +23,6 @@ import {
   parseAuditList,
   parseDuesList,
   parseLookalikes,
-  parseOverview,
   parsePaymentList,
   parseRestaurantDetail,
   parseRestaurantList,
@@ -32,11 +39,51 @@ import { setupFeeDiscountPaise } from './setup-fee';
  * the database checks the second factor (docs/DECISIONS.md P7-1).
  */
 
-export async function getPlatformOverview() {
+/** Home's key numbers and charts (docs/DECISIONS.md SA-27). */
+export async function getHome(period: HomePeriod) {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('platform_overview');
-  if (error) throw new Error(`Could not load the overview: ${error.message}`);
-  return parseOverview(data);
+  const { data, error } = await supabase.rpc('platform_home', { p_period: period });
+  if (error) throw new Error(`Could not load Home: ${error.message}`);
+  return parseHome(data);
+}
+
+/** Needs attention, less this admin's snoozes (docs/DECISIONS.md SA-28). */
+export async function getNeedsAttention() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_needs_attention');
+  if (error) throw new Error(`Could not load Needs attention: ${error.message}`);
+  return parseAttention(data);
+}
+
+/** A page of the activity stream (docs/DECISIONS.md SA-29); null on a stale cursor. */
+export async function listActivity({
+  kinds,
+  before,
+  restaurantId,
+  limit = 30,
+}: {
+  kinds?: ActivityKind[];
+  before?: string;
+  restaurantId?: string;
+  limit?: number;
+}) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_activity', {
+    p_restaurant_id: restaurantId,
+    p_kinds: kinds,
+    p_before: before,
+    p_limit: limit,
+  });
+  if (error) throw new Error(`Could not load the activity: ${error.message}`);
+  return parseActivityPage(data);
+}
+
+/** What this admin hasn't seen yet, for the bell (docs/DECISIONS.md SA-30). */
+export async function getAlerts() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_alerts');
+  if (error) throw new Error(`Could not load the alerts: ${error.message}`);
+  return parseAlerts(data);
 }
 
 /** The restaurants list (docs/DECISIONS.md SA-23); `exportAll` returns every row on one page. */

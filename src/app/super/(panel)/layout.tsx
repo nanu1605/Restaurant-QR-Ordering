@@ -1,5 +1,6 @@
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
+import { AlertsBell } from '@/features/platform/components/alerts-bell';
 import { SuperMobileNav, SuperNav } from '@/features/platform/components/super-nav';
 import { SuperSearch } from '@/features/platform/components/super-search';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
@@ -19,6 +20,7 @@ export default async function SuperPanelLayout({ children }: LayoutProps<'/super
         leading={<SuperMobileNav />}
       >
         <SuperSearch />
+        <AlertsBell />
       </PanelHeader>
       <div className="flex flex-1">
         <aside className="hidden w-56 shrink-0 border-r border-line bg-surface lg:block print:hidden">

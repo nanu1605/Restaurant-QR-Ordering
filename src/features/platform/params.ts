@@ -1,5 +1,7 @@
 import { firstParam, isDate, type SearchParams } from '@/lib/date-range';
 
+import { ACTIVITY_KINDS, HOME_PERIODS, type ActivityKind, type HomePeriod } from './home';
+
 import {
   ACQUISITION_CHANNELS,
   ACTOR_TYPES,
@@ -40,6 +42,18 @@ function dateRange(params: SearchParams, fromKey: string, toKey: string) {
   const to = firstParam(params, toKey);
   const validFrom = isDate(from) ? from : undefined;
   return [validFrom, isDate(to) && (!validFrom || to >= validFrom) ? to : undefined] as const;
+}
+
+export type HomeParams = { period: HomePeriod; kind?: ActivityKind; before?: string };
+
+/** Home (docs/DECISIONS.md SA-27, SA-29): the period, and the activity's kind and page. */
+export function readHomeParams(params: SearchParams): HomeParams {
+  const before = firstParam(params, 'before');
+  return {
+    period: oneOf(firstParam(params, 'period'), HOME_PERIODS) ?? 'today',
+    kind: oneOf(firstParam(params, 'kind'), ACTIVITY_KINDS),
+    before: before && before.length <= 200 && before.includes('|') ? before : undefined,
+  };
 }
 
 export const RESTAURANT_SORTS = ['created', 'name', 'last_active', 'paid_till', 'gmv'] as const;

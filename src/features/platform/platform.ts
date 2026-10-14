@@ -171,33 +171,6 @@ const subscriptionState = z.enum(SUBSCRIPTION_STATES);
 const restaurantStatus = z.enum(['active', 'suspended']);
 const billingCycle = z.enum(['monthly', 'yearly']);
 
-// ─── Overview ────────────────────────────────────────────────────────────────
-const overviewSchema = z.object({
-  restaurants: z.object({
-    total: z.number(),
-    trialing: z.number(),
-    active: z.number(),
-    past_due: z.number(),
-    read_only: z.number(),
-    suspended: z.number(),
-  }),
-  mrr_paise: z.number(),
-  orders_24h: z.number(),
-  trials_ending: z.array(
-    z.object({
-      restaurant_id: z.string(),
-      name: z.string(),
-      slug: z.string(),
-      plan_name: z.string(),
-      trial_ends_at: iso,
-    }),
-  ),
-  // The first daily snapshot (docs/DECISIONS.md SA-9); null until the cron has run.
-  history_starts_on: z.string().nullable(),
-});
-export type PlatformOverview = z.infer<typeof overviewSchema>;
-export const parseOverview = (json: unknown) => overviewSchema.parse(json);
-
 // ─── Lookalikes (docs/DECISIONS.md P11-13) ───────────────────────────────────
 export const LOOKALIKE_REASON_LABELS = {
   fssai: 'Same FSSAI licence',
@@ -210,19 +183,15 @@ export const LOOKALIKE_REASON_LABELS = {
 const lookalikeReason = z.enum(
   Object.keys(LOOKALIKE_REASON_LABELS) as [keyof typeof LOOKALIKE_REASON_LABELS],
 );
-const lookalikesSchema = z.record(
-  z.string(),
-  z.array(
-    z.object({
-      restaurant_id: z.string(),
-      name: z.string(),
-      slug: z.string(),
-      city: z.string().nullable(),
-      reasons: z.array(lookalikeReason),
-    }),
-  ),
-);
-export type Lookalike = z.infer<typeof lookalikesSchema>[string][number];
+export const lookalikeSchema = z.object({
+  restaurant_id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  city: z.string().nullable(),
+  reasons: z.array(lookalikeReason),
+});
+const lookalikesSchema = z.record(z.string(), z.array(lookalikeSchema));
+export type Lookalike = z.infer<typeof lookalikeSchema>;
 export const parseLookalikes = (json: unknown) => lookalikesSchema.parse(json);
 
 // ─── Restaurants list ────────────────────────────────────────────────────────
@@ -422,7 +391,7 @@ export function paymentPlanLabel(
 }
 
 // ─── Dues (docs/DECISIONS.md SA-19) ──────────────────────────────────────────
-const duesRowSchema = z.object({
+export const duesRowSchema = z.object({
   restaurant_id: z.string(),
   name: z.string(),
   slug: z.string(),
