@@ -105,7 +105,7 @@ test('owner adds 10 tables, downloads a QR code and prints the cards', async ({ 
         .from('audit_logs')
         .select('action')
         .eq('restaurant_id', restaurant.restaurantId)
-        .like('action', 'table.qr\_%')
+        .like('action', 'table.qr_%')
         .order('action');
       return data?.map((row) => row.action);
     })

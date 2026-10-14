@@ -117,6 +117,8 @@ const overviewSchema = z.object({
       trial_ends_at: iso,
     }),
   ),
+  // The first daily snapshot (docs/DECISIONS.md SA-9); null until the cron has run.
+  history_starts_on: z.string().nullable(),
 });
 export type PlatformOverview = z.infer<typeof overviewSchema>;
 export const parseOverview = (json: unknown) => overviewSchema.parse(json);

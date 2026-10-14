@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 
+import { CANCEL_REASON_LABELS, CANCEL_REASONS, type CancelReason } from '../cancel-reasons';
 import { withGst } from '../gst';
 
 import { cancelAutopay, confirmCheckout, startSubscription, type CheckoutStart } from '../actions';
@@ -278,10 +279,14 @@ export type CancelOptions = {
 function CancelAutopay({ atCycleEnd, until, running }: CancelOptions) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [reason, setReason] = useState<CancelReason | null>(null);
+  const [detail, setDetail] = useState('');
+  const ready = reason !== null && (reason !== 'other' || detail.trim() !== '');
 
   function confirm() {
+    if (!reason) return;
     startTransition(async () => {
-      const result = await cancelAutopay();
+      const result = await cancelAutopay({ reason, detail });
       if (result.ok) {
         toast.success(
           atCycleEnd ? 'Autopay will stop at the end of the paid period' : 'Autopay cancelled',
@@ -310,9 +315,36 @@ function CancelAutopay({ atCycleEnd, until, running }: CancelOptions) {
               This can&apos;t be undone, but you can subscribe again at any time.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium text-ink">Why are you cancelling?</legend>
+            {CANCEL_REASONS.map((value) => (
+              <label key={value} className="flex min-h-9 items-center gap-2 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="cancel-reason"
+                  className="size-4"
+                  checked={reason === value}
+                  onChange={() => setReason(value)}
+                />
+                {CANCEL_REASON_LABELS[value]}
+              </label>
+            ))}
+            {reason === 'other' && (
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                Tell us a little more
+                <textarea
+                  rows={2}
+                  maxLength={300}
+                  value={detail}
+                  onChange={(event) => setDetail(event.target.value)}
+                  className="rounded-lg border border-input bg-surface px-2.5 py-2 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+                />
+              </label>
+            )}
+          </fieldset>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep autopay</AlertDialogCancel>
-            <AlertDialogAction onClick={confirm} disabled={pending}>
+            <AlertDialogAction onClick={confirm} disabled={pending || !ready}>
               Cancel autopay
             </AlertDialogAction>
           </AlertDialogFooter>

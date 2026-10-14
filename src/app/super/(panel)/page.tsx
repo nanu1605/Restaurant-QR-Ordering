@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Money } from '@/components/shared/money';
 import { PageHeader } from '@/components/shared/page-header';
 import { buttonVariants } from '@/components/ui/button';
-import { formatDateTime } from '@/features/platform/platform';
+import { formatDate, formatDateTime } from '@/features/platform/platform';
 import { getPlatformOverview } from '@/features/platform/queries';
 import { requirePlatformAdmin } from '@/lib/auth/guards';
 
@@ -69,6 +69,11 @@ export default async function SuperOverviewPage() {
             <Money paise={overview.mrr_paise} fraction="auto" />
           </dd>
           <dd className="text-xs text-ink-muted">Paid subscriptions per month; yearly ÷ 12.</dd>
+          <dd className="text-xs text-ink-muted">
+            {overview.history_starts_on
+              ? `MRR history starts on ${formatDate(overview.history_starts_on)}, when daily snapshots began.`
+              : 'MRR history starts with the first daily snapshot, tonight at 3 am.'}
+          </dd>
         </div>
         <div className="rounded-lg border border-line bg-surface p-3">
           <dt className="text-sm text-ink-muted">Orders in the last 24 hours</dt>

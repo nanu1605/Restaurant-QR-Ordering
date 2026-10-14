@@ -17,8 +17,10 @@ import {
   type SubscriptionEntity,
 } from '@/lib/razorpay/razorpay';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 
 import { autopayStartAt, autopayState, TOTAL_COUNT } from './autopay';
+import { cancelReasonSchema, type CancelReasonInput } from './cancel-reasons';
 import { loadSubscription, razorpayFailed, saveSubscription, stopAutopay } from './razorpay-sync';
 
 /**
@@ -179,12 +181,23 @@ export async function confirmCheckout(input: unknown): Promise<ActionResult<void
 
 /**
  * Stops autopay: at the end of the paid period once it has charged, at once
- * while it hasn't (a trial's mandate).
+ * while it hasn't (a trial's mandate). The owner says why first (SA-15).
  */
-export async function cancelAutopay(): Promise<ActionResult<void>> {
+export async function cancelAutopay(input: CancelReasonInput): Promise<ActionResult<void>> {
   const owner = await ownerWithRazorpay();
   if (!owner) return actionError(NOT_SET_UP);
+  const why = cancelReasonSchema.safeParse(input);
+  if (!why.success) return actionError(why.error.issues[0]?.message ?? GENERIC_ERROR);
   const saved = await stopAutopay(owner.config, owner.restaurantId, owner.userId);
+  if (saved.ok) {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc('admin_record_cancel_reason', {
+      p_reason: why.data.reason,
+      p_detail: why.data.detail || undefined,
+    });
+    // Autopay is off either way; the reason is only for MenuMesh.
+    if (error) console.error('[subscriptions] cancel reason not recorded:', error.message);
+  }
   refresh();
   return saved;
 }
