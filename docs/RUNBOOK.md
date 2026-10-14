@@ -177,8 +177,9 @@ app on each tablet.
 - Razorpay retries the autopay charge. Meanwhile the restaurant has 7 days' grace (a banner for
   the owner, a reminder email each day); then ordering pauses at the next business-day start.
   Billing open tables always works.
-- To help an owner pay: `/super` → the restaurant → **Send payment link** (months of the plan),
-  or **Record payment** for money received by bank transfer or UPI.
+- To help an owner pay: `/super` → the restaurant → **Actions** → **Send payment link** (months
+  of the plan), or **Record payment** for money received by bank transfer or UPI. Its Billing tab
+  shows the links sent and whether each was paid.
 - When a paid webhook arrives, the restaurant is active again at once.
 
 ## Rotating secrets

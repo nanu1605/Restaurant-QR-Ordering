@@ -3564,8 +3564,8 @@ stay at 13g, since nobody else gets `/super` before then.
   newest first below the cursor through a partial index, each compared with the day before),
   reminder emails, leads, finished or failed menu imports (dishes added and updated), and what
   the team did (platform-admin audit rows, less those the other kinds show, the team's own menu
-  imports included). Support requests and
-  notes join with 13b and 13a. Paged by time and key, so equal times never drop an item; an old
+  imports included). Notes joined in 13a (SA-38); support requests join with 13b. Paged by time
+  and key, so equal times never drop an item; an old
   cursor in a link starts again from the newest. Amounts are null without money.view, and kinds
   follow permissions (payments money.view, leads growth.manage, the team's audit.view). The
   function returns the facts; the page words them (`activityLine`). Home filters by one kind.
@@ -3594,3 +3594,69 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-32 · Overview becomes Home:** the sidebar's first entry is Home; the old trials list is
   the trial group of Needs attention, orders in 24 hours are orders today.
   `platform_overview` stays in the database for its tests and as Home's cross-check.
+
+### 13a · Restaurant page
+
+- **SA-33 · Tabs as pages:** `/super/restaurants/[id]` gets a layout with the header and a tab
+  bar of links (Overview, Billing, Usage, Activity, Notes, Documents, Support view, Menu
+  imports), each tab its own page at `/billing`, `/usage` and so on, so a tab can be linked, kept
+  in history and loaded alone. The bar marks the current tab with `aria-current` (from
+  `useSelectedLayoutSegment`) and scrolls sideways on a phone. The existing support view
+  (`/support/[section]`) and menu import (`/menu-import`) pages are the last two tabs, under the
+  same header, with their breadcrumbs and h1 replaced by an h2. The restaurant is read once per
+  request (`getRestaurantDetail` in React `cache()`), shared by the layout, the tab and the
+  title. Links that meant payments now open Billing (`/billing#section-payments`: the ledger,
+  search, the activity stream; Dues rows open Billing). The timeline is the activity stream for
+  the restaurant, every kind but leads, with the kind filter and paging of Home, and the Audit log
+  link.
+- **SA-34 · Header and actions:** name, code and city; the subscription state and health badges
+  of the list (`platform_get_restaurant` now returns the list's state, health, last active, plan
+  limits, cancellation reason, tags and account manager); plan and cycle; paid or trial till
+  (its last day); last active; the owner with the restaurant's phone (Call, WhatsApp) and email;
+  tags; the account manager. The actions are one Actions menu (all the earlier buttons plus Add
+  note), each opening the dialog it opened before. `platform_get_restaurant` switches to
+  `require_platform_permission('restaurants.view')`, and its payments carry the purpose, GST
+  split, plan, Razorpay id and who recorded them, for money.view only (none without it).
+- **SA-35 · Overview:** the last 30 business days the restaurant has finished (the days of the
+  list's GMV): orders, GMV, average bill (GMV over bills), QR orders as a share of accepted orders
+  with its fraction (only the fraction below 5), and last active; 90 days of orders and GMV as
+  Home's chart; pinned notes and the latest one; the latest five activity items; the owner's
+  login with the password reset. `private.platform_usage` gains a restaurant and the customer,
+  staff and bill counts, so the live last finished day is still counted in one place (dropped
+  and created again: its result changed). The onboarding checklist joins with 13b.
+- **SA-36 · Billing:** the subscription facts and access as before, plus why it is leaving; where
+  it stands in Dues, read from `private.dues_rows` (narrowed by its code, then its id) with the
+  amount due with GST; the payments with amount, GST and total; the payment links sent (from
+  their audit rows, a link marked paid once a payment arrives for its id); reminders emailed;
+  and the plan and subscription history: plan changes, trial extensions, autopay set up or
+  turned off and its reason, Razorpay's status changes, suspensions, from the audit log, newest
+  50 of each list.
+- **SA-37 · Usage:** active tables and staff logins against the plan's limits, waiters, orders and
+  bills as before; the plan limits it ran into in 90 days (`plan_limit_events`, grouped); and
+  orders by weekday and hour over the last 12 weeks of stored days, in the sales heatmap's style
+  (the weekday of the business day, the hour on the clock), a shared `Heatmap` that usage
+  analytics (13e) uses too. Features in use wait for 13e, which defines them for every
+  restaurant at once.
+- **SA-38 · Notes:** `restaurant_notes`, read and written only by the team. Anyone with
+  restaurants.manage writes, pins and unpins a note; only its author edits it, within 15 minutes
+  (`NOTE_LOCKED` after), so a note is what was said and when. No deleting: a mistake is edited
+  in its first 15 minutes, and a later correction is a new note. Each change is audited
+  (`restaurant.note_added`, `_edited` with the text before and after, `_pinned`, `_unpinned`).
+  Notes are a kind in the activity stream (the first 200 characters), so their audit rows aren't
+  team items too. The page shows the newest 200, pinned first.
+- **SA-39 · Tags and account manager:** `platform_tags` (a name, unique whatever its case, and a
+  colour from six) and `restaurant_tags`, at most 10 a restaurant. A tag is a swatch of its
+  colour beside ink text, so every colour reads in both themes. The header's Tags dialog ticks
+  tags, adds a new one and deletes one from every restaurant (after a confirmation in the row).
+  `restaurants.account_manager_user_id` is a platform admin, chosen from the team
+  (`platform_team()`, emails until 13g adds names) in a menu on the header; when they stop being
+  an admin it is cleared. The Restaurants list filters by tag and by account manager (me, no
+  one, or anyone on the team), shows Tags by default and Account manager on request, puts both
+  in the CSV, and has a My restaurants view first. Tag and account-manager changes are audited
+  and are team items in the stream.
+- **SA-40 · What the restaurant doesn't see:** notes, tags and account managers are the team's.
+  Their tables are read only by platform admins, and the audit rows of notes, tag changes and
+  account-manager changes (entity types `restaurant_note`, `restaurant_tags`,
+  `account_manager`) name the restaurant, so the team finds them by restaurant, but are left out
+  of the restaurant's own audit log: the policy that lets its owner and managers read their
+  restaurant's audit rows now skips those three entity types. Their other rows read as before.

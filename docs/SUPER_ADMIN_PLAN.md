@@ -458,6 +458,8 @@ Acceptance:
 
 ### 13a. Restaurant page
 
+Built 2026-10-14 (docs/DECISIONS.md SA-33 to SA-40). Features in use on the Usage tab arrive with 13e, which defines them; the onboarding checklist with 13b.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
 │ Restaurants / Restaurant A                                                           │
