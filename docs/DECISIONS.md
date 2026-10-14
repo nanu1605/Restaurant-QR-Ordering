@@ -3451,3 +3451,50 @@ stay at 13g, since nobody else gets `/super` before then.
   `--color-sub-*` aliases (contrast-checked in both themes) and reads "Paid, ends 13 Nov" when a
   paid period is set to end. The other pages keep the old badge until they are rebuilt (12d,
   13a).
+
+### 12d · Restaurants list, health, saved views and search
+
+- **SA-22 · Health:** `private.restaurant_health(restaurant, created_at, at)`, first match wins,
+  from accepted orders: Setting up (none yet, within the setup days), Never started (none after
+  them), Inactive (none in the inactive days), Slowing (the last 7 days under a share of the
+  weekly average of the 4 weeks before, when those had enough orders), Active. The thresholds are
+  platform settings (14 days, 7 days, 50%, 10 orders), edited in the Restaurant health group of
+  `/super/settings` and audited like the rest. The daily snapshot stores it from this stop. On a
+  suspended or read-only restaurant the badge is muted: its access explains the quiet.
+- **SA-23 · Restaurants list:** `platform_list_restaurants` rebuilt. Filters: state (plan §5.1),
+  plan, health, city, Indian state, how they found us (or not known), created and paid-till
+  ranges in India dates. Paid till is a trial's end or a paid period's last day (the day before
+  it ends), on screen, in the filter and in the CSV alike. Sorts: created, name, last active, paid
+  till, GMV, with `aria-sort` on the header. Health, last active and GMV are worked out for every
+  match only when a filter or the sort needs them, otherwise for the page's 50 rows. Columns are
+  chosen in the URL (`cols`), all but Found us by default. Lifetime paid is subscriptions and
+  setup fees before GST, the GST apart (money.view; every admin until 13g). GMV is the last 30
+  finished business days of `metrics_usage_daily`, and the sparkline its accepted orders on each
+  of the last 7. Last active is the latest accepted order, bill, or sign-in by one of the
+  restaurant's logins. The phone has Call and WhatsApp as on Dues. The CSV has the filters and
+  sort, every column, up to 10,000 rows, refusing beyond. The old `status` and `subscription`
+  filters went (state covers both); the overview's Suspended card links `?state=suspended`. The
+  header stays in view inside the table's own scroll region, one region, not two.
+- **SA-24 · Saved views:** `platform_saved_views` (owner, page, name, query, shared), read by RLS
+  (a platform admin's own views and shared ones), written only through `platform_save_view`
+  (the same name again, in any case, replaces the view) and `platform_delete_view` (the owner's
+  own). The query is the page's URL without the page number, checked as key=value pairs. The
+  built-in views live in code: Payment failed, Trial ending (a trial ending today to 3 days on),
+  Lapsed, No orders in N days (N from the settings), Never started, Slowing, Paid. A view is
+  marked current when its query is the page's.
+- **SA-25 · Search:** `platform_search(q)`, 2 to 80 characters, the text typed rather than a
+  pattern. Restaurants by name, code, city, any 3 or more digits of the phone (spaces and dashes
+  ignored), GSTIN, FSSAI number or the owner's email, each with what matched; exact names first,
+  then names starting with the text, then trigram similarity (`restaurants_name_trgm_idx`).
+  Payments by Razorpay payment or subscription ID (4 characters or more), leads by name,
+  restaurant or phone; 8, 5 and 5 at most. Ctrl or ⌘ + K, or the Search button in the header,
+  opens it; arrows move and Enter opens. A payment opens the restaurant's Payments section, a lead
+  `/super/leads?lead=…`. Recent picks are kept in the browser only (`localStorage`), a
+  convenience that is simply empty when storage is off.
+- **SA-26 · Local load data:** `pnpm seed:platform-load` runs `supabase db query --local`, so it
+  cannot reach any other database; it removes the previous load first, and
+  `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
+  payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
+  the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
+  about 2,600 restaurants locally the list function takes 26 to 103 ms, the CSV 0.6 s and search
+  under 10 ms.

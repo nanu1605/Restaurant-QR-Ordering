@@ -304,22 +304,23 @@ placeholders to replace before launch.
 
 ## Scripts
 
-| Script                   | What it does                                  |
-| ------------------------ | --------------------------------------------- |
-| `pnpm dev`               | Next.js dev server on http://localhost:3000   |
-| `pnpm smoke`             | Read-only checks of the site at `SMOKE_URL`   |
-| `pnpm build`             | Production build                              |
-| `pnpm lint`              | ESLint                                        |
-| `pnpm typecheck`         | Route type generation + `tsc --noEmit`        |
-| `pnpm format`            | Prettier (write)                              |
-| `pnpm test`              | Unit tests (Vitest)                           |
-| `pnpm e2e`               | End-to-end tests (Playwright)                 |
-| `pnpm db:start`          | Start local Supabase                          |
-| `pnpm db:stop`           | Stop local Supabase                           |
-| `pnpm db:reset`          | Recreate local DB from migrations + seed      |
-| `pnpm db:test`           | Database tests (pgTAP via `supabase test db`) |
-| `pnpm db:types`          | Regenerate `src/types/database.ts`            |
-| `pnpm create-restaurant` | Onboard a restaurant + owner login            |
-| `pnpm razorpay:event`    | Send a signed Razorpay webhook to the app     |
-| `pnpm metrics:backfill`  | Fill super-admin usage history for past days  |
-| `pnpm site:shots`        | Retake the website's app screenshots (local)  |
+| Script                    | What it does                                  |
+| ------------------------- | --------------------------------------------- |
+| `pnpm dev`                | Next.js dev server on http://localhost:3000   |
+| `pnpm smoke`              | Read-only checks of the site at `SMOKE_URL`   |
+| `pnpm build`              | Production build                              |
+| `pnpm lint`               | ESLint                                        |
+| `pnpm typecheck`          | Route type generation + `tsc --noEmit`        |
+| `pnpm format`             | Prettier (write)                              |
+| `pnpm test`               | Unit tests (Vitest)                           |
+| `pnpm e2e`                | End-to-end tests (Playwright)                 |
+| `pnpm db:start`           | Start local Supabase                          |
+| `pnpm db:stop`            | Stop local Supabase                           |
+| `pnpm db:reset`           | Recreate local DB from migrations + seed      |
+| `pnpm db:test`            | Database tests (pgTAP via `supabase test db`) |
+| `pnpm db:types`           | Regenerate `src/types/database.ts`            |
+| `pnpm create-restaurant`  | Onboard a restaurant + owner login            |
+| `pnpm razorpay:event`     | Send a signed Razorpay webhook to the app     |
+| `pnpm metrics:backfill`   | Fill super-admin usage history for past days  |
+| `pnpm seed:platform-load` | Load 300 test restaurants into the local DB   |
+| `pnpm site:shots`         | Retake the website's app screenshots (local)  |
