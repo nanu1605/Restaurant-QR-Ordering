@@ -10,13 +10,17 @@
 -- before the first). A step undone later (dishes or tables turned off) is to
 -- do again. Read by the restaurant page, the list, Needs attention and, for
 -- its own restaurant, the owner's first-steps card.
+-- plpgsql, so its plan is kept between calls: the list and Needs attention
+-- call it once a restaurant.
 create function private.restaurant_onboarding(p_restaurant_id uuid)
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
+begin
+  return (
   with t as (
     select
       r.created_at,
@@ -79,7 +83,9 @@ as $$
       and greatest(max(s.done_at), max(s.created_at)) < now() - interval '3 days'
   )
   from steps s
-  having count(*) > 0;
+  having count(*) > 0
+  );
+end;
 $$;
 
 revoke execute on function private.restaurant_onboarding(uuid) from public, anon, authenticated;
