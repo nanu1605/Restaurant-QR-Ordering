@@ -46,7 +46,7 @@ import {
   listSavedViews,
 } from '@/features/platform/queries';
 import { paidTillDay } from '@/features/platform/restaurants-csv';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 import { addDays, hrefWithParams } from '@/lib/date-range';
 
 export const metadata: Metadata = {
@@ -86,7 +86,9 @@ export default async function SuperRestaurantsPage({
   const user = await requirePlatformPermission('restaurants.view');
   const params = await searchParams;
   const filters = readRestaurantFilters(params);
-  const columns = readRestaurantColumns(params);
+  // Lifetime paid is money (docs/DECISIONS.md SA-23).
+  const money = await hasPlatformPermission('money.view');
+  const columns = readRestaurantColumns(params).filter((column) => money || column !== 'lifetime');
   const [list, plans, views, settings] = await Promise.all([
     listRestaurants(filters),
     listPlans(),
@@ -206,7 +208,7 @@ export default async function SuperRestaurantsPage({
                 {view.name}
                 {!mine && <span className="text-xs opacity-80">(shared)</span>}
               </Link>
-              {mine && <DeleteViewButton viewId={view.id} name={view.name} />}
+              {mine && <DeleteViewButton viewId={view.id} name={view.name} shared={view.shared} />}
             </span>
           );
         })}
@@ -220,6 +222,7 @@ export default async function SuperRestaurantsPage({
       <RestaurantsFilters
         filters={filters}
         columns={columns}
+        money={money}
         cities={list.cities}
         regions={list.regions}
         plans={plans.map((plan) => ({ code: plan.code, name: plan.name }))}
@@ -235,7 +238,8 @@ export default async function SuperRestaurantsPage({
         />
       ) : (
         <div className="rounded-lg border border-line bg-surface">
-          <Table label="Restaurants" regionClassName="max-h-[75vh] overflow-y-auto">
+          {/* The padding keeps a focused row clear of the sticky header. */}
+          <Table label="Restaurants" regionClassName="max-h-[75vh] scroll-pt-12 overflow-y-auto">
             <TableHeader className="sticky top-0 z-10 bg-surface">
               <TableRow>
                 {header('restaurant', 'Restaurant')}
@@ -291,7 +295,9 @@ export default async function SuperRestaurantsPage({
 function cell(column: RestaurantColumn, row: RestaurantRow): ReactNode {
   switch (column) {
     case 'state':
-      return <SubscriptionStateBadge state={row.state} />;
+      return (
+        <SubscriptionStateBadge state={row.state} endsAt={row.ending ? row.paid_till : null} />
+      );
     case 'plan':
       return row.plan_name ?? '—';
     case 'paid_till': {
@@ -302,6 +308,7 @@ function cell(column: RestaurantColumn, row: RestaurantRow): ReactNode {
         : formatDate(day);
     }
     case 'lifetime': {
+      if (!row.paid) return '—';
       const { subscription_paise, setup_fee_paise, gst_paise } = row.paid;
       const total = subscription_paise + setup_fee_paise;
       if (total === 0) return '—';

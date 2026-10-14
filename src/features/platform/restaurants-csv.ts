@@ -21,9 +21,10 @@ export function paidTillDay(row: Pick<RestaurantRow, 'paid_till' | 'subscription
 /**
  * The filtered restaurants as a CSV (docs/DECISIONS.md SA-23): every column,
  * whichever are shown, amounts in rupees, money before GST with the GST apart.
+ * Without money.view the money paid is left out.
  */
-export function restaurantsCsv(rows: RestaurantRow[]): CsvTable {
-  return {
+export function restaurantsCsv(rows: RestaurantRow[], money = true): CsvTable {
+  const table: CsvTable = {
     headers: [
       'Restaurant',
       'Code',
@@ -58,9 +59,9 @@ export function restaurantsCsv(rows: RestaurantRow[]): CsvTable {
           ? 'Monthly'
           : null,
       paidTillDay(row),
-      paiseToRupees(row.paid.subscription_paise),
-      paiseToRupees(row.paid.setup_fee_paise),
-      paiseToRupees(row.paid.gst_paise),
+      row.paid && paiseToRupees(row.paid.subscription_paise),
+      row.paid && paiseToRupees(row.paid.setup_fee_paise),
+      row.paid && paiseToRupees(row.paid.gst_paise),
       paiseToRupees(row.gmv_30d_paise),
       (row.orders_7d ?? []).reduce((sum, n) => sum + n, 0),
       HEALTH_LABELS[row.health],
@@ -69,4 +70,8 @@ export function restaurantsCsv(rows: RestaurantRow[]): CsvTable {
       todayInIndia(new Date(row.created_at)),
     ]),
   };
+  if (money) return table;
+  // Paid for subscriptions, Paid for setup, GST paid.
+  const keep = (_: unknown, index: number) => index < 9 || index > 11;
+  return { headers: table.headers.filter(keep), rows: table.rows.map((row) => row.filter(keep)) };
 }

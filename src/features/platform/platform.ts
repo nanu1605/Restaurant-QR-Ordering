@@ -244,16 +244,21 @@ const restaurantRowSchema = z.object({
   access_state: z.string(),
   // The trial's end while trialing, otherwise the paid period's (plan §5.5).
   paid_till: isoOrNull,
+  // A paid period set to end there.
+  ending: z.boolean(),
   health: z.enum(HEALTHS),
   last_active: isoOrNull,
   gmv_30d_paise: z.number(),
   // Accepted orders on each of the last 7 finished business days, oldest first.
   orders_7d: z.array(z.number()).nullable(),
-  paid: z.object({
-    subscription_paise: z.number(),
-    setup_fee_paise: z.number(),
-    gst_paise: z.number(),
-  }),
+  // Null without money.view.
+  paid: z
+    .object({
+      subscription_paise: z.number(),
+      setup_fee_paise: z.number(),
+      gst_paise: z.number(),
+    })
+    .nullable(),
 });
 const restaurantListSchema = z.object({
   page: z.number(),

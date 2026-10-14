@@ -145,6 +145,8 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
         ? found.groups
         : [];
   const items = shown.flatMap((group) => group.items);
+  // The list can shrink under the highlight (recent picks, then results).
+  const current = Math.min(active, Math.max(items.length - 1, 0));
   const optionId = (index: number) => `${ids}-option-${index}`;
 
   function go(item: Item) {
@@ -158,10 +160,12 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
       event.preventDefault();
       if (items.length === 0) return;
       const step = event.key === 'ArrowDown' ? 1 : -1;
-      setActive((current) => (current + step + items.length) % items.length);
+      const next = (current + step + items.length) % items.length;
+      setActive(next);
+      document.getElementById(optionId(next))?.scrollIntoView({ block: 'nearest' });
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      const item = items[active];
+      const item = items[current];
       if (item) go(item);
     }
   }
@@ -184,20 +188,23 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
   );
   return (
     <div className="flex flex-col gap-3">
-      <Input
-        autoFocus
-        role="combobox"
-        aria-label="Search"
-        aria-expanded={items.length > 0}
-        aria-controls={`${ids}-list`}
-        aria-autocomplete="list"
-        aria-activedescendant={items.length > 0 ? optionId(active) : undefined}
-        placeholder="Restaurants, phones, GSTIN, payments, leads"
-        value={q}
-        onChange={(event) => setQ(event.target.value)}
-        onKeyDown={onKeyDown}
-        className="h-11 text-base"
-      />
+      {/* Room on the right for the dialog's close button. */}
+      <div className="pr-10">
+        <Input
+          autoFocus
+          role="combobox"
+          aria-label="Search"
+          aria-expanded={items.length > 0}
+          aria-controls={`${ids}-list`}
+          aria-autocomplete="list"
+          aria-activedescendant={items.length > 0 ? optionId(current) : undefined}
+          placeholder="Restaurants, phones, GSTIN, payments, leads"
+          value={q}
+          onChange={(event) => setQ(event.target.value)}
+          onKeyDown={onKeyDown}
+          className="h-11 text-base"
+        />
+      </div>
       <p role="status" className="text-sm text-ink-muted empty:hidden">
         {status}
       </p>
@@ -222,10 +229,10 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
                   key={item.href + item.label}
                   id={optionId(mine)}
                   role="option"
-                  aria-selected={mine === active}
+                  aria-selected={mine === current}
                   onMouseMove={() => setActive(mine)}
                   onClick={() => go(item)}
-                  className="flex min-h-11 cursor-pointer flex-col justify-center rounded-md px-2 py-1.5 aria-selected:bg-accent"
+                  className="flex min-h-11 cursor-pointer flex-col justify-center rounded-md px-2 py-1.5 aria-selected:bg-accent aria-selected:outline-2 aria-selected:-outline-offset-2 aria-selected:outline-ring"
                 >
                   <span className="text-sm font-medium text-ink">{item.label}</span>
                   {item.detail && <span className="text-xs text-ink-muted">{item.detail}</span>}

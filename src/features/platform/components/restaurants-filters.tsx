@@ -26,6 +26,8 @@ const LABEL_CLASS = 'flex flex-col gap-1 text-sm font-medium text-ink';
 type RestaurantsFiltersProps = {
   filters: RestaurantFilters;
   columns: RestaurantColumn[];
+  /** Whether lifetime paid can be chosen (money.view). */
+  money: boolean;
   cities: string[];
   regions: string[];
   plans: { code: string; name: string }[];
@@ -38,6 +40,7 @@ type RestaurantsFiltersProps = {
 export function RestaurantsFilters({
   filters,
   columns,
+  money,
   cities,
   regions,
   plans,
@@ -136,7 +139,7 @@ export function RestaurantsFilters({
         </summary>
         <fieldset className="mt-2 grid gap-x-4 sm:grid-cols-3 lg:grid-cols-6">
           <legend className="sr-only">Columns to show</legend>
-          {RESTAURANT_COLUMNS.map((column) => (
+          {RESTAURANT_COLUMNS.filter((column) => money || column !== 'lifetime').map((column) => (
             <label
               key={column}
               className="flex min-h-11 items-center gap-2 text-sm text-ink md:min-h-8"

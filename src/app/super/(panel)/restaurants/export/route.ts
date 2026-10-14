@@ -3,7 +3,7 @@ import { todayInIndia } from '@/features/platform/platform';
 import { listRestaurants } from '@/features/platform/queries';
 import { restaurantsCsv } from '@/features/platform/restaurants-csv';
 import { toCsv } from '@/features/reports/csv';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 
 /**
  * The restaurants list as a CSV, with the page's filters and sort
@@ -19,7 +19,8 @@ export async function GET(request: Request) {
       status: 413,
     });
   }
-  return new Response(toCsv(restaurantsCsv(list.rows)), {
+  const money = await hasPlatformPermission('money.view');
+  return new Response(toCsv(restaurantsCsv(list.rows, money)), {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="restaurants-${todayInIndia()}.csv"`,

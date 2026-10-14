@@ -78,6 +78,17 @@ export async function requirePlatformPermission(
   return requirePlatformAdmin();
 }
 
+/**
+ * Whether the platform admin holds a permission, for what only some see (money
+ * on the restaurants list); the page itself is guarded by requirePlatformPermission.
+ */
+export async function hasPlatformPermission(permission: PlatformPermission): Promise<boolean> {
+  // ponytail: every platform admin holds every permission until team roles (13g) check it.
+  void permission;
+  await requirePlatformAdmin();
+  return true;
+}
+
 /** A platform admin, second factor or not: only for the /super/mfa page. */
 export async function requirePlatformAdminLogin(): Promise<CurrentUser> {
   const user = await requireUser();

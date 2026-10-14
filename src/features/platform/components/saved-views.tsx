@@ -6,6 +6,16 @@ import { useId, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -87,24 +97,59 @@ export function SaveViewButton({ query }: { query: string }) {
   );
 }
 
-/** Deletes one of the admin's own views. */
-export function DeleteViewButton({ viewId, name }: { viewId: string; name: string }) {
+/** Deletes one of the admin's own views, once confirmed: a shared one goes for everyone. */
+export function DeleteViewButton({
+  viewId,
+  name,
+  shared,
+}: {
+  viewId: string;
+  name: string;
+  shared: boolean;
+}) {
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={`Delete view ${name}`}
-      disabled={pending}
-      onClick={() =>
-        startTransition(async () => {
-          const result = await deleteView(viewId);
-          if (result.ok) toast.success('View deleted');
-          else toast.error(result.error);
-        })
-      }
-    >
-      <X aria-hidden />
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Delete view ${name}`}
+        onClick={() => setOpen(true)}
+      >
+        <X aria-hidden />
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete the view {name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {shared
+                ? 'It is shared, so it goes for the whole team too.'
+                : 'Only the saved view goes; no restaurant changes.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  const result = await deleteView(viewId);
+                  if (!result.ok) {
+                    toast.error(result.error);
+                    return;
+                  }
+                  setOpen(false);
+                  toast.success('View deleted');
+                })
+              }
+            >
+              Delete view
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
