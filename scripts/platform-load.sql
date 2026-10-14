@@ -1,10 +1,9 @@
 -- Local load data for the super-admin pages (docs/SUPER_ADMIN_PLAN.md §4.6,
 -- docs/DECISIONS.md SA-26): 300 restaurants named load-001 to load-300 with
 -- subscriptions in every state, their payments, up to 18 months of daily
--- usage, the last 35 days of accepted orders, and 100 leads. The same seed
--- gives the same data. Run by `pnpm seed:platform-load`, which queries the
--- local stack only and removes the previous load first.
--- ponytail: no snapshot history; the stop that charts it (12e) adds it.
+-- usage, the last 35 days of accepted orders, a year of nightly snapshots and
+-- 100 leads. The same seed gives the same data. Run by `pnpm seed:platform-load`,
+-- which queries the local stack only and removes the previous load first.
 do $$
 begin
   perform setseed(0.42);
@@ -176,6 +175,39 @@ begin
   join public.table_sessions s on s.restaurant_id = m.restaurant_id
   cross join generate_series(1, m.orders) as g
   where m.business_day >= current_date - 35;
+
+  -- A year of nightly snapshots for Home's MRR chart and the lapses in the
+  -- activity: a 14-day trial, then each kind's path.
+  insert into public.metrics_subscription_daily (
+    day, restaurant_id, state, plan_id, billing_cycle, source, mrr_paise
+  )
+  select
+    d.day, r.id, st.state, p.id,
+    case when st.state in ('paid', 'payment_failed') then
+      (case when r.kind = 'paid_yearly' then 'yearly' else 'monthly' end)::public.billing_cycle end,
+    case when st.state in ('paid', 'payment_failed') then
+      (case when r.kind in ('paid_razorpay', 'payment_failed') then 'razorpay' else 'manual' end)
+        ::public.subscription_source end,
+    case when st.state = 'paid' then
+      case when r.kind = 'paid_yearly' then round(p.price_yearly_paise / 12.0)::bigint
+        else p.price_monthly_paise end
+    else 0 end
+  from load_r r
+  join public.plans p on p.code = r.plan_code
+  cross join lateral generate_series(
+    greatest(r.created_at::date, current_date - 365), current_date - 1, interval '1 day'
+  ) as g(day)
+  cross join lateral (select g.day::date as day) as d
+  cross join lateral (
+    select case
+      when r.kind = 'lapsed' and d.day >= current_date - (3 + r.n % 60) then 'read_only'
+      when d.day < r.created_at::date + 14 or r.kind in ('trial', 'lapsed') then 'trial'
+      when r.kind = 'cancelled' and d.day >= current_date - 40 then 'cancelled'
+      when r.kind = 'payment_failed' and d.day >= current_date - 3 then 'payment_failed'
+      else 'paid'
+    end as state
+  ) as st
+  on conflict (day, restaurant_id) do nothing;
 
   insert into public.site_leads (name, restaurant_name, city, phone, created_at)
   select 'Load lead ' || n, 'Load Cafe ' || n,
