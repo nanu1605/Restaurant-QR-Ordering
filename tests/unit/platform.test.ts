@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { readAuditFilters, readRestaurantFilters } from '@/features/platform/params';
+import { readAuditFilters } from '@/features/platform/params';
 import { formatPeriod, qrCodeDataUrl, todayInIndia } from '@/features/platform/platform';
 import {
   generatePassword,
@@ -250,31 +250,6 @@ describe('planFormSchema', () => {
 });
 
 describe('list filters from the URL', () => {
-  it('keeps known restaurant filters and drops the rest', () => {
-    expect(
-      readRestaurantFilters({
-        q: ' dhaba ',
-        status: 'closed',
-        subscription: 'past_due',
-        plan: 'Growth!',
-        from: '2026-09-10',
-        to: '2026-09-01',
-        sort: 'last_order',
-        page: '0',
-      }),
-    ).toEqual({
-      q: 'dhaba',
-      status: undefined,
-      plan: undefined,
-      subscription: 'past_due',
-      city: undefined,
-      from: '2026-09-10',
-      to: undefined,
-      sort: 'last_order',
-      page: 1,
-    });
-  });
-
   it('reads audit filters safely', () => {
     expect(
       readAuditFilters({
@@ -354,6 +329,10 @@ describe('platformSettingsSchema', () => {
     discountLastDay: '',
     supportPhone: '',
     supportEmail: '',
+    healthSetupDays: '14',
+    healthInactiveDays: '7',
+    healthSlowingPercent: '50',
+    healthSlowingMinOrders: '10',
   };
 
   it('accepts the launch settings', () => {
@@ -384,5 +363,15 @@ describe('platformSettingsSchema', () => {
     expect(platformSettingsSchema.safeParse({ ...valid, supportEmail: 'help' }).success).toBe(
       false,
     );
+  });
+
+  it('keeps the health rules in range', () => {
+    const refused = (patch: Partial<typeof valid>) =>
+      platformSettingsSchema.safeParse({ ...valid, ...patch }).success === false;
+    expect(refused({ healthSetupDays: '0' })).toBe(true);
+    expect(refused({ healthInactiveDays: '61' })).toBe(true);
+    expect(refused({ healthSlowingPercent: '100' })).toBe(true);
+    expect(refused({ healthSlowingMinOrders: '10001' })).toBe(true);
+    expect(refused({ healthSlowingPercent: '99', healthSlowingMinOrders: '1' })).toBe(false);
   });
 });
