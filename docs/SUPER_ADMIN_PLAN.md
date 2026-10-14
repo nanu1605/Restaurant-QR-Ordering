@@ -458,6 +458,8 @@ Acceptance:
 
 ### 13a. Restaurant page
 
+Built 2026-10-14 (docs/DECISIONS.md SA-33 to SA-40). Features in use on the Usage tab arrive with 13e, which defines them; the onboarding checklist with 13b.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
 │ Restaurants / Restaurant A                                                           │
@@ -494,6 +496,8 @@ Acceptance:
 - Every fact and action on today's detail page is still there. The timeline merges at least five kinds of item in time order with paging. The page reads well at 360 px.
 
 ### 13b. Onboarding checklist and support inbox
+
+Built 2026-10-14 (docs/DECISIONS.md SA-41 to SA-45). The QR step's audit actions are `table.qr_downloaded` and `table.qr_sheet_printed` (SA-14); a QR order also counts.
 
 Ships:
 

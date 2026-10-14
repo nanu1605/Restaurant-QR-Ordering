@@ -14,6 +14,7 @@ import { DuesActions, type LinkDefaults } from '@/features/platform/components/r
 import { SubscriptionStateBadge } from '@/features/platform/components/status-badges';
 import { duesMessage } from '@/features/platform/dues-messages';
 import { filterParams, readDuesFilters } from '@/features/platform/params';
+import { duesLinkDefaults } from '@/features/platform/payment-links';
 import {
   ACCESS_REASON_LABELS,
   daysSince,
@@ -55,18 +56,7 @@ export default async function DuesPage({ searchParams }: PageProps<'/super/money
     listPlans(),
     getSetupFee(),
   ]);
-  const withRazorpay = razorpayConfig() !== null;
-  const linkDefaults = (row: DuesRow): LinkDefaults | null => {
-    if (!withRazorpay) return null;
-    const plan = plans.find((p) => p.code === row.plan_code);
-    return {
-      planName: row.plan_name,
-      monthlyPaise: plan?.price_monthly_paise ?? 0,
-      yearlyPaise: plan?.price_yearly_paise ?? 0,
-      setupFeePaise: setupFee.feePaise - setupFee.discountPaise,
-      setupFeeDiscountPaise: setupFee.discountPaise,
-    };
-  };
+  const linkDefaults = duesLinkDefaults(plans, setupFee, razorpayConfig() !== null);
   const { bucket } = filters;
   const tabLink = (next: DuesBucket) =>
     hrefWithParams(PATH, filterParams({ bucket: next, q: filters.q }));
@@ -277,7 +267,7 @@ function DuesItem({
       <div className="grid gap-3 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_auto_minmax(0,1fr)] md:items-start">
         <div className="flex min-w-0 flex-col gap-1">
           <Link
-            href={`/super/restaurants/${row.restaurant_id}`}
+            href={`/super/restaurants/${row.restaurant_id}/billing`}
             className="font-medium break-words text-brand underline-offset-4 hover:underline"
           >
             {row.name}

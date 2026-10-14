@@ -43,6 +43,8 @@ export function restaurantsCsv(rows: RestaurantRow[], money = true): CsvTable {
       'Health',
       'Last active',
       'Found us',
+      'Tags',
+      'Account manager',
       'Created',
     ],
     rows: rows.map((row) => [
@@ -67,6 +69,8 @@ export function restaurantsCsv(rows: RestaurantRow[], money = true): CsvTable {
       HEALTH_LABELS[row.health],
       row.last_active ? csvDateTime(row.last_active, DEFAULT_TIMEZONE) : null,
       row.acquisition_channel ? ACQUISITION_CHANNEL_LABELS[row.acquisition_channel] : null,
+      row.tags.map((tag) => tag.name).join(', ') || null,
+      row.account_manager,
       todayInIndia(new Date(row.created_at)),
     ]),
   };

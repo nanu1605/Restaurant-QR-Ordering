@@ -2,54 +2,55 @@ import { cn } from 'cn';
 import { ArrowRight, CircleCheck, Circle } from 'lucide-react';
 import Link from 'next/link';
 
-import { autopayState } from '@/features/subscriptions/autopay';
-import {
-  getCheckoutPlans,
-  getOwnerSubscription,
-  getPlanUsage,
-} from '@/features/subscriptions/queries';
+import { parseOnboarding } from '@/features/onboarding/onboarding';
+import { getCheckoutPlans, getOwnerSubscription } from '@/features/subscriptions/queries';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
 import { createClient } from '@/lib/supabase/server';
 
 type Step = { title: string; body: string; href: string; done: boolean };
 
-/** What a new restaurant still has to do, read from its data; nothing is stored. */
+/**
+ * What a new restaurant still has to do, read from its data; nothing is stored.
+ * The menu, tables, staff and autopay steps follow the onboarding checklist's
+ * rules, which the MenuMesh team sees too (docs/DECISIONS.md SA-41).
+ */
 async function steps(restaurantId: string): Promise<Step[]> {
   const supabase = await createClient();
   const online = razorpayConfig() !== null;
-  const [usage, items, restaurant, subscription, checkoutPlans] = await Promise.all([
-    getPlanUsage(restaurantId),
-    supabase
-      .from('menu_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true),
+  const [onboarding, restaurant, subscription, checkoutPlans] = await Promise.all([
+    supabase.rpc('admin_onboarding'),
     supabase.from('restaurants').select('address_line').eq('id', restaurantId).single(),
     online ? getOwnerSubscription(restaurantId) : Promise.resolve(null),
     online ? getCheckoutPlans() : Promise.resolve([]),
   ]);
-  if (items.error) throw new Error(`Could not count dishes: ${items.error.message}`);
+  if (onboarding.error)
+    throw new Error(`Could not read the setup steps: ${onboarding.error.message}`);
   if (restaurant.error)
     throw new Error(`Could not read the restaurant: ${restaurant.error.message}`);
+  const done = new Set(
+    parseOnboarding(onboarding.data)
+      .steps.filter((step) => step.done_at !== null)
+      .map((step) => step.key),
+  );
 
   const list: Step[] = [
     {
       title: 'Add your menu',
       body: 'Type it in, or import it from a photo, PDF or CSV.',
       href: '/admin/menu/import',
-      done: (items.count ?? 0) > 0,
+      done: done.has('menu'),
     },
     {
       title: 'Add your tables',
       body: 'Then print a QR code for each one.',
       href: '/admin/tables',
-      done: usage.tables > 0,
+      done: done.has('tables'),
     },
     {
       title: 'Give your staff their logins',
       body: 'Waiters, kitchen and managers each get their own.',
       href: '/admin/staff',
-      done: usage.staff > 0,
+      done: done.has('team'),
     },
     {
       title: 'Add your address and GST details',
@@ -64,7 +65,7 @@ async function steps(restaurantId: string): Promise<Step[]> {
       title: 'Set up autopay',
       body: 'So ordering keeps running when your free trial ends.',
       href: '/admin/subscription',
-      done: subscription.status === 'active' || autopayState(subscription) === 'on',
+      done: done.has('paid'),
     });
   }
   return list;

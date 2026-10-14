@@ -4,10 +4,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Ban,
   CalendarPlus,
+  ChevronDown,
   CircleStop,
   CreditCard,
   KeyRound,
   Link2,
+  NotebookPen,
   RefreshCw,
   RotateCcw,
   Tags,
@@ -42,6 +44,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -80,10 +89,15 @@ import {
   type SuspendInput,
 } from '../schemas';
 
+import { NoteForm } from './notes';
+
 const SELECT_CLASS =
   'h-9 w-full rounded-lg border border-input bg-surface px-2.5 text-base text-ink outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
 
-type Dialogs = 'trial' | 'plan' | 'payment' | 'link' | 'autopay' | 'suspend' | 'unsuspend' | null;
+type Dialogs =
+  'trial' | 'plan' | 'payment' | 'link' | 'autopay' | 'suspend' | 'unsuspend' | 'note' | null;
+
+const ITEM_CLASS = 'min-h-11 px-2 md:min-h-9';
 
 const TRIAL_HELP = "Days are added to the trial's end, or to today if it has already ended.";
 const PAYMENT_HELP =
@@ -117,7 +131,10 @@ type RestaurantActionsProps = {
   } | null;
 };
 
-/** Actions on one restaurant (spec §13.4, docs/DECISIONS.md P7-4). */
+/**
+ * Actions on one restaurant (spec §13.4, docs/DECISIONS.md P7-4), in one menu
+ * on its page's header (docs/DECISIONS.md SA-34).
+ */
 export function RestaurantActions({
   restaurantId,
   restaurantName,
@@ -140,54 +157,72 @@ export function RestaurantActions({
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {subscription?.status === 'trialing' && (
-        <Button variant="outline" size="touch" onClick={() => setOpen('trial')}>
-          <CalendarPlus aria-hidden />
-          Extend trial
-        </Button>
-      )}
-      {subscription && (
-        <Button variant="outline" size="touch" onClick={() => setOpen('plan')}>
-          <Tags aria-hidden />
-          Change plan
-        </Button>
-      )}
-      {subscription && (
-        <Button variant="outline" size="touch" onClick={() => setOpen('payment')}>
-          <CreditCard aria-hidden />
-          Record payment
-        </Button>
-      )}
-      {subscription && razorpay && (
-        <Button variant="outline" size="touch" onClick={() => setOpen('link')}>
-          <Link2 aria-hidden />
-          Send payment link
-        </Button>
-      )}
-      {razorpay?.subscriptionId && (
-        <Button variant="outline" size="touch" onClick={sync} disabled={syncing}>
-          <RefreshCw aria-hidden />
-          {syncing ? 'Syncing…' : 'Sync with Razorpay'}
-        </Button>
-      )}
-      {razorpay?.autopay === 'on' && (
-        <Button variant="outline" size="touch" onClick={() => setOpen('autopay')}>
-          <CircleStop aria-hidden />
-          Cancel autopay
-        </Button>
-      )}
-      {status === 'active' ? (
-        <Button variant="destructive" size="touch" onClick={() => setOpen('suspend')}>
-          <Ban aria-hidden />
-          Suspend
-        </Button>
-      ) : (
-        <Button variant="outline" size="touch" onClick={() => setOpen('unsuspend')}>
-          <RotateCcw aria-hidden />
-          Unsuspend
-        </Button>
-      )}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="touch" />}>
+          Actions
+          <ChevronDown aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-56">
+          {subscription?.status === 'trialing' && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('trial')}>
+              <CalendarPlus aria-hidden />
+              Extend trial
+            </DropdownMenuItem>
+          )}
+          {subscription && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('plan')}>
+              <Tags aria-hidden />
+              Change plan
+            </DropdownMenuItem>
+          )}
+          {subscription && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('payment')}>
+              <CreditCard aria-hidden />
+              Record payment
+            </DropdownMenuItem>
+          )}
+          {subscription && razorpay && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('link')}>
+              <Link2 aria-hidden />
+              Send payment link
+            </DropdownMenuItem>
+          )}
+          {razorpay?.subscriptionId && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={sync} disabled={syncing}>
+              <RefreshCw aria-hidden />
+              {syncing ? 'Syncing…' : 'Sync with Razorpay'}
+            </DropdownMenuItem>
+          )}
+          {razorpay?.autopay === 'on' && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('autopay')}>
+              <CircleStop aria-hidden />
+              Cancel autopay
+            </DropdownMenuItem>
+          )}
+          {subscription && <DropdownMenuSeparator />}
+          <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('note')}>
+            <NotebookPen aria-hidden />
+            Add note
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {status === 'active' ? (
+            <DropdownMenuItem
+              variant="destructive"
+              className={ITEM_CLASS}
+              onClick={() => setOpen('suspend')}
+            >
+              <Ban aria-hidden />
+              Suspend
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('unsuspend')}>
+              <RotateCcw aria-hidden />
+              Unsuspend
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <FormDialog
         open={open === 'trial'}
@@ -252,7 +287,15 @@ export function RestaurantActions({
         restaurantId={restaurantId}
         restaurantName={restaurantName}
       />
-    </div>
+      <FormDialog
+        open={open === 'note'}
+        onClose={close}
+        title={`Add a note on ${restaurantName}`}
+        description="Only the MenuMesh team sees notes. You can edit yours for 15 minutes."
+      >
+        <NoteForm restaurantId={restaurantId} onDone={close} />
+      </FormDialog>
+    </>
   );
 }
 
@@ -266,6 +309,7 @@ export function DuesActions({
   canExtendTrial,
   paymentStart,
   linkDefaults,
+  single = false,
 }: {
   restaurantId: string;
   restaurantName: string;
@@ -274,6 +318,8 @@ export function DuesActions({
   paymentStart: string;
   /** Null while the Razorpay keys aren't set. */
   linkDefaults: LinkDefaults | null;
+  /** One action, for Home: a payment link, or recording a payment without Razorpay. */
+  single?: boolean;
 }) {
   const [open, setOpen] = useState<'trial' | 'payment' | 'link' | null>(null);
   const close = () => setOpen(null);
@@ -287,11 +333,13 @@ export function DuesActions({
           Send payment link
         </Button>
       )}
-      <Button variant="outline" className={size} onClick={() => setOpen('payment')}>
-        <CreditCard aria-hidden />
-        Record payment
-      </Button>
-      {canExtendTrial && (
+      {!(single && linkDefaults) && (
+        <Button variant="outline" className={size} onClick={() => setOpen('payment')}>
+          <CreditCard aria-hidden />
+          Record payment
+        </Button>
+      )}
+      {canExtendTrial && !single && (
         <Button variant="outline" className={size} onClick={() => setOpen('trial')}>
           <CalendarPlus aria-hidden />
           Extend trial
@@ -342,7 +390,7 @@ function FormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

@@ -186,7 +186,36 @@ select set_eq(
       ('private.phone10'),
       ('public.member_record_plan_limit'),
       ('public.admin_record_qr_use'),
-      ('public.admin_record_cancel_reason')
+      ('public.admin_record_cancel_reason'),
+      -- Home (12e)
+      ('public.platform_home'),
+      ('public.platform_needs_attention'),
+      ('public.platform_snooze'),
+      ('public.platform_activity'),
+      ('public.platform_alerts'),
+      ('public.platform_mark_alerts_seen'),
+      -- Restaurant page (13a)
+      ('public.platform_restaurant_overview'),
+      ('public.platform_restaurant_billing'),
+      ('public.platform_restaurant_usage'),
+      ('public.platform_list_notes'),
+      ('public.platform_add_note'),
+      ('public.platform_edit_note'),
+      ('public.platform_pin_note'),
+      ('public.platform_create_tag'),
+      ('public.platform_delete_tag'),
+      ('public.platform_set_restaurant_tags'),
+      ('public.platform_team'),
+      ('public.platform_set_account_manager'),
+      -- Onboarding and support (13b)
+      ('public.admin_onboarding'),
+      ('public.admin_start_screenshot_upload'),
+      ('public.admin_create_support_request'),
+      ('public.admin_list_support_requests'),
+      ('public.platform_list_support_requests'),
+      ('public.platform_get_support_request'),
+      ('public.platform_update_support_request'),
+      ('public.platform_add_support_note')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -228,7 +257,9 @@ from unnest(array[
   'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-  'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
+  'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
+  'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
+  'support_request_events', 'support_screenshot_uploads'
 ]) as t;
 
 select is_empty(
@@ -239,7 +270,9 @@ select is_empty(
       'menu_item_variants', 'table_sessions', 'session_waiter_assignments', 'orders',
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
-      'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups'
+      'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
+      'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
+      'support_request_events', 'support_screenshot_uploads'
     ]) as t
     where not exists (
       select 1

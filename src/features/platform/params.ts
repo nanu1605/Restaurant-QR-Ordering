@@ -1,11 +1,14 @@
 import { firstParam, isDate, type SearchParams } from '@/lib/date-range';
 
+import { ACTIVITY_KINDS, HOME_PERIODS, type ActivityKind, type HomePeriod } from './home';
+
 import {
   ACQUISITION_CHANNELS,
   ACTOR_TYPES,
   DEFAULT_RESTAURANT_COLUMNS,
   DUES_BUCKETS,
   HEALTHS,
+  ONBOARDING_FILTERS,
   PAYMENT_METHODS,
   PAYMENT_PURPOSES,
   RESTAURANT_COLUMNS,
@@ -14,6 +17,7 @@ import {
   type ActorType,
   type DuesBucket,
   type Health,
+  type OnboardingFilter,
   type PaymentMethod,
   type PaymentPurpose,
   type RestaurantColumn,
@@ -42,6 +46,29 @@ function dateRange(params: SearchParams, fromKey: string, toKey: string) {
   return [validFrom, isDate(to) && (!validFrom || to >= validFrom) ? to : undefined] as const;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ActivityParams = { kind?: ActivityKind; before?: string };
+
+/** The activity stream's kind and page (docs/DECISIONS.md SA-29). */
+export function readActivityParams(params: SearchParams): ActivityParams {
+  const before = firstParam(params, 'before');
+  return {
+    kind: oneOf(firstParam(params, 'kind'), ACTIVITY_KINDS),
+    before: before && before.length <= 200 && before.includes('|') ? before : undefined,
+  };
+}
+
+export type HomeParams = ActivityParams & { period: HomePeriod };
+
+/** Home (docs/DECISIONS.md SA-27, SA-29): the period, and the activity's kind and page. */
+export function readHomeParams(params: SearchParams): HomeParams {
+  return {
+    period: oneOf(firstParam(params, 'period'), HOME_PERIODS) ?? 'today',
+    ...readActivityParams(params),
+  };
+}
+
 export const RESTAURANT_SORTS = ['created', 'name', 'last_active', 'paid_till', 'gmv'] as const;
 export type RestaurantSort = (typeof RESTAURANT_SORTS)[number];
 
@@ -53,6 +80,11 @@ export type RestaurantFilters = {
   city?: string;
   region?: string;
   channel?: AcquisitionChannel | 'unknown';
+  /** A tag's id. */
+  tag?: string;
+  /** 'me', 'none' or a team member's user id (docs/DECISIONS.md SA-39). */
+  manager?: string;
+  onboarding?: OnboardingFilter;
   from?: string;
   to?: string;
   paid_from?: string;
@@ -67,6 +99,8 @@ export function readRestaurantFilters(params: SearchParams): RestaurantFilters {
   const [from, to] = dateRange(params, 'from', 'to');
   const [paidFrom, paidTo] = dateRange(params, 'paid_from', 'paid_to');
   const plan = firstParam(params, 'plan');
+  const tag = firstParam(params, 'tag');
+  const manager = firstParam(params, 'manager');
   return {
     q: firstParam(params, 'q')?.slice(0, 80),
     state: oneOf(firstParam(params, 'state'), SUBSCRIPTION_STATES),
@@ -75,6 +109,12 @@ export function readRestaurantFilters(params: SearchParams): RestaurantFilters {
     city: firstParam(params, 'city')?.slice(0, 80),
     region: firstParam(params, 'region')?.slice(0, 80),
     channel: oneOf(firstParam(params, 'channel'), [...ACQUISITION_CHANNELS, 'unknown'] as const),
+    tag: tag && UUID.test(tag) ? tag : undefined,
+    manager:
+      manager === 'me' || manager === 'none' || (manager && UUID.test(manager))
+        ? manager
+        : undefined,
+    onboarding: oneOf(firstParam(params, 'onboarding'), ONBOARDING_FILTERS),
     from,
     to,
     paid_from: paidFrom,
@@ -155,8 +195,6 @@ export type AuditFilters = {
   to?: string;
   page: number;
 };
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function readAuditFilters(params: SearchParams): AuditFilters {
   const restaurant = firstParam(params, 'restaurant');

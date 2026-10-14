@@ -24,6 +24,7 @@ export function CategoryChart({ points }: { points: CategoryPoint[] }) {
     >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
+          accessibilityLayer={false}
           data={points}
           layout="vertical"
           margin={{ top: 4, right: 16, bottom: 4, left: 8 }}

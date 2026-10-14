@@ -1,6 +1,9 @@
+import { LifeBuoy } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { PageHeader } from '@/components/shared/page-header';
+import { buttonVariants } from '@/components/ui/button';
 import { hasFeature, upgradeHint } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { SettingsTabs } from '@/features/settings/components/settings-tabs';
@@ -27,6 +30,14 @@ export default async function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Restaurant details, tax, bills and ordering rules."
+        actions={
+          <Link
+            href="/admin/help?from=/admin/settings"
+            className={buttonVariants({ variant: 'outline', size: 'touch' })}
+          >
+            <LifeBuoy aria-hidden /> Get help
+          </Link>
+        }
       />
       <SettingsTabs
         settings={settings}

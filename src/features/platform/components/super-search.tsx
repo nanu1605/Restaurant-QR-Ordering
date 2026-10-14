@@ -48,7 +48,7 @@ function groups(results: SearchResults): Group[] {
     {
       title: 'Payments',
       items: results.payments.map((p) => ({
-        href: `/super/restaurants/${p.restaurant_id}#section-payments`,
+        href: `/super/restaurants/${p.restaurant_id}/billing#section-payments`,
         label: p.ref,
         detail: `${p.kind === 'payment' ? 'Payment' : 'Autopay subscription'}, ${p.name}`,
       })),

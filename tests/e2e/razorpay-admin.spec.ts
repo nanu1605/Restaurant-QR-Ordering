@@ -1,7 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 import { adminClient, createTestRestaurant } from './helpers';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  hasRestaurantAction,
+  logInAsPlatformAdmin,
+  restaurantAction,
+} from './platform-fixtures';
 import {
   paymentLinkEvent,
   razorpayId,
@@ -56,10 +61,10 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
 }) => {
   const restaurant = await createTestRestaurant({ prefix: 'e2e-link' });
   await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-link'));
-  await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
+  await page.goto(`/super/restaurants/${restaurant.restaurantId}/billing`);
 
   // Three months of Growth: the amount (with 18% GST) and description follow the months.
-  await page.getByRole('button', { name: 'Send payment link' }).click();
+  await restaurantAction(page, 'Send payment link');
   const dialog = page.getByRole('dialog', { name: 'Send payment link' });
   await dialog.getByLabel('Months').fill('3');
   await expect(dialog.getByLabel('Amount (₹)')).toHaveValue('3182.46');
@@ -79,7 +84,7 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   });
 
   // The setup fee comes from the platform setting and has no months.
-  await page.getByRole('button', { name: 'Send payment link' }).click();
+  await restaurantAction(page, 'Send payment link');
   await dialog.getByLabel('For').selectOption('setup_fee');
   await expect(dialog.getByLabel('Months')).toHaveCount(0);
   // ₹999 less the ₹500 discount, plus GST.
@@ -97,13 +102,17 @@ test('MenuMesh sends a subscription link and a setup fee link; a paid link exten
   // The restaurant pays the subscription link.
   const paid = await sendWebhook(
     request,
-    paymentLinkEvent(link!.notes, { id: razorpayId('pay'), amount: 318246 }),
+    paymentLinkEvent(link!.notes, { id: razorpayId('pay'), amount: 318246 }, link!.id),
   );
   expect(await paid.json()).toMatchObject({ ok: true, result: 'applied' });
   await page.reload();
   const payments = page.getByRole('table', { name: 'Payments' });
   await expect(payments).toContainText('Payment link');
   await expect(payments).toContainText('₹3,182.46');
+  // The Billing tab lists both links, the subscription one paid.
+  const sent = page.getByRole('region', { name: 'Payment links sent' });
+  await expect(sent.getByRole('listitem')).toHaveCount(2);
+  await expect(sent.getByRole('listitem').filter({ hasText: '3 months' })).toContainText('Paid');
   const row = await subscriptionRow(restaurant.restaurantId);
   expect(row).toMatchObject({ status: 'active', source: 'manual' });
   expect(Date.parse(row.current_period_end!)).toBeGreaterThan(Date.now() + 90 * DAY);
@@ -142,20 +151,20 @@ test('MenuMesh syncs autopay, refuses a second way to pay for it, and cancels it
   expect(error).toBeNull();
 
   await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-sync'));
-  await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
-  await expect(page.getByRole('button', { name: 'Cancel autopay' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Sync with Razorpay' }).click();
+  await page.goto(`/super/restaurants/${restaurant.restaurantId}/billing`);
+  expect(await hasRestaurantAction(page, 'Cancel autopay')).toBe(false);
+  await restaurantAction(page, 'Sync with Razorpay');
   await expect(page.getByText('Saved what Razorpay says')).toBeVisible();
   await expect(page.getByText('On (first payment for Growth, monthly)')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Send payment link' }).click();
+  await restaurantAction(page, 'Send payment link');
   const dialog = page.getByRole('dialog', { name: 'Send payment link' });
   await dialog.getByRole('button', { name: 'Send link' }).click();
   await expect(dialog.getByRole('alert')).toContainText('Autopay is on');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   // Set up during the trial, so it is cancelled at once and the trial carries on.
-  await page.getByRole('button', { name: 'Cancel autopay' }).click();
+  await restaurantAction(page, 'Cancel autopay');
   const confirm = page.getByRole('alertdialog', { name: /Cancel autopay for/ });
   await confirm.getByRole('button', { name: 'Cancel autopay' }).click();
   await expect(page.getByText('Autopay cancelled')).toBeVisible();

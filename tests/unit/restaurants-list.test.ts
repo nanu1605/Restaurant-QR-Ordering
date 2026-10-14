@@ -107,6 +107,12 @@ const row: RestaurantRow = {
   gmv_30d_paise: 1234550,
   orders_7d: [3, 0, 5, 2, 0, 1, 4],
   paid: { subscription_paise: 99900, setup_fee_paise: 50000, gst_paise: 26982 },
+  tags: [
+    { id: 't1', name: 'Pilot', colour: 'orange' },
+    { id: 't2', name: 'Indore', colour: 'teal' },
+  ],
+  account_manager: 'tanishq@menumesh.test',
+  onboarding: { done: 7, next: null, since: '2026-10-02T06:00:00Z', stuck: false },
 };
 
 describe('paid till', () => {
@@ -128,7 +134,7 @@ describe('paid till', () => {
 describe('restaurants CSV', () => {
   it('writes every column, in rupees, with the GST apart', () => {
     const csv = restaurantsCsv([row]);
-    expect(csv.headers).toHaveLength(18);
+    expect(csv.headers).toHaveLength(20);
     expect(csv.rows[0]).toEqual([
       'Sharma, "Dhaba"',
       'sharma-dhaba',
@@ -147,6 +153,8 @@ describe('restaurants CSV', () => {
       'Slowing',
       null,
       null,
+      'Pilot, Indore',
+      'tanishq@menumesh.test',
       '2026-10-01',
     ]);
   });
@@ -155,9 +163,9 @@ describe('restaurants CSV', () => {
 describe('restaurants CSV without money.view', () => {
   it('leaves out what was paid', () => {
     const csv = restaurantsCsv([{ ...row, paid: null }], false);
-    expect(csv.headers).toHaveLength(15);
+    expect(csv.headers).toHaveLength(17);
     expect(csv.headers).not.toContain('GST paid');
-    expect(csv.rows[0]).toHaveLength(15);
+    expect(csv.rows[0]).toHaveLength(17);
     expect(csv.rows[0]?.[9]).toBe('12345.50');
   });
 });

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { onboardingSummarySchema } from '@/features/onboarding/onboarding';
+import { CANCEL_REASONS } from '@/features/subscriptions/cancel-reasons';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
 /**
@@ -171,33 +173,6 @@ const subscriptionState = z.enum(SUBSCRIPTION_STATES);
 const restaurantStatus = z.enum(['active', 'suspended']);
 const billingCycle = z.enum(['monthly', 'yearly']);
 
-// ─── Overview ────────────────────────────────────────────────────────────────
-const overviewSchema = z.object({
-  restaurants: z.object({
-    total: z.number(),
-    trialing: z.number(),
-    active: z.number(),
-    past_due: z.number(),
-    read_only: z.number(),
-    suspended: z.number(),
-  }),
-  mrr_paise: z.number(),
-  orders_24h: z.number(),
-  trials_ending: z.array(
-    z.object({
-      restaurant_id: z.string(),
-      name: z.string(),
-      slug: z.string(),
-      plan_name: z.string(),
-      trial_ends_at: iso,
-    }),
-  ),
-  // The first daily snapshot (docs/DECISIONS.md SA-9); null until the cron has run.
-  history_starts_on: z.string().nullable(),
-});
-export type PlatformOverview = z.infer<typeof overviewSchema>;
-export const parseOverview = (json: unknown) => overviewSchema.parse(json);
-
 // ─── Lookalikes (docs/DECISIONS.md P11-13) ───────────────────────────────────
 export const LOOKALIKE_REASON_LABELS = {
   fssai: 'Same FSSAI licence',
@@ -210,20 +185,35 @@ export const LOOKALIKE_REASON_LABELS = {
 const lookalikeReason = z.enum(
   Object.keys(LOOKALIKE_REASON_LABELS) as [keyof typeof LOOKALIKE_REASON_LABELS],
 );
-const lookalikesSchema = z.record(
-  z.string(),
-  z.array(
-    z.object({
-      restaurant_id: z.string(),
-      name: z.string(),
-      slug: z.string(),
-      city: z.string().nullable(),
-      reasons: z.array(lookalikeReason),
-    }),
-  ),
-);
-export type Lookalike = z.infer<typeof lookalikesSchema>[string][number];
+export const lookalikeSchema = z.object({
+  restaurant_id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  city: z.string().nullable(),
+  reasons: z.array(lookalikeReason),
+});
+const lookalikesSchema = z.record(z.string(), z.array(lookalikeSchema));
+export type Lookalike = z.infer<typeof lookalikeSchema>;
 export const parseLookalikes = (json: unknown) => lookalikesSchema.parse(json);
+
+// ─── Tags (docs/DECISIONS.md SA-39) ──────────────────────────────────────────
+// Each colour is a swatch beside ink text, so every one reads in both themes.
+export const TAG_COLOURS = ['orange', 'teal', 'amber', 'green', 'red', 'slate'] as const;
+export type TagColour = (typeof TAG_COLOURS)[number];
+export const TAG_COLOUR_LABELS: Record<TagColour, string> = {
+  orange: 'Orange',
+  teal: 'Teal',
+  amber: 'Amber',
+  green: 'Green',
+  red: 'Red',
+  slate: 'Grey',
+};
+export const tagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  colour: z.enum(TAG_COLOURS),
+});
+export type Tag = z.infer<typeof tagSchema>;
 
 // ─── Restaurants list ────────────────────────────────────────────────────────
 const restaurantRowSchema = z.object({
@@ -259,6 +249,10 @@ const restaurantRowSchema = z.object({
       gst_paise: z.number(),
     })
     .nullable(),
+  tags: z.array(tagSchema),
+  // The account manager's email.
+  account_manager: z.string().nullable(),
+  onboarding: onboardingSummarySchema,
 });
 const restaurantListSchema = z.object({
   page: z.number(),
@@ -281,8 +275,11 @@ export const RESTAURANT_COLUMNS = [
   'gmv',
   'orders',
   'health',
+  'onboarding',
   'last_active',
   'phone',
+  'tags',
+  'manager',
   'channel',
   'created',
 ] as const;
@@ -295,14 +292,31 @@ export const RESTAURANT_COLUMN_LABELS: Record<RestaurantColumn, string> = {
   gmv: 'GMV, 30 days',
   orders: 'Orders, 7 days',
   health: 'Health',
+  onboarding: 'Onboarding',
   last_active: 'Last active',
   phone: 'Phone',
+  tags: 'Tags',
+  manager: 'Account manager',
   channel: 'Found us',
   created: 'Created',
 };
 export const DEFAULT_RESTAURANT_COLUMNS: RestaurantColumn[] = RESTAURANT_COLUMNS.filter(
-  (column) => column !== 'channel',
+  (column) => column !== 'channel' && column !== 'manager' && column !== 'onboarding',
 );
+
+/** The columns of the Onboarding view: the default ones and where onboarding stands. */
+export const ONBOARDING_VIEW_COLUMNS = RESTAURANT_COLUMNS.filter(
+  (column) => DEFAULT_RESTAURANT_COLUMNS.includes(column) || column === 'onboarding',
+).join(',');
+
+/** The list's onboarding filter (docs/DECISIONS.md SA-41): a step still to do, stuck, or done. */
+export const ONBOARDING_FILTERS = ['open', 'stuck', 'done'] as const;
+export type OnboardingFilter = (typeof ONBOARDING_FILTERS)[number];
+export const ONBOARDING_FILTER_LABELS: Record<OnboardingFilter, string> = {
+  open: 'Not finished',
+  stuck: 'Stuck',
+  done: 'Done',
+};
 
 // ─── Search (docs/DECISIONS.md SA-25) ────────────────────────────────────────
 const searchResultsSchema = z.object({
@@ -422,7 +436,7 @@ export function paymentPlanLabel(
 }
 
 // ─── Dues (docs/DECISIONS.md SA-19) ──────────────────────────────────────────
-const duesRowSchema = z.object({
+export const duesRowSchema = z.object({
   restaurant_id: z.string(),
   name: z.string(),
   slug: z.string(),
@@ -483,10 +497,18 @@ const restaurantDetailSchema = z.object({
     gstin: z.string().nullable(),
     gst_mode: z.string(),
     timezone: z.string(),
+    business_day_start_hour: z.number(),
     status: restaurantStatus,
     suspended_reason: z.string().nullable(),
+    acquisition_channel: z.enum(ACQUISITION_CHANNELS).nullable(),
     created_at: iso,
   }),
+  // As the restaurants list has them (docs/DECISIONS.md SA-34).
+  state: subscriptionState,
+  health: z.enum(HEALTHS),
+  last_active: isoOrNull,
+  account_manager: z.object({ user_id: z.string(), email: z.string().nullable() }).nullable(),
+  tags: z.array(tagSchema),
   owners: z.array(
     z.object({
       member_id: z.string(),
@@ -515,14 +537,27 @@ const restaurantDetailSchema = z.object({
       razorpay_status: z.string().nullable(),
       next_plan_name: z.string().nullable(),
       next_billing_cycle: billingCycle.nullable(),
+      cancel_reason: z.enum(CANCEL_REASONS).nullable(),
+      cancel_reason_detail: z.string().nullable(),
+      max_tables: z.number().nullable(),
+      max_staff: z.number().nullable(),
     })
     .nullable(),
+  // Whether this admin sees money; payments are empty without it.
+  money: z.boolean(),
   payments: z.array(
     z.object({
       payment_id: z.string(),
       source: z.string(),
+      purpose: z.enum(PAYMENT_PURPOSES),
       amount_paise: z.number(),
+      base_paise: z.number(),
+      gst_paise: z.number(),
       manual_mode: z.enum(MANUAL_MODES).nullable(),
+      plan_name: z.string().nullable(),
+      billing_cycle: billingCycle.nullable(),
+      razorpay_payment_id: z.string().nullable(),
+      recorded_by: z.string().nullable(),
       period_start: isoOrNull,
       period_end: isoOrNull,
       notes: z.string().nullable(),
@@ -539,11 +574,8 @@ const restaurantDetailSchema = z.object({
     tables_active: z.number(),
     staff_logins: z.number(),
     waiters: z.number(),
-    orders_7d: z.number(),
-    orders_30d: z.number(),
     last_order_at: isoOrNull,
     bills: z.number(),
-    bills_30d: z.number(),
   }),
 });
 export type RestaurantDetail = z.infer<typeof restaurantDetailSchema>;

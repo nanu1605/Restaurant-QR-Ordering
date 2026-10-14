@@ -147,6 +147,11 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   `select public.platform_metrics_snapshot('<yesterday>');` in the SQL editor (it states the day
   as of now, close enough on the morning after; signups older than a week can no longer be
   counted). A failed `usage snapshot` needs nothing: the next night recounts the last four days.
+  Home's Needs attention lists a failed step until a later run of it works.
+- **The daily digest didn't arrive** (08:45 India time, `/api/cron/digest`): `cron_runs` rows
+  with `job = 'digest'` say what happened (`skipped` when Resend isn't set up). Run it by hand
+  with `curl -H "Authorization: Bearer <CRON_SECRET>" https://<domain>/api/cron/digest`; it goes
+  out once a day, so a second run answers "already sent".
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.
@@ -167,13 +172,23 @@ login, then the owner adds tables, prints QR codes (only once production is live
 `menumesh.in`: the codes carry `NEXT_PUBLIC_APP_URL`), enters the menu and installs the staff
 app on each tablet.
 
+## Support requests
+
+Restaurants ask from **Get help** in the admin panel. Each request emails the support address in
+`/super/settings` (set it, or only the inbox and the alerts bell show them) and lands in
+`/super/support`. Take it (**Assignee**), set **In progress**, reach them the way they asked (the
+Call, WhatsApp or email link on the request), and **Resolved** when done; use **Waiting on
+restaurant** while they owe an answer. Internal notes are the team's only. Requests open or in
+progress for more than a day show on Home under Needs attention.
+
 ## Failed subscription payments
 
 - Razorpay retries the autopay charge. Meanwhile the restaurant has 7 days' grace (a banner for
   the owner, a reminder email each day); then ordering pauses at the next business-day start.
   Billing open tables always works.
-- To help an owner pay: `/super` → the restaurant → **Send payment link** (months of the plan),
-  or **Record payment** for money received by bank transfer or UPI.
+- To help an owner pay: `/super` → the restaurant → **Actions** → **Send payment link** (months
+  of the plan), or **Record payment** for money received by bank transfer or UPI. Its Billing tab
+  shows the links sent and whether each was paid.
 - When a paid webhook arrives, the restaurant is active again at once.
 
 ## Rotating secrets

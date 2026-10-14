@@ -6,7 +6,8 @@ import {
   CreditCard,
   HandCoins,
   Inbox,
-  LayoutDashboard,
+  House,
+  LifeBuoy,
   Menu,
   ReceiptIndianRupee,
   ScrollText,
@@ -22,12 +23,14 @@ import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
+import { useAttentionCount } from './alerts-bell';
+
 type NavItem = { href: string; label: string; icon: LucideIcon };
 type NavGroup = { title: string | null; items: NavItem[] };
 
 // docs/SUPER_ADMIN_PLAN.md §2: a group appears once it has a page (docs/DECISIONS.md SA-3).
 const NAV: NavGroup[] = [
-  { title: null, items: [{ href: '/super', label: 'Overview', icon: LayoutDashboard }] },
+  { title: null, items: [{ href: '/super', label: 'Home', icon: House }] },
   {
     title: 'Money',
     items: [
@@ -38,7 +41,10 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'Restaurants',
-    items: [{ href: '/super/restaurants', label: 'Restaurants', icon: Building2 }],
+    items: [
+      { href: '/super/restaurants', label: 'Restaurants', icon: Building2 },
+      { href: '/super/support', label: 'Support inbox', icon: LifeBuoy },
+    ],
   },
   { title: 'Growth', items: [{ href: '/super/leads', label: 'Leads', icon: Inbox }] },
   { title: 'System', items: [{ href: '/super/webhooks', label: 'Webhooks', icon: Webhook }] },
@@ -61,6 +67,8 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   // The nav renders twice (sidebar and sheet), so headings need unique ids.
   const ids = useId();
+  // Needs attention on Home, from the alerts bell's latest look (docs/DECISIONS.md SA-28).
+  const attention = useAttentionCount();
 
   return (
     <nav aria-label="Platform sections" className="flex flex-col gap-4">
@@ -93,6 +101,12 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
                   >
                     <Icon aria-hidden className="size-4" />
                     {label}
+                    {href === '/super' && !!attention && (
+                      <span className="ml-auto rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground tabular-nums">
+                        {attention}
+                        <span className="sr-only"> need attention</span>
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

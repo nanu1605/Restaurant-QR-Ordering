@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { adminClient, createTestRestaurant, logInWithCode, makeJpeg } from './helpers';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import { createPlatformAdmin, logInAsPlatformAdmin, restaurantTab } from './platform-fixtures';
 
 /**
  * Menu import (spec §20A, §19 Phase 7 "a phone photo of a menu gives a review
@@ -280,10 +280,9 @@ test('a platform admin imports a menu for a restaurant', async ({ page }) => {
   const restaurant = await createTestRestaurant({ prefix: 'simp' });
   await logInAsPlatformAdmin(page, await createPlatformAdmin());
   await page.goto(`/super/restaurants/${restaurant.restaurantId}`);
-  await page.getByRole('main').getByRole('link', { name: 'Import menu' }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-    `Import menu for ${restaurant.name}`,
-  );
+  await restaurantTab(page, 'Menu imports');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(restaurant.name);
+  await expect(page.getByRole('heading', { level: 2, name: 'Import a menu' })).toBeVisible();
 
   await page.getByLabel('Menu CSV file').setInputFiles({
     name: 'menu.csv',

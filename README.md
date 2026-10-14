@@ -123,11 +123,15 @@ the sales summary for today or yesterday.
 scan, and every later login asks for the 6-digit code. Without the code the database shows a
 platform admin nothing.
 
-- **Overview**: restaurants by state, MRR, orders in the last 24 hours, trials ending this week.
-- **Restaurants**: search and filters; each restaurant's profile, owner login, subscription,
-  payments, usage and access, with actions to extend the trial, change the plan, record a payment
-  received outside Razorpay, send a Razorpay payment link (months of the plan, or the setup fee),
-  sync with Razorpay, cancel autopay, suspend or unsuspend, and set a new owner password.
+- **Home**: key numbers, what needs attention, charts, the activity stream; an alerts bell and a
+  daily digest email.
+- **Restaurants**: search, filters (tags, account manager and onboarding among them) and saved
+  views, My restaurants and Onboarding first. Each restaurant's page has its state, health, owner,
+  tags and account manager over tabs: Overview (with its onboarding checklist), Billing, Usage,
+  Activity, Notes (the team's only), Documents, Support view and Menu imports. Its Actions menu extends the trial, changes the plan, records a payment
+  received outside Razorpay, sends a Razorpay payment link (months of the plan, or the setup fee),
+  syncs with Razorpay, cancels autopay, adds a note, and suspends or unsuspends; the owner's login
+  on Overview gets a new password.
 - **Onboard restaurant**: details → owner login → tax → plan and trial, then the login details to
   hand over.
 - **Support view**: the restaurant's menu, tables, live board and Total orders, read-only. Each
@@ -135,6 +139,9 @@ platform admin nothing.
 - **Subscriptions**, **Plans** (prices, limits, features, Razorpay plan ids), **Webhooks** (what
   Razorpay sent; a failed one can be reprocessed) and the **Audit log**.
 - **Leads**: "Book a demo" requests from the website's contact page.
+- **Support inbox**: what restaurants send from Get help, by status, with priority, assignee,
+  the screenshot, internal notes and history. A new request emails the support address set in
+  Platform settings and shows in the alerts bell.
 - **Platform settings**: trial and grace days, the setup fee, its launch discount and the offer's
   last day, and the support phone and email. Every change is in the audit log.
 
@@ -151,7 +158,8 @@ To make someone a platform admin, create their login in Supabase Auth, then
 
 ### Menu import
 
-Menu → **Import menu** (owners and managers; platform admins from a restaurant's page) turns a
+Menu → **Import menu** (owners and managers; platform admins from a restaurant's Menu imports
+tab) turns a
 printed menu into dishes without typing them (spec §20A). Photos (or a PDF) of up to 10 pages are
 read by a vision model; a CSV file works without one. Either way the owner checks a draft first:
 the rows most likely to be wrong come first, every field can be edited, and nothing reaches the
@@ -236,6 +244,8 @@ through Resend; without these the step is skipped:
 | `RESEND_API_URL` | Defaults to `https://api.resend.com` (tests use a mock)            |
 
 Run it by hand with `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/daily`.
+A second cron, `/api/cron/digest` at 08:45 India time, emails the platform team yesterday's
+numbers and today's Needs attention counts, once a day (docs/DECISIONS.md SA-31).
 With a real key it emails the addresses in your local database.
 
 ### Admin panel
@@ -252,6 +262,8 @@ Owners and managers set the restaurant up at `/admin`:
 - **Waiters**: waiter profiles (no login needed), on/off duty, optional linked login.
 - **Staff logins**: logins for managers, waiters and kitchen staff; password resets.
 - **Settings**: restaurant details and logo, tax and charges, bill options, ordering rules.
+- **Get help** (account menu, or Settings): ask the MenuMesh team, with a screenshot if it
+  helps, and see where each request stands.
 
 ### Website
 

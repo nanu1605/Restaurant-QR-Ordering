@@ -5,16 +5,20 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 import type { RestaurantFilters } from '../params';
+import type { TeamMember } from '../restaurant-page';
 import {
   ACQUISITION_CHANNEL_LABELS,
   ACQUISITION_CHANNELS,
   HEALTH_LABELS,
   HEALTHS,
+  ONBOARDING_FILTER_LABELS,
+  ONBOARDING_FILTERS,
   RESTAURANT_COLUMN_LABELS,
   RESTAURANT_COLUMNS,
   SUBSCRIPTION_STATE_LABELS,
   SUBSCRIPTION_STATES,
   type RestaurantColumn,
+  type Tag,
 } from '../platform';
 
 const PATH = '/super/restaurants';
@@ -31,6 +35,8 @@ type RestaurantsFiltersProps = {
   cities: string[];
   regions: string[];
   plans: { code: string; name: string }[];
+  tags: Tag[];
+  team: TeamMember[];
 };
 
 /**
@@ -44,6 +50,8 @@ export function RestaurantsFilters({
   cities,
   regions,
   plans,
+  tags,
+  team,
 }: RestaurantsFiltersProps) {
   const select = (
     name: keyof RestaurantFilters,
@@ -113,6 +121,12 @@ export function RestaurantsFilters({
         'Any health',
         HEALTHS.map((health) => [health, HEALTH_LABELS[health]]),
       )}
+      {select(
+        'onboarding',
+        'Onboarding',
+        'Any',
+        ONBOARDING_FILTERS.map((value) => [value, ONBOARDING_FILTER_LABELS[value]]),
+      )}
       {select('channel', 'Found us', 'Any way', [
         ...ACQUISITION_CHANNELS.map((c): [string, string] => [c, ACQUISITION_CHANNEL_LABELS[c]]),
         ['unknown', 'Not known'],
@@ -129,6 +143,17 @@ export function RestaurantsFilters({
         'Anywhere',
         regions.map((region) => [region, region]),
       )}
+      {select(
+        'tag',
+        'Tag',
+        'Any tag',
+        tags.map((tag) => [tag.id, tag.name]),
+      )}
+      {select('manager', 'Account manager', 'Anyone', [
+        ['me', 'Me'],
+        ['none', 'No one'],
+        ...team.map((member): [string, string] => [member.user_id, member.email]),
+      ])}
       {date('from', 'Created from')}
       {date('to', 'Created to')}
       {date('paid_from', 'Paid till from')}

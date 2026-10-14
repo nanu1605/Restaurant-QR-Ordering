@@ -153,7 +153,7 @@ test('a failed payment is chased from Dues and lands in the ledger and its CSV',
   // A row leads to the restaurant's payments.
   await paymentRow.getByRole('link', { name: restaurant.name }).click();
   await expect(page).toHaveURL(
-    new RegExp(`/super/restaurants/${restaurant.restaurantId}#section-payments$`),
+    new RegExp(`/super/restaurants/${restaurant.restaurantId}/billing#section-payments$`),
   );
   await expect(page.getByRole('heading', { name: restaurant.name, level: 1 })).toBeVisible();
 });

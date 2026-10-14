@@ -301,7 +301,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<'/super/m
 function RestaurantLink({ row }: { row: PaymentRow }) {
   return (
     <Link
-      href={`/super/restaurants/${row.restaurant_id}#section-payments`}
+      href={`/super/restaurants/${row.restaurant_id}/billing#section-payments`}
       className="font-medium text-brand underline-offset-4 hover:underline"
     >
       {row.restaurant_name}

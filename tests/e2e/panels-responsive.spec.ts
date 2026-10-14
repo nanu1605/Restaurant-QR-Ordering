@@ -3,7 +3,12 @@ import { expect, type Page, test } from '@playwright/test';
 import { createOrderingTable } from './customer-fixtures';
 import { adminClient, DEMO_PASSWORD, logInWithCode, TEST_PASSWORD } from './helpers';
 import { createLiveRestaurant, openLiveScreen, placeCustomerOrder } from './live-fixtures';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  logInAsPlatformAdmin,
+  restaurantPagePaths,
+  supportRequestPaths,
+} from './platform-fixtures';
 
 /**
  * Every panel works from a 360 px phone to a laptop (spec §16.3,
@@ -91,6 +96,7 @@ test('the admin panel fits every screen', async ({ page }) => {
     '/admin/staff',
     '/admin/settings',
     '/admin/subscription',
+    '/admin/help',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });
@@ -110,6 +116,10 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super/webhooks',
     '/super/audit',
     '/super/settings',
+    // A restaurant's page, every tab (13a).
+    ...(await restaurantPagePaths('responsive')),
+    // The support inbox and a request (13b).
+    ...(await supportRequestPaths('responsive')),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });
@@ -142,6 +152,8 @@ test('admin sections are in a menu sheet below laptop width', async ({ page }) =
   await openMenu.click();
   await nav.getByRole('link', { name: 'Reports' }).click();
   await expect(page).toHaveURL(/\/admin\/reports$/);
+  // Until the sheet has slid away, its nav and the sidebar's both match.
+  await expect(page.getByRole('dialog')).toBeHidden();
 
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(openMenu).toBeHidden();

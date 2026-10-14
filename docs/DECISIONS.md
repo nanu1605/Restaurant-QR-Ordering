@@ -3420,7 +3420,8 @@ stay at 13g, since nobody else gets `/super` before then.
   file short. A row opens the restaurant's Payments section (its Billing tab from 13a). On a
   phone the rows become cards, their total marked "incl. GST". With only an end date the
   heading reads "Up to" that day and the file is named `payments-to-<day>.csv`.
-  Compare-with-previous-period comes with Home (12e).
+  Comparing with the period before starts with Home's MRR (12e, SA-27); the ledger's own
+  comparison waits for Revenue (13f).
 - **SA-19 · Dues:** `/super/money/dues` through `platform_list_dues`, the buckets of plan §5.6,
   first match wins. Suspended restaurants are in no bucket: suspending is the team's own call,
   handled on the restaurant's page. Payment failed needs full access; once grace ends the
@@ -3507,8 +3508,228 @@ stay at 13g, since nobody else gets `/super` before then.
   cannot reach any other database; it removes the previous load first, and
   `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
   payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
-  the same seed gives the same data. Snapshot history arrives with the charts (12e). With it and
+  the same seed gives the same data, with a year of nightly snapshots from 12e (a 14-day trial,
+  then each kind's path) for Home's MRR chart and the lapses in the activity. With it and
   about 2,600 restaurants locally the list function takes 26 to 215 ms, the CSV 0.6 s and search
   under 10 ms. `PERF=1 pnpm e2e super-perf --project=desktop` (opt-in, like the website's) checks
   that each super-admin page answers within 1.5 s; the slowest, sorted by GMV, took 0.96 s with
   the rest of the suite running.
+
+### 12e · Home
+
+- **SA-27 · Key numbers and charts:** `platform_home(period)` for Today (the default) or This
+  month. MenuMesh money is by India date (payments since midnight, or this month); orders and GMV
+  are each restaurant's current business day, or the business days in this India month, summed
+  as their own dashboards count them. Paid, on trial and payment failed use the shared state rule
+  (they match `platform_overview`, which a test checks). MRR is compared with the same India date
+  a month ago, from that night's snapshot, as "Up 8% in a month"; nothing is shown until history
+  reaches back. Home shows whole rupees; the pages behind each figure have the paise. MRR and
+  collected need money.view (null in the function, absent on the page); GMV, the restaurants'
+  own sales with their taxes, is shown to all and never added to MenuMesh money. Open tables are
+  the open sessions of active restaurants. Charts: each night's MRR for 12 months and today's,
+  its axis by month and year; GMV (`--chart-2`) and accepted orders for the last 30 business days
+  every restaurant has finished (before 04:00 India time that ends the day before yesterday, so
+  the last bar is never a half day); new restaurants
+  per India week from Monday, signups (trial claims) and the team's apart. Usage reads
+  `metrics_usage_daily` up to the day before each restaurant's last finished one and counts that
+  day and today live (`private.platform_usage`, the rule of SA-23). The charts are `next/dynamic`
+  client components without server rendering, so recharts isn't part of the panel's first load;
+  they don't animate, and each has its numbers as a table under "Show as a table" (a focusable
+  scroll region) and a summary for screen readers. Recharts' own keyboard layer is off, here and
+  in the reports' charts: inside `role="img"` it was a nameless tab stop. Legend names are ink,
+  only the swatch takes the series colour, since teal and amber text fail 4.5:1. A CSV of a chart waits for Revenue (13f): every figure links to a page
+  that already exports its rows.
+- **SA-28 · Needs attention:** `platform_needs_attention()` (`private.attention`), groups in
+  order: Payment failed, Trial ends in 3 days with no autopay, Needs a payment within 7 days
+  (manual and payment-link payers), Leads from the last 24 hours (until leads get a status in
+  13d), No orders in N days (N from the health settings, as on the restaurants list), Slowing
+  (both only with full access: a lapsed or suspended restaurant is quiet for a known reason),
+  Possible duplicate signups (an active signup of the last 7 days that looks like another
+  restaurant, reviewed on its page; suspending it resolves it, and with no dismiss flag a snooze
+  sets one aside until it ages out after the week), Failed webhooks (until run again) and Failed
+  scheduled steps (each job and step whose latest run in two days failed). The money groups read
+  `private.dues_rows`, the Dues bucket rule now shared with `platform_list_dues` (same results;
+  550 still passes), so an item is a Dues row and uses the same dialogs and messages: a payment
+  item offers Send payment link (Record payment while the Razorpay keys are unset), a trial Call
+  and WhatsApp, a quiet restaurant Call. Five items a group, with its count and a link to the
+  full list. Each admin snoozes an item for 1, 3 or 7 days (`platform_snoozes`, keyed
+  `group:id`, written only through `platform_snooze`; an expired one is replaced or cleared by
+  the admin's next snooze); nothing else is stored, so a resolved item simply stops being
+  listed. Home's entry in the sidebar shows the count, from the alerts bell's latest look. Money
+  groups need money.view, leads growth.manage, webhooks and steps system.view.
+- **SA-29 · Activity:** `platform_activity(restaurant, kinds, before, limit)`, newest first, from
+  where each event already lives: signups and restaurants the team onboarded, payments (who
+  recorded a manual one), failed payments (the audit row of a Razorpay webhook moving the
+  subscription into retrying), lapses (a nightly snapshot turning read-only, read-only days walked
+  newest first below the cursor through a partial index, each compared with the day before),
+  reminder emails, leads, finished or failed menu imports (dishes added and updated), and what
+  the team did (platform-admin audit rows, less those the other kinds show, the team's own menu
+  imports included). Notes joined in 13a (SA-38), support requests in 13b (SA-43). Paged by time
+  and key, so equal times never drop an item; an old
+  cursor in a link starts again from the newest. Amounts are null without money.view, and kinds
+  follow permissions (payments money.view, leads growth.manage, the team's audit.view). The
+  function returns the facts; the page words them (`activityLine`). Home filters by one kind.
+- **SA-30 · Alerts:** the bell in the header asks `/super/alerts` (a route handler: 401 without
+  the second factor, never a redirect) every 60 s while the tab is in view, and at once when it
+  comes back; a server action would queue behind the admin's own actions. It counts signups,
+  payments, failed payments and leads since `platform_admins.alerts_seen_at` (from becoming an
+  admin, the first time), lists the latest ten, and opening it marks them seen up to the newest
+  one shown (`platform_mark_alerts_seen(seen)`, never moving back), so one that arrived after the
+  list was fetched stays new; a look sent before the opening can't bring the count back. After the
+  first look, each new one is a toast (three at most, then "And N more"). A look that fails says
+  so in the menu instead of "Nothing yet". Alerts open as page links, closing the menu. The same
+  answer carries the Needs attention count for the sidebar.
+- **SA-31 · Daily digest:** a second Vercel cron, `/api/cron/digest` at 03:15 UTC (08:45 India
+  time), behind `CRON_SECRET`, recorded in `cron_runs` as job `digest`. `platform_digest(day)`
+  (service role only) gives yesterday's state at the end of the day (that night's snapshot, or
+  as it stands), money collected, signups, restaurants onboarded, leads, GMV and orders for that
+  business day, and today's Needs attention counts without anyone's snoozes; it goes to every
+  platform admin until 13g (one email per 50 addresses, all in To: they are the team). Once a
+  day: a successful run that sent that day's digest makes the next say "already sent", and
+  Resend's idempotency key is the day and the recipients. A rerun after a send that went out but
+  wasn't recorded (a timeout) gets Resend's 409 for that key with the morning's counts, and counts
+  it as sent. Without Resend it is skipped and
+  recorded, and staging's team gets staging's digest. The cron route helpers moved to
+  `src/lib/cron.ts`, shared with the nightly job.
+- **SA-32 · Overview becomes Home:** the sidebar's first entry is Home; the old trials list is
+  the trial group of Needs attention, orders in 24 hours are orders today.
+  `platform_overview` stays in the database for its tests and as Home's cross-check.
+
+### 13a · Restaurant page
+
+- **SA-33 · Tabs as pages:** `/super/restaurants/[id]` gets a layout with the header and a tab
+  bar of links (Overview, Billing, Usage, Activity, Notes, Documents, Support view, Menu
+  imports), each tab its own page at `/billing`, `/usage` and so on, so a tab can be linked, kept
+  in history and loaded alone. The bar marks the current tab with `aria-current` (from
+  `useSelectedLayoutSegment`) and scrolls sideways on a phone. The existing support view
+  (`/support/[section]`) and menu import (`/menu-import`) pages are the last two tabs, under the
+  same header, with their breadcrumbs and h1 replaced by an h2. The restaurant is read once per
+  request (`getRestaurantDetail` in React `cache()`), shared by the layout, the tab and the
+  title. Links that meant payments now open Billing (`/billing#section-payments`: the ledger,
+  search, the activity stream; Dues rows open Billing). The timeline is the activity stream for
+  the restaurant, every kind but leads, with the kind filter and paging of Home, and the Audit log
+  link.
+- **SA-34 · Header and actions:** name, code and city; the subscription state and health badges
+  of the list (`platform_get_restaurant` now returns the list's state, health, last active, plan
+  limits, cancellation reason, tags and account manager); plan and cycle; paid or trial till
+  (its last day); last active; the owner with the restaurant's phone (Call, WhatsApp) and email;
+  tags; the account manager. The actions are one Actions menu (all the earlier buttons plus Add
+  note), each opening the dialog it opened before. `platform_get_restaurant` switches to
+  `require_platform_permission('restaurants.view')`, and its payments carry the purpose, GST
+  split, plan, Razorpay id and who recorded them, for money.view only (none without it).
+- **SA-35 · Overview:** the last 30 business days the restaurant has finished (the days of the
+  list's GMV): orders, GMV, average bill (GMV over bills), QR orders as a share of accepted orders
+  with its fraction (only the fraction below 5), and last active; 90 days of orders and GMV as
+  Home's chart; pinned notes and the latest one; the latest five activity items; the owner's
+  login with the password reset. `private.platform_usage` gains a restaurant and the customer,
+  staff and bill counts, so the live last finished day is still counted in one place (dropped
+  and created again: its result changed). The onboarding checklist joins with 13b.
+- **SA-36 · Billing:** the subscription facts and access as before, its own status (Halted,
+  Expired and the rest, which the header's state merges), and the reason given for leaving: "Why
+  it is leaving" while it is ending or ended, otherwise "Reason given when it last left" (the
+  answer is kept when autopay comes back); where it stands in Dues, read from `private.dues_rows`
+  (narrowed by its code, then its id) with the amount due with GST, and for a suspended
+  restaurant, which Dues leaves out, a line saying so rather than "nothing due"; the payments with amount, GST and total; the payment links sent (from
+  their audit rows, a link marked paid once a payment arrives for its id); reminders emailed;
+  and the plan and subscription history: plan changes, trial extensions, autopay set up or
+  turned off and its reason, Razorpay's status changes, suspensions, from the audit log, newest
+  50 of each list.
+- **SA-37 · Usage:** active tables and staff logins against the plan's limits, waiters, the last
+  order and all bills as before; orders over 7 and 30 days and bills over 30 are now accepted
+  orders and active bills over the business days the restaurant has finished, the Overview's
+  numbers (the old clock-time counts of every order are gone from `platform_get_restaurant`); the plan limits it ran into in 90 days (`plan_limit_events`, grouped); and
+  orders by weekday and hour over the last 12 weeks of stored days, in the sales heatmap's style
+  (the weekday of the business day, the hour on the clock), a shared `Heatmap` that usage
+  analytics (13e) uses too. Features in use wait for 13e, which defines them for every
+  restaurant at once.
+- **SA-38 · Notes:** `restaurant_notes`, read and written only by the team. Anyone with
+  restaurants.manage writes, pins and unpins a note; only its author edits it, within 15 minutes
+  (`NOTE_LOCKED` after), so a note is what was said and when. No deleting: a mistake is edited
+  in its first 15 minutes, and a later correction is a new note. Each change is audited
+  (`restaurant.note_added`, `_edited` with the text before and after, `_pinned`, `_unpinned`).
+  Notes are a kind in the activity stream (the first 200 characters), so their audit rows aren't
+  team items too. The page shows 200: every pinned note first, however old, then the newest.
+- **SA-39 · Tags and account manager:** `platform_tags` (a name, unique whatever its case, and a
+  colour from six) and `restaurant_tags`, at most 10 a restaurant. A tag is a swatch of its
+  colour beside ink text, so every colour reads in both themes. The header's Tags dialog ticks
+  tags, adds a new one and deletes one from every restaurant (after a confirmation in the row).
+  The account manager is a platform admin, kept in `restaurant_account_managers` (one row a
+  restaurant; not a column on `restaurants`, which its staff read), chosen from the team
+  (`platform_team()`, emails until 13g adds names) in a menu on the header; when they stop being
+  an admin the row goes. The Restaurants list filters by tag and by account manager (me, no
+  one, or anyone on the team), shows Tags by default and Account manager on request, puts both
+  in the CSV, and has a My restaurants view first. Tag and account-manager changes are audited
+  and are team items in the stream.
+- **SA-40 · What the restaurant doesn't see:** notes, tags and account managers are the team's.
+  Their tables (`restaurant_notes`, `platform_tags`, `restaurant_tags`,
+  `restaurant_account_managers`) are read only by platform admins, and the audit rows of notes, tag changes and
+  account-manager changes (entity types `restaurant_note`, `restaurant_tags`,
+  `account_manager`) name the restaurant, so the team finds them by restaurant, but are left out
+  of the restaurant's own audit log: the policy that lets its owner and managers read their
+  restaurant's audit rows now skips those three entity types. Their other rows read as before.
+
+### 13b · Onboarding checklist, Get help and the support inbox
+
+- **SA-41 · Onboarding checklist:** one SQL rule, `private.restaurants_onboarding(ids)` (one
+  query for many restaurants, as the list's page, its CSV and Needs attention ask; a partial
+  index finds the audit rows it needs; `private.restaurant_onboarding(id)` for one), gives a restaurant's
+  seven steps (plan §5.13) with when each was done: the menu when its fifth active dish was
+  added; tables at the first active table; QR codes at the first `table.qr_downloaded` or
+  `table.qr_sheet_printed` audit row (SA-14), or the first QR order, since a QR order shows the
+  codes are out and QR use is only recorded since 12b; the team at the first active login that
+  isn't the owner or the first waiter profile; the first accepted QR order; the first bill (void
+  ones too: one was made); and paid at the first subscription payment (not a setup fee) or, while
+  autopay is on and not ending, since Razorpay first reported it authenticated or active. A step
+  undone later (dishes or tables turned off) is to do again. The next step is the first to do;
+  it is stuck when a step is to do and none was done in 3 days, counted from its creation before
+  the first. The Overview shows the steps with their dates, the next one and a "Stuck since"
+  badge; the Restaurants list has an Onboarding column (the next step, how many are done, stuck),
+  a filter (not finished, stuck, done) and a built-in Onboarding view. The owner's first-steps
+  card (W-9) keeps its five steps and words but reads the same rules through `admin_onboarding()`:
+  "Add your menu" now needs 5 dishes, "Give your staff their logins" is done by a waiter profile
+  too, and "Set up autopay" by a subscription payment; the address step and the online-payment
+  check stay in the page.
+- **SA-42 · Get help:** the owner or a manager, from the account menu (the admin panel's only)
+  or Settings, opens `/admin/help`: a topic, a message (up to 2,000 characters), an optional
+  screenshot and how to be reached (call or WhatsApp on a 10-digit mobile, the restaurant's
+  phone filled in; or email, the owner's own filled in, since other logins have made-up
+  addresses, an owner set up without an email too; an address must be plain, with nothing a
+  mailto link would read as more of the email). The account menu passes the page it was opened on; the server adds the build
+  (`NEXT_PUBLIC_BUILD_SHA`, "Not known" locally) and the browser, and the database the login and
+  role. A screenshot (PNG, JPEG or WebP, up to 5 MB, unchanged so its words stay sharp) goes
+  straight to the private `support-screenshots` bucket through a link the server signs for a
+  new name in the restaurant's folder (`admin_start_screenshot_upload`, 20 an hour, so a login
+  can't fill the bucket; sending again after an error reuses the upload);
+  `admin_create_support_request` takes it only from that folder and once it is there. One the
+  form never sent is removed by the nightly job after a day, 500 at a time until none are left
+  (at most 10,000 a night). Requests work while the restaurant is read-only (billing questions come then), 10 an
+  hour a restaurant (`RATE_LIMITED`). Each new request emails the platform's support address
+  (best effort, once: `support/<id>`). The page lists the restaurant's 50 newest requests with
+  each status in its words (Received, Being worked on, Waiting for you, Resolved) and its
+  changes. There is no reply in the app: the team calls, messages or emails as asked, and a
+  restaurant with more to say sends another request.
+- **SA-43 · Support inbox:** `/super/support` for restaurants.support. Status tabs with counts
+  (not resolved first, then open, in progress, waiting on restaurant, resolved), filters by
+  assignee (me, no one, anyone on the team), priority (high, normal, low; new ones are normal)
+  and topic; open work highest priority first, then oldest, with its age; resolved newest
+  first. A request's page has the message, the screenshot (a signed link for an hour), who asked
+  and how to reach them (Call, WhatsApp or email links), the restaurant, page, version and
+  browser, and menus for status, priority and assignee that save when chosen. Each change, and
+  each internal note, is a row in `support_request_events` (by whom, from and to), which is the
+  request's history: these aren't audit rows, so nothing about a request reaches the
+  restaurant's audit log or the team items of the activity stream. Resolving sets when; any
+  other status clears it. A new request is an activity item of its own kind (support), so it is
+  an alert and a toast for whoever works the inbox.
+- **SA-44 · Needs attention:** two groups. Support requests open or in progress for more than a
+  day (waiting on the restaurant is the restaurant's turn), opened from the item; and
+  restaurants stuck in onboarding, of the last 60 days, active with full access, stuck before
+  the paying step (paying is Dues' and the trial's), with a Call button. Both can be snoozed;
+  they sit after new leads. The digest counts them too. Their links say where they lead ("Open
+  the inbox", "Every stuck restaurant") rather than promising the group's count, since those lists
+  hold more.
+- **SA-45 · What the restaurant sees:** `support_requests` and `support_request_events` are read
+  only by platform admins; the restaurant reads its own requests through
+  `admin_list_support_requests()`, without the priority, the assignee or the notes, and only
+  status changes as history. Another restaurant's requests and screenshots are out of reach: no
+  storage policy names the bucket, and a screenshot is only shown through a link signed for the
+  team.

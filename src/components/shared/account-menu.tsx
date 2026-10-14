@@ -1,7 +1,8 @@
 'use client';
 
-import { ArrowLeftRight, ChevronDown, CircleUser, Download, LogOut } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, CircleUser, Download, LifeBuoy, LogOut } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useOptimistic, useRef, useSyncExternalStore, useTransition } from 'react';
 import { toast } from 'sonner';
 
@@ -82,6 +83,8 @@ type AccountMenuProps = {
   switchTo?: { href: string; label: string };
   /** The panel has the install manifest (the staff and admin panels). */
   installable?: boolean;
+  /** Get help's page (the admin panel); the page it is opened on goes along. */
+  help?: string;
 };
 
 /**
@@ -127,8 +130,10 @@ export function AccountMenu({
   roleLabel,
   switchTo,
   installable = false,
+  help,
 }: AccountMenuProps) {
   const logout = useRef<HTMLFormElement>(null);
+  const pathname = usePathname();
   const canInstall = useInstall(installable);
   const t = useStaffStrings();
   const staffLang = useStaffLangChoice();
@@ -160,6 +165,19 @@ export function AccountMenu({
               >
                 <ArrowLeftRight aria-hidden />
                 {switchTo.label}
+              </DropdownMenuLinkItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          {help && (
+            <>
+              <DropdownMenuLinkItem
+                closeOnClick
+                render={<Link href={`${help}?from=${encodeURIComponent(pathname)}`} />}
+                className={ITEM}
+              >
+                <LifeBuoy aria-hidden />
+                Get help
               </DropdownMenuLinkItem>
               <DropdownMenuSeparator />
             </>

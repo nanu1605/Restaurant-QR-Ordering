@@ -28,7 +28,11 @@ export default defineConfig({
       name: 'desktop',
       use: { ...devices['Desktop Chrome'] },
       // The customer panel is mobile-first (spec §13.1): it runs on the phone only.
-      testIgnore: [/customer-.*\.spec\.ts/, /super-settings\.spec\.ts/],
+      testIgnore: [
+        /customer-.*\.spec\.ts/,
+        /super-settings\.spec\.ts/,
+        /super-support-email\.spec\.ts/,
+      ],
     },
     // The public website, the admin menu sheet and colour contrast are checked on a tablet
     // too (docs/DECISIONS.md W-4, B-6, B-7).
@@ -45,7 +49,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-money|super-restaurants|super-settings|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-home|super-money|super-restaurant-page|super-restaurants|super-settings|super-support|super-support-email|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
       ],
     },
     // It changes the platform settings that the pricing and payment-link specs read,
@@ -55,6 +59,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /super-settings\.spec\.ts/,
       dependencies: ['smoke', 'desktop', 'tablet', 'mobile'],
+    },
+    // It sets the support address in that same row, so it waits for the settings spec.
+    {
+      name: 'support-email',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /super-support-email\.spec\.ts/,
+      dependencies: ['platform-settings'],
     },
   ],
   webServer: [

@@ -9,7 +9,12 @@ import {
   placeCustomerOrder,
   tableCard,
 } from './live-fixtures';
-import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
+import {
+  createPlatformAdmin,
+  logInAsPlatformAdmin,
+  restaurantPagePaths,
+  supportRequestPaths,
+} from './platform-fixtures';
 
 // Security hardening (spec §19 Phase 9, docs/DECISIONS.md P9-9): every page
 // runs under a nonce-based Content-Security-Policy without being blocked, and
@@ -71,6 +76,7 @@ test('every panel runs under the content security policy without violations', as
     '/admin/settings',
     '/admin/settings/test-print',
     '/admin/subscription',
+    '/admin/help',
   ]) {
     await visit(owner.page, path);
   }
@@ -88,6 +94,8 @@ test('every panel runs under the content security policy without violations', as
 });
 
 test('the platform admin pages run under the policy without violations', async ({ page }) => {
+  // Nine pages to the network going quiet, Home's charts and alerts after it, beside the suite.
+  test.slow();
   const violations = await watchCspViolations(page.context());
   await logInAsPlatformAdmin(page, await createPlatformAdmin('csp'));
   for (const path of [
@@ -100,6 +108,10 @@ test('the platform admin pages run under the policy without violations', async (
     '/super/money/subscriptions',
     '/super/webhooks',
     '/super/audit',
+    // A restaurant's Overview (its chart) and Billing.
+    ...(await restaurantPagePaths('csp')).slice(0, 2),
+    // The support inbox and a request with its screenshot link (13b).
+    ...(await supportRequestPaths('csp')),
   ]) {
     await visit(page, path);
   }

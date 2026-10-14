@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { PageHeader } from '@/components/shared/page-header';
 import { buttonVariants } from '@/components/ui/button';
 import { parseTotalOrders } from '@/features/billing/bill';
 import { TotalOrdersFiltersForm } from '@/features/billing/components/total-orders-filters';
@@ -12,7 +11,6 @@ import {
   TotalOrdersSummary,
 } from '@/features/billing/components/total-orders-view';
 import { readTotalOrdersParams } from '@/features/billing/schemas';
-import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { SupportBoard } from '@/features/platform/components/support-board';
 import { SupportMenuList, SupportTablesList } from '@/features/platform/components/support-view';
 import {
@@ -23,7 +21,7 @@ import {
   type SupportSection,
 } from '@/features/platform/platform';
 import { getSupportView } from '@/features/platform/queries';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Support view',
@@ -42,7 +40,7 @@ export default async function SupportViewPage({
   params,
   searchParams,
 }: PageProps<'/super/restaurants/[restaurantId]/support/[section]'>) {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.view');
   const { restaurantId, section } = await params;
   if (!isSection(section)) notFound();
 
@@ -53,22 +51,17 @@ export default async function SupportViewPage({
   const basePath = `/super/restaurants/${restaurant.id}/support`;
 
   return (
-    <>
-      <Breadcrumbs
-        items={[
-          { href: '/super/restaurants', label: 'Restaurants' },
-          { href: `/super/restaurants/${restaurant.id}`, label: restaurant.name },
-        ]}
-      />
-      <PageHeader
-        title={`${SUPPORT_SECTION_LABELS[section]}: ${restaurant.name}`}
-        description={
-          <span className="inline-flex items-center gap-1">
-            <Eye aria-hidden className="size-4" />
-            Read-only support view. Each look is recorded in the restaurant&apos;s audit log.
-          </span>
-        }
-      />
+    <section aria-labelledby="support-heading" className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 id="support-heading" className="text-lg font-semibold text-ink">
+          Support view: {SUPPORT_SECTION_LABELS[section]}
+        </h2>
+        <p className="inline-flex items-center gap-1 text-sm text-ink-muted">
+          <Eye aria-hidden className="size-4 shrink-0" />
+          Read-only, as the restaurant&apos;s manager sees it. Each look is recorded in the
+          restaurant&apos;s audit log.
+        </p>
+      </div>
       <nav aria-label="Support sections" className="flex flex-wrap gap-2">
         {SUPPORT_SECTIONS.map((candidate) => (
           <Link
@@ -97,7 +90,7 @@ export default async function SupportViewPage({
           basePath={`${basePath}/total_orders`}
         />
       )}
-    </>
+    </section>
   );
 }
 

@@ -1225,14 +1225,17 @@ export type Database = {
       }
       platform_admins: {
         Row: {
+          alerts_seen_at: string | null
           created_at: string
           user_id: string
         }
         Insert: {
+          alerts_seen_at?: string | null
           created_at?: string
           user_id: string
         }
         Update: {
+          alerts_seen_at?: string | null
           created_at?: string
           user_id?: string
         }
@@ -1319,6 +1322,84 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_snoozes: {
+        Row: {
+          admin_id: string
+          created_at: string
+          item_key: string
+          until: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          item_key: string
+          until: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          item_key?: string
+          until?: string
+        }
+        Relationships: []
+      }
+      platform_tags: {
+        Row: {
+          colour: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          colour: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          colour?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      restaurant_account_managers: {
+        Row: {
+          created_at: string
+          restaurant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          restaurant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          restaurant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_account_managers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_account_managers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       restaurant_members: {
         Row: {
           created_at: string
@@ -1359,6 +1440,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "restaurant_members_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_notes: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          edited_at: string | null
+          id: string
+          pinned: boolean
+          restaurant_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          pinned?: boolean
+          restaurant_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          pinned?: boolean
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_notes_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -1462,6 +1581,42 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: true
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_tags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          restaurant_id: string
+          tag_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          restaurant_id: string
+          tag_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          restaurant_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_tags_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "platform_tags"
             referencedColumns: ["id"]
           },
         ]
@@ -1931,6 +2086,161 @@ export type Database = {
           },
         ]
       }
+      support_request_events: {
+        Row: {
+          actor_id: string | null
+          body: string | null
+          created_at: string
+          from_value: string | null
+          id: string
+          kind: string
+          request_id: string
+          restaurant_id: string
+          to_value: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind: string
+          request_id: string
+          restaurant_id: string
+          to_value?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind?: string
+          request_id?: string
+          restaurant_id?: string
+          to_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_request_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "support_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_request_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_requests: {
+        Row: {
+          assignee_id: string | null
+          contact: string
+          contact_method: string
+          context: Json
+          created_at: string
+          created_by: string | null
+          created_by_name: string
+          created_by_role: Database["public"]["Enums"]["member_role"]
+          id: string
+          message: string
+          priority: string
+          resolved_at: string | null
+          restaurant_id: string
+          screenshot_path: string | null
+          status: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_id?: string | null
+          contact: string
+          contact_method: string
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          created_by_name: string
+          created_by_role: Database["public"]["Enums"]["member_role"]
+          id?: string
+          message: string
+          priority?: string
+          resolved_at?: string | null
+          restaurant_id: string
+          screenshot_path?: string | null
+          status?: string
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_id?: string | null
+          contact?: string
+          contact_method?: string
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string
+          created_by_role?: Database["public"]["Enums"]["member_role"]
+          id?: string
+          message?: string
+          priority?: string
+          resolved_at?: string | null
+          restaurant_id?: string
+          screenshot_path?: string | null
+          status?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_requests_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "support_requests_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_screenshot_uploads: {
+        Row: {
+          created_at: string
+          id: string
+          path: string
+          restaurant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          path: string
+          restaurant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          path?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_screenshot_uploads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_sessions: {
         Row: {
           approved_at: string | null
@@ -2166,6 +2476,10 @@ export type Database = {
         Args: { p_actor_user_id: string; p_payload: Json }
         Returns: string
       }
+      admin_create_support_request: {
+        Args: { p_request: Json }
+        Returns: string
+      }
       admin_create_tables: { Args: { p_labels: string[] }; Returns: Json }
       admin_deactivate_staff: {
         Args: { p_member_id: string }
@@ -2211,6 +2525,8 @@ export type Database = {
           waiter_name: string
         }[]
       }
+      admin_list_support_requests: { Args: never; Returns: Json }
+      admin_onboarding: { Args: never; Returns: Json }
       admin_preview_bill: {
         Args: {
           p_apply_service_charge: boolean
@@ -2260,6 +2576,10 @@ export type Database = {
       admin_set_waiter_on_duty: {
         Args: { p_on_duty: boolean; p_waiter_id: string }
         Returns: undefined
+      }
+      admin_start_screenshot_upload: {
+        Args: { p_extension: string }
+        Returns: string
       }
       admin_total_orders: { Args: { p_filters: Json }; Returns: Json }
       admin_unassign_waiter: { Args: { p_session_id: string }; Returns: Json }
@@ -2416,7 +2736,25 @@ export type Database = {
       }
       menu_set_hindi_names: { Args: { p_names: Json }; Returns: number }
       password_resets_cleanup: { Args: never; Returns: number }
+      platform_activity: {
+        Args: {
+          p_before?: string
+          p_kinds?: string[]
+          p_limit?: number
+          p_restaurant_id?: string
+        }
+        Returns: Json
+      }
+      platform_add_note: {
+        Args: { p_body: string; p_pinned?: boolean; p_restaurant_id: string }
+        Returns: string
+      }
+      platform_add_support_note: {
+        Args: { p_body: string; p_request_id: string }
+        Returns: string
+      }
       platform_admin_status: { Args: never; Returns: string }
+      platform_alerts: { Args: never; Returns: Json }
       platform_audit_payment_link: {
         Args: { p_link: Json; p_restaurant_id: string }
         Returns: undefined
@@ -2426,7 +2764,17 @@ export type Database = {
         Returns: Json
       }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
+      platform_create_tag: {
+        Args: { p_colour: string; p_name: string }
+        Returns: string
+      }
+      platform_delete_tag: { Args: { p_tag_id: string }; Returns: undefined }
       platform_delete_view: { Args: { p_id: string }; Returns: undefined }
+      platform_digest: { Args: { p_day?: string }; Returns: Json }
+      platform_edit_note: {
+        Args: { p_body: string; p_note_id: string }
+        Returns: undefined
+      }
       platform_extend_trial: {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
@@ -2435,17 +2783,33 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_get_support_request: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      platform_home: { Args: { p_period?: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_notes: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_support_requests: {
+        Args: { p_filters: Json }
+        Returns: Json
+      }
+      platform_mark_alerts_seen: { Args: { p_seen: string }; Returns: string }
       platform_metrics_backfill_usage: {
         Args: { p_from: string; p_to: string }
         Returns: number
       }
       platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
+      platform_needs_attention: { Args: never; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
+      platform_pin_note: {
+        Args: { p_note_id: string; p_pinned: boolean }
+        Returns: undefined
+      }
       platform_record_manual_payment: {
         Args: { p_payment: Json; p_restaurant_id: string }
         Returns: Json
@@ -2462,8 +2826,20 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: string
       }
+      platform_restaurant_billing: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
       platform_restaurant_lookalikes: {
         Args: { p_restaurant_ids: string[] }
+        Returns: Json
+      }
+      platform_restaurant_overview: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_restaurant_usage: {
+        Args: { p_restaurant_id: string }
         Returns: Json
       }
       platform_save_view: {
@@ -2476,19 +2852,36 @@ export type Database = {
         Returns: string
       }
       platform_search: { Args: { p_q: string }; Returns: Json }
+      platform_set_account_manager: {
+        Args: { p_restaurant_id: string; p_user_id: string }
+        Returns: undefined
+      }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
+      }
+      platform_set_restaurant_tags: {
+        Args: { p_restaurant_id: string; p_tag_ids: string[] }
+        Returns: undefined
+      }
+      platform_snooze: {
+        Args: { p_days: number; p_key: string }
+        Returns: string
       }
       platform_support_view: {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
         Returns: Json
       }
+      platform_team: { Args: never; Returns: Json }
       platform_update_plan: {
         Args: { p_patch: Json; p_plan_id: string }
         Returns: Json
       }
       platform_update_settings: { Args: { p_patch: Json }; Returns: Json }
+      platform_update_support_request: {
+        Args: { p_patch: Json; p_request_id: string }
+        Returns: undefined
+      }
       razorpay_record_webhook: {
         Args: { p_event_id: string; p_payload: Json }
         Returns: string
@@ -2630,6 +3023,10 @@ export type Database = {
           timezone: string
           trial_ends_at: string
         }[]
+      }
+      support_screenshots_to_remove: {
+        Args: { p_limit?: number }
+        Returns: string[]
       }
     }
     Enums: {

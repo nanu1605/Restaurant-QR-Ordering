@@ -14,6 +14,8 @@ type PanelHeaderProps = {
   switchTo?: { href: string; label: string };
   /** Offer "Install app": the panel links the install manifest (lib/config.ts INSTALLABLE). */
   installable?: boolean;
+  /** Get help's page, in the account menu. */
+  help?: string;
   /** Before the title, e.g. the navigation button on narrow screens. */
   leading?: ReactNode;
   /** Extra controls, e.g. the connection indicator on live screens. */
@@ -27,6 +29,7 @@ export function PanelHeader({
   roleLabel,
   switchTo,
   installable,
+  help,
   leading,
   children,
 }: PanelHeaderProps) {
@@ -48,6 +51,7 @@ export function PanelHeader({
           roleLabel={roleLabel}
           switchTo={switchTo}
           installable={installable}
+          help={help}
         />
       </div>
     </header>

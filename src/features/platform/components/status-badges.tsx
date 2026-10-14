@@ -5,6 +5,7 @@ import {
   CircleDashed,
   CirclePause,
   CircleSlash,
+  CircleAlert,
   Hourglass,
   Lock,
   Sprout,
@@ -86,6 +87,22 @@ export function HealthBadge({ health, muted = false }: { health: Health; muted?:
     >
       <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2.5} />
       {HEALTH_LABELS[health]}
+    </span>
+  );
+}
+
+/**
+ * Onboarding with a step to do and nothing done in 3 days (docs/DECISIONS.md
+ * SA-41): since the last step was done.
+ */
+export function StuckBadge({ since }: { since: string }) {
+  return (
+    <span
+      data-stuck
+      className="inline-flex h-6 w-fit items-center gap-1 rounded-md border border-transparent bg-status-preparing-fill px-2 text-xs font-semibold whitespace-nowrap text-status-preparing-foreground"
+    >
+      <CircleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2.5} />
+      Stuck since {formatShortDate(since)}
     </span>
   );
 }

@@ -92,7 +92,8 @@ test('a demo request reaches the platform team', async ({ page, context, request
 test('a Hindi visitor books a demo in Hindi', async ({ page, context }) => {
   await fakeTurnstile(context);
   const admin = adminClient();
-  const phone = `9${Date.now().toString().slice(-9)}`;
+  // Not 9…, the other test's: both take the clock and can start in the same millisecond.
+  const phone = `8${Date.now().toString().slice(-9)}`;
 
   try {
     await page.goto('/hi/contact');

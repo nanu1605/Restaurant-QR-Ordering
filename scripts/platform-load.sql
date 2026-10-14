@@ -1,10 +1,9 @@
 -- Local load data for the super-admin pages (docs/SUPER_ADMIN_PLAN.md §4.6,
 -- docs/DECISIONS.md SA-26): 300 restaurants named load-001 to load-300 with
 -- subscriptions in every state, their payments, up to 18 months of daily
--- usage, the last 35 days of accepted orders, and 100 leads. The same seed
--- gives the same data. Run by `pnpm seed:platform-load`, which queries the
--- local stack only and removes the previous load first.
--- ponytail: no snapshot history; the stop that charts it (12e) adds it.
+-- usage, the last 35 days of accepted orders, a year of nightly snapshots and
+-- 100 leads, and onboarding steps and support requests (13b). The same seed gives the same data. Run by `pnpm seed:platform-load`,
+-- which queries the local stack only and removes the previous load first.
 do $$
 begin
   perform setseed(0.42);
@@ -133,11 +132,15 @@ begin
   -- Daily usage since joining, shaped by the profile: never started has none,
   -- inactive stopped 12 days ago, slowing dropped in the last week.
   insert into public.metrics_usage_daily (
-    restaurant_id, business_day, orders, customer_orders, staff_orders, items, bills, gmv_paise
+    restaurant_id, business_day, orders, customer_orders, staff_orders, items, bills, gmv_paise,
+    hourly_orders
   )
   select
     u.id, u.day, u.orders, u.orders * 2 / 3, u.orders - u.orders * 2 / 3, u.orders * 3,
-    u.orders / 2, u.orders * (25000 + floor(random() * 35000)::bigint)
+    u.orders / 2, u.orders * (25000 + floor(random() * 35000)::bigint),
+    -- A third at lunch (1 pm), the rest at dinner (8 pm).
+    array_fill(0, array[13]) || (u.orders / 3) || array_fill(0, array[6])
+      || (u.orders - u.orders / 3) || array_fill(0, array[3])
   from (
     select
       r.id, d.day::date as day,
@@ -154,8 +157,9 @@ begin
 
   -- The last 35 days of usage as accepted orders, at midday India time, in one
   -- session per restaurant.
-  insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
-  select r.id, '1', 'LOAD' || lpad(r.n::text, 12, '0'), 1 from load_r r;
+  insert into public.dining_tables (restaurant_id, label, qr_token, sort_order, created_at)
+  select r.id, '1', 'LOAD' || lpad(r.n::text, 12, '0'), 1, r.created_at + interval '1 hour'
+  from load_r r;
   insert into public.table_sessions (
     restaurant_id, dining_table_id, table_label_snapshot, status, is_approved, opened_at
   )
@@ -177,11 +181,107 @@ begin
   cross join generate_series(1, m.orders) as g
   where m.business_day >= current_date - 35;
 
+  -- A year of nightly snapshots for Home's MRR chart and the lapses in the
+  -- activity: a 14-day trial, then each kind's path.
+  insert into public.metrics_subscription_daily (
+    day, restaurant_id, state, plan_id, billing_cycle, source, mrr_paise
+  )
+  select
+    d.day, r.id, st.state, p.id,
+    case when st.state in ('paid', 'payment_failed') then
+      (case when r.kind = 'paid_yearly' then 'yearly' else 'monthly' end)::public.billing_cycle end,
+    case when st.state in ('paid', 'payment_failed') then
+      (case when r.kind in ('paid_razorpay', 'payment_failed') then 'razorpay' else 'manual' end)
+        ::public.subscription_source end,
+    case when st.state = 'paid' then
+      case when r.kind = 'paid_yearly' then round(p.price_yearly_paise / 12.0)::bigint
+        else p.price_monthly_paise end
+    else 0 end
+  from load_r r
+  join public.plans p on p.code = r.plan_code
+  cross join lateral generate_series(
+    greatest(r.created_at::date, current_date - 365), current_date - 1, interval '1 day'
+  ) as g(day)
+  cross join lateral (select g.day::date as day) as d
+  cross join lateral (
+    select case
+      when r.kind = 'lapsed' and d.day >= current_date - (3 + r.n % 60) then 'read_only'
+      when d.day < r.created_at::date + 14 or r.kind in ('trial', 'lapsed') then 'trial'
+      when r.kind = 'cancelled' and d.day >= current_date - 40 then 'cancelled'
+      when r.kind = 'payment_failed' and d.day >= current_date - 3 then 'payment_failed'
+      else 'paid'
+    end as state
+  ) as st
+  on conflict (day, restaurant_id) do nothing;
+
   insert into public.site_leads (name, restaurant_name, city, phone, created_at)
   select 'Load lead ' || n, 'Load Cafe ' || n,
          (array['Indore', 'Pune', 'Jaipur', 'Kochi'])[1 + n % 4],
          '9' || lpad((n * 104729 % 1000000000)::text, 9, '0'),
          now() - make_interval(days => n % 200)
   from generate_series(1, 100) as n;
+
+  -- Tags on a third of them, and notes on some (13a).
+  insert into public.platform_tags (name, colour) values
+    ('Load pilot', 'orange'), ('Load Indore', 'teal'), ('Load VIP', 'green')
+  on conflict do nothing;
+  insert into public.restaurant_tags (restaurant_id, tag_id)
+  select r.id, t.id
+  from load_r r
+  join public.platform_tags t
+    on t.name = (array['Load pilot', 'Load Indore', 'Load VIP'])[1 + (r.n / 3) % 3]
+  where r.n % 3 = 0;
+  insert into public.restaurant_notes (restaurant_id, body, pinned, created_at)
+  select r.id, 'Load note ' || k || ' on ' || r.slug, k = 1,
+         now() - make_interval(days => k * 7 + r.n % 7)
+  from load_r r
+  cross join generate_series(1, 5) as k
+  where r.n % 5 = 3;
+
+  -- Onboarding (SA-41): most have a menu, QR codes and a first bill, half a
+  -- waiter; the rest stop at a step. Steps come hours apart, so a trial of a
+  -- day has them done too, none of them in the future.
+  insert into public.menu_categories (restaurant_id, name, created_at)
+  select r.id, 'Mains', r.created_at + interval '2 hours' from load_r r where r.n % 7 <> 0;
+  insert into public.menu_items (restaurant_id, category_id, name, price_paise, food_type, created_at)
+  select c.restaurant_id, c.id, 'Dish ' || k, 15000 + k * 1000, 'veg',
+         c.created_at + make_interval(mins => k)
+  from public.menu_categories c
+  join load_r r on r.id = c.restaurant_id
+  cross join generate_series(1, 6) as k;
+  insert into public.audit_logs (restaurant_id, actor_type, actor_label, action, created_at)
+  select r.id, 'staff', 'Owner', 'table.qr_sheet_printed', r.created_at + interval '3 hours'
+  from load_r r where r.n % 4 <> 0;
+  insert into public.waiters (restaurant_id, full_name, created_at)
+  select r.id, 'Load waiter', r.created_at + interval '4 hours' from load_r r where r.n % 2 = 0;
+  insert into public.bills (
+    restaurant_id, session_id, invoice_number, financial_year, invoice_seq, document_type,
+    table_label_snapshot, line_items, restaurant_snapshot, gst_mode, gst_rate_bps,
+    prices_include_tax, subtotal_paise, taxable_paise, grand_total_paise, generated_at
+  )
+  select s.restaurant_id, s.id, 'LOAD/' || r.n, '2026-27', 1, 'bill', '1', '[]', '{}', 'none', 0,
+         false, 32000, 32000, 32000, r.created_at + interval '5 hours'
+  from public.table_sessions s
+  join load_r r on r.id = s.restaurant_id
+  where r.profile <> 'never' and r.n % 6 <> 1;
+
+  -- Support requests (SA-43): every status, some waiting more than a day.
+  insert into public.support_requests (
+    restaurant_id, created_by_name, created_by_role, topic, message, contact_method, contact,
+    context, status, priority, created_at, updated_at, resolved_at
+  )
+  select r.id, 'Load owner', 'owner',
+         (array['billing', 'menu', 'printing', 'orders_tables', 'staff', 'other'])[1 + (r.n / 6) % 6],
+         'Load request on ' || r.slug || ': the bill printer prints blank pages after the update.',
+         (array['call', 'whatsapp', 'email'])[1 + (r.n / 6) % 3],
+         case when (r.n / 6) % 3 = 2 then 'owner' || r.n || '@load.test' else '9000000' || lpad(r.n::text, 3, '0') end,
+         jsonb_build_object('page', '/admin/billing', 'browser', 'Chrome on Android'),
+         (array['open', 'in_progress', 'waiting', 'resolved', 'resolved'])[1 + r.n % 5],
+         (array['normal', 'high', 'normal', 'low'])[1 + (r.n / 6) % 4],
+         now() - make_interval(hours => 2 + (r.n * 7) % 120),
+         now() - make_interval(hours => 1 + (r.n * 7) % 60),
+         case when r.n % 5 in (3, 4) then now() - make_interval(hours => 1 + (r.n * 7) % 60) end
+  from load_r r
+  where r.n % 6 = 2;
 end
 $$;

@@ -26,14 +26,16 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
+import { SNOOZE_DAYS, type SnoozeDays } from './home';
 import { onboardRestaurant, OnboardError } from './onboard';
-import type { SearchResults } from './platform';
+import { TAG_COLOURS, type SearchResults, type TagColour } from './platform';
 import {
   getPlatformSettings,
   getRestaurantDetail,
   getSetupFee,
   searchPlatform as search,
 } from './queries';
+import { noteSchema, tagNameSchema, type NoteInput } from './restaurant-page';
 import { discountEndsAt, discountLastDay } from './setup-fee';
 import {
   changePlanSchema,
@@ -455,6 +457,30 @@ export async function deleteView(viewId: string): Promise<ActionResult> {
   return actionOk();
 }
 
+/** Puts a Needs attention item aside for this admin (docs/DECISIONS.md SA-28). */
+export async function snoozeAttention(key: string, days: SnoozeDays): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.view');
+  if (!SNOOZE_DAYS.includes(days) || key.length > 120) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_snooze', { p_key: key, p_days: days });
+  if (error) return fromDbError(error, 'platform_snooze');
+  refresh();
+  return actionOk();
+}
+
+/**
+ * The alerts were opened: nothing up to `seen`, the newest one shown, is new
+ * any more (docs/DECISIONS.md SA-30).
+ */
+export async function markAlertsSeen(seen: string): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.view');
+  if (Number.isNaN(Date.parse(seen))) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_mark_alerts_seen', { p_seen: seen });
+  if (error) return fromDbError(error, 'platform_mark_alerts_seen');
+  return actionOk();
+}
+
 /** The search box (docs/DECISIONS.md SA-25). */
 export async function searchPlatform(q: string): Promise<ActionResult<SearchResults>> {
   await requirePlatformPermission('restaurants.view');
@@ -588,4 +614,123 @@ export async function reprocessWebhook(
   refresh();
   const outcome = data as { result: string; error: string | null };
   return actionOk({ result: outcome.result, error: outcome.error });
+}
+
+// ─── A restaurant's notes, tags and account manager (docs/DECISIONS.md SA-38, SA-39) ──
+
+export async function addNote(
+  restaurantId: string,
+  input: NoteInput,
+  pinned = false,
+): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  const parsed = noteSchema.safeParse(input);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_add_note', {
+    p_restaurant_id: id.data,
+    p_body: parsed.data.body,
+    p_pinned: pinned,
+  });
+  if (error) return fromDbError(error, 'platform_add_note');
+  refresh();
+  return actionOk();
+}
+
+export async function editNote(noteId: string, input: NoteInput): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(noteId);
+  const parsed = noteSchema.safeParse(input);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_edit_note', {
+    p_note_id: id.data,
+    p_body: parsed.data.body,
+  });
+  if (error) return fromDbError(error, 'platform_edit_note');
+  refresh();
+  return actionOk();
+}
+
+export async function pinNote(noteId: string, pinned: boolean): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(noteId);
+  if (!id.success || typeof pinned !== 'boolean') return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_pin_note', {
+    p_note_id: id.data,
+    p_pinned: pinned,
+  });
+  if (error) return fromDbError(error, 'platform_pin_note');
+  refresh();
+  return actionOk();
+}
+
+/** A new tag; returns its id so the form can tick it. */
+export async function createTag(name: string, colour: TagColour): Promise<ActionResult<string>> {
+  await requirePlatformPermission('restaurants.manage');
+  const parsed = tagNameSchema.safeParse({ name });
+  if (!parsed.success) return fromZodError(parsed.error);
+  if (!TAG_COLOURS.includes(colour)) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_create_tag', {
+    p_name: parsed.data.name,
+    p_colour: colour,
+  });
+  if (error) return fromDbError(error, 'platform_create_tag');
+  // The header's tag list knows it too, if the dialog is closed without saving.
+  refresh();
+  return actionOk(data);
+}
+
+export async function deleteTag(tagId: string): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(tagId);
+  if (!id.success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_delete_tag', { p_tag_id: id.data });
+  if (error) return fromDbError(error, 'platform_delete_tag');
+  refresh();
+  return actionOk();
+}
+
+export async function setRestaurantTags(
+  restaurantId: string,
+  tagIds: string[],
+): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  const tags = restaurantIdSchema.array().max(10).safeParse(tagIds);
+  if (!id.success || !tags.success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_set_restaurant_tags', {
+    p_restaurant_id: id.data,
+    p_tag_ids: tags.data,
+  });
+  if (error) return fromDbError(error, 'platform_set_restaurant_tags');
+  refresh();
+  return actionOk();
+}
+
+/** `userId` null: no account manager. */
+export async function setAccountManager(
+  restaurantId: string,
+  userId: string | null,
+): Promise<ActionResult> {
+  await requirePlatformPermission('restaurants.manage');
+  const id = restaurantIdSchema.safeParse(restaurantId);
+  const user = restaurantIdSchema.nullable().safeParse(userId);
+  if (!id.success || !user.success) return actionError(GENERIC_ERROR);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('platform_set_account_manager', {
+    p_restaurant_id: id.data,
+    // A null clears it.
+    p_user_id: user.data as string,
+  });
+  if (error) return fromDbError(error, 'platform_set_account_manager');
+  refresh();
+  return actionOk();
 }

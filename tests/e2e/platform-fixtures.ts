@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { expect, type Page } from '@playwright/test';
 
-import { adminClient, logInWithEmail, TEST_PASSWORD } from './helpers';
+import { adminClient, createTestRestaurant, logInWithEmail, TEST_PASSWORD } from './helpers';
 
 /**
  * Platform admins for E2E. Each test makes its own, because a platform admin's
@@ -54,7 +54,7 @@ function base32Decode(text: string) {
 /**
  * Logs a platform admin in and passes the second factor: enrols an
  * authenticator on the first login (keeping the secret on `admin`), then
- * enters the current code. Ends on the super-admin overview.
+ * enters the current code. Ends on the super-admin Home.
  */
 export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   await page.goto('/login');
@@ -69,5 +69,117 @@ export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   }
   await main.getByLabel('6-digit code').fill(totpCode(admin.secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  try {
+    await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
+  } catch {
+    // Under load a code can run out on its way: try once more with the next one,
+    // unless Home was only slow to arrive.
+    await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 500);
+    if (new URL(page.url()).pathname === '/super') return;
+    await main.getByLabel('6-digit code').fill(totpCode(admin.secret));
+    await main.getByRole('button', { name: 'Verify' }).click();
+    await expect(page).toHaveURL(/\/super$/);
+  }
+}
+
+/** Picks one of a restaurant page's Actions (docs/DECISIONS.md SA-34). */
+export async function restaurantAction(page: Page, name: string) {
+  await page.getByRole('main').getByRole('button', { name: 'Actions' }).click();
+  await page.getByRole('menuitem', { name }).click();
+}
+
+/** Whether the restaurant page's Actions menu offers an action. */
+export async function hasRestaurantAction(page: Page, name: string) {
+  await page.getByRole('main').getByRole('button', { name: 'Actions' }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  const count = await menu.getByRole('menuitem', { name }).count();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  return count > 0;
+}
+
+/** Opens one of a restaurant page's tabs. */
+export async function restaurantTab(page: Page, name: string) {
+  await page
+    .getByRole('navigation', { name: 'Restaurant sections' })
+    .getByRole('link', { name, exact: true })
+    .click();
+}
+
+/**
+ * A resolved support request with an internal note, and the inbox's paths:
+ * the list and the request (13b), for the sweeps over every super-admin page.
+ * Resolved, so the open ones of other tests stay on the inbox's first page.
+ */
+export async function supportRequestPaths(prefix: string) {
+  const restaurant = await createTestRestaurant({ prefix });
+  const admin = adminClient();
+  const { data } = await admin
+    .from('support_requests')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      created_by_name: 'Test Owner',
+      created_by_role: 'owner',
+      topic: 'printing',
+      message: 'The bill printer prints blank pages.',
+      contact_method: 'whatsapp',
+      contact: '9876543210',
+      context: { page: '/admin/billing', browser: 'Chrome' },
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  await admin
+    .from('support_request_events')
+    .insert({
+      request_id: data.id,
+      restaurant_id: restaurant.restaurantId,
+      kind: 'note',
+      body: 'Asked them to restart the printer.',
+    })
+    .throwOnError();
+  return ['/super/support', `/super/support/${data.id}`];
+}
+
+/**
+ * A restaurant with a pinned note and a tag, and the paths of its page's tabs,
+ * for the sweeps over every super-admin page.
+ */
+export async function restaurantPagePaths(prefix: string) {
+  const restaurant = await createTestRestaurant({ prefix });
+  const admin = adminClient();
+  await admin
+    .from('restaurant_notes')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      body: 'Prefers calls after 4 pm',
+      pinned: true,
+    })
+    .throwOnError();
+  // One tag for every sweep: made by the first, found by the rest.
+  const name = `Sweep ${prefix}`;
+  const found = await admin.from('platform_tags').select('id').eq('name', name).maybeSingle();
+  const tag =
+    found.data ??
+    (await admin.from('platform_tags').insert({ name, colour: 'teal' }).select('id').single()).data;
+  if (tag) {
+    await admin
+      .from('restaurant_tags')
+      .insert({ restaurant_id: restaurant.restaurantId, tag_id: tag.id })
+      .throwOnError();
+  }
+  const base = `/super/restaurants/${restaurant.restaurantId}`;
+  return [
+    '',
+    '/billing',
+    '/usage',
+    '/activity',
+    '/notes',
+    '/documents',
+    '/support/menu',
+    '/menu-import',
+  ].map((tab) => `${base}${tab}`);
 }
