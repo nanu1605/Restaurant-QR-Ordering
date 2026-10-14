@@ -1367,6 +1367,39 @@ export type Database = {
         }
         Relationships: []
       }
+      restaurant_account_managers: {
+        Row: {
+          created_at: string
+          restaurant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          restaurant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          restaurant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_account_managers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_account_managers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       restaurant_members: {
         Row: {
           created_at: string
@@ -1591,7 +1624,6 @@ export type Database = {
       restaurants: {
         Row: {
           accent_color: string
-          account_manager_user_id: string | null
           acquisition_channel: string | null
           address_line: string | null
           bill_footer_text: string | null
@@ -1634,7 +1666,6 @@ export type Database = {
         }
         Insert: {
           accent_color?: string
-          account_manager_user_id?: string | null
           acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
@@ -1677,7 +1708,6 @@ export type Database = {
         }
         Update: {
           accent_color?: string
-          account_manager_user_id?: string | null
           acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
@@ -1718,15 +1748,7 @@ export type Database = {
           upi_payee_name?: string | null
           upi_vpa?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "restaurants_account_manager_user_id_fkey"
-            columns: ["account_manager_user_id"]
-            isOneToOne: false
-            referencedRelation: "platform_admins"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       service_requests: {
         Row: {

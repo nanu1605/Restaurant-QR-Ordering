@@ -556,11 +556,8 @@ const restaurantDetailSchema = z.object({
     tables_active: z.number(),
     staff_logins: z.number(),
     waiters: z.number(),
-    orders_7d: z.number(),
-    orders_30d: z.number(),
     last_order_at: isoOrNull,
     bills: z.number(),
-    bills_30d: z.number(),
   }),
 });
 export type RestaurantDetail = z.infer<typeof restaurantDetailSchema>;

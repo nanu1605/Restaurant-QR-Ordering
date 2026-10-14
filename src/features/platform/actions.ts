@@ -681,6 +681,8 @@ export async function createTag(name: string, colour: TagColour): Promise<Action
     p_colour: colour,
   });
   if (error) return fromDbError(error, 'platform_create_tag');
+  // The header's tag list knows it too, if the dialog is closed without saving.
+  refresh();
   return actionOk(data);
 }
 

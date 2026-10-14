@@ -16,7 +16,9 @@ select tests.create_full_fixture(:'main');
 select tests.set_plan(:'main', 'starter');
 
 -- ─── Tables ─────────────────────────────────────────────────────────────────
-select has_column('public', 'restaurants', 'account_manager_user_id', 'restaurants have an account manager');
+select has_table('public', 'restaurant_account_managers', 'restaurants have an account manager');
+select hasnt_column('public', 'restaurants', 'account_manager_user_id',
+  'kept off restaurants, which its staff read');
 select has_table('public', 'platform_tags', 'tags');
 select has_table('public', 'restaurant_tags', 'tags on restaurants');
 select has_table('public', 'restaurant_notes', 'notes');
@@ -281,6 +283,18 @@ select throws_ok(format('select public.platform_edit_note(%L, %L)', :'note_a', '
   'P0001', 'NOTE_LOCKED', 'within 15 minutes of writing it');
 select tests.clear_auth();
 
+-- More than 200: a pinned note stays in the list, first, however old.
+insert into public.restaurant_notes (restaurant_id, body, created_at)
+select :'other', 'Old note ' || n, now() - make_interval(days => n)
+from generate_series(1, 205) as n;
+update public.restaurant_notes set pinned = true
+where restaurant_id = :'other' and body = 'Old note 205';
+select tests.authenticate_as_platform_admin(:'admin');
+select public.platform_list_notes(:'other') as many \gset
+select tests.clear_auth();
+select is(jsonb_array_length(:'many'::jsonb), 200, '200 at most');
+select is((:'many'::jsonb) -> 0 ->> 'body', 'Old note 205', 'an old pinned note stays, first');
+
 -- ─── Tags ───────────────────────────────────────────────────────────────────
 select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_create_tag(' Pilot ', 'orange') as tag_pilot \gset
@@ -412,6 +426,7 @@ select tests.authenticate_as(:'owner');
 select is((select count(*)::int from public.restaurant_notes), 0, 'no notes');
 select is((select count(*)::int from public.restaurant_tags), 0, 'no tags on it');
 select is((select count(*)::int from public.platform_tags), 0, 'no tags at all');
+select is((select count(*)::int from public.restaurant_account_managers), 0, 'no account manager');
 select is(
   (select count(*)::int from public.audit_logs
    where entity_type in ('restaurant_note', 'restaurant_tags', 'account_manager')),

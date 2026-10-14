@@ -24,13 +24,13 @@ export function SupportMenuList({ menu }: { menu: SupportMenu }) {
           aria-label={category.name}
           className="rounded-lg border border-line bg-surface"
         >
-          <h2 className="flex items-center gap-2 border-b border-line px-3 py-2 text-base font-semibold text-ink">
+          <h3 className="flex items-center gap-2 border-b border-line px-3 py-2 text-base font-semibold text-ink">
             {category.name}
             {!category.is_active && <HiddenBadge />}
             <span className="text-sm font-normal text-ink-muted">
               {category.items.length} {category.items.length === 1 ? 'dish' : 'dishes'}
             </span>
-          </h2>
+          </h3>
           {category.items.length === 0 ? (
             <p className="px-3 py-2 text-sm text-ink-muted">No dishes.</p>
           ) : (

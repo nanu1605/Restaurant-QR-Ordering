@@ -228,7 +228,7 @@ begin
   select r.id, t.id
   from load_r r
   join public.platform_tags t
-    on t.name = (array['Load pilot', 'Load Indore', 'Load VIP'])[1 + r.n % 3]
+    on t.name = (array['Load pilot', 'Load Indore', 'Load VIP'])[1 + (r.n / 3) % 3]
   where r.n % 3 = 0;
   insert into public.restaurant_notes (restaurant_id, body, pinned, created_at)
   select r.id, 'Load note ' || k || ' on ' || r.slug, k = 1,

@@ -4,12 +4,14 @@
 -- account managers on the Restaurants list.
 
 -- ─── Account manager, tags, notes ───────────────────────────────────────────
--- The MenuMesh team member who looks after a restaurant (SA-39).
-alter table public.restaurants
-  add column account_manager_user_id uuid
-    references public.platform_admins (user_id) on delete set null;
-create index restaurants_account_manager_idx on public.restaurants (account_manager_user_id)
-  where account_manager_user_id is not null;
+-- The MenuMesh team member who looks after a restaurant (SA-39), in a table of
+-- its own: a column on restaurants would be read by the restaurant's staff.
+create table public.restaurant_account_managers (
+  restaurant_id uuid primary key references public.restaurants (id) on delete cascade,
+  user_id uuid not null references public.platform_admins (user_id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index restaurant_account_managers_user_idx on public.restaurant_account_managers (user_id);
 
 -- Tags the team puts on restaurants, each in one of a fixed set of colours
 -- the page draws as a swatch beside ink text (SA-39).
@@ -47,15 +49,18 @@ create index restaurant_notes_created_idx on public.restaurant_notes (created_at
 alter table public.platform_tags enable row level security;
 alter table public.restaurant_tags enable row level security;
 alter table public.restaurant_notes enable row level security;
-revoke all on public.platform_tags, public.restaurant_tags, public.restaurant_notes
-  from anon, authenticated;
-grant select on public.platform_tags, public.restaurant_tags, public.restaurant_notes
-  to authenticated;
+alter table public.restaurant_account_managers enable row level security;
+revoke all on public.platform_tags, public.restaurant_tags, public.restaurant_notes,
+  public.restaurant_account_managers from anon, authenticated;
+grant select on public.platform_tags, public.restaurant_tags, public.restaurant_notes,
+  public.restaurant_account_managers to authenticated;
 create policy "platform admins read tags" on public.platform_tags
   for select to authenticated using ((select public.is_platform_admin()));
 create policy "platform admins read restaurant tags" on public.restaurant_tags
   for select to authenticated using ((select public.is_platform_admin()));
 create policy "platform admins read restaurant notes" on public.restaurant_notes
+  for select to authenticated using ((select public.is_platform_admin()));
+create policy "platform admins read account managers" on public.restaurant_account_managers
   for select to authenticated using ((select public.is_platform_admin()));
 
 -- The audit rows of notes, tags and account managers name the restaurant, so
@@ -283,6 +288,8 @@ $$;
 -- The header and the facts every tab shares (SA-34): the list's state, health,
 -- paid till and last active, tags, account manager, plan limits and the
 -- cancellation reason. Payments carry the GST split, for money.view only.
+-- Orders and bills over time come from platform_restaurant_overview, by
+-- business day (SA-37).
 create or replace function public.platform_get_restaurant(p_restaurant_id uuid)
 returns jsonb
 language plpgsql
@@ -394,25 +401,12 @@ begin
       select count(*) from public.waiters w
       where w.restaurant_id = p_restaurant_id and w.is_active
     ),
-    'orders_7d', (
-      select count(*) from public.orders o
-      where o.restaurant_id = p_restaurant_id and o.created_at >= now() - interval '7 days'
-    ),
-    'orders_30d', (
-      select count(*) from public.orders o
-      where o.restaurant_id = p_restaurant_id and o.created_at >= now() - interval '30 days'
-    ),
     'last_order_at', (
       select max(o.created_at) from public.orders o where o.restaurant_id = p_restaurant_id
     ),
     'bills', (
       select count(*) from public.bills b
       where b.restaurant_id = p_restaurant_id and b.status = 'active'
-    ),
-    'bills_30d', (
-      select count(*) from public.bills b
-      where b.restaurant_id = p_restaurant_id and b.status = 'active'
-        and b.generated_at >= now() - interval '30 days'
     )
   )
   into v_usage;
@@ -443,7 +437,9 @@ begin
     'last_active', private.restaurant_last_active(v_restaurant.id),
     'account_manager', (
       select jsonb_build_object('user_id', u.id, 'email', u.email)
-      from auth.users u where u.id = v_restaurant.account_manager_user_id
+      from public.restaurant_account_managers am
+      join auth.users u on u.id = am.user_id
+      where am.restaurant_id = v_restaurant.id
     ),
     'tags', coalesce((
       select jsonb_agg(jsonb_build_object('id', t.id, 'name', t.name, 'colour', t.colour)
@@ -700,7 +696,7 @@ $$;
 
 revoke execute on function private.note_body(text) from public, anon, authenticated;
 
--- The newest 200, pinned ones first.
+-- Pinned ones first, then the newest, 200 in all.
 create function public.platform_list_notes(p_restaurant_id uuid)
 returns jsonb
 language plpgsql
@@ -726,7 +722,7 @@ begin
     from (
       select * from public.restaurant_notes x
       where x.restaurant_id = p_restaurant_id
-      order by x.created_at desc limit 200
+      order by x.pinned desc, x.created_at desc, x.id desc limit 200
     ) as n
     left join auth.users u on u.id = n.author_id
   ), '[]'::jsonb);
@@ -978,11 +974,12 @@ declare
   v_admin private.platform_admin_context := private.require_platform_permission('restaurants.manage');
   v_before uuid;
 begin
-  select r.account_manager_user_id into v_before
-  from public.restaurants r where r.id = p_restaurant_id for update;
+  perform 1 from public.restaurants r where r.id = p_restaurant_id for update;
   if not found then
     perform private.fail('RESTAURANT_NOT_FOUND');
   end if;
+  select am.user_id into v_before
+  from public.restaurant_account_managers am where am.restaurant_id = p_restaurant_id;
   if p_user_id is not null
     and not exists (select 1 from public.platform_admins a where a.user_id = p_user_id) then
     perform private.fail('ADMIN_NOT_FOUND');
@@ -990,7 +987,13 @@ begin
   if v_before is not distinct from p_user_id then
     return;
   end if;
-  update public.restaurants set account_manager_user_id = p_user_id where id = p_restaurant_id;
+  if p_user_id is null then
+    delete from public.restaurant_account_managers where restaurant_id = p_restaurant_id;
+  else
+    insert into public.restaurant_account_managers (restaurant_id, user_id)
+    values (p_restaurant_id, p_user_id)
+    on conflict (restaurant_id) do update set user_id = excluded.user_id, created_at = now();
+  end if;
   perform private.audit_platform(
     v_admin, p_restaurant_id, 'restaurant.account_manager_changed', 'account_manager',
     p_restaurant_id,
@@ -1316,7 +1319,8 @@ begin
   with base as (
     select
       r.id, r.name, r.slug, r.city, r.state as region, r.phone, r.status, r.created_at,
-      r.acquisition_channel, r.timezone, r.business_day_start_hour, r.account_manager_user_id,
+      r.acquisition_channel, r.timezone, r.business_day_start_hour,
+      am.user_id as account_manager_user_id,
       p.code as plan_code, p.name as plan_name,
       s.status as subscription_status, s.billing_cycle, s.source, s.trial_ends_at,
       s.current_period_end,
@@ -1333,6 +1337,7 @@ begin
     from public.restaurants r
     left join public.restaurant_subscriptions s on s.restaurant_id = r.id
     left join public.plans p on p.id = s.plan_id
+    left join public.restaurant_account_managers am on am.restaurant_id = r.id
     where (v_q is null
         or r.name ilike '%' || v_q || '%'
         or r.slug ilike '%' || v_q || '%'
@@ -1345,8 +1350,8 @@ begin
         select 1 from public.restaurant_tags rt where rt.restaurant_id = r.id and rt.tag_id = v_tag
       ))
       and (v_manager is null
-        or (v_manager = 'none' and r.account_manager_user_id is null)
-        or r.account_manager_user_id = v_manager_id)
+        or (v_manager = 'none' and am.user_id is null)
+        or am.user_id = v_manager_id)
       and (v_from is null or r.created_at >= v_from::timestamp at time zone 'Asia/Kolkata')
       and (v_to is null or r.created_at < (v_to + 1)::timestamp at time zone 'Asia/Kolkata')
       -- A paid period ends at the start of the day after its last day, so its

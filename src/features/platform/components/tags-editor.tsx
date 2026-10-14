@@ -47,7 +47,7 @@ export function TagsEditor({
         {chosen.length === 0 ? 'Add tags' : 'Edit tags'}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Tags for {restaurantName}</DialogTitle>
             <DialogDescription>
@@ -122,7 +122,14 @@ function TagsForm({
       setTags(tags.filter((other) => other.id !== tag.id));
       toggle(tag.id, false);
       setDeleting(null);
+      document.getElementById(`${id}-name`)?.focus();
     });
+  }
+
+  // Back to the tag's delete button once the question is answered Keep.
+  function keep(tagId: string) {
+    setDeleting(null);
+    requestAnimationFrame(() => document.getElementById(`${id}-delete-${tagId}`)?.focus());
   }
 
   function save() {
@@ -147,12 +154,15 @@ function TagsForm({
           {tags.map((tag) =>
             deleting === tag.id ? (
               <div
-                key={tag.id}
+                key={`${tag.id}-confirm`}
                 role="group"
                 aria-label={`Delete ${tag.name}`}
+                aria-describedby={`${id}-confirm`}
                 className="flex flex-wrap items-center gap-2 rounded-md border border-destructive p-2 text-sm text-ink"
               >
-                <span className="flex-1">Delete {tag.name} from every restaurant?</span>
+                <span id={`${id}-confirm`} className="flex-1">
+                  Delete {tag.name} from every restaurant?
+                </span>
                 <Button
                   type="button"
                   variant="destructive"
@@ -166,7 +176,8 @@ function TagsForm({
                   type="button"
                   variant="outline"
                   className="h-11 md:h-8"
-                  onClick={() => setDeleting(null)}
+                  autoFocus
+                  onClick={() => keep(tag.id)}
                 >
                   Keep
                 </Button>
@@ -189,6 +200,7 @@ function TagsForm({
                   {tag.name}
                 </label>
                 <Button
+                  id={`${id}-delete-${tag.id}`}
                   type="button"
                   variant="ghost"
                   size="icon-touch"

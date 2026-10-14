@@ -227,10 +227,10 @@ select is(:'detail'::jsonb #>> '{access,state}', 'full', 'access state');
 select is(
   :'detail'::jsonb -> 'usage',
   jsonb_build_object(
-    'tables_active', 1, 'staff_logins', 1, 'waiters', 1, 'orders_7d', 1, 'orders_30d', 2,
-    'last_order_at', :'detail'::jsonb #> '{usage,last_order_at}', 'bills', 1, 'bills_30d', 1
+    'tables_active', 1, 'staff_logins', 1, 'waiters', 1,
+    'last_order_at', :'detail'::jsonb #> '{usage,last_order_at}', 'bills', 1
   ),
-  'usage: tables, staff logins, waiters, orders 7/30 days, bills'
+  'usage: tables, staff logins, waiters, the last order, bills'
 );
 select is(
   -- Both owners are created in this transaction, so they share a created_at.

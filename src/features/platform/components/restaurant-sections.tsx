@@ -34,7 +34,7 @@ export function Facts({ facts, label }: { facts: [string, ReactNode][]; label?: 
       {facts.map(([term, value]) => (
         <div key={term} className="contents">
           <dt className="text-ink-muted">{term}</dt>
-          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink">{value}</dd>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink tabular-nums">{value}</dd>
         </div>
       ))}
     </dl>

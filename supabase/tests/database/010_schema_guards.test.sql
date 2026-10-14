@@ -249,7 +249,7 @@ from unnest(array[
   'order_items', 'invoice_counters', 'bills', 'bill_payments',
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
-  'restaurant_tags', 'restaurant_notes'
+  'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers'
 ]) as t;
 
 select is_empty(
@@ -261,7 +261,7 @@ select is_empty(
       'order_items', 'invoice_counters', 'bills', 'bill_payments', 'audit_logs',
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
-      'restaurant_tags', 'restaurant_notes'
+      'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers'
     ]) as t
     where not exists (
       select 1

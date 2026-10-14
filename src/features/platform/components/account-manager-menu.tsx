@@ -45,12 +45,12 @@ export function AccountManagerMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button variant="ghost" className="h-11 max-w-full md:h-8" disabled={pending} />}
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" className="h-11 max-w-full md:h-8" />}>
         <UserRound aria-hidden />
         <span className="truncate">
-          Account manager: {current ? (current.email ?? 'a former team member') : 'none'}
+          {pending
+            ? 'Saving the account manager…'
+            : `Account manager: ${current ? (current.email ?? 'a former team member') : 'none'}`}
         </span>
         <ChevronDown aria-hidden />
       </DropdownMenuTrigger>

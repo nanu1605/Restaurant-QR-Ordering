@@ -3624,15 +3624,20 @@ stay at 13g, since nobody else gets `/super` before then.
   login with the password reset. `private.platform_usage` gains a restaurant and the customer,
   staff and bill counts, so the live last finished day is still counted in one place (dropped
   and created again: its result changed). The onboarding checklist joins with 13b.
-- **SA-36 · Billing:** the subscription facts and access as before, plus why it is leaving; where
-  it stands in Dues, read from `private.dues_rows` (narrowed by its code, then its id) with the
-  amount due with GST; the payments with amount, GST and total; the payment links sent (from
+- **SA-36 · Billing:** the subscription facts and access as before, its own status (Halted,
+  Expired and the rest, which the header's state merges), and the reason given for leaving: "Why
+  it is leaving" while it is ending or ended, otherwise "Reason given when it last left" (the
+  answer is kept when autopay comes back); where it stands in Dues, read from `private.dues_rows`
+  (narrowed by its code, then its id) with the amount due with GST, and for a suspended
+  restaurant, which Dues leaves out, a line saying so rather than "nothing due"; the payments with amount, GST and total; the payment links sent (from
   their audit rows, a link marked paid once a payment arrives for its id); reminders emailed;
   and the plan and subscription history: plan changes, trial extensions, autopay set up or
   turned off and its reason, Razorpay's status changes, suspensions, from the audit log, newest
   50 of each list.
-- **SA-37 · Usage:** active tables and staff logins against the plan's limits, waiters, orders and
-  bills as before; the plan limits it ran into in 90 days (`plan_limit_events`, grouped); and
+- **SA-37 · Usage:** active tables and staff logins against the plan's limits, waiters, the last
+  order and all bills as before; orders over 7 and 30 days and bills over 30 are now accepted
+  orders and active bills over the business days the restaurant has finished, the Overview's
+  numbers (the old clock-time counts of every order are gone from `platform_get_restaurant`); the plan limits it ran into in 90 days (`plan_limit_events`, grouped); and
   orders by weekday and hour over the last 12 weeks of stored days, in the sales heatmap's style
   (the weekday of the business day, the hour on the clock), a shared `Heatmap` that usage
   analytics (13e) uses too. Features in use wait for 13e, which defines them for every
@@ -3643,19 +3648,21 @@ stay at 13g, since nobody else gets `/super` before then.
   in its first 15 minutes, and a later correction is a new note. Each change is audited
   (`restaurant.note_added`, `_edited` with the text before and after, `_pinned`, `_unpinned`).
   Notes are a kind in the activity stream (the first 200 characters), so their audit rows aren't
-  team items too. The page shows the newest 200, pinned first.
+  team items too. The page shows 200: every pinned note first, however old, then the newest.
 - **SA-39 · Tags and account manager:** `platform_tags` (a name, unique whatever its case, and a
   colour from six) and `restaurant_tags`, at most 10 a restaurant. A tag is a swatch of its
   colour beside ink text, so every colour reads in both themes. The header's Tags dialog ticks
   tags, adds a new one and deletes one from every restaurant (after a confirmation in the row).
-  `restaurants.account_manager_user_id` is a platform admin, chosen from the team
+  The account manager is a platform admin, kept in `restaurant_account_managers` (one row a
+  restaurant; not a column on `restaurants`, which its staff read), chosen from the team
   (`platform_team()`, emails until 13g adds names) in a menu on the header; when they stop being
-  an admin it is cleared. The Restaurants list filters by tag and by account manager (me, no
+  an admin the row goes. The Restaurants list filters by tag and by account manager (me, no
   one, or anyone on the team), shows Tags by default and Account manager on request, puts both
   in the CSV, and has a My restaurants view first. Tag and account-manager changes are audited
   and are team items in the stream.
 - **SA-40 · What the restaurant doesn't see:** notes, tags and account managers are the team's.
-  Their tables are read only by platform admins, and the audit rows of notes, tag changes and
+  Their tables (`restaurant_notes`, `platform_tags`, `restaurant_tags`,
+  `restaurant_account_managers`) are read only by platform admins, and the audit rows of notes, tag changes and
   account-manager changes (entity types `restaurant_note`, `restaurant_tags`,
   `account_manager`) name the restaurant, so the team finds them by restaurant, but are left out
   of the restaurant's own audit log: the policy that lets its owner and managers read their

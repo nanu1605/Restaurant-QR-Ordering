@@ -23,6 +23,7 @@ import {
   PAYMENT_SOURCE_LABELS,
   REMINDER_LABELS,
   RENEWAL_KIND_LABELS,
+  SUBSCRIPTION_STATUS_LABELS,
   type RestaurantDetail,
 } from '@/features/platform/platform';
 import { getRestaurantBilling, getRestaurantDetail, listPlans } from '@/features/platform/queries';
@@ -59,7 +60,7 @@ export default async function RestaurantBillingPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <SubscriptionSection detail={detail} />
         <div className="flex min-w-0 flex-col gap-4">
-          <DuesSection dues={billing.dues} />
+          <DuesSection dues={billing.dues} suspended={detail.restaurant.status === 'suspended'} />
           <Section title="Access">
             <Facts
               facts={[
@@ -185,6 +186,7 @@ function SubscriptionSection({ detail }: { detail: RestaurantDetail }) {
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
   });
   const facts: [string, string][] = [
+    ['Status', SUBSCRIPTION_STATUS_LABELS[subscription.status]],
     ['Plan', subscription.plan_name],
     [
       'Billing',
@@ -222,8 +224,13 @@ function SubscriptionSection({ detail }: { detail: RestaurantDetail }) {
     ],
   ];
   if (subscription.cancel_reason) {
+    // Kept after autopay comes back: then it is only the reason given last time.
+    const leaving =
+      subscription.cancel_at_period_end ||
+      subscription.status === 'cancelled' ||
+      subscription.status === 'expired';
     facts.push([
-      'Why it is leaving',
+      leaving ? 'Why it is leaving' : 'Reason given when it last left',
       `${CANCEL_REASON_LABELS[subscription.cancel_reason]}${
         subscription.cancel_reason_detail ? `: ${subscription.cancel_reason_detail}` : ''
       }`,
@@ -236,11 +243,15 @@ function SubscriptionSection({ detail }: { detail: RestaurantDetail }) {
   );
 }
 
-function DuesSection({ dues }: { dues: RestaurantBilling['dues'] }) {
+function DuesSection({ dues, suspended }: { dues: RestaurantBilling['dues']; suspended: boolean }) {
   if (!dues) {
     return (
       <Section title="Dues">
-        <p className="text-sm text-ink-muted">Nothing due in the next 30 days.</p>
+        <p className="text-sm text-ink-muted">
+          {suspended
+            ? 'Suspended restaurants are left out of Dues: see the subscription for what it owes.'
+            : 'Nothing due in the next 30 days.'}
+        </p>
       </Section>
     );
   }

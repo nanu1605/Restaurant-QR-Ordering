@@ -4,7 +4,11 @@ import { notFound } from 'next/navigation';
 import { Heatmap } from '@/features/platform/components/heatmap';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
 import { formatDate, formatDateTime } from '@/features/platform/platform';
-import { getRestaurantDetail, getRestaurantUsage } from '@/features/platform/queries';
+import {
+  getRestaurantDetail,
+  getRestaurantOverview,
+  getRestaurantUsage,
+} from '@/features/platform/queries';
 import { limitHitLabel } from '@/features/platform/restaurant-page';
 import { requirePlatformPermission } from '@/lib/auth/guards';
 
@@ -13,8 +17,9 @@ export const metadata: Metadata = {
 };
 
 const noon = (day: string) => `${day}T12:00:00+05:30`;
-const ofLimit = (count: number, max: number | null | undefined) =>
-  max === null || max === undefined ? `${count} (no limit)` : `${count} of ${max}`;
+const count = (n: number) => n.toLocaleString('en-IN');
+const ofLimit = (n: number, max: number | null | undefined) =>
+  max === null || max === undefined ? `${count(n)} (no limit)` : `${count(n)} of ${count(max)}`;
 
 /**
  * A restaurant's Usage tab (docs/SUPER_ADMIN_PLAN.md 13a, docs/DECISIONS.md
@@ -28,8 +33,13 @@ export default async function RestaurantUsagePage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const usage = await getRestaurantUsage(restaurantId);
+  const [usage, overview] = await Promise.all([
+    getRestaurantUsage(restaurantId),
+    getRestaurantOverview(restaurantId),
+  ]);
   const { usage: counts, subscription } = detail;
+  // Accepted orders by finished business day, as on the Overview (plan §1).
+  const last7 = overview.days.slice(-7).reduce((sum, day) => sum + day.orders, 0);
 
   return (
     <>
@@ -40,18 +50,18 @@ export default async function RestaurantUsagePage({
             facts={[
               ['Active tables', ofLimit(counts.tables_active, subscription?.max_tables)],
               ['Staff logins', ofLimit(counts.staff_logins, subscription?.max_staff)],
-              ['Waiters', String(counts.waiters)],
-              ['Orders, last 7 days', String(counts.orders_7d)],
-              ['Orders, last 30 days', String(counts.orders_30d)],
+              ['Waiters', count(counts.waiters)],
+              ['Orders, last 7 days', count(last7)],
+              ['Orders, last 30 days', count(overview.last_30.orders)],
               ['Last order', formatDateTime(counts.last_order_at)],
-              ['Bills (last 30 days)', `${counts.bills} (${counts.bills_30d})`],
+              ['Bills (last 30 days)', `${count(counts.bills)} (${count(overview.last_30.bills)})`],
             ]}
           />
-          {subscription && (
-            <p className="text-xs text-ink-muted">
-              Limits are the {subscription.plan_name} plan’s.
-            </p>
-          )}
+          <p className="text-xs text-ink-muted">
+            {subscription && <>Limits are the {subscription.plan_name} plan’s. </>}
+            Orders are accepted orders, and the last 30 days are business days the restaurant has
+            finished, as on the Overview.
+          </p>
         </Section>
 
         <Section title="Plan limits reached, 90 days">
