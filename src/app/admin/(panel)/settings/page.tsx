@@ -36,12 +36,15 @@ export default async function SettingsPage() {
         title="Settings"
         description="Restaurant details, tax, bills and ordering rules."
         actions={
-          <Link
-            href="/admin/help?from=/admin/settings"
-            className={buttonVariants({ variant: 'outline', size: 'touch' })}
-          >
-            <LifeBuoy aria-hidden /> Get help
-          </Link>
+          // A support session asks for help from /super, not as the restaurant.
+          !membership.support && (
+            <Link
+              href="/admin/help?from=/admin/settings"
+              className={buttonVariants({ variant: 'outline', size: 'touch' })}
+            >
+              <LifeBuoy aria-hidden /> Get help
+            </Link>
+          )
         }
       />
       <SettingsTabs
