@@ -2,7 +2,7 @@
 -- docs/DECISIONS.md SA-26): 300 restaurants named load-001 to load-300 with
 -- subscriptions in every state, their payments, up to 18 months of daily
 -- usage, the last 35 days of accepted orders, a year of nightly snapshots and
--- 100 leads. The same seed gives the same data. Run by `pnpm seed:platform-load`,
+-- 100 leads, and onboarding steps and support requests (13b). The same seed gives the same data. Run by `pnpm seed:platform-load`,
 -- which queries the local stack only and removes the previous load first.
 do $$
 begin
@@ -157,8 +157,9 @@ begin
 
   -- The last 35 days of usage as accepted orders, at midday India time, in one
   -- session per restaurant.
-  insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
-  select r.id, '1', 'LOAD' || lpad(r.n::text, 12, '0'), 1 from load_r r;
+  insert into public.dining_tables (restaurant_id, label, qr_token, sort_order, created_at)
+  select r.id, '1', 'LOAD' || lpad(r.n::text, 12, '0'), 1, r.created_at + interval '1 hour'
+  from load_r r;
   insert into public.table_sessions (
     restaurant_id, dining_table_id, table_label_snapshot, status, is_approved, opened_at
   )
@@ -236,5 +237,51 @@ begin
   from load_r r
   cross join generate_series(1, 5) as k
   where r.n % 5 = 3;
+
+  -- Onboarding (SA-41): most have a menu, QR codes and a first bill, half a
+  -- waiter; the rest stop at a step. Steps come hours apart, so a trial of a
+  -- day has them done too, none of them in the future.
+  insert into public.menu_categories (restaurant_id, name, created_at)
+  select r.id, 'Mains', r.created_at + interval '2 hours' from load_r r where r.n % 7 <> 0;
+  insert into public.menu_items (restaurant_id, category_id, name, price_paise, food_type, created_at)
+  select c.restaurant_id, c.id, 'Dish ' || k, 15000 + k * 1000, 'veg',
+         c.created_at + make_interval(mins => k)
+  from public.menu_categories c
+  join load_r r on r.id = c.restaurant_id
+  cross join generate_series(1, 6) as k;
+  insert into public.audit_logs (restaurant_id, actor_type, actor_label, action, created_at)
+  select r.id, 'staff', 'Owner', 'table.qr_sheet_printed', r.created_at + interval '3 hours'
+  from load_r r where r.n % 4 <> 0;
+  insert into public.waiters (restaurant_id, full_name, created_at)
+  select r.id, 'Load waiter', r.created_at + interval '4 hours' from load_r r where r.n % 2 = 0;
+  insert into public.bills (
+    restaurant_id, session_id, invoice_number, financial_year, invoice_seq, document_type,
+    table_label_snapshot, line_items, restaurant_snapshot, gst_mode, gst_rate_bps,
+    prices_include_tax, subtotal_paise, taxable_paise, grand_total_paise, generated_at
+  )
+  select s.restaurant_id, s.id, 'LOAD/' || r.n, '2026-27', 1, 'bill', '1', '[]', '{}', 'none', 0,
+         false, 32000, 32000, 32000, r.created_at + interval '5 hours'
+  from public.table_sessions s
+  join load_r r on r.id = s.restaurant_id
+  where r.profile <> 'never' and r.n % 6 <> 1;
+
+  -- Support requests (SA-43): every status, some waiting more than a day.
+  insert into public.support_requests (
+    restaurant_id, created_by_name, created_by_role, topic, message, contact_method, contact,
+    context, status, priority, created_at, updated_at, resolved_at
+  )
+  select r.id, 'Load owner', 'owner',
+         (array['billing', 'menu', 'printing', 'orders_tables', 'staff', 'other'])[1 + r.n % 6],
+         'Load request on ' || r.slug || ': the bill printer prints blank pages after the update.',
+         (array['call', 'whatsapp', 'email'])[1 + r.n % 3],
+         case when r.n % 3 = 2 then 'owner' || r.n || '@load.test' else '9000000' || lpad(r.n::text, 3, '0') end,
+         jsonb_build_object('page', '/admin/billing', 'browser', 'Chrome on Android'),
+         (array['open', 'in_progress', 'waiting', 'resolved', 'resolved'])[1 + r.n % 5],
+         (array['normal', 'high', 'normal', 'low'])[1 + r.n % 4],
+         now() - make_interval(hours => 2 + (r.n * 7) % 120),
+         now() - make_interval(hours => 1 + (r.n * 7) % 60),
+         case when r.n % 5 in (3, 4) then now() - make_interval(hours => 1 + (r.n * 7) % 60) end
+  from load_r r
+  where r.n % 6 = 2;
 end
 $$;
