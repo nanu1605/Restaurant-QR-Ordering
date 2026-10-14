@@ -267,6 +267,36 @@ export type Database = {
           },
         ]
       }
+      cron_runs: {
+        Row: {
+          detail: string | null
+          finished_at: string
+          id: number
+          job: string
+          ok: boolean
+          started_at: string
+          step: string
+        }
+        Insert: {
+          detail?: string | null
+          finished_at: string
+          id?: never
+          job: string
+          ok: boolean
+          started_at: string
+          step: string
+        }
+        Update: {
+          detail?: string | null
+          finished_at?: string
+          id?: never
+          job?: string
+          ok?: boolean
+          started_at?: string
+          step?: string
+        }
+        Relationships: []
+      }
       dining_tables: {
         Row: {
           created_at: string
@@ -719,6 +749,170 @@ export type Database = {
           },
         ]
       }
+      metrics_platform_daily: {
+        Row: {
+          day: string
+          leads_created: number
+          pricing_visitors: number | null
+          restaurants_onboarded: number
+          signups_completed: number
+          signups_started: number
+          website_visitors: number | null
+        }
+        Insert: {
+          day: string
+          leads_created?: number
+          pricing_visitors?: number | null
+          restaurants_onboarded?: number
+          signups_completed?: number
+          signups_started?: number
+          website_visitors?: number | null
+        }
+        Update: {
+          day?: string
+          leads_created?: number
+          pricing_visitors?: number | null
+          restaurants_onboarded?: number
+          signups_completed?: number
+          signups_started?: number
+          website_visitors?: number | null
+        }
+        Relationships: []
+      }
+      metrics_subscription_daily: {
+        Row: {
+          autopay: boolean
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
+          cancel_at_period_end: boolean
+          current_period_end: string | null
+          day: string
+          grace_until: string | null
+          health: string | null
+          mrr_paise: number
+          plan_id: string | null
+          restaurant_id: string
+          source: Database["public"]["Enums"]["subscription_source"] | null
+          state: string
+          trial_ends_at: string | null
+        }
+        Insert: {
+          autopay?: boolean
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
+          cancel_at_period_end?: boolean
+          current_period_end?: string | null
+          day: string
+          grace_until?: string | null
+          health?: string | null
+          mrr_paise?: number
+          plan_id?: string | null
+          restaurant_id: string
+          source?: Database["public"]["Enums"]["subscription_source"] | null
+          state: string
+          trial_ends_at?: string | null
+        }
+        Update: {
+          autopay?: boolean
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
+          cancel_at_period_end?: boolean
+          current_period_end?: string | null
+          day?: string
+          grace_until?: string | null
+          health?: string | null
+          mrr_paise?: number
+          plan_id?: string | null
+          restaurant_id?: string
+          source?: Database["public"]["Enums"]["subscription_source"] | null
+          state?: string
+          trial_ends_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metrics_subscription_daily_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "metrics_subscription_daily_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      metrics_usage_daily: {
+        Row: {
+          avg_session_minutes: number | null
+          bills: number
+          business_day: string
+          customer_orders: number
+          discount_paise: number
+          gmv_paise: number
+          hourly_orders: number[]
+          items: number
+          orders: number
+          paid_card_paise: number
+          paid_cash_paise: number
+          paid_other_paise: number
+          paid_upi_paise: number
+          restaurant_id: string
+          service_requests: number
+          sessions_billed: number
+          staff_orders: number
+          tax_paise: number
+        }
+        Insert: {
+          avg_session_minutes?: number | null
+          bills?: number
+          business_day: string
+          customer_orders?: number
+          discount_paise?: number
+          gmv_paise?: number
+          hourly_orders?: number[]
+          items?: number
+          orders?: number
+          paid_card_paise?: number
+          paid_cash_paise?: number
+          paid_other_paise?: number
+          paid_upi_paise?: number
+          restaurant_id: string
+          service_requests?: number
+          sessions_billed?: number
+          staff_orders?: number
+          tax_paise?: number
+        }
+        Update: {
+          avg_session_minutes?: number | null
+          bills?: number
+          business_day?: string
+          customer_orders?: number
+          discount_paise?: number
+          gmv_paise?: number
+          hourly_orders?: number[]
+          items?: number
+          orders?: number
+          paid_card_paise?: number
+          paid_cash_paise?: number
+          paid_other_paise?: number
+          paid_upi_paise?: number
+          restaurant_id?: string
+          service_requests?: number
+          sessions_billed?: number
+          staff_orders?: number
+          tax_paise?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metrics_usage_daily_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           addons_snapshot: Json
@@ -943,6 +1137,41 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_limit_events: {
+        Row: {
+          created_at: string
+          feature: string | null
+          id: number
+          kind: string
+          restaurant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          feature?: string | null
+          id?: never
+          kind: string
+          restaurant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          feature?: string | null
+          id?: never
+          kind?: string
+          restaurant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_limit_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plans: {
         Row: {
           code: string
@@ -1099,6 +1328,8 @@ export type Database = {
         Row: {
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end: boolean
+          cancel_reason: string | null
+          cancel_reason_detail: string | null
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
@@ -1122,6 +1353,8 @@ export type Database = {
         Insert: {
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
+          cancel_reason?: string | null
+          cancel_reason_detail?: string | null
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
@@ -1145,6 +1378,8 @@ export type Database = {
         Update: {
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
+          cancel_reason?: string | null
+          cancel_reason_detail?: string | null
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
@@ -1192,6 +1427,7 @@ export type Database = {
       restaurants: {
         Row: {
           accent_color: string
+          acquisition_channel: string | null
           address_line: string | null
           bill_footer_text: string | null
           business_day_start_hour: number
@@ -1233,6 +1469,7 @@ export type Database = {
         }
         Insert: {
           accent_color?: string
+          acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
           business_day_start_hour?: number
@@ -1274,6 +1511,7 @@ export type Database = {
         }
         Update: {
           accent_color?: string
+          acquisition_channel?: string | null
           address_line?: string | null
           bill_footer_text?: string | null
           business_day_start_hour?: number
@@ -1534,12 +1772,18 @@ export type Database = {
       subscription_payments: {
         Row: {
           amount_paise: number
+          base_paise: number | null
           created_at: string
+          discount_paise: number | null
+          gst_bps: number
+          gst_paise: number | null
           id: string
+          list_price_paise: number | null
           manual_mode: Database["public"]["Enums"]["manual_payment_mode"] | null
           notes: string | null
           period_end: string | null
           period_start: string | null
+          purpose: string
           razorpay_payment_id: string | null
           recorded_by: string | null
           restaurant_id: string
@@ -1548,14 +1792,20 @@ export type Database = {
         }
         Insert: {
           amount_paise: number
+          base_paise?: number | null
           created_at?: string
+          discount_paise?: number | null
+          gst_bps?: number
+          gst_paise?: number | null
           id?: string
+          list_price_paise?: number | null
           manual_mode?:
             | Database["public"]["Enums"]["manual_payment_mode"]
             | null
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
           restaurant_id: string
@@ -1564,14 +1814,20 @@ export type Database = {
         }
         Update: {
           amount_paise?: number
+          base_paise?: number | null
           created_at?: string
+          discount_paise?: number | null
+          gst_bps?: number
+          gst_paise?: number | null
           id?: string
+          list_price_paise?: number | null
           manual_mode?:
             | Database["public"]["Enums"]["manual_payment_mode"]
             | null
           notes?: string | null
           period_end?: string | null
           period_start?: string | null
+          purpose?: string
           razorpay_payment_id?: string | null
           recorded_by?: string | null
           restaurant_id?: string
@@ -1913,9 +2169,17 @@ export type Database = {
         Args: { p_member_id: string }
         Returns: undefined
       }
+      admin_record_cancel_reason: {
+        Args: { p_detail?: string; p_reason: string }
+        Returns: undefined
+      }
       admin_record_payment: {
         Args: { p_bill_id: string; p_payments: Json }
         Returns: Json
+      }
+      admin_record_qr_use: {
+        Args: { p_action: string; p_table_ids: string[] }
+        Returns: undefined
       }
       admin_regenerate_qr: { Args: { p_table_id: string }; Returns: string }
       admin_remove_order: {
@@ -2032,6 +2296,10 @@ export type Database = {
       }
       health_check: { Args: never; Returns: string }
       is_platform_admin: { Args: never; Returns: boolean }
+      member_record_plan_limit: {
+        Args: { p_code: string; p_detail?: string }
+        Returns: undefined
+      }
       member_role: {
         Args: { p_restaurant_id: string }
         Returns: Database["public"]["Enums"]["member_role"]
@@ -2114,8 +2382,17 @@ export type Database = {
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
+      platform_metrics_backfill_usage: {
+        Args: { p_from: string; p_to: string }
+        Returns: number
+      }
+      platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
       platform_overview: { Args: never; Returns: Json }
       platform_record_manual_payment: {
+        Args: { p_payment: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_record_setup_fee: {
         Args: { p_payment: Json; p_restaurant_id: string }
         Returns: Json
       }
