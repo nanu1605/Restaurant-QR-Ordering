@@ -14,8 +14,9 @@ const HOUR = 3600 * 1000;
 
 test('Home lists a failed payment, and a snooze puts it aside', async ({ page }) => {
   const restaurant = await createTestRestaurant({ prefix: 'home' });
-  // Grace ends in an hour: first in its group.
-  await adminClient()
+  const db = adminClient();
+  // Grace ends in five minutes: first in its group.
+  await db
     .from('restaurant_subscriptions')
     .update({
       status: 'past_due',
@@ -24,36 +25,51 @@ test('Home lists a failed payment, and a snooze puts it aside', async ({ page })
       billing_cycle: 'monthly',
       trial_ends_at: null,
       current_period_end: new Date(Date.now() - 24 * HOUR).toISOString(),
-      grace_until: new Date(Date.now() + HOUR).toISOString(),
+      grace_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     })
     .eq('restaurant_id', restaurant.restaurantId)
     .throwOnError();
 
-  await logInAsPlatformAdmin(page, await createPlatformAdmin('home'));
-  await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
-  const numbers = page.getByRole('region', { name: 'Key numbers' });
-  await expect(numbers.getByRole('link', { name: 'Collected today' })).toBeVisible();
-  await numbers.getByRole('link', { name: 'This month' }).click();
-  await expect(numbers.getByRole('link', { name: 'Collected this month' })).toBeVisible();
-  await expect(page).toHaveURL(/period=month/);
+  try {
+    await logInAsPlatformAdmin(page, await createPlatformAdmin('home'));
+    await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
+    const numbers = page.getByRole('region', { name: 'Key numbers' });
+    await expect(numbers.getByRole('link', { name: 'Collected today' })).toBeVisible();
+    await numbers.getByRole('link', { name: 'This month' }).click();
+    await expect(numbers.getByRole('link', { name: 'Collected this month' })).toBeVisible();
+    await expect(page).toHaveURL(/period=month/);
 
-  const failed = page.getByRole('region', { name: /^Payment failed \(\d+\)$/ });
-  const row = failed.getByRole('listitem').filter({ hasText: restaurant.name });
-  await expect(row).toContainText('₹1,060.82 with GST');
-  await row.getByRole('button', { name: `Snooze ${restaurant.name}` }).click();
-  await page.getByRole('menuitem', { name: 'For 1 day' }).click();
-  await expect(page.getByText('Snoozed for 1 day')).toBeVisible();
-  await expect(row).toHaveCount(0);
+    const failed = page.getByRole('region', { name: /^Payment failed \(\d+\)$/ });
+    const row = failed.getByRole('listitem').filter({ hasText: restaurant.name });
+    await expect(row).toContainText('₹1,060.82 with GST');
+    await row.getByRole('button', { name: `Snooze ${restaurant.name}` }).click();
+    await page.getByRole('menuitem', { name: 'For 1 day' }).click();
+    await expect(page.getByText('Snoozed for 1 day')).toBeVisible();
+    await expect(row).toHaveCount(0);
 
-  // The charts load after the page, each with its numbers as a table.
-  const usage = page.getByRole('region', { name: 'GMV and orders, 30 days' });
-  await expect(
-    usage
-      .getByRole('img', { name: /^GMV and orders for the 30 days/ })
-      .or(usage.getByText('No orders in the last 30 days.')),
-  ).toBeVisible();
-  await usage.getByText('Show as a table').click();
-  await expect(usage.getByRole('columnheader', { name: 'Orders' })).toBeVisible();
+    // The charts load after the page, each with its numbers as a table.
+    const usage = page.getByRole('region', { name: 'GMV and orders, 30 days' });
+    await expect(
+      usage
+        .getByRole('img', { name: /^GMV and orders for the 30 days/ })
+        .or(usage.getByText('No orders in the last 30 days.')),
+    ).toBeVisible();
+    await usage.getByText('Show as a table').click();
+    await expect(usage.getByRole('columnheader', { name: 'Orders' })).toBeVisible();
+  } finally {
+    // Paid, so it leaves everyone else's Payment failed group.
+    await db
+      .from('restaurant_subscriptions')
+      .update({
+        status: 'active',
+        source: 'manual',
+        razorpay_status: null,
+        grace_until: null,
+        current_period_end: new Date(Date.now() + 60 * 24 * HOUR).toISOString(),
+      })
+      .eq('restaurant_id', restaurant.restaurantId)
+      .throwOnError();
+  }
 });
 
 test('a new payment raises an alert and shows in the activity', async ({ page }) => {

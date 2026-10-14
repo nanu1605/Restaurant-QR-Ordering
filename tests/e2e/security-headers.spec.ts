@@ -88,6 +88,8 @@ test('every panel runs under the content security policy without violations', as
 });
 
 test('the platform admin pages run under the policy without violations', async ({ page }) => {
+  // Nine pages to the network going quiet, Home's charts and alerts after it, beside the suite.
+  test.slow();
   const violations = await watchCspViolations(page.context());
   await logInAsPlatformAdmin(page, await createPlatformAdmin('csp'));
   for (const path of [
