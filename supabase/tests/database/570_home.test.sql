@@ -449,7 +449,7 @@ update public.platform_admins set alerts_seen_at = now() - interval '90 seconds'
   where user_id = :'admin';
 select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_alerts() as alerts \gset
-select public.platform_activity(null, array['signup', 'payment', 'payment_failed', 'lead'], null, 100)
+select public.platform_activity(null, array['signup', 'payment', 'payment_failed', 'lead', 'support'], null, 100)
   as alert_kinds \gset
 select public.platform_needs_attention() -> 'total' as attention_total \gset
 -- Seen up to the newest alert shown: one that came later stays new.
@@ -468,7 +468,8 @@ select is(((:'alerts'::jsonb) ->> 'unread')::int,
   'unread: signups, payments, failed payments and leads since last seen');
 select ok(((:'alerts'::jsonb) ->> 'unread')::int >= 3, 'this file''s signup, payments and lead');
 select ok(
-  (select bool_and(e ->> 'kind' in ('signup', 'payment', 'payment_failed', 'lead'))
+  -- Support requests are alerts too since 13b (SA-43).
+  (select bool_and(e ->> 'kind' in ('signup', 'payment', 'payment_failed', 'lead', 'support'))
      and count(*) <= 10
    from jsonb_array_elements((:'alerts'::jsonb) -> 'items') as e),
   'the latest 10, of those kinds'
