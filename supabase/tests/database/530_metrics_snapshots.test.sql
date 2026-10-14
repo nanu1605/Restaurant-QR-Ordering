@@ -95,18 +95,43 @@ begin
 end;
 $$;
 
+insert into public.menu_categories (restaurant_id, name, sort_order) values (:'rest_a', 'Starters', 1);
+insert into public.menu_items (restaurant_id, category_id, name, food_type, price_paise, sort_order)
+select :'rest_a', c.id, 'Paneer Tikka', 'veg', 28000, 1
+from public.menu_categories c where c.restaurant_id = :'rest_a';
+select id as paneer from public.menu_items where restaurant_id = :'rest_a' \gset
+
+-- A round of orders with one line of p_qty of the dish per item status.
 create function pg_temp.round(
   p_session uuid, p_round int, p_at timestamptz, p_via public.order_placed_via,
-  p_status public.order_status default 'accepted'
+  p_status public.order_status default 'accepted',
+  p_items jsonb default '{}'
 )
 returns void
-language sql
+language plpgsql
 as $$
+declare
+  v_order uuid;
+  v_dish uuid := (select id from public.menu_items where name = 'Paneer Tikka' and restaurant_id =
+    (select restaurant_id from public.table_sessions where id = p_session));
+  v_line record;
+begin
   insert into public.orders (
     restaurant_id, session_id, round_number, status, placed_via, idempotency_key, created_at
   )
   select s.restaurant_id, s.id, p_round, p_status, p_via, 'sa530-' || gen_random_uuid(), p_at
-  from public.table_sessions s where s.id = p_session;
+  from public.table_sessions s where s.id = p_session
+  returning id into v_order;
+  for v_line in select key, value::int as qty from jsonb_each_text(p_items) loop
+    insert into public.order_items (
+      restaurant_id, order_id, session_id, menu_item_id, item_name_snapshot,
+      food_type_snapshot, unit_price_paise, quantity, status
+    )
+    select s.restaurant_id, v_order, s.id, v_dish, 'Paneer Tikka', 'veg', 28000, v_line.qty,
+           v_line.key::public.order_item_status
+    from public.table_sessions s where s.id = p_session;
+  end loop;
+end;
 $$;
 
 -- Business day 2026-09-10 (4 am to 4 am): two active bills, the second at
@@ -117,10 +142,10 @@ select pg_temp.sale(:'table_a', '2026-09-11 01:30+05:30', 2, 31500, 0, 1500, 'ac
   '[{"mode": "card", "amount": 31500}]') as s2 \gset
 select pg_temp.sale(:'table_a', '2026-09-10 15:00+05:30', 3, 9999, 0, 0, 'void',
   '[{"mode": "cash", "amount": 9999}]') as s3 \gset
-select pg_temp.round(:'s1', 1, '2026-09-10 12:05+05:30', 'customer');
-select pg_temp.round(:'s1', 2, '2026-09-10 12:40+05:30', 'staff');
-select pg_temp.round(:'s1', 3, '2026-09-10 12:45+05:30', 'customer', 'rejected');
-select pg_temp.round(:'s2', 1, '2026-09-11 00:50+05:30', 'customer');
+select pg_temp.round(:'s1', 1, '2026-09-10 12:05+05:30', 'customer', 'accepted', '{"served": 2, "cancelled": 1}');
+select pg_temp.round(:'s1', 2, '2026-09-10 12:40+05:30', 'staff', 'accepted', '{"placed": 1}');
+select pg_temp.round(:'s1', 3, '2026-09-10 12:45+05:30', 'customer', 'rejected', '{"placed": 4}');
+select pg_temp.round(:'s2', 1, '2026-09-11 00:50+05:30', 'customer', 'accepted', '{"ready": 3}');
 insert into public.service_requests (restaurant_id, dining_table_id, type, created_at)
 values (:'rest_a', :'table_a', 'call_waiter', '2026-09-10 13:00+05:30');
 
@@ -129,6 +154,8 @@ select is(private.metrics_usage_rebuild('2026-09-09', '2026-09-11', :'rest_a'), 
 
 select tests.authenticate_as(:'a_manager');
 select public.admin_report_sales('{"from": "2026-09-10", "to": "2026-09-10"}') -> 'summary' as report \gset
+select public.admin_report_items('{"from": "2026-09-10", "to": "2026-09-10"}') as items_report \gset
+select public.admin_report_tables('{"from": "2026-09-10", "to": "2026-09-10"}') -> 'overall' as tables_report \gset
 select tests.clear_auth();
 select is(
   (select jsonb_build_object(
@@ -141,6 +168,21 @@ select is(
     'discount_paise', :'report'::jsonb -> 'discount_paise', 'tax_paise', :'report'::jsonb -> 'tax_paise',
     'collected', :'report'::jsonb -> 'collected'),
   'bills, sales, discount, tax and payments match the sales report for the day'
+);
+select is(
+  (select row(items, sessions_billed, avg_session_minutes)::text
+   from public.metrics_usage_daily where restaurant_id = :'rest_a' and business_day = '2026-09-10'),
+  row(
+    (select sum((i ->> 'qty')::int) from jsonb_array_elements(:'items_report'::jsonb -> 'items') as i),
+    (:'tables_report'::jsonb ->> 'sessions')::int,
+    (:'tables_report'::jsonb ->> 'minutes')::int
+  )::text,
+  'items and table time match the items and tables reports'
+);
+select is(
+  (select items from public.metrics_usage_daily where restaurant_id = :'rest_a' and business_day = '2026-09-10'),
+  6,
+  'items of accepted rounds, cancelled lines and the rejected round left out'
 );
 select is(
   (select row(bills, gmv_paise, orders, customer_orders, staff_orders, service_requests,
@@ -180,7 +222,8 @@ insert into public.trial_claims (kind, value, restaurant_id) values ('fssai', '2
 insert into public.site_leads (name, restaurant_name, city, phone, created_at)
 values ('Lead', 'Lead Cafe', 'Indore', '9000000530', '2020-01-05 09:00+05:30');
 insert into public.site_signups (email, details, code_hash, created_at)
-values ('one@example.test', '{}', repeat('a', 64), '2020-01-05 11:00+05:30');
+values ('one@example.test', '{}', repeat('a', 64), '2020-01-05 11:00+05:30'),
+       ('One@example.test', '{}', repeat('b', 64), '2020-01-05 11:20+05:30');
 
 select tests.as_service_role();
 select public.platform_metrics_snapshot('2020-01-05') ->> 'subscriptions' as first_run \gset
@@ -203,7 +246,7 @@ select is(
               website_visitors)::text
    from public.metrics_platform_daily where day = '2020-01-05'),
   row(1, 1, 1, 1, null::int)::text,
-  'signups started and completed, restaurants onboarded by the team, leads'
+  'signups started (by email, so a restart counts once) and completed, restaurants onboarded by the team, leads'
 );
 select throws_ok(
   $$ select public.platform_metrics_backfill_usage('2024-01-01', '2026-01-01') $$,

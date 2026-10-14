@@ -211,13 +211,14 @@ begin
           coalesce(sum(p.amount_paise) filter (where p.mode = 'card'), 0) as card,
           coalesce(sum(p.amount_paise) filter (where p.mode = 'other'), 0) as other
         from public.bill_payments p
-        where p.bill_id = b.id and not p.is_void
+        where p.restaurant_id = r.id and p.bill_id = b.id and not p.is_void
       ) as pay
       cross join lateral (
         select coalesce(sum(i.quantity), 0) as items
         from public.order_items i
-        join public.orders o on o.id = i.order_id
-        where o.session_id = b.session_id
+        join public.orders o on o.restaurant_id = i.restaurant_id and o.id = i.order_id
+        where i.restaurant_id = r.id
+          and i.session_id = b.session_id
           and o.status = 'accepted'
           and i.status in ('placed', 'preparing', 'ready', 'served')
       ) as it
@@ -236,6 +237,9 @@ begin
         and o.status = 'accepted'
         and o.created_at >= v_starts and o.created_at < v_ends
     ),
+    placed_hours as (
+      select pl.day, pl.hour, count(*)::int as n from placed pl group by pl.day, pl.hour
+    ),
     order_days as (
       select
         pl.day,
@@ -243,7 +247,7 @@ begin
         (count(*) filter (where pl.placed_via = 'customer'))::int as customer_orders,
         (count(*) filter (where pl.placed_via = 'staff'))::int as staff_orders,
         array(
-          select (select count(*) from placed x where x.day = pl.day and x.hour = g)::int
+          select coalesce((select h.n from placed_hours h where h.day = pl.day and h.hour = g), 0)
           from generate_series(0, 23) as g
           order by g
         ) as hourly
@@ -290,8 +294,8 @@ revoke execute on function private.metrics_usage_rebuild(date, date, uuid)
 -- ─── Daily snapshot ─────────────────────────────────────────────────────────
 -- Run by the daily cron at 03:00 India time, before signups are cleaned up:
 -- the state then counts as the end of the previous India day (SA-9). Running
--- it again for a day changes nothing already stored; usage for the last few
--- business days is recounted (late payments, voids).
+-- it again for a day changes nothing already stored. Usage is a separate cron
+-- step (platform_metrics_backfill_usage), so it can't roll this back.
 create function public.platform_metrics_snapshot(p_day date default null)
 returns jsonb
 language plpgsql
@@ -305,7 +309,6 @@ declare
   v_from timestamptz := v_day::timestamp at time zone 'Asia/Kolkata';
   v_to timestamptz := (v_day + 1)::timestamp at time zone 'Asia/Kolkata';
   v_subscriptions int;
-  v_usage int;
 begin
   insert into public.metrics_subscription_daily (
     day, restaurant_id, state, plan_id, billing_cycle, source, mrr_paise,
@@ -334,7 +337,9 @@ begin
   )
   select
     v_day,
-    (select count(*) from public.site_signups x where x.created_at >= v_from and x.created_at < v_to),
+    -- People, not attempts: a signup restarted with the same email counts once.
+    (select count(distinct lower(x.email)) from public.site_signups x
+     where x.created_at >= v_from and x.created_at < v_to),
     (select count(*) from public.restaurants x
      where x.created_at >= v_from and x.created_at < v_to
        and exists (select 1 from public.trial_claims c where c.restaurant_id = x.id)),
@@ -344,14 +349,13 @@ begin
     (select count(*) from public.site_leads x where x.created_at >= v_from and x.created_at < v_to)
   on conflict (day) do nothing;
 
-  v_usage := private.metrics_usage_rebuild(v_today - 4, v_today);
-
-  return jsonb_build_object('day', v_day, 'subscriptions', v_subscriptions, 'usage_rows', v_usage);
+  return jsonb_build_object('day', v_day, 'subscriptions', v_subscriptions);
 end;
 $$;
 
--- Usage for past business days, from a restaurant's first order: once per
--- environment after this migration (pnpm metrics:backfill, RUNBOOK).
+-- Recounts usage for business days p_from..p_to: nightly for the last few
+-- days (the cron), and once per environment for the past (RUNBOOK). Each call
+-- is its own transaction, so keep ranges short on a large platform.
 create function public.platform_metrics_backfill_usage(p_from date, p_to date)
 returns int
 language plpgsql

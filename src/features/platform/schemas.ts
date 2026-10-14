@@ -36,8 +36,6 @@ export const changePlanSchema = z.object({
 });
 export type ChangePlanInput = z.input<typeof changePlanSchema>;
 
-const dateSchema = z.string().refine(isDate, 'Choose a date.');
-
 export const manualPaymentSchema = z
   .object({
     // A setup fee has no billing cycle or period (docs/DECISIONS.md SA-8).
@@ -48,13 +46,28 @@ export const manualPaymentSchema = z
       .refine((text) => (parsePriceInput(text) ?? 0) > 0, 'Enter the amount in rupees, e.g. 899.'),
     mode: z.enum(MANUAL_MODES, { message: 'Choose how it was paid.' }),
     billingCycle: z.enum(['monthly', 'yearly'], { message: 'Choose monthly or yearly.' }),
-    periodStart: dateSchema,
-    periodEnd: dateSchema,
+    // Checked below, and only for a subscription: a setup fee hides them.
+    periodStart: z.string(),
+    periodEnd: z.string(),
     notes: z.string().trim().max(500, 'Use 500 characters or fewer.'),
   })
-  .refine((value) => value.purpose === 'setup_fee' || value.periodEnd >= value.periodStart, {
-    path: ['periodEnd'],
-    message: 'The last day is on or after the first.',
+  .superRefine((value, ctx) => {
+    if (value.purpose === 'setup_fee') return;
+    for (const key of ['periodStart', 'periodEnd'] as const) {
+      if (!isDate(value[key]))
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Choose a date.' });
+    }
+    if (
+      isDate(value.periodStart) &&
+      isDate(value.periodEnd) &&
+      value.periodEnd < value.periodStart
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['periodEnd'],
+        message: 'The last day is on or after the first.',
+      });
+    }
   });
 export type ManualPaymentInput = z.input<typeof manualPaymentSchema>;
 

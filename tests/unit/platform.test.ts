@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { readAuditFilters, readRestaurantFilters } from '@/features/platform/params';
@@ -145,6 +147,13 @@ describe('manualPaymentSchema', () => {
       manualPaymentSchema.safeParse({ ...valid, purpose: 'setup_fee', periodEnd: '2026-08-31' })
         .success,
     ).toBe(true);
+    // The hidden dates don't block a setup fee, but a subscription needs real ones.
+    expect(
+      manualPaymentSchema.safeParse({ ...valid, purpose: 'setup_fee', periodStart: '' }).success,
+    ).toBe(true);
+    expect(
+      manualPaymentSchema.safeParse({ ...valid, periodStart: '' }).error?.issues[0]?.path,
+    ).toEqual(['periodStart']);
   });
 });
 
@@ -156,7 +165,12 @@ describe('splitGst', () => {
   });
 
   it('uses the rate the database uses (private.fee_gst_bps)', () => {
-    expect(FEE_GST_BPS).toBe(1800);
+    const sql = readFileSync(
+      'supabase/migrations/20261015100000_payment_purpose_and_gst.sql',
+      'utf8',
+    );
+    const rate = /function private\.fee_gst_bps\(\)[\s\S]*?select (\d+);/.exec(sql)?.[1];
+    expect(Number(rate)).toBe(FEE_GST_BPS);
   });
 });
 

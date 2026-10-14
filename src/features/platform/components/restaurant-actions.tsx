@@ -208,7 +208,7 @@ export function RestaurantActions({
         open={open === 'payment'}
         onClose={close}
         title="Record payment"
-        description="A payment received outside Razorpay. It starts on the first day not yet covered; the subscription becomes active until the last day. A period that is already covered is only recorded."
+        description="A payment received outside Razorpay. A subscription payment starts on the first day not yet covered and keeps the restaurant active until the last day (a period already covered is only recorded). A setup fee is only recorded."
       >
         <ManualPaymentForm restaurantId={restaurantId} start={paymentStart} onDone={close} />
       </FormDialog>

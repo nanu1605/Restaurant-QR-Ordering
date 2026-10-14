@@ -14,7 +14,8 @@ import { createClient } from '@supabase/supabase-js';
 
 import type { Database } from '../src/types/database.ts';
 
-const CHUNK_DAYS = 90;
+// Each call is one transaction under the API's statement timeout: short ranges.
+const CHUNK_DAYS = 14;
 
 function fail(message: string): never {
   console.error(`\n✖ ${message}\n`);

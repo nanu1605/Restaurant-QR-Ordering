@@ -3,10 +3,12 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { fillHindiNames } from '@/features/menu/hindi-names';
+import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
 import { sendSubscriptionReminders } from '@/features/subscriptions/reminders';
 import { emailConfig } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
+import { addDays } from '@/lib/date-range';
 import { getServerEnv } from '@/lib/env.server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -79,14 +81,24 @@ export async function GET(request: Request) {
     if (error) throw new Error(error.message);
     return data;
   });
-  const [menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos] =
+  const today = todayInIndia();
+  const [usage, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos] =
     await Promise.all([
+      // Recounts the last few business days (late payments, voids), in its own transaction.
+      step(admin, 'usage snapshot', async () => {
+        const { data, error } = await admin.rpc('platform_metrics_backfill_usage', {
+          p_from: addDays(today, -4),
+          p_to: today,
+        });
+        if (error) throw new Error(error.message);
+        return { rows: data };
+      }),
       step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
-      email
-        ? step(admin, 'reminders', () =>
-            sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL),
-          )
-        : Promise.resolve({ skipped: true }),
+      step(admin, 'reminders', async () =>
+        email
+          ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+          : { skipped: true },
+      ),
       step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
       step(admin, 'signup cleanup', async () => {
         const { data, error } = await admin.rpc('site_signups_cleanup');
@@ -112,6 +124,7 @@ export async function GET(request: Request) {
     ]);
   const ok = [
     snapshot,
+    usage,
     menuImports,
     reminders,
     hindiNames,
@@ -120,7 +133,17 @@ export async function GET(request: Request) {
     storefrontPhotos,
   ].every((result) => result !== null);
   return NextResponse.json(
-    { ok, snapshot, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos },
+    {
+      ok,
+      snapshot,
+      usage,
+      menuImports,
+      reminders,
+      hindiNames,
+      signups,
+      passwordResets,
+      storefrontPhotos,
+    },
     { status: ok ? 200 : 500, headers: noStore },
   );
 }

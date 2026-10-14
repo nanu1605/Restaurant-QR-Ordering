@@ -26,7 +26,7 @@ export default async function SuperOverviewPage() {
       value: restaurants.trialing,
       href: '/super/subscriptions?status=trialing',
     },
-    { label: 'Active', value: restaurants.active, href: '/super/subscriptions?status=active' },
+    { label: 'Paid', value: restaurants.active, href: '/super/subscriptions?status=active' },
     { label: 'Payment failed', value: restaurants.past_due, href: '/super/subscriptions' },
     { label: 'Read-only', value: restaurants.read_only, href: '/super/restaurants' },
     {
