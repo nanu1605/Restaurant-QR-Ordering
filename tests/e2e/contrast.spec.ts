@@ -7,6 +7,7 @@ import {
   logInAsPlatformAdmin,
   restaurantPagePaths,
   supportRequestPaths,
+  supportSessionPaths,
 } from './platform-fixtures';
 
 /**
@@ -97,7 +98,8 @@ test('admin panel', async ({ page }) => {
 
 test('platform admin panel', async ({ page }) => {
   test.slow();
-  await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast'));
+  const admin = await createPlatformAdmin('contrast');
+  await logInAsPlatformAdmin(page, admin);
   const paths = [
     '/super',
     '/super/restaurants',
@@ -112,6 +114,8 @@ test('platform admin panel', async ({ page }) => {
     ...(await restaurantPagePaths('contrast')),
     // The support inbox and a request (13b).
     ...(await supportRequestPaths('contrast')),
+    // A support session's admin panel, with its banner (13c).
+    ...(await supportSessionPaths('contrast', admin)),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

@@ -8,6 +8,7 @@ import {
   logInAsPlatformAdmin,
   restaurantPagePaths,
   supportRequestPaths,
+  supportSessionPaths,
 } from './platform-fixtures';
 
 /**
@@ -103,7 +104,8 @@ test('the admin panel fits every screen', async ({ page }) => {
 
 test('the platform admin panel fits every screen', async ({ page }) => {
   test.slow();
-  await logInAsPlatformAdmin(page, await createPlatformAdmin('responsive'));
+  const admin = await createPlatformAdmin('responsive');
+  await logInAsPlatformAdmin(page, admin);
   const paths = [
     '/super',
     '/super/restaurants',
@@ -120,6 +122,8 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     ...(await restaurantPagePaths('responsive')),
     // The support inbox and a request (13b).
     ...(await supportRequestPaths('responsive')),
+    // A support session's admin panel, with its banner (13c).
+    ...(await supportSessionPaths('responsive', admin)),
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });
