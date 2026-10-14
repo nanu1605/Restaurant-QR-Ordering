@@ -4,6 +4,7 @@ import { fillHindiNames } from '@/features/menu/hindi-names';
 import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
 import { sendSubscriptionReminders } from '@/features/subscriptions/reminders';
+import { SCREENSHOT_BUCKET } from '@/features/support/support';
 import { cronAuthorised, cronStep } from '@/lib/cron';
 import { emailConfig } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
@@ -28,7 +29,8 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * subscription reminder emails (skipped until Resend is set up), Hindi
  * names that menu edits didn't fill (skipped without a menu import key),
  * website signups older than a week (W-9), password resets older than a day
- * (P11-6), and storefront photos of signups that never finished (P11-12).
+ * (P11-6), storefront photos of signups that never finished (P11-12), and
+ * support screenshots of requests that were never sent (SA-42).
  */
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) {
@@ -45,46 +47,65 @@ export async function GET(request: Request) {
     return data;
   });
   const today = todayInIndia();
-  const [usage, menuImports, reminders, hindiNames, signups, passwordResets, storefrontPhotos] =
-    await Promise.all([
-      // Recounts the last few business days (late payments, voids), in its own transaction.
-      step(admin, 'usage snapshot', async () => {
-        const { data, error } = await admin.rpc('platform_metrics_backfill_usage', {
-          p_from: addDays(today, -4),
-          p_to: today,
-        });
-        if (error) throw new Error(error.message);
-        return { rows: data };
-      }),
-      step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
-      step(admin, 'reminders', async () =>
-        email
-          ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
-          : { skipped: true },
-      ),
-      step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
-      step(admin, 'signup cleanup', async () => {
-        const { data, error } = await admin.rpc('site_signups_cleanup');
-        if (error) throw new Error(error.message);
-        return { deleted: data };
-      }),
-      step(admin, 'password reset cleanup', async () => {
-        const { data, error } = await admin.rpc('password_resets_cleanup');
-        if (error) throw new Error(error.message);
-        return { deleted: data };
-      }),
-      step(admin, 'storefront photo cleanup', async () => {
-        const { data: paths, error } = await admin.rpc('storefront_photos_to_remove', {
-          p_limit: 500,
-        });
-        if (error) throw new Error(error.message);
-        if (paths.length > 0) {
-          const removed = await admin.storage.from('storefront-photos').remove(paths);
-          if (removed.error) throw new Error(removed.error.message);
-        }
-        return { deleted: paths.length };
-      }),
-    ]);
+  const [
+    usage,
+    menuImports,
+    reminders,
+    hindiNames,
+    signups,
+    passwordResets,
+    storefrontPhotos,
+    supportScreenshots,
+  ] = await Promise.all([
+    // Recounts the last few business days (late payments, voids), in its own transaction.
+    step(admin, 'usage snapshot', async () => {
+      const { data, error } = await admin.rpc('platform_metrics_backfill_usage', {
+        p_from: addDays(today, -4),
+        p_to: today,
+      });
+      if (error) throw new Error(error.message);
+      return { rows: data };
+    }),
+    step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
+    step(admin, 'reminders', async () =>
+      email
+        ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+        : { skipped: true },
+    ),
+    step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
+    step(admin, 'signup cleanup', async () => {
+      const { data, error } = await admin.rpc('site_signups_cleanup');
+      if (error) throw new Error(error.message);
+      return { deleted: data };
+    }),
+    step(admin, 'password reset cleanup', async () => {
+      const { data, error } = await admin.rpc('password_resets_cleanup');
+      if (error) throw new Error(error.message);
+      return { deleted: data };
+    }),
+    step(admin, 'storefront photo cleanup', async () => {
+      const { data: paths, error } = await admin.rpc('storefront_photos_to_remove', {
+        p_limit: 500,
+      });
+      if (error) throw new Error(error.message);
+      if (paths.length > 0) {
+        const removed = await admin.storage.from('storefront-photos').remove(paths);
+        if (removed.error) throw new Error(removed.error.message);
+      }
+      return { deleted: paths.length };
+    }),
+    step(admin, 'support screenshot cleanup', async () => {
+      const { data: paths, error } = await admin.rpc('support_screenshots_to_remove', {
+        p_limit: 500,
+      });
+      if (error) throw new Error(error.message);
+      if (paths.length > 0) {
+        const removed = await admin.storage.from(SCREENSHOT_BUCKET).remove(paths);
+        if (removed.error) throw new Error(removed.error.message);
+      }
+      return { deleted: paths.length };
+    }),
+  ]);
   const ok = [
     snapshot,
     usage,
@@ -94,6 +115,7 @@ export async function GET(request: Request) {
     signups,
     passwordResets,
     storefrontPhotos,
+    supportScreenshots,
   ].every((result) => result !== null);
   return NextResponse.json(
     {
@@ -106,6 +128,7 @@ export async function GET(request: Request) {
       signups,
       passwordResets,
       storefrontPhotos,
+      supportScreenshots,
     },
     { status: ok ? 200 : 500, headers: noStore },
   );
