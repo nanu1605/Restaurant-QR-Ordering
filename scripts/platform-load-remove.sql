@@ -18,5 +18,7 @@ begin
   delete from public.audit_logs where restaurant_id in (select id from load_ids);
   delete from public.restaurants where id in (select id from load_ids);
   delete from public.site_leads where name like 'Load lead %';
+  -- Notes and the tags on restaurants went with them.
+  delete from public.platform_tags where name like 'Load %';
 end
 $$;

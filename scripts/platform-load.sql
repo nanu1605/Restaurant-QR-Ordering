@@ -215,5 +215,22 @@ begin
          '9' || lpad((n * 104729 % 1000000000)::text, 9, '0'),
          now() - make_interval(days => n % 200)
   from generate_series(1, 100) as n;
+
+  -- Tags on a third of them, and notes on some (13a).
+  insert into public.platform_tags (name, colour) values
+    ('Load pilot', 'orange'), ('Load Indore', 'teal'), ('Load VIP', 'green')
+  on conflict do nothing;
+  insert into public.restaurant_tags (restaurant_id, tag_id)
+  select r.id, t.id
+  from load_r r
+  join public.platform_tags t
+    on t.name = (array['Load pilot', 'Load Indore', 'Load VIP'])[1 + r.n % 3]
+  where r.n % 3 = 0;
+  insert into public.restaurant_notes (restaurant_id, body, pinned, created_at)
+  select r.id, 'Load note ' || k || ' on ' || r.slug, k = 1,
+         now() - make_interval(days => k * 7 + r.n % 7)
+  from load_r r
+  cross join generate_series(1, 5) as k
+  where r.n % 5 = 0;
 end
 $$;
