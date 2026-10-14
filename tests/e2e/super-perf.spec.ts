@@ -10,6 +10,7 @@ test.skip(({ isMobile }) => isMobile, 'Server time is the same on any screen.');
 
 const PATHS = [
   '/super',
+  '/super?period=month',
   '/super/restaurants',
   '/super/restaurants?sort=gmv',
   '/super/restaurants?health=slowing',
