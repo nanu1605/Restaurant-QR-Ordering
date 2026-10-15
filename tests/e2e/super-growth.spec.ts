@@ -62,7 +62,7 @@ test('a lead added by hand: duplicate warning, linked, lost, followed up, noted'
     await page.getByRole('menuitemradio', { name: 'Lost: price' }).click();
     await expect(page.getByRole('button', { name: 'Stage: Lost: price' })).toBeVisible();
     const history = page.getByRole('region', { name: 'Notes and history' });
-    await expect(history).toContainText(`Trial to Lost, by ${team.email}`);
+    await expect(history).toContainText(`Trial to Lost (price), by ${team.email}`);
 
     const next = page.getByRole('region', { name: 'Next steps' });
     await next.getByLabel(/Follow-up/).fill('2030-01-02T10:30');
