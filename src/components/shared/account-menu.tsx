@@ -145,7 +145,8 @@ export function AccountMenu({
           <CircleUser aria-hidden className="size-6 sm:hidden" />
           {/* On phones only the icon shows; the name still labels the button. */}
           <span className="sr-only text-right sm:not-sr-only sm:block">
-            <span className="block text-sm font-medium text-ink">{userName}</span>
+            {/* A long email stays inside the header; the menu shows it whole. */}
+            <span className="block max-w-48 truncate text-sm font-medium text-ink">{userName}</span>
             <span className="block text-xs font-normal text-ink-muted">{roleLabel}</span>
           </span>
           <ChevronDown aria-hidden className="hidden size-4 text-ink-muted sm:block" />
