@@ -86,7 +86,7 @@ if (!restaurant) fail(`No restaurant with the code "${args.restaurant}".`);
 const { data: sub, error } = await admin
   .from('restaurant_subscriptions')
   .select(
-    'razorpay_subscription_id, razorpay_status, billing_cycle, next_billing_cycle, current_period_end, plan:plans!restaurant_subscriptions_plan_id_fkey (code, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (code, price_monthly_paise, price_yearly_paise)',
+    'razorpay_subscription_id, razorpay_status, billing_cycle, next_billing_cycle, current_period_end, plan:plans!restaurant_subscriptions_plan_id_fkey (code, price_monthly_paise, price_yearly_paise), next_plan:plans!restaurant_subscriptions_next_plan_id_fkey (code, price_monthly_paise, price_yearly_paise), deal:subscription_deals!restaurant_subscriptions_deal_id_fkey (price_paise), next_deal:subscription_deals!restaurant_subscriptions_next_deal_id_fkey (price_paise)',
   )
   .eq('restaurant_id', restaurant.id)
   .single();
@@ -101,7 +101,10 @@ if (settingsError) fail(`Could not read the setup fee: ${settingsError.message}`
 
 const plan = sub.next_plan ?? sub.plan;
 const cycle = sub.next_billing_cycle ?? sub.billing_cycle ?? 'monthly';
-const price = cycle === 'yearly' ? plan.price_yearly_paise : plan.price_monthly_paise;
+// A deal's price, when the autopay was set up at one (docs/DECISIONS.md SA-77+).
+const dealPrice = (sub.next_plan ? sub.next_deal : sub.deal)?.price_paise;
+const price =
+  dealPrice ?? (cycle === 'yearly' ? plan.price_yearly_paise : plan.price_monthly_paise);
 // What Razorpay takes: the fee plus GST (docs/DECISIONS.md W-11), unless --amount says otherwise.
 const amount = Number(
   args.amount ??
