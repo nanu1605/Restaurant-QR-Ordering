@@ -145,6 +145,45 @@ export async function supportRequestPaths(prefix: string) {
 }
 
 /**
+ * A contacted lead with an overdue follow-up and a note, and the Growth pages
+ * (13d): the pipeline as a table and a board, adding a lead, the lead,
+ * unfinished signups and the funnel, for the sweeps over every super-admin page.
+ */
+export async function growthPaths(prefix: string) {
+  const admin = adminClient();
+  const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const { data } = await admin
+    .from('site_leads')
+    .insert({
+      name: `Sweep ${prefix} ${unique}`,
+      restaurant_name: 'Sweep Cafe',
+      city: 'Indore',
+      phone: `9${Date.now().toString().slice(-9)}`,
+      message: 'Twelve tables, two floors.',
+      stage: 'contacted',
+      follow_up_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  await admin
+    .from('lead_events')
+    .insert([
+      { lead_id: data.id, kind: 'stage', from_value: 'new', to_value: 'contacted' },
+      { lead_id: data.id, kind: 'note', body: 'Wants a demo on Monday.' },
+    ])
+    .throwOnError();
+  return [
+    '/super/leads',
+    '/super/leads?view=board',
+    '/super/leads/new',
+    `/super/leads/${data.id}`,
+    '/super/leads/signups',
+    '/super/funnel',
+  ];
+}
+
+/**
  * A restaurant with a pinned note and a tag, and the paths of its page's tabs,
  * for the sweeps over every super-admin page.
  */

@@ -4,6 +4,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { DEMO_PASSWORD, logInWithCode } from './helpers';
 import {
   createPlatformAdmin,
+  growthPaths,
   logInAsPlatformAdmin,
   restaurantPagePaths,
   supportRequestPaths,
@@ -103,7 +104,8 @@ test('platform admin panel', async ({ page }) => {
   const paths = [
     '/super',
     '/super/restaurants',
-    '/super/leads',
+    // The Growth pages (13d).
+    ...(await growthPaths('contrast')),
     '/super/plans',
     '/super/audit',
     '/super/settings',

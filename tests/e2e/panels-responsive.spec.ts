@@ -5,6 +5,7 @@ import { adminClient, DEMO_PASSWORD, logInWithCode, TEST_PASSWORD } from './help
 import { createLiveRestaurant, openLiveScreen, placeCustomerOrder } from './live-fixtures';
 import {
   createPlatformAdmin,
+  growthPaths,
   logInAsPlatformAdmin,
   restaurantPagePaths,
   supportRequestPaths,
@@ -110,7 +111,8 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super',
     '/super/restaurants',
     '/super/restaurants/new',
-    '/super/leads',
+    // The Growth pages (13d).
+    ...(await growthPaths('responsive')),
     '/super/money/payments',
     '/super/money/dues',
     '/super/money/subscriptions',
