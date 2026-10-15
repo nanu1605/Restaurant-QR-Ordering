@@ -4169,3 +4169,54 @@ stay at 13g, since nobody else gets `/super` before then.
   `platform_save_standees` checks each part. Changes are audited (`standee.created`,
   `standee.updated` with what changed), and those rows are the team's: owners and managers don't
   see them.
+
+### 14d · System health
+
+- **SA-86 · Scheduled jobs and missed runs:** `/super/system` (system.view: Admin, Support) shows
+  each job's latest run (when, how long, its steps), each step's latest run and the week's
+  latest failures, from `cron_runs` (`private.cron_status`). Every job runs daily, so a job with
+  no row for 26 hours missed its run; a step whose latest row is 12 hours older than its job's
+  latest missed that run (killed by the time limit or a crash: `cronStep` writes a row only when a
+  step ends), judged once the run has had 10 minutes. A job or step silent for 30 days drops out,
+  so a step that hangs every night stays flagged; a renamed step reads as missing for those 30
+  days, so the migration that renames one deletes its old rows. Failed and missing steps and
+  missed jobs are Home's cron group, `cron:<job>` for a whole job; it links to System.
+- **SA-87 · The email log:** every email goes through `sendEmail`, which logs one row per send in
+  `email_log` (written by the service role, read only through `platform_system` and
+  `platform_email_sends`): its kind (the idempotency key's first part), keyed hashes of the
+  addresses (HMAC-SHA256 with `CUSTOMER_COOKIE_SECRET`, as IPs and codes are), sent, failed or
+  already sent (Resend's 409 for a key it had, the digest's rerun, SA-31), Resend's id, the HTTP
+  status and the error, whose addresses `sendEmail` scrubs before anything (log, Sentry) sees it. Never the subject, body, key or an address. A row
+  that can't be written is logged as an error and the send still counts. Kept 30 days (owner's
+  choice, 2026-10-16): the daily run's `email log cleanup` step. System shows the last day by kind
+  (sends of the last two days reported on in the last day, as Home counts them) and the latest 20,
+  and finds one address's latest 20: the address is posted to a server
+  action and hashed there, never in a URL (owner's choice). Home's email group lists kinds with a
+  failed, bounced or spam-reported email in the last day. Rotating `CUSTOMER_COOKIE_SECRET`
+  orphans older rows for the lookup only.
+- **SA-88 · Resend's bounce reports:** `/api/webhooks/resend` (off until `RESEND_WEBHOOK_SECRET`
+  is set) checks Resend's Svix signature on the raw body (`svix-id.svix-timestamp.body`,
+  HMAC-SHA256 with the secret's base64 part, any `v1` entry, within 5 minutes) and reads only the
+  event type and `data.email_id`: `email.bounced` and `email.suppressed` mark the row bounced,
+  `email.complained` marked as spam, `email.failed` failed; a worse status is never undone, and
+  other events and unknown ids get a 200. The payload, with its addresses, isn't kept, so these
+  aren't `webhook_events` (Razorpay's, with Reprocess).
+- **SA-89 · Sentry issues:** with a read-only token (`SENTRY_READ_TOKEN`, scope event:read, apart
+  from the build's `SENTRY_AUTH_TOKEN`) and `SENTRY_ORG`/`SENTRY_PROJECT`, System lists this
+  environment's unresolved issues seen in 24 hours, most frequent first: how many (up to "100 or
+  more") and the top 5 linked to Sentry. Cached 5 minutes, 3-second timeout; a refused token or
+  wrong slug says what to check, an outage says to try later, and either is logged as a warning, since an error would itself go to Sentry. Not on Home
+  (owner's choice, 2026-10-16): Sentry's own alerts email new issues.
+- **SA-90 · Space:** the database's size (`pg_database_size`, an estimate: Supabase counts disk)
+  and storage by bucket, against the plan's limits in MB entered in Platform settings
+  (`db_limit_mb`, `storage_limit_mb`; empty shows the size without a bar). At 80% of a limit the
+  page warns and Home's capacity group lists it (owner's choice). Storage sums every object: fine
+  to about 100,000 objects, then snapshot it nightly.
+- **SA-91 · Menu imports:** this month (India) by source and outcome, failed out of the finished
+  ones, the AI cost of known calls and how many imports have a call of unknown cost. Each
+  import that failed in the last two days is on Home (owner's choice, 2026-10-16), with the
+  restaurant and the reason, linking to the import.
+- **SA-92 · Versions:** System shows the commit this deployment runs and what production's and
+  staging's `/api/health` report (`PRODUCTION_APP_URL`, `STAGING_APP_URL`, defaulting to the real
+  addresses; tests point them at a stand-in), cached a minute; unreachable or unhealthy says so.
+  Not on Home: they differ between releases by design.

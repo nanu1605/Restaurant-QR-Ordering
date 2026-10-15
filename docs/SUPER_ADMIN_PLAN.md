@@ -649,6 +649,8 @@ Acceptance:
 
 ### 14d. System health
 
+Built 2026-10-16 (docs/DECISIONS.md SA-86 to SA-92). Resend's bounce webhook is built and stays off until its secret is set; Home also lists failed or bounced emails, a database or storage at 80% of its limit and failed menu imports, but not Sentry; the email log keeps 30 days and finds one address's emails by its hash (owner's choices, 2026-10-16). Every job is daily, so a missed run is 26 hours without one.
+
 Ships (`/super/system`, system.view):
 
 - Scheduled jobs: last runs per job and step from `cron_runs`, failures and durations, and an alert when an expected run is missing.

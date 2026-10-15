@@ -89,6 +89,8 @@ and the version check. Re-run the workflow instead.
 | `NEXT_PUBLIC_SENTRY_DSN`                        | the project's DSN               | the same DSN               |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT`                | `staging`                       | `production`               |
 | `SENTRY_ORG`, `SENTRY_PROJECT`                  | for readable stack traces       | same                       |
+| `SENTRY_READ_TOKEN`                             | optional, for System health     | same                       |
+| `RESEND_WEBHOOK_SECRET`                         | optional, bounce reports        | its own webhook's secret   |
 | `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`              | the project key and region host | same                       |
 
 Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
@@ -169,6 +171,20 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   key and set both.
 - **Errors:** Sentry (errors only, no personal data). The server's `console.error` lines for
   unexpected database errors arrive there too.
+- **System health** (`/super` → **Health**, Admin and Support; SA-86 to SA-92): scheduled jobs
+  (a job missed when nothing ran for 26 hours, a step that didn't finish), webhooks, every email
+  sent (find one address's emails there, e.g. "did my reset code go out?"), Sentry's issues of
+  the day, database and storage size, menu imports this month, and the commit each environment
+  runs. Failures also show on Home. To see how full the database and storage are, enter the
+  Supabase plan's limits in Platform settings (in MB; the Pro plan's 8 GB is 8192).
+  - Sentry's issues need `SENTRY_READ_TOKEN`: in Sentry, Settings → Auth Tokens (personal) or
+    an internal integration, with the **event:read** scope only. Set it in Vercel for both
+    environments (`SENTRY_ORG` and `SENTRY_PROJECT` are already there) and deploy.
+  - Bounce reports: in Resend, Webhooks → Add endpoint
+    `https://<domain>/api/webhooks/resend` with the events `email.bounced`,
+    `email.complained`, `email.failed` and `email.suppressed`; copy its signing secret
+    (`whsec_…`) into `RESEND_WEBHOOK_SECRET` for that environment and deploy. Staging and
+    production each have their own endpoint and secret.
 
 ## Onboarding a restaurant
 
@@ -218,6 +234,8 @@ created. A team account that is also a restaurant login can't start sessions.
 | `RAZORPAY_WEBHOOK_SECRET`     | Razorpay webhook settings and Vercel  | Change both together; events in between fail and are retried by Razorpay.                 |
 | `CRON_SECRET`                 | Vercel                                | Vercel Cron sends the new one after the next deploy.                                      |
 | `RESEND_API_KEY`, import keys | the provider, then Vercel             | Create the new key, set, deploy, delete the old key.                                      |
+| `RESEND_WEBHOOK_SECRET`       | Resend webhook settings and Vercel    | Roll it in Resend, set, deploy; reports in between are refused and retried by Resend.     |
+| `SENTRY_READ_TOKEN`           | Sentry, then Vercel                   | Create the new token, set, deploy, revoke the old one.                                    |
 | GitHub deploy secrets         | GitHub repository secrets             | Replace; the next deploy uses them.                                                       |
 | `BACKUP_PASSPHRASE`           | GitHub repository secrets             | New backups use it; keep the old one while its backups (30 days) matter.                  |
 | `…SUPABASE_ACCESS_TOKEN`      | Supabase → Access Tokens, then GitHub | Create a token scoped to that target's project, replace the secret, revoke the old token. |
