@@ -46,7 +46,13 @@ const n = (value: number) => value.toLocaleString('en-IN');
 export default async function FunnelPage({ searchParams }: PageProps<'/super/funnel'>) {
   await requirePlatformPermission('growth.manage');
   const today = todayInIndia();
-  const { range, notice } = readDateRange(await searchParams, 'The funnel');
+  const read = readDateRange(await searchParams, 'The funnel');
+  const { range } = read;
+  // Without a start date the funnel shows the last 30 days, not today.
+  const notice =
+    read.notice && !range.from
+      ? 'That date doesn’t exist, so the last 30 days are shown.'
+      : read.notice;
   const from = range.from ?? addDays(today, -29);
   const to = range.to ?? (range.from ? range.from : today);
   const [funnel, upgrades] = await Promise.all([getFunnel(from, to), getUpgradeOpportunities()]);

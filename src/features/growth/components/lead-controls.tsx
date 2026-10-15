@@ -316,7 +316,7 @@ export function LeadContact({
           </a>
         )}
       </div>
-      {asking && (
+      {asking && stage === 'new' && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper p-3"

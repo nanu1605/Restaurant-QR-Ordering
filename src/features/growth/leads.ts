@@ -215,8 +215,14 @@ export type Lead = z.infer<typeof leadSchema>;
 export const parseLead = (json: unknown) => leadSchema.parse(json);
 
 // ─── Lines ───────────────────────────────────────────────────────────────────
-const stageLabel = (value: string | null) =>
-  value ? (LEAD_STAGE_LABELS[value as LeadStage] ?? value) : '—';
+/** A stage as the history keeps it; Lost with its reason ('lost:price'). */
+function stageLabel(value: string | null): string {
+  if (!value) return '—';
+  const [stage, reason] = value.split(':');
+  const label = LEAD_STAGE_LABELS[stage as LeadStage] ?? stage;
+  if (!reason) return label;
+  return `${label} (${(LOST_REASON_LABELS[reason as LostReason] ?? reason).toLowerCase()})`;
+}
 
 /** One change in a lead's history (notes are shown on their own). */
 export function leadEventLine(event: LeadEvent): string {

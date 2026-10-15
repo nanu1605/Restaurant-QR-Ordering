@@ -71,6 +71,8 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
   const tab = filters.stage ?? 'open';
   const withoutPage = { ...filters, page: undefined };
   const current = filterParams(withoutPage);
+  // A page past the end, after leads moved on: the first page.
+  if (!board && list.rows.length === 0 && filters.page > 1) redirect(hrefWithParams(PATH, current));
   const filtered = ['assignee', 'channel', 'due', 'q'].some((key) => key in current);
 
   return (
