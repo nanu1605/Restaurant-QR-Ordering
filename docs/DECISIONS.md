@@ -3507,7 +3507,7 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-26 · Local load data:** `pnpm seed:platform-load` runs `supabase db query --local`, so it
   cannot reach any other database; it removes the previous load first, and
   `pnpm seed:platform-load:remove` removes it. 300 `load-` restaurants in every state with their
-  payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 100 leads;
+  payments, up to 18 months of daily usage, the last 35 days of accepted orders, and 500 leads;
   the same seed gives the same data, with a year of nightly snapshots from 12e (a 14-day trial,
   then each kind's path) for Home's MRR chart and the lapses in the activity. With it and
   about 2,600 restaurants locally the list function takes 26 to 215 ms, the CSV 0.6 s and search
@@ -3928,3 +3928,57 @@ stay at 13g, since nobody else gets `/super` before then.
   or English (`orders.guest_lang`, from the phone's language choice; null for staff orders and
   orders from before), so the Hindi customer menu counts real use from this release on (owner's
   choice, 2026-10-15). Only usage analytics reads it.
+
+### 13f · Revenue analytics
+
+- **SA-65 · MRR day by day, defined once:** `private.mrr_days` gives each restaurant's MRR on
+  each stored night from the last one before the dates, and today as Home counts it (live, with
+  the shared state rule). A missing night uses the one before. A restaurant's change from one
+  night to its next is its movement (plan §5.3): New (from 0, never above 0 before),
+  Reactivation (from 0, above 0 on an earlier night, or with a paid period that had ended, for
+  restaurants that paid before history began), Expansion, Contraction or Churn (to 0).
+  Movements count after the opening, the last night before the dates or the history's first
+  night when it starts inside them, so they always add up to the change in MRR: tested on
+  fixtures and on every month of the data there is. MRR keeps the plan's rule (owner's choice,
+  2026-10-15): Payment failed has MRR 0, so a failed charge is Churn and paying again
+  Reactivation, and failed-payment recovery shows how many came back. Each night keeps the plan
+  price it had; today uses today's prices. Before the first night, MRR figures show a dash and
+  say when history starts; a period compared with needs a night before it, or its MRR figures
+  are left out rather than shown as zero.
+- **SA-66 · The Revenue page:** `/super/money/revenue` (money.view) for India dates: the last 12
+  months unless chosen, up to a year, ending today at the latest, compared with the same number
+  of days just before when asked, by day, week (from Monday) or month as on Usage. Key numbers: MRR, ARR (MRR × 12), net
+  new MRR, Paid restaurants and ARPU (MRR ÷ Paid) at the end of the dates; collected, before GST
+  with the GST beside it; trial conversion; restaurant churn and revenue churn, plan §5.8's
+  monthly rule for any dates: of the restaurants Paid at the opening, those with a churn in the
+  dates, and the MRR they lost to churn or contraction (each at most its opening MRR) ÷ MRR at
+  the opening, so neither passes 100% however long the dates (restaurants that start paying
+  inside the dates are in the movement chart, not these rates); failed-payment recovery (of the
+  failed charges in the dates that have been decided, those Paid next rather than read-only or
+  anything else, with those still failing named); and expected in the next 30 days with GST, the
+  Dues page's figure. MRR and Paid link to today's Paid list, and plan mix to the restaurants
+  list, only when the dates end today; the churn figures open the churned restaurants. Charts: MRR at the end of each bar (`--chart-1`), MRR
+  movement as bars above and below zero, and collected (subscriptions and setup fees stacked).
+  A line needs two bars, so one bar asks for more dates or a smaller grouping. Plan mix (each
+  plan's Paid restaurants on monthly and yearly, and its share of MRR, at the end of the dates),
+  trial cohorts, cancellation reasons and the launch offer are tables; shares of counts keep the
+  small-numbers rule. Home's MRR
+  now opens this page. The payments ledger keeps no comparison of its own: collected is compared
+  here (SA-18).
+- **SA-67 · The restaurants behind a movement:** every movement figure in the chart's table
+  links to its restaurants for that bar (`?move=…&at=…`), and clicking a bar does the same with
+  a mouse: the day, the plan and state before and after, and MRR before and after, newest first,
+  up to 500 with the total. `platform_revenue_movements` reads the same rows as the report, so
+  the list matches the count.
+- **SA-68 · Trials, reasons and the launch offer:** trial cohorts by the India month each
+  restaurant was created (the first from the first date). Converted: its first subscription
+  payment came by the end of its trial (as stored, extensions included) plus 30 days. Deciding:
+  no payment yet and that day not passed. Conversion is of those decided, with the average days
+  to the first payment. Cancellation reasons are the `subscription.cancel_reason` answers in the
+  dates, each answer counted (the team's own cancellations don't ask, SA-15). Launch offer: the
+  setup fees paid in the dates with the offer (a discount recorded, and its total), at the full
+  fee, or without the fee recorded (paid before 12b).
+- **SA-69 · One CSV:** the owner's choice (2026-10-15), closing SA-27's wait. The period table as
+  shown: each bar's first and last day, MRR and Paid at its end, each movement's count and MRR,
+  net new MRR, and subscriptions, setup fees and GST collected, in rupees, empty before history,
+  named `revenue-<from>-to-<to>.csv`.

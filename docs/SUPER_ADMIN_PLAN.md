@@ -568,6 +568,8 @@ Acceptance:
 
 ### 13f. Revenue analytics
 
+Built 2026-10-15 (docs/DECISIONS.md SA-65 to SA-69). MRR keeps §5.2's rule, so a failed charge is churn until the restaurant pays again; one CSV of the period table (owner's choices, 2026-10-15). Plan mix, cohorts, reasons and the launch offer are tables rather than charts.
+
 Ships (`/super/money/revenue`, money.view):
 
 - Key numbers: MRR, ARR, net new MRR, Paid restaurants, ARPU, trial conversion, restaurant and revenue churn, failed-payment recovery, expected collections for the next 30 days.
