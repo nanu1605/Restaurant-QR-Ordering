@@ -14,6 +14,8 @@ select tests.create_restaurant('sa650-auto') as auto \gset
 select tests.create_restaurant('sa650-limits') as limits \gset
 select tests.create_restaurant('sa650-other') as other \gset
 update public.restaurants set email = 'sa650-auto@example.test' where id = :'auto';
+-- Razorpay plans other tests made (a dev database) aren't reused here.
+update public.subscription_deals set razorpay_plan_id = null where razorpay_plan_id is not null;
 select tests.set_plan(:'limits', 'starter');
 select tests.add_member(:'limits', 'owner', 'sa650owner') as owner \gset
 -- A Razorpay subscription event, its payment and when it arrived (seconds from now).
