@@ -126,7 +126,15 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
     // An unfinished checkout, or a mandate that keeps failing, makes way.
     const old = subscription.razorpaySubscriptionId;
     if (old && ['created', 'pending', 'halted'].includes(subscription.razorpayStatus ?? '')) {
-      const cancelled = await cancelSubscription(owner.config, old, false);
+      // Razorpay won't cancel one it has ended itself (a code's checkout
+      // expires after a day, with no webhook): then save what it has.
+      const cancelled = await cancelSubscription(owner.config, old, false).catch(async (error) => {
+        const current = await fetchSubscription(owner.config, old).catch(() => null);
+        if (current && ['cancelled', 'completed', 'expired'].includes(current.status)) {
+          return current;
+        }
+        throw error;
+      });
       const saved = await save(owner, cancelled);
       if (!saved.ok) return saved;
     }
