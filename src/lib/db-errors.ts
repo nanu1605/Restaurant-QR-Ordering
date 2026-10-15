@@ -76,6 +76,8 @@ const MESSAGES: Record<string, Message> = {
   DEAL_IN_AUTOPAY:
     'Its autopay charges this price. Cancel autopay first (Actions), then change the price.',
   OVERRIDE_NOT_FOUND: 'That override was already removed. Refresh the page.',
+  // Announcements (docs/DECISIONS.md SA-82+).
+  ANNOUNCEMENT_ENDED: 'That announcement has ended. Make a new one instead.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Support sessions (docs/DECISIONS.md SA-46 to SA-52)

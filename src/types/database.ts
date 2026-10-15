@@ -9,6 +9,125 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      announcement_dismissals: {
+        Row: {
+          announcement_id: string
+          dismissed_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          dismissed_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          dismissed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_dismissals_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcement_emails: {
+        Row: {
+          announcement_id: string
+          restaurant_id: string
+          sent_at: string
+        }
+        Insert: {
+          announcement_id: string
+          restaurant_id: string
+          sent_at?: string
+        }
+        Update: {
+          announcement_id?: string
+          restaurant_id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_emails_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "announcement_emails_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcements: {
+        Row: {
+          body: string
+          body_hi: string | null
+          cities: string[] | null
+          created_at: string
+          created_by: string | null
+          dismissible: boolean
+          email: boolean
+          ended_at: string | null
+          ends_at: string | null
+          id: string
+          panels: string[]
+          plan_ids: string[] | null
+          restaurant_ids: string[] | null
+          starts_at: string
+          title: string
+          title_hi: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          body_hi?: string | null
+          cities?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          email?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          panels: string[]
+          plan_ids?: string[] | null
+          restaurant_ids?: string[] | null
+          starts_at?: string
+          title: string
+          title_hi?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          body_hi?: string | null
+          cities?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          email?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          panels?: string[]
+          plan_ids?: string[] | null
+          restaurant_ids?: string[] | null
+          starts_at?: string
+          title?: string
+          title_hi?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -2234,6 +2353,62 @@ export type Database = {
         }
         Relationships: []
       }
+      standees: {
+        Row: {
+          cost_paise: number | null
+          created_at: string
+          created_by: string | null
+          delivered_on: string | null
+          dispatched_on: string | null
+          installed_on: string | null
+          notes: string | null
+          printed_on: string | null
+          quantity: number
+          restaurant_id: string
+          status: string
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_on?: string | null
+          dispatched_on?: string | null
+          installed_on?: string | null
+          notes?: string | null
+          printed_on?: string | null
+          quantity: number
+          restaurant_id: string
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_on?: string | null
+          dispatched_on?: string | null
+          installed_on?: string | null
+          notes?: string | null
+          printed_on?: string | null
+          quantity?: number
+          restaurant_id?: string
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "standees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_deals: {
         Row: {
           billing_cycle: Database["public"]["Enums"]["billing_cycle"]
@@ -3022,6 +3197,20 @@ export type Database = {
           waiter_id: string
         }[]
       }
+      announcement_email_sent: {
+        Args: { p_announcement_id: string; p_restaurant_id: string }
+        Returns: undefined
+      }
+      announcement_emails_due: {
+        Args: { p_at?: string }
+        Returns: {
+          announcement_id: string
+          body: string
+          recipients: string[]
+          restaurant_id: string
+          title: string
+        }[]
+      }
       auth_password_reset_finish: { Args: { p_id: string }; Returns: undefined }
       auth_password_reset_start: {
         Args: { p_code_hash: string; p_email: string; p_ip_hash?: string }
@@ -3072,6 +3261,14 @@ export type Database = {
       }
       health_check: { Args: never; Returns: string }
       is_platform_admin: { Args: never; Returns: boolean }
+      member_announcements: {
+        Args: { p_panel: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      member_dismiss_announcement: {
+        Args: { p_announcement_id: string }
+        Returns: undefined
+      }
       member_record_plan_limit: {
         Args: { p_code: string; p_detail?: string }
         Returns: undefined
@@ -3193,6 +3390,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_get_standees: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
       platform_get_support_request: {
         Args: { p_request_id: string }
         Returns: Json
@@ -3210,6 +3411,7 @@ export type Database = {
         Returns: Json
       }
       platform_lead_matches: { Args: { p_phone: string }; Returns: Json }
+      platform_list_announcements: { Args: never; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
       platform_list_leads: { Args: { p_filters: Json }; Returns: Json }
@@ -3217,6 +3419,10 @@ export type Database = {
       platform_list_offers: { Args: never; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_standees: {
+        Args: { p_page?: number; p_status?: string }
+        Returns: Json
+      }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_list_support_requests: {
         Args: { p_filters: Json }
@@ -3293,8 +3499,16 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_save_announcement: {
+        Args: { p_announcement: Json; p_announcement_id?: string }
+        Returns: Json
+      }
       platform_save_offer: {
         Args: { p_offer: Json; p_offer_id?: string }
+        Returns: Json
+      }
+      platform_save_standees: {
+        Args: { p_restaurant_id: string; p_standees: Json }
         Returns: Json
       }
       platform_save_view: {

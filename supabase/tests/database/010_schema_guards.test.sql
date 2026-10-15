@@ -249,7 +249,15 @@ select set_eq(
       ('public.platform_save_offer'),
       ('public.platform_set_deal'),
       ('public.platform_set_override'),
-      ('public.platform_remove_override')
+      ('public.platform_remove_override'),
+      -- Announcements and standees (14c)
+      ('public.platform_list_announcements'),
+      ('public.platform_save_announcement'),
+      ('public.member_announcements'),
+      ('public.member_dismiss_announcement'),
+      ('public.platform_save_standees'),
+      ('public.platform_get_standees'),
+      ('public.platform_list_standees')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -293,7 +301,8 @@ from unnest(array[
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
   'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-  'support_request_events', 'support_screenshot_uploads', 'support_sessions'
+  'support_request_events', 'support_screenshot_uploads', 'support_sessions', 'standees',
+  'announcement_emails'
 ]) as t;
 
 select is_empty(
@@ -306,7 +315,8 @@ select is_empty(
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
       'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-      'support_request_events', 'support_screenshot_uploads', 'support_sessions'
+      'support_request_events', 'support_screenshot_uploads', 'support_sessions', 'standees',
+      'announcement_emails'
     ]) as t
     where not exists (
       select 1
