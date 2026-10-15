@@ -74,6 +74,7 @@ import {
   syncRazorpay,
   unsuspendRestaurant,
 } from '../actions';
+import { linkPlanPaise } from '../payment-links';
 import { MANUAL_MODE_LABELS, MANUAL_MODES, type SubscriptionStatus } from '../platform';
 import {
   changePlanSchema,
@@ -122,6 +123,13 @@ export type LinkDefaults = {
   planName: string;
   monthlyPaise: number;
   yearlyPaise: number;
+  /**
+   * A deal's charges left at monthlyPaise or yearlyPaise, then the list price
+   * (docs/DECISIONS.md SA-80); null or absent: every month or year.
+   */
+  dealChargesLeft?: number | null;
+  listMonthlyPaise?: number;
+  listYearlyPaise?: number;
   /** What the restaurant pays for setup, after the discount. */
   setupFeePaise: number;
   setupFeeDiscountPaise: number;
@@ -761,11 +769,7 @@ const rupees = (paise: number) => String(paise / 100);
 function linkAmount(defaults: LinkDefaults, purpose: string, months: number): string {
   if (purpose === 'setup_fee') return rupees(withGst(defaults.setupFeePaise));
   if (!Number.isInteger(months) || months < 1) return '';
-  return rupees(
-    withGst(
-      months % 12 === 0 ? (months / 12) * defaults.yearlyPaise : months * defaults.monthlyPaise,
-    ),
-  );
+  return rupees(withGst(linkPlanPaise(defaults, months)));
 }
 
 function linkDescription(defaults: LinkDefaults, purpose: string, months: number): string {

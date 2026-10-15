@@ -132,6 +132,10 @@ export default async function RestaurantLayout({
                         (deal?.billing_cycle === 'yearly' ? deal.price_paise : null) ??
                         plan?.price_yearly_paise ??
                         0,
+                      dealChargesLeft:
+                        deal?.cycles == null ? null : deal.cycles - deal.charges_used,
+                      listMonthlyPaise: plan?.price_monthly_paise ?? 0,
+                      listYearlyPaise: plan?.price_yearly_paise ?? 0,
                       setupFeePaise: setupFee.feePaise - setupFee.discountPaise,
                       setupFeeDiscountPaise: setupFee.discountPaise,
                     },

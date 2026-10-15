@@ -13,6 +13,7 @@ import {
   overrideSchema,
   type OfferRow,
 } from '@/features/platform/offers';
+import { linkPlanPaise } from '@/features/platform/payment-links';
 import { historyLine } from '@/features/platform/restaurant-page';
 import { forCycles, specialPrice } from '@/features/subscriptions/offers';
 
@@ -213,5 +214,25 @@ describe('overrides', () => {
     expect(overrideSchema.safeParse({ ...base, kind: 'feature', feature: 'no way' }).success).toBe(
       false,
     );
+  });
+});
+
+describe('linkPlanPaise', () => {
+  const deal = {
+    monthlyPaise: 60000,
+    yearlyPaise: 899000,
+    listMonthlyPaise: 89900,
+    listYearlyPaise: 899000,
+  };
+
+  it('suggests the deal price only for the charges it has left', () => {
+    expect(linkPlanPaise({ ...deal, dealChargesLeft: 1 }, 6)).toBe(60000 + 5 * 89900);
+    expect(linkPlanPaise({ ...deal, dealChargesLeft: 3 }, 2)).toBe(2 * 60000);
+    expect(linkPlanPaise({ ...deal, dealChargesLeft: 0 }, 1)).toBe(89900);
+  });
+
+  it('every month when it has no end, and a year for twelve months', () => {
+    expect(linkPlanPaise({ ...deal, dealChargesLeft: null }, 6)).toBe(6 * 60000);
+    expect(linkPlanPaise({ monthlyPaise: 89900, yearlyPaise: 899000 }, 24)).toBe(2 * 899000);
   });
 });
