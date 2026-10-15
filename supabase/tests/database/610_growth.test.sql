@@ -355,6 +355,10 @@ select is(
 select is(public.platform_list_leads('{"q": "sa610", "stage": "all"}') ->> 'total', '10',
   'every stage');
 select is(
+  (select array_agg(distinct r ->> 'more')
+   from jsonb_array_elements(public.platform_list_leads('{"q": "sa610", "stage": "all"}') -> 'rows') r),
+  array['false'], 'no long messages: nothing more, with or without one');
+select is(
   pg_temp.names(public.platform_list_leads('{"q": "sa610", "assignee": "me"}')),
   array['Meena'], 'mine'
 );

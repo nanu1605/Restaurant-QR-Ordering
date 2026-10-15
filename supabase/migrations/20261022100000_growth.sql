@@ -256,7 +256,7 @@ as $$
     'email', p_lead.email,
     'plan_code', p_lead.plan_code,
     'message', case when p_full then p_lead.message else left(p_lead.message, 160) end,
-    'more', not p_full and length(p_lead.message) > 160,
+    'more', not p_full and coalesce(length(p_lead.message), 0) > 160,
     'source', p_lead.source,
     'channel', p_lead.channel,
     'stage', p_lead.stage,
