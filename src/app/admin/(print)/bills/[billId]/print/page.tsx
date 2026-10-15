@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { PrintableBillPage } from '@/features/billing/components/printable-bill';
 import { getBill } from '@/features/billing/queries';
@@ -17,7 +17,8 @@ export default async function PrintBillPage({
   params,
   searchParams,
 }: PageProps<'/admin/bills/[billId]/print'>) {
-  await requireMember(ADMIN_PANEL_ROLES);
+  // Printing a bill copy is the restaurant's own (docs/DECISIONS.md SA-49).
+  if ((await requireMember(ADMIN_PANEL_ROLES)).support) redirect('/admin');
   const { billId } = await params;
   if (!UUID.test(billId)) notFound();
   const detail = await getBill(billId);

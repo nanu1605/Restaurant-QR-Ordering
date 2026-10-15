@@ -56,6 +56,7 @@ export async function GET(request: Request) {
     passwordResets,
     storefrontPhotos,
     supportScreenshots,
+    supportSessions,
   ] = await Promise.all([
     // Recounts the last few business days (late payments, voids), in its own transaction.
     step(admin, 'usage snapshot', async () => {
@@ -111,6 +112,12 @@ export async function GET(request: Request) {
       }
       return { deleted };
     }),
+    // Support windows that ran out (access already ended on time; SA-48).
+    step(admin, 'support session cleanup', async () => {
+      const { data, error } = await admin.rpc('support_sessions_close_expired');
+      if (error) throw new Error(error.message);
+      return { closed: data };
+    }),
   ]);
   const ok = [
     snapshot,
@@ -122,6 +129,7 @@ export async function GET(request: Request) {
     passwordResets,
     storefrontPhotos,
     supportScreenshots,
+    supportSessions,
   ].every((result) => result !== null);
   return NextResponse.json(
     {
@@ -135,6 +143,7 @@ export async function GET(request: Request) {
       passwordResets,
       storefrontPhotos,
       supportScreenshots,
+      supportSessions,
     },
     { status: ok ? 200 : 500, headers: noStore },
   );

@@ -59,6 +59,16 @@ const MESSAGES: Record<string, Message> = {
   ADMIN_NOT_FOUND: 'That person is no longer on the MenuMesh team.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
+  // Support sessions (docs/DECISIONS.md SA-46 to SA-52)
+  SUPPORT_REFUSED: "MenuMesh support can't do this. Ask the restaurant owner.",
+  SUPPORT_ACCESS_OPEN: 'Support access is already allowed. End it first to choose another time.',
+  NO_SUPPORT_ACCESS:
+    "The restaurant hasn't allowed support access, or it has ended. The owner can allow it in Settings.",
+  SUPPORT_ACCESS_IN_USE: "Someone else on the team is using this restaurant's support access.",
+  SUPPORT_SESSION_OPEN: 'You already have a support session open. End it first.',
+  SUPPORT_HAS_MEMBERSHIP:
+    "This account also has a restaurant login, so it can't start a support session. Use a team-only account.",
+
   // Subscriptions (spec §14)
   RAZORPAY_MANAGED:
     'This restaurant pays by Razorpay autopay. Cancel autopay at period end first; the owner then subscribes to the new plan.',

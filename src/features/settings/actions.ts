@@ -57,6 +57,22 @@ const FIELD_FOR: Record<string, string> = {
   restaurants_business_day_start_hour_check: 'businessDayStartHour',
   restaurants_max_tables_per_waiter_check: 'maxTablesPerWaiter',
   UPI_VPA_REQUIRED: 'upiVpa',
+  // What a support session may not change (SUPPORT_REFUSED names the column; SA-49).
+  legal_name: 'legalName',
+  gst_mode: 'gstMode',
+  gst_rate_bps: 'gstRateBps',
+  prices_include_tax: 'pricesIncludeTax',
+  service_charge_enabled: 'serviceChargeEnabled',
+  service_charge_bps: 'serviceChargePercent',
+  gstin: 'gstin',
+  fssai_license: 'fssaiLicense',
+  invoice_prefix: 'invoicePrefix',
+  upi_vpa: 'upiVpa',
+  upi_payee_name: 'upiPayeeName',
+  show_upi_qr_on_bill: 'showUpiQrOnBill',
+  reopen_window_minutes: 'reopenWindowMinutes',
+  staff_can_remove_served_items: 'staffCanRemoveServedItems',
+  business_day_start_hour: 'businessDayStartHour',
   FEATURE_NOT_IN_PLAN: 'showUpiQrOnBill',
 };
 

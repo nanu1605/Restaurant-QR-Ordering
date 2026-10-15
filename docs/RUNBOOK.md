@@ -181,6 +181,18 @@ Call, WhatsApp or email link on the request), and **Resolved** when done; use **
 restaurant** while they owe an answer. Internal notes are the team's only. Requests open or in
 progress for more than a day show on Home under Needs attention.
 
+## Support sessions
+
+To fix a restaurant's setup with them on the phone: ask the owner to open **Settings → MenuMesh
+support access** and allow 1, 4 or 24 hours. On the restaurant's page in `/super`, **Actions →
+Start support session**, give the name they will see, and you are in its admin panel as a
+manager until the window ends; the banner has **End session**. Bills, payments, live service,
+Get help and the tax, invoice and UPI settings are refused; menu, tables and QR codes, waiters,
+waiter and kitchen logins and the restaurant's details work. Everything you change is listed for
+the owner. Tell them any password you set for a login. When onboarding in person, tick the owner's
+agreement on the wizard's last step instead: the session starts as soon as the restaurant is
+created. A team account that is also a restaurant login can't start sessions.
+
 ## Failed subscription payments
 
 - Razorpay retries the autopay charge. Meanwhile the restaurant has 7 days' grace (a banner for

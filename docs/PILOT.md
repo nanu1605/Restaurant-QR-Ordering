@@ -115,7 +115,10 @@ Before charging anyone (Phase 8):
 2. Onboard the restaurant at `/super` → Onboard restaurant: details, owner login, tax defaults,
    plan and trial length. Copy the login details from the last step and give them to the owner.
 3. As the owner: add the tables, print their QR codes, enter the menu, add the waiter profiles and
-   the staff logins, then set the tax, charges, bill options and business-day start.
+   the staff logins, then set the tax, charges, bill options and business-day start. If the owner
+   agrees, tick "The owner agrees that MenuMesh may set up the restaurant" in step 2's last screen
+   and do the menu, tables, waiters and logins yourself from "Set up in admin panel"; the tax,
+   bill numbering, UPI and business-day settings stay the owner's.
 4. Install the staff app on each tablet: open the site in Chrome, choose **Install app** (or Add
    to Home screen) and sign in. It opens on the right panel and keeps the screen on.
 5. Print a test bill from Settings → Bill on the restaurant's own printer, with the paper size set

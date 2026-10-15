@@ -183,3 +183,26 @@ export async function restaurantPagePaths(prefix: string) {
     '/menu-import',
   ].map((tab) => `${base}${tab}`);
 }
+
+/**
+ * A support session of `admin` in a fresh restaurant (13c), and admin pages
+ * that show its banner, for the sweeps. The session's admin panel is the
+ * restaurant's, so these come after the /super paths.
+ */
+export async function supportSessionPaths(prefix: string, admin: PlatformAdmin) {
+  const restaurant = await createTestRestaurant({ prefix });
+  const now = Date.now();
+  await adminClient()
+    .from('support_sessions')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      consent: 'owner',
+      granted_by: restaurant.ownerUserId,
+      ends_at: new Date(now + 3600_000).toISOString(),
+      user_id: admin.userId,
+      staff_name: 'Priya',
+      started_at: new Date(now).toISOString(),
+    })
+    .throwOnError();
+  return ['/admin', '/admin/settings'];
+}

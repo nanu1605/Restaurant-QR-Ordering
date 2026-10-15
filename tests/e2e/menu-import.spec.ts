@@ -358,6 +358,8 @@ test('the daily cleanup deletes old import photos and refuses callers without th
     expect.arrayContaining([
       { step: 'metrics snapshot', ok: true },
       { step: 'menu import cleanup', ok: true },
+      // Support windows that ran out are closed (13c).
+      { step: 'support session cleanup', ok: true },
     ]),
   );
 

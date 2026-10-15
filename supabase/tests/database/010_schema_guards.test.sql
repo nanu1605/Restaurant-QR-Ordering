@@ -215,7 +215,13 @@ select set_eq(
       ('public.platform_list_support_requests'),
       ('public.platform_get_support_request'),
       ('public.platform_update_support_request'),
-      ('public.platform_add_support_note')
+      ('public.platform_add_support_note'),
+      -- Support sessions (13c)
+      ('public.admin_allow_support_access'),
+      ('public.admin_end_support_access'),
+      ('public.platform_start_support_session'),
+      ('public.platform_onboarding_support_session'),
+      ('public.platform_end_support_session')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
@@ -259,7 +265,7 @@ from unnest(array[
   'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
   'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-  'support_request_events', 'support_screenshot_uploads'
+  'support_request_events', 'support_screenshot_uploads', 'support_sessions'
 ]) as t;
 
 select is_empty(
@@ -272,7 +278,7 @@ select is_empty(
       'restaurant_subscriptions', 'subscription_payments', 'menu_imports', 'subscription_reminders',
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
       'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
-      'support_request_events', 'support_screenshot_uploads'
+      'support_request_events', 'support_screenshot_uploads', 'support_sessions'
     ]) as t
     where not exists (
       select 1

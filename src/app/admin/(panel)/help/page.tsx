@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { GetHelpForm } from '@/features/support/components/get-help-form';
@@ -22,6 +23,8 @@ export const metadata: Metadata = {
  */
 export default async function GetHelpPage({ searchParams }: PageProps<'/admin/help'>) {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
+  // Not as the restaurant: a support session asks from /super (docs/DECISIONS.md SA-48).
+  if (membership.support) redirect('/admin');
   const from = firstParam(await searchParams, 'from');
   const supabase = await createClient();
   const [requests, restaurant, user] = await Promise.all([

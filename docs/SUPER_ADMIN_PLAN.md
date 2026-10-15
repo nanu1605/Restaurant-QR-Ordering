@@ -512,6 +512,8 @@ Acceptance:
 
 ### 13c. Assisted setup (support sessions)
 
+Built 2026-10-15 (docs/DECISIONS.md SA-46 to SA-52). A session acts as a manager membership without a `restaurant_members` row (SA-46); live service, Get help and the settings that move money are refused too (SA-49); the consent wording was approved on 2026-10-15 (SA-52).
+
 Lets the team fix a restaurant's setup during a call, with the restaurant owner's consent.
 
 Ships:
@@ -699,7 +701,7 @@ Subscriptions ₹57,750.00     Setup fees ₹3,490.00
 - Optional: a read-only Sentry token, and the Supabase plan's database and storage limits (System page).
 - Decide who joins the team and their roles (13g). Move 13g earlier if needed.
 - Privacy policy and terms: cover the MenuMesh team viewing restaurants' usage and sales data, support sessions with consent, following up on unfinished signups (if wanted), and what happens to data after an account closes.
-- Approve the support-session consent wording (13c).
+- ~~Approve the support-session consent wording (13c).~~ Approved 2026-10-15 (SA-52).
 - The CA's answers before 14a.
 - Razorpay: confirm whether offers on subscriptions are available on the account (14b).
 - Choose the digest time and recipients (default below).

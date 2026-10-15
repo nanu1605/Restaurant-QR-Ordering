@@ -317,6 +317,9 @@ const TEAM_ACTIONS: Record<string, string> = {
   'restaurant.account_manager_changed': 'Account manager changed',
   'platform_tag.created': 'Tag created',
   'platform_tag.deleted': 'Tag deleted',
+  'support_access.allowed': 'Support access given in person',
+  'support_session.started': 'Support session started',
+  'support_session.ended': 'Support session ended',
 };
 
 export type ActivityLine = {
