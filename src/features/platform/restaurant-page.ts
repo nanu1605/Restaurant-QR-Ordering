@@ -142,6 +142,22 @@ export function historyLine(
         ? 'Razorpay updated the subscription'
         : `Razorpay: ${status(before.status)} to ${status(after.status)}`;
     }
+    case 'subscription.deal_set': {
+      // Prices are left out without money.view.
+      const price =
+        typeof after.price_paise === 'number'
+          ? ` ${formatINR(after.price_paise, { fraction: 'auto' })} ${after.billing_cycle === 'yearly' ? 'a year' : 'a month'}`
+          : '';
+      return `Price set:${price} on ${plan(after.plan_code)}${
+        text(after.offer_code) ? `, offer ${after.offer_code}` : ''
+      }${typeof after.cycles === 'number' ? `, for ${after.cycles} charges` : ''}${
+        after.applied_now === false ? ', from the next autopay' : ''
+      }`;
+    }
+    case 'subscription.deal_ended':
+      return after.still_charged === true
+        ? 'Special price ended: its autopay charges it until it ends'
+        : 'Special price ended: back to the list price';
     case 'restaurant.suspended':
       return 'Suspended';
     case 'restaurant.unsuspended':

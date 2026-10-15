@@ -16,6 +16,7 @@ import { Section } from '@/features/platform/components/restaurant-sections';
 import { formatDate, formatShortDate, todayInIndia } from '@/features/platform/platform';
 import {
   CancelReasons,
+  Discounts,
   LaunchOffer,
   MovementTable,
   PlanMix,
@@ -307,6 +308,7 @@ export default async function RevenuePage({ searchParams }: PageProps<'/super/mo
         <PlanMix report={report} live={to === today} historyNote={historyNote} />
         <CancelReasons report={report} />
         <LaunchOffer report={report} />
+        <Discounts report={report} />
       </div>
       <TrialCohorts cohorts={report.cohorts} />
     </>

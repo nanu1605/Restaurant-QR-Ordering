@@ -72,6 +72,8 @@ export default async function RestaurantLayout({
       })
     : 'off';
   const plan = plans.find((p) => p.code === subscription?.plan_code);
+  // The price it pays now, while that deal is open.
+  const deal = subscription?.deal?.ended_at === null ? subscription.deal : null;
 
   return (
     <>
@@ -121,8 +123,15 @@ export default async function RestaurantLayout({
                     autopay,
                     linkDefaults: {
                       planName: plan?.name ?? '',
-                      monthlyPaise: plan?.price_monthly_paise ?? 0,
-                      yearlyPaise: plan?.price_yearly_paise ?? 0,
+                      // A deal's price for its cycle (docs/DECISIONS.md SA-77+).
+                      monthlyPaise:
+                        (deal?.billing_cycle === 'monthly' ? deal.price_paise : null) ??
+                        plan?.price_monthly_paise ??
+                        0,
+                      yearlyPaise:
+                        (deal?.billing_cycle === 'yearly' ? deal.price_paise : null) ??
+                        plan?.price_yearly_paise ??
+                        0,
                       setupFeePaise: setupFee.feePaise - setupFee.discountPaise,
                       setupFeeDiscountPaise: setupFee.discountPaise,
                     },

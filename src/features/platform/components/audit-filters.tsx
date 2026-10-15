@@ -18,6 +18,7 @@ const ACTION_SUGGESTIONS = [
   'restaurant.',
   'subscription.',
   'plan.updated',
+  'offer.',
   'platform_settings.updated',
   'support.viewed',
   'webhook.reprocessed',

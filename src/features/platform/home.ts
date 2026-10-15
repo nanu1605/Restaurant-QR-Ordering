@@ -321,6 +321,13 @@ const TEAM_ACTIONS: Record<string, string> = {
   'support_session.started': 'Support session started',
   'support_session.ended': 'Support session ended',
   'restaurant.channel_changed': 'Found us changed',
+  'subscription.deal_set': 'Price set',
+  'subscription.deal_ended': 'Price ended',
+  'restaurant.override_set': 'Override set',
+  'restaurant.override_removed': 'Override removed',
+  'offer.created': 'Offer created',
+  'offer.updated': 'Offer changed',
+  'offer.ended': 'Offer ended',
 };
 
 export type ActivityLine = {

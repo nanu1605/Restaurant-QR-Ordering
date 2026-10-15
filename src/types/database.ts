@@ -3291,7 +3291,7 @@ export type Database = {
         Returns: Json
       }
       platform_save_offer: {
-        Args: { p_offer: Json; p_offer_id: string }
+        Args: { p_offer: Json; p_offer_id?: string }
         Returns: Json
       }
       platform_save_view: {

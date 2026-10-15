@@ -108,6 +108,14 @@ const revenueReportSchema = z.object({
     full_price: z.number(),
     not_recorded: z.number(),
   }),
+  // Offers and agreed prices (docs/DECISIONS.md SA-77+).
+  discounts: z.object({
+    payments: z.number(),
+    restaurants: z.number(),
+    discount_paise: z.number(),
+    on_deal_now: z.number(),
+    monthly_discount_now_paise: z.number(),
+  }),
   expected: z.object({
     autopay_paise: z.number(),
     autopay_count: z.number(),

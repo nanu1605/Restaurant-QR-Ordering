@@ -38,6 +38,7 @@ import {
 } from './platform';
 import { parseBilling, parseNotes, parseOverview, parseTeam, parseUsage } from './restaurant-page';
 import { setupFeeDiscountPaise } from './setup-fee';
+import { parseOffers } from './offers';
 import { parseTeamList } from './team';
 
 /**
@@ -235,6 +236,14 @@ export async function getTeam(permission?: PlatformPermission) {
   if (error) throw new Error(`Could not load the team: ${error.message}`);
   const team = parseTeam(data);
   return permission ? team.filter((member) => member.permissions.includes(permission)) : team;
+}
+
+/** Every offer, live first, with how often it was used (docs/DECISIONS.md SA-77+). */
+export async function listOffers() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_offers');
+  if (error) throw new Error(`Could not load the offers: ${error.message}`);
+  return parseOffers(data);
 }
 
 /** Everyone on the team, for the Team page (docs/DECISIONS.md SA-70+). */
