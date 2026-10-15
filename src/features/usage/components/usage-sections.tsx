@@ -20,6 +20,7 @@ import { hrefWithParams } from '@/lib/date-range';
 
 import {
   changeNote,
+  percent,
   USAGE_FEATURE_RULES,
   USAGE_FEATURES,
   type UsageFeature,
@@ -31,13 +32,6 @@ const linkClass = 'font-medium text-brand underline-offset-4 hover:underline';
 const n = (value: number) => value.toLocaleString('en-IN');
 // Key numbers in whole rupees, as on Home.
 const rupees = (paise: number) => Math.round(paise / 100) * 100;
-
-/** A share of a total as a whole percentage; "under 1%" rather than 0 for a part. */
-export function percent(part: number, whole: number): string {
-  if (whole === 0) return '—';
-  const share = Math.round((part / whole) * 100);
-  return share === 0 && part > 0 ? 'under 1%' : `${share}%`;
-}
 
 /** A percentage with a quiet bar under it; the bar is decoration. */
 function ShareCell({ part, whole }: { part: number; whole: number }) {

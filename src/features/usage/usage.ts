@@ -239,6 +239,13 @@ export function changeNote(
   };
 }
 
+/** A share of a total as a whole percentage; "under 1%" rather than 0 for a part. */
+export function percent(part: number, whole: number): string {
+  if (whole === 0) return '—';
+  const share = Math.round((part / whole) * 100);
+  return share === 0 && part > 0 ? 'under 1%' : `${share}%`;
+}
+
 /** Groups ranked by GMV (the database's order) or by restaurants. */
 export function rankGroups<T extends UsageGroup>(groups: T[], rank: GroupRank): T[] {
   if (rank === 'gmv') return groups;
