@@ -123,6 +123,7 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super/webhooks',
     '/super/audit',
     '/super/settings',
+    '/super/settings/team',
     // A restaurant's page, every tab (13a).
     ...(await restaurantPagePaths('responsive')),
     // The support inbox and a request (13b).
