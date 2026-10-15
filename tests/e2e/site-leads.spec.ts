@@ -72,6 +72,8 @@ test('a demo request reaches the platform team', async ({ page, context, request
     await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-leads'));
     await page.getByRole('link', { name: 'Leads' }).first().click();
     await expect(page.getByRole('heading', { name: 'Leads', level: 1 })).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Search' }).fill(restaurant);
+    await page.getByRole('button', { name: 'Apply' }).click();
     const row = page.getByRole('row').filter({ hasText: restaurant });
     await expect(row).toContainText('New');
     await expect(row).toContainText('Demo request on the website');

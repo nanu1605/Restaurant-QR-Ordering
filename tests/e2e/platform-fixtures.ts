@@ -151,11 +151,32 @@ export async function supportRequestPaths(prefix: string) {
  */
 export async function growthPaths(prefix: string) {
   const admin = adminClient();
-  const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const name = `Sweep ${prefix}`;
+  // Two sweeps can start at once: the oldest of the same name.
+  const found = await admin
+    .from('site_leads')
+    .select('id')
+    .eq('name', name)
+    .order('created_at')
+    .limit(1)
+    .maybeSingle();
+  const id = found.data?.id ?? (await sweepLead(name));
+  return [
+    '/super/leads',
+    '/super/leads?view=board',
+    '/super/leads/new',
+    `/super/leads/${id}`,
+    '/super/leads/signups',
+    '/super/funnel',
+  ];
+}
+
+async function sweepLead(name: string) {
+  const admin = adminClient();
   const { data } = await admin
     .from('site_leads')
     .insert({
-      name: `Sweep ${prefix} ${unique}`,
+      name,
       restaurant_name: 'Sweep Cafe',
       city: 'Indore',
       phone: `9${Date.now().toString().slice(-9)}`,
@@ -173,14 +194,7 @@ export async function growthPaths(prefix: string) {
       { lead_id: data.id, kind: 'note', body: 'Wants a demo on Monday.' },
     ])
     .throwOnError();
-  return [
-    '/super/leads',
-    '/super/leads?view=board',
-    '/super/leads/new',
-    `/super/leads/${data.id}`,
-    '/super/leads/signups',
-    '/super/funnel',
-  ];
+  return data.id;
 }
 
 /**

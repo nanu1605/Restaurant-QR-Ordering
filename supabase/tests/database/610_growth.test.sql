@@ -95,6 +95,9 @@ select throws_ok(
 select public.platform_update_lead(:'call_lead', '{"stage": "lost", "lost_reason": "price"}');
 select is((select row(stage, lost_reason)::text from public.site_leads where id = :'call_lead'),
   '(lost,price)', 'lost, and why');
+select public.platform_update_lead(:'call_lead', '{"stage": "lost", "lost_reason": "no_response"}');
+select is((select lost_reason from public.site_leads where id = :'call_lead'), 'no_response',
+  'another reason');
 select public.platform_update_lead(:'call_lead', '{"stage": "demo_scheduled"}');
 select is((select row(stage, lost_reason)::text from public.site_leads where id = :'call_lead'),
   '(demo_scheduled,)', 'back in the pipeline, the reason goes');
@@ -146,8 +149,9 @@ select is(
   array(select kind || ':' || coalesce(from_value, '-') || '>' || coalesce(to_value, '-')
         from public.lead_events
         where lead_id = :'call_lead' and kind = 'stage' order by created_at),
-  array['stage:new>contacted', 'stage:contacted>lost', 'stage:lost>demo_scheduled'],
-  'each stage change, in order'
+  array['stage:new>contacted', 'stage:contacted>lost:price', 'stage:lost:price>lost:no_response',
+    'stage:lost:no_response>demo_scheduled'],
+  'each stage change in order, a lost one with its reason'
 );
 select is(
   (select bool_and(actor_id = :'admin' and not automatic) from public.lead_events
@@ -197,7 +201,7 @@ select is((:'got'::jsonb) ->> 'assignee', 'platform610@admin.test', 'who is on i
 select is(
   (select array_agg(e ->> 'kind' order by n)
    from jsonb_array_elements((:'got'::jsonb) -> 'events') with ordinality as x(e, n)),
-  array['stage', 'stage', 'stage', 'assignee', 'follow_up', 'demo', 'follow_up', 'note'],
+  array['stage', 'stage', 'stage', 'stage', 'assignee', 'follow_up', 'demo', 'follow_up', 'note'],
   'the history, oldest first'
 );
 select is(
@@ -398,6 +402,40 @@ select throws_ok($$select public.platform_list_leads('{"sort": "name"}')$$,
   'P0001', 'INVALID_INPUT', 'no other filters');
 select tests.clear_auth();
 
+-- ─── A second outlet, a second payment ─────────────────────────────────────
+-- A team-onboarded restaurant with the same mobile takes only the lead that
+-- came in since; the others stay with the first.
+insert into public.site_leads (name, restaurant_name, city, phone)
+values ('Sa610 Later', 'Sa610 Auto Cafe 2', 'Indore', '9810000610') returning id as later \gset
+select tests.create_user('outlet610@example.test') as outlet_owner \gset
+select tests.as_service_role();
+select public.platform_create_restaurant(jsonb_build_object(
+  'name', 'Sa610 Auto Cafe 2', 'slug', 'sa610-outlet', 'phone', '+91 98100 00610',
+  'actor_user_id', :'admin', 'acquisition_channel', 'referral',
+  'owner', jsonb_build_object('user_id', :'outlet_owner', 'display_name', 'Asha', 'username', 'owner')
+)) ->> 'restaurant_id' as outlet \gset
+select tests.clear_auth();
+select is(
+  array(select row(name, restaurant_id = :'outlet', stage)::text
+        from public.site_leads where phone = '9810000610' order by created_at, id),
+  array['("Sa610 First",f,won)', '("Sa610 Lost",f,won)', '("Sa610 Won",f,won)',
+    '("Sa610 Later",t,trial)'],
+  'the onboarded outlet takes the new lead, not the ones already linked'
+);
+select is(
+  (select count(*)::int from public.lead_events where lead_id = :'auto_web' and kind = 'restaurant'),
+  1, 'linked once'
+);
+
+-- The team moves a won lead back; the next payment leaves it there.
+select tests.authenticate_as_platform_admin(:'admin');
+select public.platform_update_lead(:'auto_web', '{"stage": "demo_done"}');
+select tests.clear_auth();
+insert into public.subscription_payments (restaurant_id, source, amount_paise, manual_mode)
+values (:'auto', 'manual', 106082, 'upi');
+select is((select stage from public.site_leads where id = :'auto_web'), 'demo_done',
+  'only the first subscription payment wins a lead');
+
 -- ─── Needs attention: not contacted in 24 hours ─────────────────────────────
 -- This file's leads only: every other new lead is contacted for the test.
 update public.site_leads set stage = 'contacted'
@@ -527,6 +565,31 @@ select is(
 select is((:'fun'::jsonb) -> 'other_sources', 'null'::jsonb, 'no long tail');
 select is(public.platform_funnel('2020-02-03', '2020-02-29') ->> 'signups_counted_from', null,
   'all counted: no note');
+-- The last 7 India days come from site_signups until a snapshot has the day,
+-- one email once a day; a snapshot wins.
+select tests.clear_auth();
+delete from public.site_signups;
+delete from public.metrics_platform_daily
+where day >= (now() at time zone 'Asia/Kolkata')::date - 8;
+select (now() at time zone 'Asia/Kolkata')::date as today \gset
+insert into public.site_signups (email, details, code_hash, created_at) values
+  ('live1@sa610.test', '{}', repeat('0', 64), (:'today'::date + time '00:10') at time zone 'Asia/Kolkata'),
+  ('live1@sa610.test', '{}', repeat('0', 64), (:'today'::date + time '01:00') at time zone 'Asia/Kolkata'),
+  ('live2@sa610.test', '{}', repeat('0', 64), (:'today'::date - 6 + time '00:05') at time zone 'Asia/Kolkata'),
+  ('live3@sa610.test', '{}', repeat('0', 64), (:'today'::date - 7 + time '23:50') at time zone 'Asia/Kolkata'),
+  ('live4@sa610.test', '{}', repeat('0', 64), (:'today'::date - 3 + time '12:00') at time zone 'Asia/Kolkata');
+insert into public.metrics_platform_daily (day, signups_started) values (:'today'::date - 3, 4);
+select tests.authenticate_as_platform_admin(:'admin');
+select is(
+  (select row(f ->> 'signups_started', f ->> 'signups_counted_from')::text
+   from (select public.platform_funnel(:'today'::date - 6, :'today') as f) x),
+  '(6,)', 'the last 7 days, live where no snapshot has the day: 1 + 1 + the snapshot''s 4'
+);
+select is(
+  (select row(f ->> 'signups_started', f ->> 'signups_counted_from')::text
+   from (select public.platform_funnel(:'today'::date - 7, :'today') as f) x),
+  format('(6,%s)', :'today'::date - 6), 'the day before is lost: counted from 6 days ago'
+);
 select throws_ok($$select public.platform_funnel('2020-02-10', '2020-02-01')$$,
   'P0001', 'INVALID_INPUT', 'the end after the start');
 select throws_ok($$select public.platform_funnel('2020-01-01', '2021-01-03')$$,
@@ -557,10 +620,12 @@ select tests.suspend(:'u_gone');
 insert into public.dining_tables (restaurant_id, label, qr_token, sort_order)
 select :'u_full', 'T' || n, 'SA610FULLTABLE' || lpad(n::text, 2, '0'), n from generate_series(1, 8) n;
 insert into public.metrics_usage_daily (restaurant_id, business_day, orders)
--- Stored days: the last two come live from orders.
-select :'u_busy', (now() at time zone 'Asia/Kolkata')::date - n, 60 from generate_series(2, 11) n;
+-- Stored days, counted back from its business date: the last two come live from orders.
+select :'u_busy', private.business_date(now(), r.timezone, r.business_day_start_hour) - n, 60
+from public.restaurants r, generate_series(2, 11) n where r.id = :'u_busy';
 insert into public.metrics_usage_daily (restaurant_id, business_day, orders)
-values (:'u_quiet', (now() at time zone 'Asia/Kolkata')::date - 3, 599);
+select :'u_quiet', private.business_date(now(), r.timezone, r.business_day_start_hour) - 3, 599
+from public.restaurants r where r.id = :'u_quiet';
 
 select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_upgrade_opportunities() as up \gset

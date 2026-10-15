@@ -86,6 +86,9 @@ describe('leads', () => {
       at: '2026-10-16T10:00:00Z',
       ...patch,
     });
+    expect(leadEventLine(event({ from: 'lost:price', to: 'lost:no_response' }))).toBe(
+      'Lost (price) to Lost (no response), by asha@menumesh.test',
+    );
     expect(leadEventLine(event({ from: 'new', to: 'contacted' }))).toBe(
       'New to Contacted, by asha@menumesh.test',
     );
