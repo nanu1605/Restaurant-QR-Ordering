@@ -2,12 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ChannelMenu } from '@/features/growth/components/channel-menu';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
-import {
-  ACQUISITION_CHANNEL_LABELS,
-  formatDate,
-  LOOKALIKE_REASON_LABELS,
-} from '@/features/platform/platform';
+import { formatDate, LOOKALIKE_REASON_LABELS } from '@/features/platform/platform';
 import { getLookalikes, getRestaurantDetail, getSignupReview } from '@/features/platform/queries';
 import { requirePlatformPermission } from '@/lib/auth/guards';
 
@@ -61,9 +58,11 @@ export default async function RestaurantDocumentsPage({
             ['FSSAI licence', review.fssaiLicense ?? '—'],
             [
               'Found us',
-              restaurant.acquisition_channel
-                ? ACQUISITION_CHANNEL_LABELS[restaurant.acquisition_channel]
-                : 'Not known',
+              <ChannelMenu
+                key="channel"
+                restaurantId={restaurant.id}
+                channel={restaurant.acquisition_channel}
+              />,
             ],
             ['Onboarded', formatDate(restaurant.created_at)],
           ]}

@@ -28,7 +28,7 @@ const SEE_ALL: Partial<Record<AttentionGroupList['group'], string>> = {
   payment_failed: '/super/money/dues?bucket=payment_failed',
   trial_ending: '/super/money/dues?bucket=trial_ending',
   needs_payment: '/super/money/dues?bucket=renewal_due&days=7',
-  new_leads: '/super/leads',
+  new_leads: '/super/leads?stage=new',
   support_open: '/super/support',
   stuck_onboarding: `/super/restaurants?onboarding=stuck&cols=${ONBOARDING_VIEW_COLUMNS}`,
   inactive: '/super/restaurants?health=inactive',
@@ -193,7 +193,7 @@ function items(group: AttentionGroupList, linkDefaults: (row: DuesRow) => LinkDe
           title={<span className="font-medium text-ink">{data.name}</span>}
           details={[data.restaurant_name, data.city, formatDateTime(data.created_at)]}
           action={
-            <Link href={`/super/leads?lead=${data.lead_id}`} className={actionClass}>
+            <Link href={`/super/leads/${data.lead_id}`} className={actionClass}>
               Open
             </Link>
           }

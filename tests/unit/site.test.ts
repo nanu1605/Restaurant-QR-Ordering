@@ -140,11 +140,11 @@ describe('the "Book a demo" form', () => {
 
   it('emails the lead with everything escaped', () => {
     const lead = leadSchema.parse({ ...valid, restaurantName: 'Tom & <Jerry>', message: 'Hi' });
-    const email = leadEmail(lead, 'Growth', 'https://menumesh.in/');
+    const email = leadEmail(lead, 'Growth', 'https://menumesh.in/', 'l1');
     expect(email.subject).toBe('Demo request: Tom & <Jerry>, Pune');
     expect(email.text).toContain('Phone: +91 9876543210');
     expect(email.text).toContain('Plan: Growth');
-    expect(email.text).toContain('All leads: https://menumesh.in/super/leads');
+    expect(email.text).toContain('Open the lead: https://menumesh.in/super/leads/l1');
     expect(email.html).toContain('Tom &amp; &lt;Jerry&gt;');
     expect(email.html).not.toContain('<Jerry>');
   });

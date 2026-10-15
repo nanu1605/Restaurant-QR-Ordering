@@ -56,7 +56,7 @@ function groups(results: SearchResults): Group[] {
     {
       title: 'Leads',
       items: results.leads.map((l) => ({
-        href: `/super/leads?lead=${l.lead_id}`,
+        href: `/super/leads/${l.lead_id}`,
         label: l.name,
         detail: [l.restaurant_name, l.phone].filter(Boolean).join(', '),
       })),

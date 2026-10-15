@@ -59,7 +59,7 @@ describe('activity lines', () => {
     ).toMatchObject({
       title: 'New lead',
       detail: 'Asha, Asha Cafe, Pune',
-      href: '/super/leads?lead=l1',
+      href: '/super/leads/l1',
     });
   });
 

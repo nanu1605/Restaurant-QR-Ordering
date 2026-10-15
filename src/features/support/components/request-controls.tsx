@@ -19,7 +19,9 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 
-import { addSupportNote, updateSupportRequest } from '../inbox-actions';
+import type { ActionResult } from '@/lib/action-result';
+
+import { updateSupportRequest } from '../inbox-actions';
 import {
   SUPPORT_PRIORITIES,
   SUPPORT_PRIORITY_LABELS,
@@ -33,8 +35,8 @@ import {
 
 const NONE = 'none';
 
-/** One of the request's settings, as a menu of choices; saved when chosen. */
-function ChoiceMenu({
+/** One setting, as a menu of choices; saved when chosen. */
+export function ChoiceMenu({
   label,
   value,
   options,
@@ -133,8 +135,11 @@ export function RequestControls({
   );
 }
 
-/** An internal note; never shown to the restaurant. */
-export function SupportNoteForm({ requestId }: { requestId: string }) {
+/**
+ * An internal note; never shown to the restaurant. `save` is the server action
+ * bound to what the note is on (a request, a lead).
+ */
+export function NoteForm({ save }: { save: (input: SupportNoteInput) => Promise<ActionResult> }) {
   const id = useId();
   const form = useForm<SupportNoteInput>({
     resolver: zodResolver(supportNoteSchema),
@@ -143,7 +148,7 @@ export function SupportNoteForm({ requestId }: { requestId: string }) {
   const { errors, isSubmitting } = form.formState;
 
   async function submit(values: SupportNoteInput) {
-    const result = await addSupportNote(requestId, values);
+    const result = await save(values);
     if (!result.ok) {
       form.setError(result.fieldErrors?.body ? 'body' : 'root', {
         message: result.fieldErrors?.body ?? result.error,
