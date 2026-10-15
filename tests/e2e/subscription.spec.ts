@@ -202,6 +202,88 @@ test('an owner sets up autopay, and webhooks move the subscription through its s
   ).toBeVisible();
 });
 
+// Offers (docs/SUPER_ADMIN_PLAN.md 14b, docs/DECISIONS.md SA-77+): a Razorpay
+// plan at the discounted price for the offer's charges, then the full price.
+test('an owner subscribes with an offer code, then sets up autopay at the full price', async ({
+  page,
+  request,
+}) => {
+  const admin = adminClient();
+  const code = `E2E${Date.now().toString(36).toUpperCase()}`;
+  const { data: growth } = await admin.from('plans').select('id').eq('code', 'growth').single();
+  await admin
+    .from('offers')
+    .insert({
+      code,
+      discount_kind: 'percent',
+      discount_value: 20,
+      plan_ids: [growth!.id],
+      cycles: ['monthly'],
+      duration_cycles: 3,
+    })
+    .throwOnError();
+  const restaurant = await createTestRestaurant({ prefix: 'e2e-offer' });
+  await stubCheckout(page);
+  await logInAsOwner(page, restaurant);
+  await page.goto('/admin/subscription');
+
+  await page.getByLabel('Offer code').fill(code.toLowerCase());
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByRole('status').filter({ hasText: `Offer ${code} applied` })).toBeVisible();
+  const card = page.getByRole('list', { name: 'Plans' }).getByRole('listitem', { name: 'Growth' });
+  // 20% off ₹899 is ₹719, in whole rupees, before GST.
+  await expect(card).toContainText('₹719.00 a month + GST');
+  await expect(card).toContainText('for 3 months, then ₹899.00');
+  await expect(card).toContainText('You pay ₹848.42 a month with 18% GST');
+  await card.getByRole('button', { name: 'Subscribe to Growth' }).click();
+  await expect(page.getByText('Autopay is set up', { exact: true })).toBeVisible();
+
+  // Razorpay was asked for a plan at the price with GST, charged three times.
+  const { data: deal } = await admin
+    .from('subscription_deals')
+    .select('id, razorpay_plan_id, price_paise')
+    .eq('restaurant_id', restaurant.restaurantId)
+    .single()
+    .throwOnError();
+  const rzp = { headers: { Authorization: MOCK_RAZORPAY_AUTH } };
+  const plan = await (
+    await request.get(`${MOCK_RAZORPAY}/plans/${deal!.razorpay_plan_id}`, rzp)
+  ).json();
+  expect(plan.item.amount).toBe(withGst(71900));
+  const row = await subscriptionRow(restaurant.restaurantId);
+  const subscriptionId = row.razorpay_subscription_id!;
+  const created = await (
+    await request.get(`${MOCK_RAZORPAY}/subscriptions/${subscriptionId}`, rzp)
+  ).json();
+  expect(created).toMatchObject({ plan_id: deal!.razorpay_plan_id, total_count: 3 });
+
+  // The last discounted charge, then Razorpay completes the subscription.
+  const period = { start: new Date(), end: new Date(Date.now() + 30 * DAY) };
+  await sendWebhook(
+    request,
+    subscriptionEvent(
+      'charged',
+      { id: subscriptionId, status: 'active', period },
+      { id: razorpayId('pay'), amount: withGst(71900) },
+    ),
+  );
+  await sendWebhook(
+    request,
+    subscriptionEvent('completed', { id: subscriptionId, status: 'completed', period }),
+  );
+  await page.reload();
+  // Paid to the end of the period, and the cards are back at the full price.
+  await expect(page.getByTestId('subscription-status')).toHaveText('Paid');
+  await expect(card).toContainText('₹899.00 a month + GST');
+  await card.getByRole('button', { name: 'Subscribe to Growth' }).click();
+  await expect(page.getByText('Autopay is set up', { exact: true })).toBeVisible();
+  const next = await subscriptionRow(restaurant.restaurantId);
+  const again = await (
+    await request.get(`${MOCK_RAZORPAY}/subscriptions/${next.razorpay_subscription_id}`, rzp)
+  ).json();
+  expect(again).toMatchObject({ plan_id: 'plan_E2EGrowthMonth', total_count: 120 });
+});
+
 test('autopay set up during a trial can be cancelled straight away', async ({ page }) => {
   const restaurant = await createTestRestaurant({ prefix: 'e2e-payx' });
   await stubCheckout(page);

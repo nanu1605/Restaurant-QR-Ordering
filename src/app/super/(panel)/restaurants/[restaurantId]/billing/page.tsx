@@ -313,11 +313,10 @@ function PriceSection({
         <DealControls
           restaurantId={detail.restaurant.id}
           plans={plans}
-          current={
-            subscription.billing_cycle
-              ? { planCode: subscription.plan_code, cycle: subscription.billing_cycle }
-              : null
-          }
+          current={{
+            planCode: subscription.plan_code,
+            cycle: subscription.billing_cycle ?? 'monthly',
+          }}
           canEnd={open !== null || (deal !== null && deal.ended_at === null)}
         />
       )}

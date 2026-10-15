@@ -135,6 +135,8 @@ test('platform admin money and insights', async ({ page }) => {
     '/super/usage?compare=1&by=week',
     // The team (13g).
     '/super/settings/team',
+    // Offers (14b).
+    '/super/settings/offers',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

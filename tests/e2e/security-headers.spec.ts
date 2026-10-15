@@ -112,6 +112,8 @@ test('the platform admin pages run under the policy without violations', async (
     '/super/webhooks',
     '/super/audit',
     '/super/settings/team',
+    // Offers (14b).
+    '/super/settings/offers',
     // A restaurant's Overview (its chart) and Billing.
     ...(await restaurantPagePaths('csp')).slice(0, 2),
     // The support inbox and a request with its screenshot link (13b).
