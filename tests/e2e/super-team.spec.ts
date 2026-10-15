@@ -6,6 +6,7 @@ import {
   logInAsPlatformAdmin,
   passSecondFactor,
   type PlatformAdmin,
+  restaurantPagePaths,
 } from './platform-fixtures';
 
 // Team and roles (docs/SUPER_ADMIN_PLAN.md 13g; docs/DECISIONS.md SA-70+).
@@ -175,4 +176,34 @@ test('a new role, turned off and back on', async ({ page, browser }) => {
   await page.getByRole('menuitem', { name: 'What they did' }).click();
   await expect(page).toHaveURL(new RegExp(`/super/audit\\?member=${support.userId}`));
   await expect(page.getByRole('status').filter({ hasText: 'Showing what' })).toBeVisible();
+});
+
+test('Support sees its pages, and no control its role can’t use', async ({ page }) => {
+  const support = await createPlatformAdmin('e2e-team-role', 'support');
+  const [overview, , , , , documents] = await restaurantPagePaths('e2e-team-role');
+  await logInAsPlatformAdmin(page, support);
+
+  // Support: restaurants, the support inbox, usage and webhooks.
+  const sections = nav(page);
+  for (const name of ['Restaurants', 'Support inbox', 'Usage', 'Webhooks'])
+    await expect(sections.getByRole('link', { name, exact: true })).toBeVisible();
+  for (const name of ['Payments', 'Dues', 'Leads', 'Team', 'Audit log', 'Plans'])
+    await expect(sections.getByRole('link', { name, exact: true })).toHaveCount(0);
+
+  // Home's key numbers link only to pages the role opens.
+  const failed = page.getByRole('term').filter({ hasText: /^Payment failed$/ });
+  await expect(failed).toBeVisible();
+  await expect(failed.getByRole('link')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'GMV today' })).toBeVisible();
+
+  // A restaurant's notes without Pin, and Found us as plain text.
+  await page.goto(overview!);
+  await expect(page.getByText('Prefers calls after 4 pm', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Pin|Unpin)$/ })).toHaveCount(0);
+  await page.goto(documents!);
+  await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Found us/ })).toHaveCount(0);
+
+  await page.goto('/super/leads');
+  await expect(page).toHaveURL(/\/super\?denied=1$/);
 });
