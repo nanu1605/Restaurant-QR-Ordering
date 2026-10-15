@@ -179,7 +179,8 @@ export default async function UsagePage({ searchParams }: PageProps<'/super/usag
             </Link>
           ))}
         </nav>
-        <div className="grid gap-4 xl:grid-cols-2">
+        {/* Five columns each: side by side only on the widest screens. */}
+        <div className="grid gap-4 2xl:grid-cols-2">
           <GroupTable
             title="By city"
             what="City"

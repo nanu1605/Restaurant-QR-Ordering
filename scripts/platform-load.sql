@@ -169,10 +169,10 @@ begin
     where x.orders > 0
   ) as u;
 
-  -- UPI QR on bills for a third.
+  -- UPI QR on bills for a third (Growth, which has it).
   update public.restaurants r set show_upi_qr_on_bill = true, upi_vpa = 'load@upi'
   from load_r l
-  where l.id = r.id and l.n % 3 = 0;
+  where l.id = r.id and l.n % 3 = 1;
 
   -- The last 35 days of usage as accepted orders, at midday India time, in one
   -- session per restaurant.

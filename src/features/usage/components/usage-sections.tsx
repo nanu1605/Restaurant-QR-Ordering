@@ -105,7 +105,7 @@ export function UsageKeyNumbers({ report, period }: { report: UsageReport; perio
           label="Active restaurants"
           note={
             <>
-              Of {n(totals.restaurants)}, an order in these dates
+              Of {n(totals.restaurants)} restaurants
               {previous && (
                 <>
                   <br />
