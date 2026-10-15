@@ -73,6 +73,8 @@ const MESSAGES: Record<string, Message> = {
   OFFER_CODE_TAKEN: 'An offer already uses that code. Choose another.',
   DEAL_SET_BY_TEAM: 'MenuMesh has already set your price, so a code can’t be used.',
   DEAL_NOT_FOUND: 'This restaurant has no special price to end.',
+  DEAL_IN_AUTOPAY:
+    'Its autopay charges this price. Cancel autopay first (Actions), then change the price.',
   OVERRIDE_NOT_FOUND: 'That override was already removed. Refresh the page.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 

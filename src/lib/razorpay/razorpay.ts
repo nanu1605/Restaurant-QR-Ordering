@@ -151,7 +151,8 @@ export async function createPlan(
 
 /**
  * A subscription the owner then authorises in Checkout. With startAt, the
- * first charge waits until then (the end of a trial or paid period).
+ * first charge waits until then (the end of a trial or paid period); with
+ * expireBy, it can't be authorised after then.
  */
 export async function createSubscription(
   config: RazorpayConfig,
@@ -159,6 +160,7 @@ export async function createSubscription(
     planId: string;
     totalCount: number;
     startAt: Date | null;
+    expireBy?: Date;
     notes: Record<string, string>;
   },
 ): Promise<SubscriptionEntity> {
@@ -169,6 +171,9 @@ export async function createSubscription(
     notes: subscription.notes,
     ...(subscription.startAt
       ? { start_at: Math.floor(subscription.startAt.getTime() / 1000) }
+      : {}),
+    ...(subscription.expireBy
+      ? { expire_by: Math.floor(subscription.expireBy.getTime() / 1000) }
       : {}),
   });
 }

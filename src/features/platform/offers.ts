@@ -163,6 +163,7 @@ export const dealRowSchema = z.object({
   list_price_paise: z.number().nullable(),
   price_paise: z.number().nullable(),
   cycles: z.number().nullable(),
+  charges_used: z.number(),
   reason: z.string().nullable(),
   by_owner: z.boolean(),
   created_by: z.string().nullable(),

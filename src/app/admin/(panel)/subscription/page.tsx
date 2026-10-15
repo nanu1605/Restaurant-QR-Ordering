@@ -80,6 +80,7 @@ export default async function SubscriptionPage({ searchParams }: PageProps<'/adm
   const subscription = listed && {
     ...listed,
     dealPricePaise: prices.current_price_paise,
+    dealCycle: prices.current_price_paise === null ? null : (prices.deal?.billing_cycle ?? null),
     nextPricePaise: prices.next_price_paise ?? listed.nextPricePaise,
   };
   const summary = subscriptionSummary({ subscription, access, timezone });
@@ -307,10 +308,18 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
     facts.push(
       autopayFact(subscription) ?? [
         'Price after the trial',
-        <>
-          <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
-          <Money paise={plan.priceYearlyPaise} /> a year, plus GST
-        </>,
+        subscription.dealPricePaise && subscription.dealCycle ? (
+          <>
+            <Money paise={subscription.dealPricePaise} />{' '}
+            {subscription.dealCycle === 'yearly' ? 'a year' : 'a month'} + GST, the price MenuMesh
+            set for you
+          </>
+        ) : (
+          <>
+            <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
+            <Money paise={plan.priceYearlyPaise} /> a year, plus GST
+          </>
+        ),
       ],
     );
     return facts;

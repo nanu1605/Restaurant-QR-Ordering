@@ -262,10 +262,12 @@ function SubscriptionSection({ detail }: { detail: RestaurantDetail }) {
   );
 }
 
-/** "₹699 a month + GST for 3 months · offer LAUNCH20 · A chain of three". */
+/** "₹699 a month + GST for 3 months, 1 paid · offer LAUNCH20 · A chain of three". */
 function describeDeal(deal: DealRow) {
   return [
-    dealPriceLine(deal) ?? 'A special price',
+    `${dealPriceLine(deal) ?? 'A special price'}${
+      deal.cycles !== null && deal.charges_used > 0 ? `, ${deal.charges_used} paid` : ''
+    }`,
     deal.offer_code ? `offer ${deal.offer_code}` : 'agreed price',
     deal.reason,
   ]
@@ -289,14 +291,7 @@ function PriceSection({
   const { subscription, open_deal: open } = detail;
   if (!subscription) return null;
   const { deal, next_deal: next } = subscription;
-  const facts: [string, string][] = [
-    [
-      'Price now',
-      deal
-        ? `${describeDeal(deal)}${deal.ended_at ? ' (ended: charged until its autopay ends)' : ''}`
-        : 'The list price',
-    ],
-  ];
+  const facts: [string, string][] = [['Price now', deal ? describeDeal(deal) : 'The list price']];
   if (next) facts.push(['Next autopay', describeDeal(next)]);
   if (open) {
     facts.push([
@@ -317,7 +312,7 @@ function PriceSection({
             planCode: subscription.plan_code,
             cycle: subscription.billing_cycle ?? 'monthly',
           }}
-          canEnd={open !== null || (deal !== null && deal.ended_at === null)}
+          canEnd={open !== null || deal !== null}
         />
       )}
     </Section>

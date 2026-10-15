@@ -107,21 +107,19 @@ export async function setDeal(
   return actionOk({ appliedNow: (data as { applied_now: boolean }).applied_now });
 }
 
-/** Back to the list price; an autopay already charging it carries on. */
-export async function endDeal(
-  restaurantId: string,
-): Promise<ActionResult<{ stillCharged: boolean }>> {
+/** Back to the list price; a price a running autopay charges stays (cancel it first). */
+export async function endDeal(restaurantId: string): Promise<ActionResult> {
   await requirePlatformPermission('money.record');
   const id = restaurantIdSchema.safeParse(restaurantId);
   if (!id.success) return actionError(GENERIC_ERROR);
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('platform_set_deal', {
+  const { error } = await supabase.rpc('platform_set_deal', {
     p_restaurant_id: id.data,
     p_deal: { end: true },
   });
   if (error) return fromDbError(error, 'platform_set_deal');
   refresh();
-  return actionOk({ stillCharged: (data as { still_charged: boolean }).still_charged });
+  return actionOk();
 }
 
 export async function setOverride(

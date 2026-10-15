@@ -121,15 +121,6 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
   if (autopayState(subscription) === 'on') {
     return actionError('Autopay is already set up. Refresh the page to see it.');
   }
-  // The team's price for this plan and cycle, or the code's; none: the list price.
-  const taken = await admin.rpc('subscription_checkout_deal', {
-    p_restaurant_id: owner.restaurantId,
-    p_plan_code: planCode,
-    p_cycle: cycle,
-    p_code: code,
-  });
-  if (taken.error) return fromDbError(taken.error, 'Take an offer');
-  const deal = checkoutDealSchema.parse(taken.data);
 
   try {
     // An unfinished checkout, or a mandate that keeps failing, makes way.
@@ -139,6 +130,17 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
       const saved = await save(owner, cancelled);
       if (!saved.ok) return saved;
     }
+
+    // The team's price for this plan and cycle, or the code's, with the charges
+    // it has left; none: the list price.
+    const taken = await admin.rpc('subscription_checkout_deal', {
+      p_restaurant_id: owner.restaurantId,
+      p_plan_code: planCode,
+      p_cycle: cycle,
+      p_code: code,
+    });
+    if (taken.error) return fromDbError(taken.error, 'Take an offer');
+    const deal = checkoutDealSchema.parse(taken.data);
 
     // A special price is a Razorpay plan of its own, charged for the deal's
     // cycles (docs/DECISIONS.md SA-77+); one plan serves every deal at that price.
@@ -163,6 +165,8 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
       planId: dealPlanId ?? planId,
       totalCount: deal?.cycles ?? TOTAL_COUNT[cycle],
       startAt: autopayStartAt(subscription, new Date()),
+      // A code holds its place for a day: so does the checkout made with it.
+      ...(code && deal && { expireBy: new Date(Date.now() + 24 * 60 * 60 * 1000) }),
       notes: {
         restaurant_id: owner.restaurantId,
         plan_code: planCode,

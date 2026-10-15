@@ -190,11 +190,19 @@ export function AutopayPanel({
             <p className="rounded-lg border border-brand/30 bg-brand/5 p-3 text-sm text-ink">
               MenuMesh has set a price for you on{' '}
               {plans.find((plan) => plan.code === deal.plan_code)?.name ?? 'your plan'},{' '}
-              {deal.billing_cycle}: <Money paise={deal.price_paise} /> + GST
+              {deal.billing_cycle}: <Money paise={deal.price_paise} />{' '}
+              {deal.billing_cycle === 'yearly' ? 'a year' : 'a month'} + GST
               {deal.cycles !== null && ` ${forCycles(deal.cycles, deal.billing_cycle)}`}.
             </p>
           ) : (
-            <OfferCode offer={offer} onChange={setOffer} />
+            <OfferCode
+              offer={offer}
+              onChange={(next) => {
+                setOffer(next);
+                const covered = next?.prices.map((price) => price.billing_cycle) ?? [];
+                if (covered.length > 0 && !covered.includes(cycle)) setCycle(covered[0]!);
+              }}
+            />
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-ink-muted">{firstPayment}</p>
@@ -254,7 +262,8 @@ export function AutopayPanel({
                           </>
                         ) : (
                           <>
-                            {forCycles(special.cycles, cycle)}, then <Money paise={list} />
+                            {forCycles(special.cycles, cycle)}, then <Money paise={list} />, when
+                            you set up autopay again
                           </>
                         )}
                       </p>
@@ -300,7 +309,9 @@ export function AutopayPanel({
           </ul>
           <p className="text-xs text-ink-muted">
             Payments go through Razorpay by UPI Autopay or card, include 18% GST and renew
-            automatically. You can cancel any time; it stops at the end of the paid period.
+            automatically. You can cancel any time; it stops at the end of the paid period. A
+            special price for some months stops after them, and we remind you to set up autopay
+            again.
           </p>
         </>
       )}
@@ -340,10 +351,13 @@ function OfferCode({
         event.preventDefault();
         startTransition(async () => {
           const result = await previewOffer(code);
-          if (result.ok) {
+          if (!result.ok) setError(result.error);
+          else if (result.data.prices.length === 0) {
+            setError('That code isn’t for a plan you can pay for here.');
+          } else {
             setError(null);
             onChange(result.data);
-          } else setError(result.error);
+          }
         });
       }}
     >

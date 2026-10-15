@@ -5,6 +5,7 @@ import { Heatmap } from '@/features/platform/components/heatmap';
 import { AddOverride, RemoveOverride } from '@/features/platform/components/pricing-controls';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
 import { overrideLabel } from '@/features/platform/offers';
+import { discountLastDay } from '@/features/platform/setup-fee';
 import { formatDate, formatDateTime } from '@/features/platform/platform';
 import {
   getRestaurantDetail,
@@ -117,7 +118,9 @@ export default async function RestaurantUsagePage({
                   <span className="text-ink-muted">
                     {override.reason}
                     {override.expires_at &&
-                      ` · ${override.expired ? 'ended' : 'until'} ${formatDateTime(override.expires_at)}`}
+                      ` · ${override.expired ? 'ended' : 'last day'} ${formatDate(
+                        discountLastDay(override.expires_at),
+                      )}`}
                     {override.created_by && ` · ${override.created_by}`}
                   </span>
                 </span>

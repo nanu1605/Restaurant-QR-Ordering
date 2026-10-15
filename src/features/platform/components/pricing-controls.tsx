@@ -130,7 +130,8 @@ export function DealControls({
           <AlertDialogHeader>
             <AlertDialogTitle>Back to the list price?</AlertDialogTitle>
             <AlertDialogDescription>
-              The special price ends. An autopay already charging it carries on until it ends.
+              The special price ends, and the one waiting for the owner&apos;s next autopay. A price
+              a running autopay charges stays: cancel that autopay first.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -141,11 +142,7 @@ export function DealControls({
                 startTransition(async () => {
                   const result = await endDeal(restaurantId);
                   if (result.ok) {
-                    toast.success(
-                      result.data.stillCharged
-                        ? 'Ended: its autopay charges it until that autopay ends'
-                        : 'Back to the list price',
-                    );
+                    toast.success('Back to the list price');
                     setOpen(null);
                   } else toast.error(result.error);
                 })
@@ -338,7 +335,7 @@ function OverrideForm({ restaurantId, onDone }: { restaurantId: string; onDone: 
       reason: '',
     },
   });
-  const kind = useWatch({ control, name: 'kind' });
+  const [kind, feature] = useWatch({ control, name: ['kind', 'feature'] });
 
   const onSubmit = handleSubmit(async (values) => {
     const result = await setOverride(restaurantId, values);
@@ -373,7 +370,7 @@ function OverrideForm({ restaurantId, onDone }: { restaurantId: string; onDone: 
               <select
                 id={`${ids}-pick`}
                 className={SELECT_CLASS}
-                defaultValue={FEATURE_KEYS[0]}
+                value={beta ? BETA : feature}
                 onChange={(event) => {
                   const picked = event.target.value;
                   setBeta(picked === BETA);

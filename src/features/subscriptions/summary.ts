@@ -30,6 +30,8 @@ export type OwnerSubscription = {
   nextPricePaise: number | null;
   /** The deal's price a cycle, when the restaurant pays one (docs/DECISIONS.md SA-77+). */
   dealPricePaise?: number | null;
+  /** That deal's cycle. */
+  dealCycle?: Enums['billing_cycle'] | null;
   plan: {
     name: string;
     priceMonthlyPaise: number;
