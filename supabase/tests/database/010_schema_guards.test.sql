@@ -244,7 +244,12 @@ select set_eq(
       ('public.platform_list_team'),
       ('public.platform_invite_member'),
       ('public.platform_renew_invite'),
-      ('public.platform_update_member')
+      ('public.platform_update_member'),
+      ('public.platform_list_offers'),
+      ('public.platform_save_offer'),
+      ('public.platform_set_deal'),
+      ('public.platform_set_override'),
+      ('public.platform_remove_override')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

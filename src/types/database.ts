@@ -979,6 +979,63 @@ export type Database = {
           },
         ]
       }
+      offers: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          cycles: Database["public"]["Enums"]["billing_cycle"][] | null
+          description: string | null
+          discount_kind: string
+          discount_value: number
+          duration_cycles: number | null
+          ended_at: string | null
+          id: string
+          max_redemptions: number | null
+          new_only: boolean
+          plan_ids: string[] | null
+          updated_at: string
+          valid_from: string
+          valid_until: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          cycles?: Database["public"]["Enums"]["billing_cycle"][] | null
+          description?: string | null
+          discount_kind: string
+          discount_value: number
+          duration_cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          new_only?: boolean
+          plan_ids?: string[] | null
+          updated_at?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          cycles?: Database["public"]["Enums"]["billing_cycle"][] | null
+          description?: string | null
+          discount_kind?: string
+          discount_value?: number
+          duration_cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          new_only?: boolean
+          plan_ids?: string[] | null
+          updated_at?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           addons_snapshot: Json
@@ -1581,6 +1638,53 @@ export type Database = {
           },
         ]
       }
+      restaurant_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          feature: string | null
+          id: string
+          kind: string
+          reason: string
+          restaurant_id: string
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          feature?: string | null
+          id?: string
+          kind: string
+          reason: string
+          restaurant_id: string
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          feature?: string | null
+          id?: string
+          kind?: string
+          reason?: string
+          restaurant_id?: string
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_overrides_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_subscriptions: {
         Row: {
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
@@ -1590,11 +1694,14 @@ export type Database = {
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
+          deal_id: string | null
+          effective_monthly_paise: number | null
           grace_until: string | null
           id: string
           next_billing_cycle:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id: string | null
           next_plan_id: string | null
           plan_id: string
           razorpay_customer_id: string | null
@@ -1615,11 +1722,14 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          deal_id?: string | null
+          effective_monthly_paise?: number | null
           grace_until?: string | null
           id?: string
           next_billing_cycle?:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id?: string | null
           next_plan_id?: string | null
           plan_id: string
           razorpay_customer_id?: string | null
@@ -1640,11 +1750,14 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          deal_id?: string | null
+          effective_monthly_paise?: number | null
           grace_until?: string | null
           id?: string
           next_billing_cycle?:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id?: string | null
           next_plan_id?: string | null
           plan_id?: string
           razorpay_customer_id?: string | null
@@ -1658,6 +1771,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "restaurant_subscriptions_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_subscriptions_next_deal_id_fkey"
+            columns: ["next_deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "restaurant_subscriptions_next_plan_id_fkey"
             columns: ["next_plan_id"]
@@ -2104,12 +2231,86 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_deals: {
+        Row: {
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"]
+          created_at: string
+          created_by: string | null
+          cycles: number | null
+          ended_at: string | null
+          id: string
+          list_price_paise: number
+          offer_id: string | null
+          plan_id: string
+          price_paise: number
+          razorpay_plan_id: string | null
+          reason: string | null
+          restaurant_id: string
+          used_at: string | null
+        }
+        Insert: {
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"]
+          created_at?: string
+          created_by?: string | null
+          cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          list_price_paise: number
+          offer_id?: string | null
+          plan_id: string
+          price_paise: number
+          razorpay_plan_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          used_at?: string | null
+        }
+        Update: {
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"]
+          created_at?: string
+          created_by?: string | null
+          cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          list_price_paise?: number
+          offer_id?: string | null
+          plan_id?: string
+          price_paise?: number
+          razorpay_plan_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_deals_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_deals_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_deals_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_payments: {
         Row: {
           amount_paise: number
           base_paise: number | null
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           created_at: string
+          deal_id: string | null
           discount_paise: number | null
           gst_bps: number
           gst_paise: number | null
@@ -2132,6 +2333,7 @@ export type Database = {
           base_paise?: number | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
+          deal_id?: string | null
           discount_paise?: number | null
           gst_bps?: number
           gst_paise?: number | null
@@ -2156,6 +2358,7 @@ export type Database = {
           base_paise?: number | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
+          deal_id?: string | null
           discount_paise?: number | null
           gst_bps?: number
           gst_paise?: number | null
@@ -2176,6 +2379,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_payments_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscription_payments_plan_id_fkey"
             columns: ["plan_id"]
@@ -3001,6 +3211,7 @@ export type Database = {
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
       platform_list_leads: { Args: { p_filters: Json }; Returns: Json }
       platform_list_notes: { Args: { p_restaurant_id: string }; Returns: Json }
+      platform_list_offers: { Args: never; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
@@ -3033,6 +3244,10 @@ export type Database = {
       platform_record_setup_fee: {
         Args: { p_payment: Json; p_restaurant_id: string }
         Returns: Json
+      }
+      platform_remove_override: {
+        Args: { p_override_id: string }
+        Returns: undefined
       }
       platform_renew_invite: {
         Args: { p_token_hash: string; p_user_id: string }
@@ -3075,6 +3290,10 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_save_offer: {
+        Args: { p_offer: Json; p_offer_id: string }
+        Returns: Json
+      }
       platform_save_view: {
         Args: {
           p_name: string
@@ -3092,6 +3311,14 @@ export type Database = {
       platform_set_acquisition_channel: {
         Args: { p_channel: string; p_restaurant_id: string }
         Returns: undefined
+      }
+      platform_set_deal: {
+        Args: { p_deal: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_set_override: {
+        Args: { p_override: Json; p_restaurant_id: string }
+        Returns: Json
       }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
@@ -3261,6 +3488,23 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: string[]
       }
+      subscription_checkout_deal: {
+        Args: {
+          p_code?: string
+          p_cycle: string
+          p_plan_code: string
+          p_restaurant_id: string
+        }
+        Returns: Json
+      }
+      subscription_deal_plan: {
+        Args: { p_deal_id: string; p_razorpay_plan_id: string }
+        Returns: undefined
+      }
+      subscription_offer_preview: {
+        Args: { p_code?: string; p_restaurant_id: string }
+        Returns: Json
+      }
       subscription_reminder_sent: {
         Args: { p_due_key: string; p_kind: string; p_restaurant_id: string }
         Returns: boolean
@@ -3269,6 +3513,7 @@ export type Database = {
         Args: { p_at?: string }
         Returns: {
           due_key: string
+          ends_at: string
           kind: string
           plan_name: string
           recipients: string[]

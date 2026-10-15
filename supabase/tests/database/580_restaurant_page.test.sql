@@ -47,10 +47,12 @@ select is(
   ((:'r'::jsonb) -> 'subscription') - array['plan_id', 'plan_code', 'plan_name', 'billing_cycle',
     'status', 'source', 'trial_ends_at', 'current_period_start', 'current_period_end',
     'grace_until', 'cancel_at_period_end', 'razorpay_subscription_id', 'razorpay_status',
-    'next_plan_name', 'next_billing_cycle'],
+    'next_plan_name', 'next_billing_cycle', 'deal', 'next_deal', 'effective_monthly_paise'],
   jsonb_build_object('cancel_reason', 'too_expensive', 'cancel_reason_detail', 'Wants a discount',
     'max_tables', (select max_tables from public.plans where code = 'starter'),
-    'max_staff', (select max_staff from public.plans where code = 'starter')),
+    'max_staff', (select max_staff from public.plans where code = 'starter'),
+    'plan_max_tables', (select max_tables from public.plans where code = 'starter'),
+    'plan_max_staff', (select max_staff from public.plans where code = 'starter')),
   'why it cancelled, and the plan''s limits'
 );
 select is((:'r'::jsonb) -> 'money', 'true'::jsonb, 'money is shown');
