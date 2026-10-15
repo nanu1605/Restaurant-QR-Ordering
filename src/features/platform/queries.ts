@@ -37,6 +37,7 @@ import {
 } from './platform';
 import { parseBilling, parseNotes, parseOverview, parseTeam, parseUsage } from './restaurant-page';
 import { setupFeeDiscountPaise } from './setup-fee';
+import { parseTeamList } from './team';
 
 /**
  * Super-admin reads (spec §13.4). They run as the signed-in platform admin;
@@ -229,6 +230,14 @@ export async function getTeam() {
   const { data, error } = await supabase.rpc('platform_team');
   if (error) throw new Error(`Could not load the team: ${error.message}`);
   return parseTeam(data);
+}
+
+/** Everyone on the team, for the Team page (docs/DECISIONS.md SA-70+). */
+export async function listTeam() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_team');
+  if (error) throw new Error(`Could not load the team: ${error.message}`);
+  return parseTeamList(data);
 }
 
 /**

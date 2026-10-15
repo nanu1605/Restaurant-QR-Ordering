@@ -14,7 +14,7 @@ import { getServerEnv } from '@/lib/env.server';
 
 export const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 
-export const hashCode = (purpose: 'signup' | 'password-reset', code: string) =>
+export const hashCode = (purpose: 'signup' | 'password-reset' | 'team-invite', code: string) =>
   createHmac('sha256', getServerEnv().CUSTOMER_COOKIE_SECRET)
     .update(`${purpose}-code:${code}`)
     .digest('hex');

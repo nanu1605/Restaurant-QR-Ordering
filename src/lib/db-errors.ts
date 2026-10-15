@@ -57,6 +57,12 @@ const MESSAGES: Record<string, Message> = {
   NOTE_LOCKED: 'Only its author can edit a note, within 15 minutes of writing it.',
   TAG_EXISTS: 'There is a tag with that name already. Choose it from the list.',
   ADMIN_NOT_FOUND: 'That person is no longer on the MenuMesh team.',
+  // Team and roles (docs/DECISIONS.md SA-70+).
+  EMAIL_TAKEN: 'That email already has a MenuMesh login. Use another address.',
+  TEAM_MEMBER_NOT_FOUND: 'That person isn’t on the team, or has already joined.',
+  LAST_ADMIN: 'Make someone else an Admin first: the team needs one.',
+  TEAM_SELF: 'You can’t turn yourself off. Ask another Admin.',
+  INVITE_INVALID: 'This invite has expired or was already used. Ask an Admin for a new link.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Support sessions (docs/DECISIONS.md SA-46 to SA-52)
