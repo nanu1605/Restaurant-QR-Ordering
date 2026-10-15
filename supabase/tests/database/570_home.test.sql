@@ -78,6 +78,11 @@ select tests.create_full_fixture(:'busy');
 insert into public.site_leads (name, restaurant_name, city, phone)
 values ('Sa570 Lead', 'Sa570 Cafe', 'Indore', '9876557002')
 returning id as lead \gset
+-- Not contacted 24 hours after it came in (13d); the one above is too new. Every
+-- other new lead counts as contacted here, so other data can't push it out.
+update public.site_leads set stage = 'contacted' where stage = 'new';
+insert into public.site_leads (name, restaurant_name, city, phone, created_at)
+values ('Sa570 Old lead', 'Sa570 Dhaba', 'Indore', '9876557003', now() - interval '25 hours');
 insert into public.webhook_events (provider, event_id, event_type, payload, processing_error)
 values ('razorpay', 'evt_sa570', 'sa570.test', '{}', 'Could not apply it')
 returning id as webhook \gset
@@ -124,7 +129,8 @@ select is(pg_temp.mine(:'att', 'trial_ending'), array['sa570-trial'],
   'a trial ending within 3 days with no autopay');
 select is(pg_temp.mine(:'att', 'needs_payment'), array['sa570-manual'],
   'a manual payer due within 7 days (not one due in 20)');
-select is(pg_temp.mine(:'att', 'new_leads'), array['sa570 lead'], 'a lead from the last day');
+select is(pg_temp.mine(:'att', 'new_leads'), array['sa570 old lead'],
+  'a lead no one contacted in the 24 hours after it came in');
 select is(pg_temp.mine(:'att', 'inactive'), array['sa570-idle'],
   'inactive, with full access (a lapsed one is left to Dues)');
 select is(pg_temp.mine(:'att', 'slowing'), array['sa570-slowing'], 'slowing');
