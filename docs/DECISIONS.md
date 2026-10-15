@@ -4063,3 +4063,66 @@ stay at 13g, since nobody else gets `/super` before then.
   reads one restaurant and keeps the public check. Same results; for an Admin about twice as
   fast (the list by state and Subscriptions 0.2 s to 0.09 s, Revenue 0.33 s to 0.22 s), while the
   service-role ones barely move, since the check skips a call with no signed-in user.
+
+### 14b · Offers, custom prices, overrides
+
+- **SA-77 · A deal is one restaurant's price:** an offer code or a price the team agreed, for a
+  plan and cycle, before GST, per charge, in whole rupees, optionally for N charges
+  (`subscription_deals`). Not on autopay (a trial included), it is the price at once; on autopay,
+  it waits for the owner's next autopay, since Razorpay can't change a running one (P8-9); one
+  deal waits at a time. `restaurant_subscriptions.deal_id` is the deal being paid and
+  `next_deal_id` the one a set-up autopay will charge; a trigger keeps `effective_monthly_paise`
+  in step, drops a deal when the plan or cycle changes, and ends the one left behind. Charges are
+  counted, not autopays: a payment at a deal's price uses one charge (one per month or year it
+  covers), the deal ends with its last and the list price applies from then, and a new autopay is
+  made for the charges left, so cancelling and subscribing again never restarts it. The team's
+  price stays across a cancelled, halted or finished autopay; an owner's code is spent with the
+  autopay that charged it, once its last charge is in, also when a new checkout has taken that
+  autopay's place. Ending a price goes back to the list price, except one a running autopay
+  charges (cancel that autopay first; only a price waiting behind it ends). A payment for more
+  months than the deal has left is discounted for those it has. Prices: money.record (Admin,
+  Finance; owner's choice, 2026-10-15). Offer codes: settings.manage. The team's price stands:
+  while it is open an owner can't use a code. Deal prices are money: they are left out of the
+  subscriptions table's columns for the team and of the funnel's MRR for Sales.
+- **SA-78 · A Razorpay plan per price, then the full price:** the owner's choice (2026-10-15),
+  instead of Razorpay Offers, whose availability on the account is unknown. Checkout makes a
+  Razorpay plan at `withGst(price)` once per plan, cycle and price, and an offer for N charges is
+  a subscription with `total_count` N (the charges left). Razorpay sends `completed` after the
+  last: the subscription now runs to the end of its paid period (`cancel_at_period_end`) instead
+  of expiring at once (P8-3 changes), and until the owner sets up the next autopay
+  (`autopay_finished_at`) the panel warns a week ahead instead of three days and the owner is
+  emailed a week and a day before (`autopay_ends_7d`, `autopay_ends_1d`) to set it up, at the full
+  price, from the period's end; a checkout started and left doesn't stop them. A charge always
+  pays its period, also when Razorpay's events arrive after `completed`, and a new autopay that
+  Razorpay completes before its first charge is reported takes over as if it had. A checkout with
+  a code can be authorised for a day, as long as the code holds its place; Razorpay sends nothing
+  when it expires, so a new checkout saves the expired one and carries on. Razorpay test mode
+  can't fast-forward months: the e2e suite runs the whole path against the Razorpay mock, and the
+  first discounted charge is checked by hand on staging (RUNBOOK).
+- **SA-79 · Offer rules:** a code (3 to 20 letters or digits), a whole percentage or whole rupees
+  off each charge (a yearly charge too; owner's choice), its plans and cycles (none: all), its
+  first N charges (none: every charge), first and last India days, most uses and new restaurants
+  only (never paid a subscription; owner's choice). A use counts once paid; a checkout started in
+  the last day, or an autopay authorised and waiting for its first charge, holds its place; a
+  restaurant uses an offer once. Codes are promotions, not secrets: checking one isn't limited
+  beyond the owner's sign-in, since guessing one only finds a price MenuMesh offers anyway. The
+  team applying an offer follows the same rules, and its terms don't change once made: end it and
+  make another. Owners check a code before subscribing, through the service role, and see each
+  plan's price "for N months, then" the list price.
+- **SA-80 · Money at the deal's price:** `private.restaurant_mrr_paise` takes the effective price
+  (the three-argument one is dropped so nothing keeps the list price), in Home, the snapshot, the
+  digest, the funnel and Revenue's MRR days, so its movements still add up: a deal on a Paid
+  restaurant is a contraction and the full price after an offer an expansion. Existing rows keep
+  null (the list price), so nothing moves on release, and older snapshots stay as they were. Dues
+  ask for the deal's price, for its cycle, and the list price once an autopay has finished; a
+  payment at a deal's price keeps its list price and discount; payment links suggest it (the
+  restaurant page only for the charges it has left; Dues for every month); Revenue has a Discounts
+  section (taken off in the dates, and now a month).
+- **SA-81 · Overrides and beta flags:** for one restaurant, a feature its plan lacks or more
+  tables or staff (none: unlimited), with a reason and an optional last day
+  (`restaurant_overrides`, restaurants.manage: Admin and Sales). `restaurant_plan`, `has_feature`
+  and `plan_limits` merge the unexpired ones, so every panel and function follows without other
+  changes; a limit is never below the plan's, and tables or staff over a limit stay on (§14.2). A
+  beta flag is a feature override whose key is in no plan: nothing reads one yet, so a pilot ships
+  with its own check. The Usage tab lists them. Deal and override audit rows are the team's:
+  owners and managers don't see them.

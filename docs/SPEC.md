@@ -663,8 +663,16 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 | razorpay_subscription_id | text null unique | |
 | razorpay_customer_id | text null | |
 | cancel_reason, cancel_reason_detail | text null | why the owner last turned autopay off (`too_expensive`, `not_using`, `missing_feature`, `closing`, `switching`, `other` with a few words; docs/DECISIONS.md SA-15) |
+| deal_id, next_deal_id | uuid null → subscription_deals | the price being paid, and the one a new autopay will charge (SA-77) |
+| effective_monthly_paise | bigint null | the deal's price a month, kept by trigger; null: the list price (MRR, SA-80) |
 
-**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
+**`offers`** (SA-79): `code` unique, `description`, `discount_kind` (`percent` \| `flat`), `discount_value` (a whole percentage, or paise in whole rupees), `plan_ids` and `cycles` (null: all), `duration_cycles` (null: every charge), `valid_from`, `valid_until`, `max_redemptions`, `new_only`, `ended_at`, `created_by`. Read with settings.manage.
+
+**`subscription_deals`** (SA-77): `restaurant_id`, `offer_id` (null: a price the team agreed, with `reason`), `plan_id`, `billing_cycle`, `list_price_paise`, `price_paise` (before GST, per charge), `cycles`, `razorpay_plan_id`, `created_by` (null: the owner, with a code), `used_at`, `ended_at`; one open deal per restaurant. Read with money.view.
+
+**`restaurant_overrides`** (SA-81): `restaurant_id`, `kind` (`feature` \| `max_tables` \| `max_staff`), `feature`, `value` (null: unlimited), `expires_at`, `reason`, `created_by`; one per kind and feature.
+
+**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force; subscription charges at a deal's price: the list price and what it took off, with `deal_id`, SA-80), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
 
 **`webhook_events`**: `provider` (`razorpay`), `event_id` unique, `event_type`, `payload jsonb`, `received_at`, `processed_at`, `processing_error`.
 
@@ -1152,6 +1160,7 @@ The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a gr
 - **Support sessions**: a restaurant's page shows its support access (not allowed, allowed until, or who is using it until when), and Actions → **Start support session** (with the name the restaurant sees) once the owner allows it, or **Open admin panel** while the session is yours (docs/DECISIONS.md SA-47).
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
+- **Offers** (Settings, `/super/settings/offers`, settings.manage): codes with a percentage or rupees off, their plans, cycles, first charges, dates, most uses and new restaurants only; how often each was used and what it took off; change the description, last day or most uses, or end one (docs/DECISIONS.md SA-77 to SA-79). A restaurant's **Billing** tab shows its price (list, a deal, the next autopay's, one waiting) and, with money.record, sets an offer or an agreed price or goes back to the list price; its **Usage** tab lists overrides and beta flags and, with restaurants.manage, adds or removes them (SA-81).
 - **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).
 - **Dues** (Money): payment failed, lapsed, trial ending and renewal due, each restaurant in one bucket, with expected collections for 30 days, call and WhatsApp (an editable message in English or Hindi), and the payment actions (SA-19, SA-20).
 - **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled), failed payments first (SA-21).
@@ -1182,7 +1191,7 @@ A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platfo
 
 ### 14.2 Feature keys (`plans.features` jsonb)
 
-`kds`, `discounts`, `split_payments`, `upi_qr_on_bill`, `advanced_reports`, `waiter_reports`, `csv_export`, `remove_branding`. (`waiter_reports` is on for Growth and Pro.)
+`kds`, `discounts`, `split_payments`, `upi_qr_on_bill`, `advanced_reports`, `waiter_reports`, `csv_export`, `remove_branding`. (`waiter_reports` is on for Growth and Pro.) A restaurant's overrides add features and raise limits on top of its plan, and a feature key in no plan is a beta flag (docs/DECISIONS.md SA-81).
 
 Gate features in **both** UI (hide/disable with a short "Available on Growth" hint for owners) and DB functions (reject with `FEATURE_NOT_IN_PLAN`). Limits (`max_tables`, `max_staff`) block creating new tables/staff only; never deactivate existing ones on downgrade.
 
@@ -1211,7 +1220,7 @@ Gate features in **both** UI (hide/disable with a short "Available on Growth" hi
 | `subscription.pending` | status `past_due`; set `grace_until = now + grace_days` if not already set; send reminder email |
 | `subscription.halted` | status `halted` (keep existing `grace_until`); send reminder |
 | `subscription.cancelled` | status `cancelled` |
-| `subscription.completed` | status `expired` |
+| `subscription.completed` | runs to the end of the paid period (`cancel_at_period_end`), and the owner is reminded to set up autopay again (docs/DECISIONS.md SA-78) |
 | `subscription.updated` / `paused` / `resumed` | update plan/status fields accordingly |
 | `payment_link.paid` | If `notes.restaurant_id` present: insert payment, extend period per notes (e.g. `notes.months`), status `active`, source `manual`/`payment_link` |
 

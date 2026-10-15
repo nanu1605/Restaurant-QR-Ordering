@@ -620,6 +620,8 @@ Acceptance:
 
 ### 14b. Offers, custom prices, overrides
 
+Built 2026-10-15 (docs/DECISIONS.md SA-77 to SA-81). Each discounted price is a Razorpay plan of its own, and after an offer's charges the owner sets up autopay at the full price; prices for one restaurant are Admin and Finance's, "new only" means never paid, and a flat discount comes off each charge (owner's choices, 2026-10-15).
+
 Ships:
 
 - **Offers** (`/super/settings/offers`): code, percentage or flat discount, plans and cycles it applies to, first N billing cycles, valid from and until, maximum redemptions, new restaurants only. Applied at the restaurant owner's subscribe step, or by the team for one restaurant. Verify Razorpay's current support for offers on subscriptions on this account; otherwise create a dedicated Razorpay plan for the discounted amount.

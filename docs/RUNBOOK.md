@@ -294,6 +294,13 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 3. Log in at `https://menumesh.in/login`; the first visit to `/super` asks to enrol an
    authenticator app.
 
+Offers (SA-77 to SA-81): to check one on staging with the Razorpay test keys, make a code in
+Settings → Offers for a plan whose cycle has a Razorpay plan, apply it on a test restaurant's
+Subscription page and subscribe with a test card. Razorpay's dashboard then shows a new plan at
+the discounted price with GST and a subscription with the offer's charge count; the first
+charge lands at that price. The months after can't be hurried in test mode; the e2e suite covers
+them against the mock.
+
 Everyone after that is invited from Settings → Team (an Admin): the invite email needs
 `RESEND_API_KEY` and `EMAIL_FROM`, and without them the Admin sends the link shown on the page.
 Turning a member off there blocks their login; their lost phone is still fixed as in the README.
