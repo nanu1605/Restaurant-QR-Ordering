@@ -25,6 +25,8 @@ const PATHS = [
   '/super/funnel?from=2025-10-15&to=2026-10-15',
   '/super/usage',
   '/super/usage?from=2025-10-15&to=2026-10-15&compare=1',
+  '/super/money/revenue',
+  '/super/money/revenue?compare=1&by=day&move=new',
   '/super/restaurants?manager=none',
   '/super/restaurants?onboarding=stuck',
   '/super/support',

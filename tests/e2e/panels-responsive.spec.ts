@@ -115,6 +115,7 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     ...(await growthPaths('responsive')),
     // Usage, compared (13e).
     '/super/usage?compare=1',
+    '/super/money/revenue?compare=1&move=churn',
     '/super/money/payments',
     '/super/money/dues',
     '/super/money/subscriptions',

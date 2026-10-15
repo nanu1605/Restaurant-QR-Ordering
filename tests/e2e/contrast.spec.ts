@@ -108,6 +108,7 @@ test('platform admin panel', async ({ page }) => {
     ...(await growthPaths('contrast')),
     // Usage, compared, by week (13e).
     '/super/usage?compare=1&by=week',
+    '/super/money/revenue?compare=1&move=new',
     '/super/plans',
     '/super/audit',
     '/super/settings',
