@@ -1687,6 +1687,7 @@ export type Database = {
       }
       restaurant_subscriptions: {
         Row: {
+          autopay_finished_at: string | null
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end: boolean
           cancel_reason: string | null
@@ -1715,6 +1716,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          autopay_finished_at?: string | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
           cancel_reason?: string | null
@@ -1743,6 +1745,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          autopay_finished_at?: string | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
           cancel_reason?: string | null

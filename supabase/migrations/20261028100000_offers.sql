@@ -37,10 +37,11 @@ create policy "platform admins read offers" on public.offers
   for select to authenticated using ((select public.platform_can('settings.manage')));
 
 -- ─── Deals: one restaurant's price ──────────────────────────────────────────
--- From an offer code, or a custom price the team agreed. A deal is open until
--- it ends; its restaurant's next autopay on that plan and cycle uses it, and a
--- restaurant not on autopay pays it at once. Single use: it ends when the
--- subscription moves off it or the autopay carrying it ends.
+-- From an offer code, or a custom price the team agreed. Waiting (not yet used),
+-- the restaurant's next autopay on that plan and cycle uses it; a restaurant not
+-- on autopay pays it at once. In use, it is restaurant_subscriptions.deal_id.
+-- It ends when its charges are used up, the restaurant moves off it, the team
+-- ends it, or (an owner's code) the autopay charging it ends.
 create table public.subscription_deals (
   id uuid primary key default gen_random_uuid(),
   restaurant_id uuid not null references public.restaurants (id) on delete cascade,
@@ -61,8 +62,9 @@ create table public.subscription_deals (
   ended_at timestamptz,
   check (offer_id is not null or reason is not null)
 );
-create unique index subscription_deals_open_idx on public.subscription_deals (restaurant_id)
-  where ended_at is null;
+-- One waiting deal a restaurant.
+create unique index subscription_deals_waiting_idx on public.subscription_deals (restaurant_id)
+  where ended_at is null and used_at is null;
 create index subscription_deals_restaurant_idx on public.subscription_deals (restaurant_id, created_at desc);
 create index subscription_deals_offer_idx on public.subscription_deals (offer_id)
   where offer_id is not null;
@@ -78,7 +80,17 @@ alter table public.restaurant_subscriptions
   add column deal_id uuid references public.subscription_deals (id),
   add column next_deal_id uuid references public.subscription_deals (id),
   -- The deal's price a month; null: the plan's list price.
-  add column effective_monthly_paise bigint check (effective_monthly_paise >= 0);
+  add column effective_monthly_paise bigint check (effective_monthly_paise >= 0),
+  -- An autopay that made its last charge (an offer's), until the next is set up.
+  add column autopay_finished_at timestamptz;
+-- Deal prices are money: read through the platform functions, not the table.
+revoke select on public.restaurant_subscriptions from authenticated;
+grant select (id, restaurant_id, plan_id, billing_cycle, status, source, trial_ends_at,
+  current_period_start, current_period_end, grace_until, cancel_at_period_end,
+  razorpay_subscription_id, razorpay_customer_id, created_at, updated_at, razorpay_status,
+  razorpay_event_at, next_plan_id, next_billing_cycle, cancel_reason, cancel_reason_detail,
+  autopay_finished_at)
+  on public.restaurant_subscriptions to authenticated;
 alter table public.subscription_payments
   add column deal_id uuid references public.subscription_deals (id);
 comment on column public.subscription_payments.list_price_paise is
@@ -101,6 +113,19 @@ as $$
     else p_deal.price_paise end
 $$;
 
+-- Charges paid at a deal's price so far; a payment for several months counts each.
+create function private.deal_charges_used(p_deal public.subscription_deals)
+returns numeric
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(sum(p.list_price_paise::numeric / p_deal.list_price_paise), 0)
+  from public.subscription_payments p
+  where p.deal_id = p_deal.id
+$$;
+
 -- A deal for the panel; prices only with money.view.
 create function private.deal_json(p_deal_id uuid, p_money boolean)
 returns jsonb
@@ -118,6 +143,7 @@ as $$
     'list_price_paise', case when p_money then d.list_price_paise end,
     'price_paise', case when p_money then d.price_paise end,
     'cycles', d.cycles,
+    'charges_used', round(private.deal_charges_used(d)),
     'reason', d.reason,
     'by_owner', d.created_by is null,
     'created_by', u.email,
@@ -132,8 +158,9 @@ as $$
   where d.id = p_deal_id
 $$;
 
--- Keeps the price in step with the deal: a plan or cycle the deal isn't for
--- drops it; the deal in use is stamped used, the one left behind ends.
+-- Keeps the price in step with the deal: a plan or cycle the deal isn't for, or
+-- an ended deal coming in, drops it; the deal in use is stamped used, the one
+-- left behind ends.
 create function private.sync_subscription_deal()
 returns trigger
 language plpgsql
@@ -145,7 +172,9 @@ declare
 begin
   if new.deal_id is not null then
     select * into v_deal from public.subscription_deals d where d.id = new.deal_id;
-    if v_deal.plan_id <> new.plan_id or v_deal.billing_cycle <> new.billing_cycle then
+    if v_deal.plan_id <> new.plan_id or v_deal.billing_cycle <> new.billing_cycle
+       or (v_deal.ended_at is not null
+         and (tg_op = 'INSERT' or new.deal_id is distinct from old.deal_id)) then
       new.deal_id := null;
     end if;
   end if;
@@ -168,6 +197,36 @@ $$;
 create trigger sync_subscription_deal
   before insert or update of deal_id, plan_id, billing_cycle on public.restaurant_subscriptions
   for each row execute function private.sync_subscription_deal();
+
+-- A charge at a deal's price uses it; a deal for N charges ends with its last,
+-- and the restaurant pays the list price from then (an autopay was made for
+-- exactly the charges left).
+create function private.spend_deal_charges()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_deal public.subscription_deals;
+begin
+  -- A charge at its price is a use, even before the subscription takes it on.
+  update public.subscription_deals d set used_at = coalesce(d.used_at, now())
+  where d.id = new.deal_id
+  returning * into v_deal;
+  if v_deal.cycles is not null and v_deal.ended_at is null
+     and private.deal_charges_used(v_deal) >= v_deal.cycles then
+    update public.subscription_deals d set ended_at = now() where d.id = v_deal.id;
+    update public.restaurant_subscriptions s set deal_id = null
+    where s.restaurant_id = new.restaurant_id and s.deal_id = v_deal.id;
+  end if;
+  return null;
+end;
+$$;
+create trigger spend_deal_charges
+  after insert on public.subscription_payments
+  for each row when (new.deal_id is not null)
+  execute function private.spend_deal_charges();
 
 -- ─── Overrides and beta flags ───────────────────────────────────────────────
 -- A feature the plan lacks, or more tables or staff, for one restaurant; a
@@ -480,6 +539,7 @@ declare
   v_today date := (now() at time zone 'Asia/Kolkata')::date;
   v_start timestamptz;
   v_end timestamptz;
+  v_money boolean := private.has_platform_permission('money.view');
 begin
   if p_from is null or p_to is null or p_to < p_from or p_to - p_from > 366 then
     perform private.fail('INVALID_INPUT', 'range');
@@ -515,7 +575,8 @@ begin
           where p.restaurant_id = r.id and p.purpose = 'subscription'
         ) as paid_once,
         st.state,
-        private.restaurant_mrr_paise(st.state, pl, s.billing_cycle, s.effective_monthly_paise) as mrr
+        private.restaurant_mrr_paise(st.state, pl, s.billing_cycle,
+          case when v_money then s.effective_monthly_paise end) as mrr
       from public.restaurants r
       left join public.restaurant_subscriptions s on s.restaurant_id = r.id
       left join public.plans pl on pl.id = s.plan_id
@@ -934,7 +995,6 @@ AS $function$
   join public.plans pl on pl.id = coalesce(case when m.live then s.next_plan_id end, s.plan_id)
   left join public.subscription_deals dd on dd.id = case
     when m.live and s.next_plan_id is not null then s.next_deal_id
-    when s.razorpay_status = 'completed' then null
     else s.deal_id
   end
   cross join lateral private.restaurant_access(r.id) as a
@@ -1038,6 +1098,18 @@ begin
   if v_sub.razorpay_subscription_id is distinct from v_id then
     return 'not_current';
   end if;
+  -- A charge always pays its period, whatever order the events arrive in: the
+  -- last of an offer's charges can come after 'completed' (SA-78).
+  if v_payment_row is not null and v_end is not null then
+    update public.restaurant_subscriptions s
+      set current_period_start = case
+            when s.current_period_end is null or v_end > s.current_period_end
+              then coalesce(v_start, s.current_period_start)
+            else s.current_period_start
+          end,
+          current_period_end = greatest(s.current_period_end, v_end)
+      where s.id = v_sub.id;
+  end if;
   if (p_event_at is not null and p_event_at < v_sub.razorpay_event_at)
      or private.razorpay_status_rank(v_status) < private.razorpay_status_rank(v_sub.razorpay_status)
   then
@@ -1064,6 +1136,8 @@ begin
             next_plan_id = null,
             next_billing_cycle = null,
             next_deal_id = null,
+            autopay_finished_at = case when s.next_plan_id is not null then null
+              else s.autopay_finished_at end,
             current_period_start = case
               when v_end is not null and (s.current_period_end is null or v_end > s.current_period_end)
                 then coalesce(v_start, s.current_period_start)
@@ -1099,7 +1173,9 @@ begin
       -- trial's mandate, a halted subscription or a replacement that never
       -- charged doesn't cut a trial, grace or paid period short.
       -- An autopay that finished its charges (an offer's cycles) runs to the
-      -- end of the paid period, while the owner sets up the next (SA-78).
+      -- end of the paid period, while the owner sets up the next (SA-78). An
+      -- owner's code is spent with the autopay that charged it; the team's
+      -- price stays for the next autopay.
       update public.restaurant_subscriptions s
         set status = case
               when s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
@@ -1110,15 +1186,21 @@ begin
               s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
               and v_status = 'completed'
             ),
+            autopay_finished_at = case
+              when s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
+                and v_status = 'completed' then coalesce(s.autopay_finished_at, now())
+              else s.autopay_finished_at
+            end,
+            deal_id = case
+              when s.next_plan_id is null and (
+                select d.created_by from public.subscription_deals d where d.id = s.deal_id
+              ) is null then null
+              else s.deal_id
+            end,
             next_plan_id = null,
             next_billing_cycle = null,
             next_deal_id = null
         where s.id = v_sub.id;
-      -- The deal this autopay charged is spent.
-      if v_sub.next_plan_id is null and v_sub.deal_id is not null then
-        update public.subscription_deals d set ended_at = coalesce(d.ended_at, now())
-        where d.id = v_sub.deal_id;
-      end if;
     else
       -- created, paused: nothing beyond razorpay_status.
       null;
@@ -1299,6 +1381,7 @@ AS $function$
 declare
   v_sub public.restaurant_subscriptions;
   v_deal public.subscription_deals;
+  v_count int;
 begin
   if new.purpose <> 'subscription' or new.plan_id is not null then
     return new;
@@ -1326,11 +1409,17 @@ begin
   if new.list_price_paise is null then
     select * into v_deal from public.subscription_deals d
     where d.id = case when new.source = 'razorpay' and v_sub.next_plan_id is not null
-      then v_sub.next_deal_id else v_sub.deal_id end;
+      then v_sub.next_deal_id else v_sub.deal_id end
+      and d.ended_at is null;
     if v_deal.plan_id = new.plan_id and v_deal.billing_cycle = new.billing_cycle then
+      -- A payment for several months (or years) is that many charges.
+      v_count := coalesce(greatest(1, round(
+        extract(epoch from new.period_end - new.period_start) / 86400
+          / case when v_deal.billing_cycle = 'yearly' then 365.25 else 30.44 end
+      ))::int, 1);
       new.deal_id := v_deal.id;
-      new.list_price_paise := v_deal.list_price_paise;
-      new.discount_paise := v_deal.list_price_paise - v_deal.price_paise;
+      new.list_price_paise := v_deal.list_price_paise * v_count;
+      new.discount_paise := (v_deal.list_price_paise - v_deal.price_paise) * v_count;
     end if;
   end if;
   return new;
@@ -1507,9 +1596,7 @@ begin
     'open_deal', (
       select private.deal_json(d.id, v_money)
       from public.subscription_deals d
-      join public.restaurant_subscriptions s on s.restaurant_id = d.restaurant_id
-      where d.restaurant_id = v_restaurant.id and d.ended_at is null
-        and d.id is distinct from s.deal_id
+      where d.restaurant_id = v_restaurant.id and d.ended_at is null and d.used_at is null
     ),
     'overrides', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -2082,7 +2169,7 @@ begin
   if p_at < v_restriction then
     v_warning := case
       when v_sub.status in ('past_due', 'halted') then 'payment_failed'
-      when v_restriction - p_at > case when v_sub.razorpay_status = 'completed'
+      when v_restriction - p_at > case when v_sub.autopay_finished_at is not null
         then interval '7 days' else interval '3 days' end then null
       -- Autopay is set up: the first charge renews it.
       when v_autopay_trial then null
@@ -2119,12 +2206,14 @@ as $$
       select 1 from public.subscription_payments sp
       where sp.restaurant_id = p_restaurant_id and sp.purpose = 'subscription'
     ) then 'OFFER_NEW_ONLY'
-    -- A checkout started in the last day holds its place.
+    -- A checkout started in the last day, or an autopay set up and waiting for
+    -- its first charge, holds its place.
     when p_offer.max_redemptions is not null and (
       select count(*) from public.subscription_deals d
       where d.offer_id = p_offer.id and d.restaurant_id <> p_restaurant_id
         and (d.used_at is not null
-          or (d.ended_at is null and d.created_at > now() - interval '24 hours'))
+          or (d.ended_at is null and (d.created_at > now() - interval '24 hours'
+            or exists (select 1 from public.restaurant_subscriptions s where s.next_deal_id = d.id))))
     ) >= p_offer.max_redemptions then 'OFFER_USED_UP'
   end
 $$;
@@ -2348,8 +2437,9 @@ $$;
 
 -- ─── One restaurant's price (money.record) ──────────────────────────────────
 -- An offer code or a custom price with a reason, for a plan and cycle; or
--- {"end": true}. Not on autopay: the restaurant pays it from now on.
--- On autopay: from its next autopay, since Razorpay can't change the price.
+-- {"end": true}. Not on autopay: the restaurant pays it from now on (a trial,
+-- once it pays). On autopay: from its next autopay, since Razorpay can't change
+-- a running one; it waits until then, replacing any deal already waiting.
 create function public.platform_set_deal(p_restaurant_id uuid, p_deal jsonb)
 returns jsonb
 language plpgsql
@@ -2360,7 +2450,6 @@ declare
   v_admin private.platform_admin_context := private.require_platform_permission('money.record');
   v_input jsonb := coalesce(p_deal, '{}'::jsonb);
   v_sub public.restaurant_subscriptions;
-  v_open public.subscription_deals;
   v_plan public.plans;
   v_cycle public.billing_cycle;
   v_offer public.offers;
@@ -2371,6 +2460,7 @@ declare
   v_refusal text;
   v_autopay boolean;
   v_fits boolean;
+  v_ended int;
   v_deal public.subscription_deals;
 begin
   perform private.assert_keys(v_input,
@@ -2384,33 +2474,40 @@ begin
     end if;
     perform private.fail('SUBSCRIPTION_NOT_FOUND');
   end if;
-  -- A mandate that will charge again keeps its price.
+  -- A mandate that will charge again keeps the price it was set up with.
   v_autopay := coalesce(v_sub.razorpay_status in ('authenticated', 'active', 'pending', 'halted'), false)
     and not v_sub.cancel_at_period_end;
-  select * into v_open from public.subscription_deals d
-  where d.restaurant_id = p_restaurant_id and d.ended_at is null;
   v_reason := private.tidy_text(private.json_text(v_input, 'reason'));
   if char_length(v_reason) > 500 then
     perform private.fail('INVALID_INPUT', 'reason');
   end if;
 
   if v_input ? 'end' then
-    if v_input <> jsonb_build_object('end', true) and v_input - 'reason' <> jsonb_build_object('end', true) then
+    if v_input - 'reason' <> jsonb_build_object('end', true) then
       perform private.fail('INVALID_INPUT', 'end');
     end if;
-    if v_open.id is null then
-      perform private.fail('DEAL_NOT_FOUND');
+    -- Back to the list price: the deal waiting and the one in use, except one
+    -- a running autopay charges (cancel autopay first).
+    with ended as (
+      update public.subscription_deals d set ended_at = now()
+      where d.restaurant_id = p_restaurant_id and d.ended_at is null
+        and (d.used_at is null or d.id = v_sub.deal_id)
+        and not (v_autopay and coalesce(d.id in (v_sub.deal_id, v_sub.next_deal_id), false))
+      returning d.id, d.price_paise, d.list_price_paise
+    )
+    select count(*) into v_ended from ended;
+    if v_ended = 0 then
+      perform private.fail(case
+        when v_autopay and coalesce(v_sub.deal_id, v_sub.next_deal_id) is not null
+          then 'DEAL_IN_AUTOPAY' else 'DEAL_NOT_FOUND' end);
     end if;
-    update public.subscription_deals d set ended_at = now() where d.id = v_open.id;
-    if v_sub.deal_id = v_open.id and not v_autopay then
+    if not v_autopay and v_sub.deal_id is not null then
       update public.restaurant_subscriptions s set deal_id = null where s.id = v_sub.id;
     end if;
     perform private.audit_platform(v_admin, p_restaurant_id, 'subscription.deal_ended',
-      'subscription_deal', v_open.id, null,
-      jsonb_build_object('price_paise', v_open.price_paise, 'list_price_paise', v_open.list_price_paise,
-        'still_charged', v_sub.deal_id = v_open.id and v_autopay),
-      v_reason);
-    return jsonb_build_object('ended', true, 'still_charged', v_sub.deal_id = v_open.id and v_autopay);
+      'subscription_deal', coalesce(v_sub.deal_id, v_sub.next_deal_id), null,
+      jsonb_build_object('ended', v_ended), v_reason);
+    return jsonb_build_object('ended', v_ended);
   end if;
 
   select * into v_plan from public.plans p where p.code = private.json_text(v_input, 'plan_code');
@@ -2470,9 +2567,16 @@ begin
 
   -- Its plan, and its cycle or none yet (a trial).
   v_fits := v_sub.plan_id = v_plan.id and coalesce(v_sub.billing_cycle = v_cycle, true);
-  if v_open.id is not null then
-    update public.subscription_deals d set ended_at = now() where d.id = v_open.id;
+  -- It replaces the deal waiting, unless a set-up autopay will charge that one.
+  if exists (
+    select 1 from public.subscription_deals d
+    where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.used_at is null
+      and v_autopay and d.id = v_sub.next_deal_id
+  ) then
+    perform private.fail('DEAL_IN_AUTOPAY');
   end if;
+  update public.subscription_deals d set ended_at = now()
+  where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.used_at is null;
   insert into public.subscription_deals (restaurant_id, offer_id, plan_id, billing_cycle,
     list_price_paise, price_paise, cycles, reason, razorpay_plan_id, created_by)
   values (p_restaurant_id, v_offer.id, v_plan.id, v_cycle, v_list, v_price, v_cycles, v_reason,
@@ -2482,23 +2586,18 @@ begin
      limit 1),
     v_admin.user_id)
   returning * into v_deal;
-  -- Not on autopay: the new price from now on, or the list price when the
-  -- deal it replaced was in use and this one is for another plan or cycle.
-  if not v_autopay and (v_fits or v_sub.deal_id = v_open.id) then
-    update public.restaurant_subscriptions s
-      set deal_id = case when v_fits then v_deal.id end
-      where s.id = v_sub.id;
+  -- Not on autopay: the price from now on; the deal it replaces ends.
+  if not v_autopay and v_fits then
+    update public.restaurant_subscriptions s set deal_id = v_deal.id where s.id = v_sub.id;
   end if;
   perform private.audit_platform(v_admin, p_restaurant_id, 'subscription.deal_set',
     'subscription_deal', v_deal.id, null,
     jsonb_build_object('offer_code', v_offer.code, 'plan_code', v_plan.code,
       'billing_cycle', v_cycle, 'list_price_paise', v_list, 'price_paise', v_price,
-      'cycles', v_cycles,
-      'applied_now', not v_autopay and v_fits),
+      'cycles', v_cycles, 'applied_now', not v_autopay and v_fits),
     v_reason);
-  return private.deal_json(v_deal.id, true) || jsonb_build_object(
-    'applied_now', not v_autopay and v_fits
-  );
+  return private.deal_json(v_deal.id, true)
+    || jsonb_build_object('applied_now', not v_autopay and v_fits);
 end;
 $$;
 
@@ -2600,8 +2699,39 @@ end;
 $$;
 
 -- ─── The owner's checkout (service role: the Subscription page) ─────────────
--- The team's deal waiting for this restaurant (with the deal prices it pays
--- now and next), or an offer code's prices for each plan and cycle. A deal from the team stands: codes are for everyone else.
+-- The team's price an owner's next autopay can use: the one waiting, or the one
+-- in use (kept when an autopay ends, so subscribing again keeps it).
+create function private.team_deal(p_restaurant_id uuid)
+returns setof public.subscription_deals
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select d.*
+  from public.subscription_deals d
+  left join public.restaurant_subscriptions s on s.restaurant_id = d.restaurant_id
+  where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.created_by is not null
+    and (d.used_at is null or d.id = s.deal_id)
+  order by d.used_at is null desc
+  limit 1
+$$;
+
+-- A deal's charges still to come; null: every charge.
+create function private.deal_charges_left(p_deal public.subscription_deals)
+returns int
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case when p_deal.cycles is not null
+    then p_deal.cycles - ceil(private.deal_charges_used(p_deal))::int end
+$$;
+
+-- The team's price for this restaurant (with the deal prices it pays now and
+-- next), or an offer code's prices for each plan and cycle. A price from the
+-- team stands: codes are for everyone else.
 create function public.subscription_offer_preview(p_restaurant_id uuid, p_code text default null)
 returns jsonb
 language plpgsql
@@ -2614,17 +2744,15 @@ declare
   v_offer public.offers;
   v_refusal text;
 begin
-  select * into v_team from public.subscription_deals d
-  where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.created_by is not null;
+  select * into v_team from private.team_deal(p_restaurant_id);
   if p_code is null then
-    -- Also the deal prices the restaurant pays now and its next autopay will.
     return jsonb_build_object(
       'deal', case when v_team.id is not null then jsonb_build_object(
         'plan_code', (select p.code from public.plans p where p.id = v_team.plan_id),
         'billing_cycle', v_team.billing_cycle,
         'list_price_paise', v_team.list_price_paise,
         'price_paise', v_team.price_paise,
-        'cycles', v_team.cycles
+        'cycles', private.deal_charges_left(v_team)
       ) end,
       'current_price_paise', (
         select d.price_paise from public.restaurant_subscriptions s
@@ -2665,8 +2793,9 @@ begin
 end;
 $$;
 
--- The deal a checkout uses: the team's for this plan and cycle, or one made
--- now from an offer code (holding its place for a day). Null: the list price.
+-- The deal a checkout uses, with the charges it has left: the team's for this
+-- plan and cycle, or one made now from an offer code (holding its place for a
+-- day). Null: the list price. A checkout without a code ends an abandoned one.
 create function public.subscription_checkout_deal(
   p_restaurant_id uuid, p_plan_code text, p_cycle text, p_code text default null
 )
@@ -2678,11 +2807,13 @@ as $$
 declare
   v_plan public.plans;
   v_cycle public.billing_cycle;
+  v_team public.subscription_deals;
   v_open public.subscription_deals;
   v_offer public.offers;
   v_refusal text;
   v_price bigint;
   v_deal public.subscription_deals;
+  v_left int;
 begin
   select * into v_plan from public.plans p where p.code = p_plan_code;
   if v_plan.id is null then
@@ -2697,15 +2828,18 @@ begin
   if not found then
     perform private.fail('SUBSCRIPTION_NOT_FOUND');
   end if;
+  select * into v_team from private.team_deal(p_restaurant_id);
+  -- The owner's own code waiting from an earlier checkout.
   select * into v_open from public.subscription_deals d
-  where d.restaurant_id = p_restaurant_id and d.ended_at is null;
+  where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.used_at is null
+    and d.created_by is null;
 
-  if v_open.created_by is not null then
+  if v_team.id is not null then
     if p_code is not null then
       perform private.fail('DEAL_SET_BY_TEAM');
     end if;
-    if v_open.plan_id = v_plan.id and v_open.billing_cycle = v_cycle then
-      v_deal := v_open;
+    if v_team.plan_id = v_plan.id and v_team.billing_cycle = v_cycle then
+      v_deal := v_team;
     end if;
   elsif p_code is not null then
     -- Locked, so two checkouts can't both take the last place.
@@ -2721,7 +2855,7 @@ begin
     if v_price is null then
       perform private.fail('OFFER_NOT_FOR_PLAN');
     end if;
-    if v_open.id is not null and v_open.offer_id = v_offer.id and v_open.plan_id = v_plan.id
+    if v_open.offer_id = v_offer.id and v_open.plan_id = v_plan.id
        and v_open.billing_cycle = v_cycle and v_open.price_paise = v_price then
       v_deal := v_open;
     else
@@ -2736,16 +2870,22 @@ begin
          limit 1))
       returning * into v_deal;
     end if;
+  else
+    update public.subscription_deals d set ended_at = now() where d.id = v_open.id;
   end if;
 
   if v_deal.id is null then
+    return null;
+  end if;
+  v_left := private.deal_charges_left(v_deal);
+  if v_left <= 0 then
     return null;
   end if;
   return jsonb_build_object(
     'deal_id', v_deal.id,
     'price_paise', v_deal.price_paise,
     'list_price_paise', v_deal.list_price_paise,
-    'cycles', v_deal.cycles,
+    'cycles', v_left,
     'razorpay_plan_id', v_deal.razorpay_plan_id
   );
 end;
@@ -2785,7 +2925,7 @@ as $$
   with subs as (
     select
       r.id, r.name, r.slug, r.email, r.timezone,
-      s.status, s.trial_ends_at, s.razorpay_status, s.cancel_at_period_end, s.current_period_end,
+      s.status, s.trial_ends_at, s.autopay_finished_at, s.cancel_at_period_end, s.current_period_end,
       p.name as plan_name,
       private.razorpay_managed(s) as autopay,
       a.state, a.restriction_at
@@ -2820,13 +2960,13 @@ as $$
     union all
     select subs.*, 'autopay_ends_7d', (subs.current_period_end at time zone subs.timezone)::date
     from subs
-    where subs.status = 'active' and subs.razorpay_status = 'completed' and subs.cancel_at_period_end
+    where subs.status = 'active' and subs.autopay_finished_at is not null and subs.cancel_at_period_end
       and subs.current_period_end > p_at + interval '26 hours'
       and subs.current_period_end <= p_at + interval '7 days'
     union all
     select subs.*, 'autopay_ends_1d', (subs.current_period_end at time zone subs.timezone)::date
     from subs
-    where subs.status = 'active' and subs.razorpay_status = 'completed' and subs.cancel_at_period_end
+    where subs.status = 'active' and subs.autopay_finished_at is not null and subs.cancel_at_period_end
       and subs.current_period_end > p_at
       and subs.current_period_end <= p_at + interval '26 hours'
   )
@@ -2863,6 +3003,10 @@ revoke execute on function private.effective_plan(uuid) from public, anon, authe
 revoke execute on function private.restaurant_mrr_paise(text, public.plans, public.billing_cycle, bigint)
   from public, anon, authenticated;
 revoke execute on function private.offer_refusal(public.offers, uuid) from public, anon, authenticated;
+revoke execute on function private.team_deal(uuid) from public, anon, authenticated;
+revoke execute on function private.deal_charges_left(public.subscription_deals) from public, anon, authenticated;
+revoke execute on function private.deal_charges_used(public.subscription_deals) from public, anon, authenticated;
+revoke execute on function private.spend_deal_charges() from public, anon, authenticated;
 revoke execute on function private.offer_price_paise(public.offers, public.plans, public.billing_cycle)
   from public, anon, authenticated;
 revoke execute on function public.platform_list_offers() from public, anon;

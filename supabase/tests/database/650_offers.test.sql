@@ -182,7 +182,7 @@ select public.razorpay_record_webhook('sa650_1', jsonb_build_object(
     'subscription', jsonb_build_object('entity', jsonb_build_object(
       'id', 'sub_Sa650a', 'status', 'active',
       'current_start', extract(epoch from now())::bigint,
-      'current_end', extract(epoch from now() + interval '30 days')::bigint)),
+      'current_end', extract(epoch from now() + interval '25 days')::bigint)),
     'payment', jsonb_build_object('entity', jsonb_build_object('id', 'pay_Sa650a', 'amount', 84842)))));
 select is(
   (select array[s.deal_id::text, s.effective_monthly_paise::text, coalesce(s.next_deal_id::text, '-'),
@@ -213,13 +213,13 @@ select public.razorpay_record_webhook('sa650_2', jsonb_build_object(
     'subscription', jsonb_build_object('entity', jsonb_build_object(
       'id', 'sub_Sa650a', 'status', 'completed',
       'current_start', extract(epoch from now())::bigint,
-      'current_end', extract(epoch from now() + interval '30 days')::bigint)))));
+      'current_end', extract(epoch from now() + interval '25 days')::bigint)))));
 select is(
-  (select array[s.status::text, s.cancel_at_period_end::text,
-     (select (d.ended_at is not null)::text from public.subscription_deals d where d.id = s.deal_id)]
+  (select array[s.status::text, s.cancel_at_period_end::text, coalesce(s.deal_id::text, '-'),
+     (select (d.ended_at is not null)::text from public.subscription_deals d where d.id = :'deal')]
    from public.restaurant_subscriptions s where s.restaurant_id = :'auto'),
-  array['active', 'true', 'true'],
-  'completed: Paid until the period ends, the deal spent'
+  array['active', 'true', '-', 'true'],
+  'completed: Paid until the period ends, the owner''s code spent'
 );
 select tests.clear_auth();
 select is(
@@ -229,15 +229,24 @@ select is(
 );
 select tests.as_service_role();
 select is(
-  (select r.kind from public.subscription_reminders_due(now() + interval '25 days') r
+  (select r.kind from public.subscription_reminders_due(now() + interval '20 days') r
    where r.restaurant_id = :'auto'),
   'autopay_ends_7d',
   'the owner is reminded a week before'
 );
 select is(
-  (select a.warning from public.restaurant_access(:'auto', now() + interval '27 days') a),
+  (select a.warning from public.restaurant_access(:'auto', now() + interval '21 days') a),
   'subscription_ends_soon',
   'and warned in the panel'
+);
+select public.razorpay_save_subscription(:'auto', jsonb_build_object(
+  'id', 'sub_Sa650x', 'status', 'created', 'plan_id', 'plan_GrowthList',
+  'notes', jsonb_build_object('restaurant_id', :'auto', 'plan_code', 'growth', 'billing_cycle', 'monthly')));
+select is(
+  (select r.kind from public.subscription_reminders_due(now() + interval '20 days') r
+   where r.restaurant_id = :'auto'),
+  'autopay_ends_7d',
+  'a checkout started and left doesn''t stop the reminders'
 );
 
 -- Autopay again, at the list price.
@@ -250,8 +259,8 @@ select public.razorpay_record_webhook('sa650_3', jsonb_build_object(
   'payload', jsonb_build_object(
     'subscription', jsonb_build_object('entity', jsonb_build_object(
       'id', 'sub_Sa650b', 'status', 'active',
-      'current_start', extract(epoch from now() + interval '30 days')::bigint,
-      'current_end', extract(epoch from now() + interval '60 days')::bigint)),
+      'current_start', extract(epoch from now() + interval '25 days')::bigint,
+      'current_end', extract(epoch from now() + interval '55 days')::bigint)),
     'payment', jsonb_build_object('entity', jsonb_build_object('id', 'pay_Sa650b', 'amount', 106082)))));
 select is(
   (select array[coalesce(s.deal_id::text, '-'), coalesce(s.effective_monthly_paise::text, '-'),
@@ -354,6 +363,129 @@ select is(
   5,
   'each change audited'
 );
+
+-- ─── A team price for three charges, across a cancel, a halt and new autopays ─
+create function pg_temp.rzp(
+  p_sub text, p_status text, p_at int, p_end_days int,
+  p_pay text default null, p_amount int default null
+)
+returns jsonb
+language sql
+as $$
+  select jsonb_build_object(
+    'event', 'subscription.' || case p_status when 'active' then 'charged' else p_status end,
+    'created_at', extract(epoch from now())::bigint + p_at,
+    'payload', jsonb_build_object(
+      'subscription', jsonb_build_object('entity', jsonb_build_object(
+        'id', p_sub, 'status', p_status,
+        'current_start', extract(epoch from now())::bigint,
+        'current_end', extract(epoch from now() + make_interval(days => p_end_days))::bigint))
+    ) || case when p_pay is null then '{}'::jsonb else jsonb_build_object(
+      'payment', jsonb_build_object('entity', jsonb_build_object('id', p_pay, 'amount', p_amount)))
+    end
+  )
+$$;
+create function pg_temp.autopay(p_restaurant uuid, p_sub text, p_deal uuid)
+returns jsonb
+language sql
+as $$
+  select public.razorpay_save_subscription(p_restaurant, jsonb_build_object(
+    'id', p_sub, 'status', 'authenticated', 'plan_id', 'plan_Sa650Team',
+    'notes', jsonb_build_object('restaurant_id', p_restaurant, 'plan_code', 'growth',
+      'billing_cycle', 'monthly', 'deal_id', p_deal)))
+$$;
+
+select tests.create_restaurant('sa650-team') as team \gset
+select tests.authenticate_as_platform_admin(:'finance');
+select public.platform_set_deal(:'team', '{"plan_code": "growth", "billing_cycle": "monthly",
+  "price_paise": 60000, "cycles": 3, "reason": "Three months to try"}');
+select tests.clear_auth();
+select tests.as_service_role();
+select public.subscription_checkout_deal(:'team', 'growth', 'monthly') ->> 'deal_id' as team_deal \gset
+select public.subscription_deal_plan(:'team_deal', 'plan_Sa650Team');
+select pg_temp.autopay(:'team', 'sub_Sa650t1', :'team_deal');
+select public.razorpay_record_webhook('sa650_t1', pg_temp.rzp('sub_Sa650t1', 'active', 10, 20, 'pay_Sa650t1', 70800));
+select public.razorpay_record_webhook('sa650_t2', pg_temp.rzp('sub_Sa650t1', 'cancelled', 20, 20));
+select is(
+  (select array[s.deal_id::text, s.status::text] from public.restaurant_subscriptions s
+   where s.restaurant_id = :'team'),
+  array[:'team_deal', 'cancelled'],
+  'its autopay cancelled: the team''s price stays for the next'
+);
+select is(public.subscription_checkout_deal(:'team', 'growth', 'monthly') ->> 'cycles', '2',
+  'subscribing again: the two charges left, not three');
+
+-- The second autopay charges, then fails: setting up a third keeps the price.
+select pg_temp.autopay(:'team', 'sub_Sa650t2', :'team_deal');
+select public.razorpay_record_webhook('sa650_t3', pg_temp.rzp('sub_Sa650t2', 'active', 30, 25, 'pay_Sa650t2', 70800));
+select tests.clear_auth();
+select tests.authenticate_as_platform_admin(:'finance');
+select throws_ok(format($$select public.platform_set_deal(%L, '{"end": true}')$$, :'team'),
+  'P0001', 'DEAL_IN_AUTOPAY', 'a price a running autopay charges can''t be ended here');
+select tests.clear_auth();
+select tests.as_service_role();
+select public.razorpay_record_webhook('sa650_t4', pg_temp.rzp('sub_Sa650t2', 'halted', 40, 25));
+select public.razorpay_record_webhook('sa650_t5', pg_temp.rzp('sub_Sa650t2', 'cancelled', 50, 25));
+select is(public.subscription_checkout_deal(:'team', 'growth', 'monthly') ->> 'cycles', '1',
+  'a halted autopay replaced: the price and its last charge stay');
+
+-- The third: Razorpay completes it before its charge arrives.
+select pg_temp.autopay(:'team', 'sub_Sa650t3', :'team_deal');
+select public.razorpay_record_webhook('sa650_t6', pg_temp.rzp('sub_Sa650t3', 'completed', 60, 40));
+select public.razorpay_record_webhook('sa650_t7', pg_temp.rzp('sub_Sa650t3', 'active', 61, 40, 'pay_Sa650t3', 70800));
+select is(
+  (select array[coalesce(s.deal_id::text, '-'), coalesce(s.effective_monthly_paise::text, '-'),
+     (s.current_period_end > now() + interval '39 days')::text,
+     (select (d.ended_at is not null)::text from public.subscription_deals d where d.id = :'team_deal')]
+   from public.restaurant_subscriptions s where s.restaurant_id = :'team'),
+  array['-', '-', 'true', 'true'],
+  'its third charge, after ''completed'': the period is paid, the price used up, the list price next'
+);
+select is(public.subscription_checkout_deal(:'team', 'growth', 'monthly'), null,
+  'and the next autopay is at the list price');
+select tests.clear_auth();
+
+-- ─── A payment for three months is three charges ────────────────────────────
+select tests.authenticate_as_platform_admin(:'finance');
+select public.platform_record_manual_payment(:'trial', jsonb_build_object(
+  'amount_paise', 265500, 'mode', 'upi', 'billing_cycle', 'monthly',
+  'period_start', current_date, 'period_end', current_date + 89));
+select tests.clear_auth();
+select is(
+  (select array[p.list_price_paise, p.discount_paise] from public.subscription_payments p
+   where p.restaurant_id = :'trial'),
+  array[269700, 44700]::bigint[],
+  'three months at the deal''s price: three times the list price and the discount'
+);
+
+-- ─── Holding a place, and an abandoned checkout ─────────────────────────────
+-- The other restaurant's checkout with ONEONLY is two days old but its autopay
+-- waits for a first charge: it still holds the only place.
+update public.subscription_deals d set created_at = now() - interval '2 days'
+from public.offers o where o.id = d.offer_id and o.code = 'ONEONLY';
+update public.restaurant_subscriptions s set next_deal_id = d.id
+from public.subscription_deals d join public.offers o on o.id = d.offer_id
+where o.code = 'ONEONLY' and s.restaurant_id = :'other';
+select tests.as_service_role();
+select throws_ok(format($$select public.subscription_checkout_deal(%L, 'growth', 'monthly', 'oneonly')$$, :'limits'),
+  'P0001', 'OFFER_USED_UP', 'an autopay waiting for its first charge holds its place');
+select tests.clear_auth();
+update public.restaurant_subscriptions set next_deal_id = null where restaurant_id = :'other';
+select tests.as_service_role();
+select is(public.subscription_checkout_deal(:'other', 'growth', 'monthly'), null,
+  'a checkout without the code: the list price');
+select tests.clear_auth();
+select ok(
+  (select bool_and(d.ended_at is not null) from public.subscription_deals d
+   join public.offers o on o.id = d.offer_id where o.code = 'ONEONLY'),
+  'and the code it left behind ends'
+);
+
+-- ─── Deal prices stay out of the table for the team ─────────────────────────
+select tests.authenticate_as_platform_admin(:'finance');
+select throws_ok($$select effective_monthly_paise from public.restaurant_subscriptions limit 1$$,
+  '42501', null, 'the price a month is read through the platform functions');
+select tests.clear_auth();
 
 -- ─── Who reads deals ────────────────────────────────────────────────────────
 select tests.create_platform_admin('sa650-sales@example.test') as sales \gset
