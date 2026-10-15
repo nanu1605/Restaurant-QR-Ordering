@@ -20,6 +20,8 @@ insert into public.subscription_payments (
 ) values (:'rest', 'manual', 'upi', 105082, 'pay_SA640search', now(), now() + interval '30 days', now());
 insert into public.site_leads (name, restaurant_name, city, phone, channel, stage)
 values ('Sa640 lead', 'Sa640 Cafe', 'Indore', '9640640640', 'phone', 'new');
+insert into public.metrics_platform_daily (day, signups_started) values ('2001-01-01', 1)
+on conflict (day) do nothing;
 
 -- ─── Roles ──────────────────────────────────────────────────────────────────
 select is(
@@ -42,6 +44,7 @@ select is(
 );
 
 select to_jsonb(private.role_permissions('finance')) as finance_permissions \gset
+select to_jsonb(private.role_permissions('sales')) as sales_permissions \gset
 select tests.authenticate_as_platform_admin(:'finance');
 select is(
   public.platform_my_access(),
@@ -150,6 +153,19 @@ select is(
   'Sales finds and reads leads, never payments'
 );
 select is(public.platform_home() -> 'mrr_paise', 'null'::jsonb, 'Sales sees no MRR on Home');
+select is(
+  (select count(*)::int from public.metrics_platform_daily where day = '2001-01-01'), 1,
+  'Sales reads the funnel''s daily numbers'
+);
+select throws_ok(
+  format($$select public.platform_create_lead(jsonb_build_object(
+    'name', 'Sa640 two', 'restaurant_name', 'Sa640 Two', 'city', 'Indore', 'phone', '9640640641',
+    'channel', 'phone', 'assignee', %L))$$, :'finance'),
+  'P0001', 'ADMIN_NOT_FOUND', 'a lead goes only to a member who sees leads'
+);
+set local role postgres;
+select ok(not ('menu_import' = any (private.activity_kinds(null))),
+  'no menu imports in the activity without support');
 select tests.authenticate_as_platform_admin(:'finance');
 select is(
   array[
@@ -166,10 +182,11 @@ select is(
   array[
     (select count(*)::int from public.subscription_payments where restaurant_id = :'rest'),
     (select count(*)::int from public.metrics_subscription_daily where restaurant_id = :'rest'),
+    (select count(*)::int from public.metrics_platform_daily where day = '2001-01-01'),
     (select count(*)::int from public.restaurants where id = :'rest')
   ],
-  array[0, 0, 1],
-  'Support reads restaurants but no money'
+  array[0, 0, 0, 1],
+  'Support reads restaurants but no money and no funnel'
 );
 select tests.clear_auth();
 
@@ -235,6 +252,20 @@ select is(public.platform_renew_invite(:'late', repeat('f', 64)) ->> 'display_na
   'a new link for a member who hasn''t joined');
 select throws_ok(format($$select public.platform_renew_invite(%L, repeat('1', 64))$$, :'newbie'),
   'P0001', 'TEAM_MEMBER_NOT_FOUND', 'but not for one who has');
+-- Turned off, an unused link stops working; back on, the login is let in.
+select public.platform_renew_invite(:'late', repeat('3', 64));
+select public.platform_update_member(:'late', '{"disabled": true}');
+select public.platform_update_member(:'late', '{"disabled": false}');
+select tests.clear_auth();
+select is(
+  (select array[coalesce(a.invite_token_hash, '-'), (u.banned_until is null)::text]
+   from public.platform_admins a join auth.users u on u.id = a.user_id
+   where a.user_id = :'late'),
+  array['-', 'true'],
+  'turned off and back on: the link is gone, the login let in'
+);
+select tests.authenticate_as_platform_admin(:'admin');
+select public.platform_renew_invite(:'late', repeat('f', 64));
 select tests.clear_auth();
 update public.platform_admins set invite_expires_at = now() - interval '1 minute'
 where user_id = :'late';
@@ -249,7 +280,7 @@ select tests.clear_auth();
 select tests.authenticate_as_platform_admin(:'admin');
 select is(
   public.platform_update_member(:'newbie', '{"role": "finance", "display_name": "Neha S"}'),
-  jsonb_build_object('user_id', :'newbie', 'disabled', false, 'login', null),
+  jsonb_build_object('user_id', :'newbie', 'disabled', false),
   'a new role and name'
 );
 select is(
@@ -258,10 +289,24 @@ select is(
   array['{"role": "sales", "display_name": "Neha"}', '{"role": "finance", "display_name": "Neha S"}'],
   'audited, only what changed'
 );
+select tests.clear_auth();
+insert into auth.sessions (id, user_id, created_at, updated_at, aal)
+values (gen_random_uuid(), :'newbie', now(), now(), 'aal2');
+select tests.authenticate_as_platform_admin(:'admin');
 select is(
-  public.platform_update_member(:'newbie', '{"disabled": true}') ->> 'login', 'block',
-  'turned off: the login is to be blocked'
+  public.platform_update_member(:'newbie', '{"disabled": true}') ->> 'disabled', 'true',
+  'turned off'
 );
+select tests.clear_auth();
+select is(
+  array[
+    (select u.banned_until > now() + interval '99 years' from auth.users u where u.id = :'newbie'),
+    (select count(*) = 0 from auth.sessions s where s.user_id = :'newbie')
+  ],
+  array[true, true],
+  'their login is blocked and its sessions are gone'
+);
+select tests.authenticate_as_platform_admin(:'admin');
 select throws_ok(format($$select public.platform_update_member(%L, '{"disabled": true}')$$, :'admin'),
   'P0001', 'TEAM_SELF', 'nobody turns themselves off');
 select throws_ok(format($$select public.platform_update_member(%L, '{"colour": "red"}')$$, :'newbie'),
@@ -335,6 +380,12 @@ select is(
   array['sa640-admin@example.test', 'sa640-finance@example.test', 'sa640-sales@example.test',
     'sa640-support@example.test'],
   'to choose from: active members only'
+);
+select is(
+  (select m -> 'permissions' from jsonb_array_elements(public.platform_team()) as m
+   where m ->> 'email' = 'sa640-sales@example.test'),
+  :'sales_permissions'::jsonb,
+  'each with what their role opens'
 );
 select is(
   (public.platform_list_audit(jsonb_build_object('actor', :'admin')) ->> 'total')::int,

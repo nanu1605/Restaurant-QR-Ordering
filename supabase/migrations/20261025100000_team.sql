@@ -61,6 +61,21 @@ as $$
   )
 $$;
 
+-- An active member whose role holds the permission: who may be given work in its area.
+create function private.member_can(p_user_id uuid, p_permission text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.platform_admins a
+    where a.user_id = p_user_id and a.joined_at is not null and a.disabled_at is null
+      and p_permission = any (private.role_permissions(a.role))
+  )
+$$;
+
 create or replace function public.platform_admin_status()
 returns text
 language sql
@@ -165,6 +180,9 @@ alter policy "platform admins read lead events" on public.lead_events
   using ((select public.platform_can('growth.manage')));
 alter policy "platform admins read site leads" on public.site_leads
   using ((select public.platform_can('growth.manage')));
+-- Signups, leads and visitors by day: the funnel's numbers.
+alter policy "platform admins read platform snapshots" on public.metrics_platform_daily
+  using ((select public.platform_can('growth.manage')));
 alter policy "owners, managers and platform admins read menu imports" on public.menu_imports
   using (
     restaurant_id in (select private.my_restaurant_ids('{owner,manager}'::public.member_role[]))
@@ -193,7 +211,8 @@ create trigger end_support_sessions_on_change
 
 -- ─── Every platform function checks its permission (plan §3) ────────────────
 -- The functions that still let any member in, now each on its permission;
--- members chosen as assignees or account managers must be active; search
+-- members chosen as assignees must be active with the area's permission, and
+-- account managers active; search
 -- shows payments and leads only to roles that see them; the digest goes to
 -- members who chose it and whose role sees money (owner's choice,
 -- 2026-10-15). Bodies are unchanged otherwise.
@@ -287,7 +306,7 @@ CREATE OR REPLACE FUNCTION public.platform_overview()
  SET search_path TO ''
 AS $function$
 declare
-  v_admin private.platform_admin_context := private.require_platform_permission('restaurants.view');
+  v_admin private.platform_admin_context := private.require_platform_permission('money.view');
   v_counts jsonb;
   v_mrr bigint;
   v_orders bigint;
@@ -1374,7 +1393,7 @@ begin
     perform private.fail('INVALID_INPUT', 'stage');
   end if;
   if v_assignee is not null
-    and not private.active_admin(v_assignee) then
+    and not private.member_can(v_assignee, 'growth.manage') then
     perform private.fail('ADMIN_NOT_FOUND');
   end if;
 
@@ -1462,7 +1481,7 @@ begin
     v_reason := null;
   end if;
   if v_assignee is distinct from v_lead.assignee_id and v_assignee is not null
-    and not private.active_admin(v_assignee) then
+    and not private.member_can(v_assignee, 'growth.manage') then
     perform private.fail('ADMIN_NOT_FOUND');
   end if;
 
@@ -1539,7 +1558,7 @@ begin
     perform private.fail('INVALID_INPUT', 'priority');
   end if;
   if v_assignee is distinct from v_request.assignee_id and v_assignee is not null
-    and not private.active_admin(v_assignee) then
+    and not private.member_can(v_assignee, 'restaurants.support') then
     perform private.fail('ADMIN_NOT_FOUND');
   end if;
 
@@ -1620,7 +1639,8 @@ begin
   perform private.require_platform_permission('restaurants.view');
   return coalesce((
     select jsonb_agg(jsonb_build_object('user_id', a.user_id, 'email', u.email,
-        'display_name', a.display_name)
+        'display_name', a.display_name,
+        'permissions', to_jsonb(private.role_permissions(a.role)))
       order by lower(coalesce(a.display_name, u.email)))
     from public.platform_admins a
     join auth.users u on u.id = a.user_id
@@ -1642,11 +1662,7 @@ AS $function$
     and s.ended_at is null
     and s.started_at is not null
     and s.ends_at > now()
-    and exists (
-      select 1 from public.platform_admins a
-      where a.user_id = p_user_id and a.joined_at is not null and a.disabled_at is null
-        and 'restaurants.support' = any (private.role_permissions(a.role))
-    )
+    and private.member_can(p_user_id, 'restaurants.support')
     and (
       (select auth.uid()) is null
       or ((select auth.uid()) = p_user_id
@@ -1748,6 +1764,37 @@ begin
         and 'money.view' = any (private.role_permissions(a.role))
     ), '[]'::jsonb)
   );
+end;
+$function$;
+
+-- private.activity_kinds
+CREATE OR REPLACE FUNCTION private.activity_kinds(p_kinds text[])
+ RETURNS text[]
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_all constant text[] := array['signup', 'onboarded', 'payment', 'payment_failed', 'lapsed',
+    'reminder', 'lead', 'menu_import', 'team', 'note', 'support'];
+  v_kinds text[] := coalesce(p_kinds, v_all);
+begin
+  if not v_kinds <@ v_all then
+    perform private.fail('INVALID_INPUT', 'kinds');
+  end if;
+  if not private.has_platform_permission('money.view') then
+    v_kinds := array_remove(array_remove(v_kinds, 'payment'), 'payment_failed');
+  end if;
+  if not private.has_platform_permission('growth.manage') then
+    v_kinds := array_remove(v_kinds, 'lead');
+  end if;
+  if not private.has_platform_permission('restaurants.support') then
+    v_kinds := array_remove(array_remove(v_kinds, 'support'), 'menu_import');
+  end if;
+  if not private.has_platform_permission('audit.view') then
+    v_kinds := array_remove(v_kinds, 'team');
+  end if;
+  return v_kinds;
 end;
 $function$;
 
@@ -1944,6 +1991,8 @@ $$;
 
 -- Role, name, the digest, and turning a member off or back on. The last
 -- active Admin can't be moved or turned off, and nobody turns themselves off.
+-- Turned off, their login is blocked, its sessions end and an unused invite
+-- link stops working; turned back on, the login is let in again.
 create function public.platform_update_member(p_user_id uuid, p_patch jsonb)
 returns jsonb
 language plpgsql
@@ -1951,7 +2000,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_admin private.platform_admin_context := private.require_platform_permission('team.manage');
+  v_admin private.platform_admin_context;
   v_patch jsonb := coalesce(p_patch, '{}'::jsonb);
   v_old public.platform_admins;
   v_new public.platform_admins;
@@ -1959,6 +2008,9 @@ declare
   v_after jsonb := '{}'::jsonb;
   v_key text;
 begin
+  -- One change to the team at a time, so two Admins can't each remove the other.
+  perform pg_advisory_xact_lock(hashtextextended('platform_team', 0));
+  v_admin := private.require_platform_permission('team.manage');
   perform private.assert_keys(v_patch, array['role', 'display_name', 'digest', 'disabled']);
   select * into v_old from public.platform_admins a where a.user_id = p_user_id for update;
   if v_old.user_id is null then
@@ -2009,12 +2061,28 @@ begin
     perform private.fail('LAST_ADMIN');
   end if;
 
+  if v_new.disabled_at is not null then
+    v_new.invite_token_hash := null;
+    v_new.invite_expires_at := null;
+  end if;
   update public.platform_admins a set
     role = v_new.role,
     display_name = v_new.display_name,
     digest = v_new.digest,
-    disabled_at = v_new.disabled_at
+    disabled_at = v_new.disabled_at,
+    invite_token_hash = v_new.invite_token_hash,
+    invite_expires_at = v_new.invite_expires_at
   where a.user_id = p_user_id;
+
+  -- The login, in the same transaction: banned_until is what Supabase Auth's
+  -- ban sets (100 years, as ban_duration '876000h'); deleting the sessions
+  -- ends their refresh tokens.
+  if v_old.disabled_at is null and v_new.disabled_at is not null then
+    update auth.users u set banned_until = now() + interval '100 years' where u.id = p_user_id;
+    delete from auth.sessions s where s.user_id = p_user_id;
+  elsif v_old.disabled_at is not null and v_new.disabled_at is null then
+    update auth.users u set banned_until = null where u.id = p_user_id;
+  end if;
 
   foreach v_key in array array['role', 'display_name', 'digest'] loop
     if to_jsonb(v_old) -> v_key is distinct from to_jsonb(v_new) -> v_key then
@@ -2033,15 +2101,7 @@ begin
       'platform_admin', p_user_id);
   end if;
 
-  return jsonb_build_object(
-    'user_id', p_user_id,
-    'disabled', v_new.disabled_at is not null,
-    -- Whether the login must now be blocked or let back in.
-    'login', case
-      when v_old.disabled_at is null and v_new.disabled_at is not null then 'block'
-      when v_old.disabled_at is not null and v_new.disabled_at is null then 'allow'
-    end
-  );
+  return jsonb_build_object('user_id', p_user_id, 'disabled', v_new.disabled_at is not null);
 end;
 $$;
 
@@ -2097,6 +2157,7 @@ $$;
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 revoke execute on function private.role_permissions(text) from public, anon, authenticated;
 revoke execute on function private.active_admin(uuid) from public, anon, authenticated;
+revoke execute on function private.member_can(uuid, text) from public, anon, authenticated;
 revoke execute on function public.platform_can(text) from public, anon;
 grant execute on function public.platform_can(text) to authenticated;
 revoke execute on function public.platform_my_access() from public, anon;

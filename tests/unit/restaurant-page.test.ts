@@ -170,7 +170,7 @@ describe('the restaurant page', () => {
 
   it('shows the kinds an admin may see', () => {
     expect(activityKindsFor({ money: false, growth: false, support: false, audit: false })).toEqual(
-      ['signup', 'onboarded', 'lapsed', 'reminder', 'menu_import', 'note'],
+      ['signup', 'onboarded', 'lapsed', 'reminder', 'note'],
     );
   });
 

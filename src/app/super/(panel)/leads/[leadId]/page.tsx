@@ -45,7 +45,7 @@ export async function generateMetadata({ params }: PageProps<'/super/leads/[lead
 export default async function LeadPage({ params }: PageProps<'/super/leads/[leadId]'>) {
   await requirePlatformPermission('growth.manage');
   const { leadId } = await params;
-  const [lead, team] = await Promise.all([getLead(leadId), getTeam()]);
+  const [lead, team] = await Promise.all([getLead(leadId), getTeam('growth.manage')]);
   if (!lead) notFound();
   const linkedState = SUBSCRIPTION_STATES.includes(lead.restaurant?.state as SubscriptionState)
     ? (lead.restaurant?.state as SubscriptionState)

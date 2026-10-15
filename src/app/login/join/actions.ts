@@ -45,6 +45,8 @@ export async function joinTeam(_previous: JoinState, formData: FormData): Promis
   if (!found || found.expired) return { error: INVITE_GONE };
 
   // The invite isn't spent until the password is saved, so a refused one can be tried again.
+  // ponytail: two submissions of one link at the same instant can each save a password; the
+  // last one saved wins and the other tab is sent to log in. Claim the invite first if that matters.
   const { error: updateError } = await admin.auth.admin.updateUserById(found.user_id, {
     password: parsed.data.password,
   });

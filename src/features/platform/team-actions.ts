@@ -72,7 +72,9 @@ export async function inviteMember(input: InviteInput): Promise<ActionResult<Inv
   const created = await admin.auth.admin.createUser({ email, email_confirm: true });
   if (created.error || !created.data.user) {
     if (created.error?.code === 'email_exists') {
-      return actionError('That email already has a MenuMesh login. Use another address.');
+      return actionError(
+        'That email already has a MenuMesh login. If they’re in the list, use their row; otherwise use another address.',
+      );
     }
     console.error('[team] could not create a login', created.error);
     return actionError('Couldn’t add them. Try again.');
@@ -87,7 +89,10 @@ export async function inviteMember(input: InviteInput): Promise<ActionResult<Inv
     p_token_hash: hash,
   });
   if (error) {
-    await admin.auth.admin.deleteUser(userId);
+    // Left behind, the login would block this email from being invited again.
+    const removed = await admin.auth.admin.deleteUser(userId);
+    if (removed.error)
+      console.error('[team] could not remove an unused login', userId, removed.error);
     return fromDbError(error, 'Invite team member');
   }
   const emailed = await sendInvite(email, displayName, role, link, `team-invite/${hash}`);
@@ -139,31 +144,16 @@ export async function updateMember(userId: string, patch: MemberPatch): Promise<
 
 /**
  * Turns a member off or back on. Off: the database refuses them at once, and
- * their login is blocked so its sessions can't be renewed.
+ * blocks their login and ends its sessions in the same transaction.
  */
 export async function setMemberDisabled(userId: string, disabled: boolean): Promise<ActionResult> {
   await requirePlatformPermission('team.manage');
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('platform_update_member', {
+  const { error } = await supabase.rpc('platform_update_member', {
     p_user_id: userId,
     p_patch: { disabled },
   });
   if (error) return fromDbError(error, 'Turn team member off or on');
-  const login = (data as { login: 'block' | 'allow' | null }).login;
-  if (login) {
-    const { error: banError } = await createAdminClient().auth.admin.updateUserById(userId, {
-      ban_duration: login === 'block' ? '876000h' : 'none',
-    });
-    if (banError) {
-      console.error('[team] could not change the login', banError);
-      refresh();
-      return actionError(
-        login === 'block'
-          ? 'They can’t open the panel any more, but their login wasn’t blocked. Turn them off again.'
-          : 'They’re back on the team, but their login is still blocked. Turn them on again.',
-      );
-    }
-  }
   refresh();
   return actionOk();
 }

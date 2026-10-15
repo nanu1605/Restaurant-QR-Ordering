@@ -66,7 +66,7 @@ export default async function SuperLeadsPage({ searchParams }: PageProps<'/super
 
   const filters = readLeadFilters(params);
   const board = filters.view === 'board';
-  const [list, team] = await Promise.all([listLeads(filters), getTeam()]);
+  const [list, team] = await Promise.all([listLeads(filters), getTeam('growth.manage')]);
   const now = new Date();
   const tab = filters.stage ?? 'open';
   const withoutPage = { ...filters, page: undefined };

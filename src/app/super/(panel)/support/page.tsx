@@ -53,7 +53,10 @@ const linkClass = 'font-medium text-brand underline-offset-4 hover:underline';
 export default async function SupportInboxPage({ searchParams }: PageProps<'/super/support'>) {
   await requirePlatformPermission('restaurants.support');
   const filters = readInboxFilters(await searchParams);
-  const [inbox, team] = await Promise.all([listSupportRequests(filters), getTeam()]);
+  const [inbox, team] = await Promise.all([
+    listSupportRequests(filters),
+    getTeam('restaurants.support'),
+  ]);
   const tab = filters.status ?? 'active';
   const withoutPage = { ...filters, page: undefined };
   const current = filterParams(withoutPage);

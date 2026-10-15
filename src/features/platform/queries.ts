@@ -2,6 +2,7 @@ import 'server-only';
 
 import { cache } from 'react';
 
+import type { PlatformPermission } from '@/lib/auth/permissions';
 import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -224,12 +225,16 @@ export async function listTags() {
   return tagSchema.array().parse(data);
 }
 
-/** The MenuMesh team, for choosing an account manager. */
-export async function getTeam() {
+/**
+ * The MenuMesh team's active members, for choosing an account manager, or,
+ * with a permission, an assignee who can open the area.
+ */
+export async function getTeam(permission?: PlatformPermission) {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('platform_team');
   if (error) throw new Error(`Could not load the team: ${error.message}`);
-  return parseTeam(data);
+  const team = parseTeam(data);
+  return permission ? team.filter((member) => member.permissions.includes(permission)) : team;
 }
 
 /** Everyone on the team, for the Team page (docs/DECISIONS.md SA-70+). */
