@@ -167,8 +167,11 @@ describe('standees', () => {
     expect(nextStep('to_print')).toBe('printed');
     expect(nextStep('delivered')).toBe('installed');
     expect(nextStep('installed')).toBeNull();
-    expect(stepPatch('dispatched', '2026-10-16')).toEqual({ dispatched_on: '2026-10-16' });
-    expect(stepPatch('start', '2026-10-16')).toEqual({});
+    expect(stepPatch('printed', '2026-10-16')).toEqual({
+      expected_status: 'printed',
+      dispatched_on: '2026-10-16',
+    });
+    expect(stepPatch('not_started', '2026-10-16')).toEqual({ expected_status: 'not_started' });
   });
 
   it('reads the tab from the address', () => {

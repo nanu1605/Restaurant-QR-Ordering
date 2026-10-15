@@ -104,7 +104,7 @@ export function StandeesSection({
                 {fee.amount_paise !== null && (
                   <>
                     {' '}
-                    (<Money paise={fee.amount_paise} fraction="auto" />)
+                    (<Money paise={fee.amount_paise} fraction="auto" /> incl. GST)
                   </>
                 )}
               </>
@@ -164,16 +164,17 @@ export function StepButton({
   const step = nextStep(status);
   if (!step) return null;
   const label = NEXT_STEP_LABELS[step];
+  const text = step === 'start' ? 'Start: to print' : `${label} today`;
   return (
     <Button
       variant="outline"
       size="touch"
       className="self-start"
       disabled={pending}
-      aria-label={name ? `${label}: ${name}` : undefined}
+      aria-label={name ? `${text}: ${name}` : undefined}
       onClick={() =>
         startTransition(async () => {
-          const result = await markStandeeStep(restaurantId, step);
+          const result = await markStandeeStep(restaurantId, status);
           if (result.ok)
             toast.success(
               step === 'start' ? 'Standees to print' : `${label.replace('Mark ', '')} today`,
@@ -182,7 +183,7 @@ export function StepButton({
         })
       }
     >
-      {step === 'start' ? 'Start: to print' : `${label} today`}
+      {text}
     </Button>
   );
 }

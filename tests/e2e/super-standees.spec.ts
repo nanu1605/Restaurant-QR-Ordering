@@ -41,13 +41,15 @@ test('Sales takes standees to delivered, which does the QR step; Finance adds th
       .filter({ hasText: 'QR codes downloaded, printed or delivered' }),
   ).toContainText('(done)');
 
-  // The tracker, without a cost for Sales.
+  // The tracker, without a cost for Sales; installed from there, it leaves Delivered.
   await nav(page).getByRole('link', { name: 'Standees' }).click();
   await page.getByRole('link', { name: /^Delivered \(/ }).click();
   const row = page.getByRole('row').filter({ hasText: restaurant.name });
   await expect(row).toContainText('PrintCo');
-  await expect(row).toContainText('6');
+  await expect(row.getByRole('cell').nth(2)).toHaveText('6');
   await expect(page.getByRole('columnheader', { name: 'Cost' })).toHaveCount(0);
+  await row.getByRole('button', { name: `Mark installed today: ${restaurant.name}` }).click();
+  await expect(row).toBeHidden();
 
   // Finance sets only the cost.
   const context = await browser.newContext();
@@ -55,7 +57,7 @@ test('Sales takes standees to delivered, which does the QR step; Finance adds th
   await logInAsPlatformAdmin(finance, await createPlatformAdmin('e2e-standee-fin', 'finance'));
   await finance.goto(path);
   const financeSection = finance.getByRole('region', { name: 'Standees' });
-  await expect(financeSection.getByRole('button', { name: 'Mark installed today' })).toHaveCount(0);
+  await expect(financeSection).toContainText('Installed');
   await financeSection.getByRole('button', { name: 'Change' }).click();
   const costDialog = finance.getByRole('dialog', { name: 'Standees' });
   await expect(costDialog.getByLabel('How many')).toHaveCount(0);
@@ -72,6 +74,7 @@ test('Sales takes standees to delivered, which does the QR step; Finance adds th
     .eq('entity_type', 'standee');
   expect(audit?.map((entry) => entry.action).sort()).toEqual([
     'standee.created',
+    'standee.updated',
     'standee.updated',
     'standee.updated',
     'standee.updated',

@@ -52,8 +52,13 @@ export const NEXT_STEP_LABELS: Record<StandeeStep | 'start', string> = {
 };
 
 /** platform_save_standees' patch for marking a step today (India); 'start' makes the record. */
-export function stepPatch(step: StandeeStep | 'start', today: string) {
-  return step === 'start' ? {} : { [STEP_KEYS[step]]: today };
+/** The next step today, refused if the record moved on from `status` (STANDEE_CHANGED). */
+export function stepPatch(status: StandeeStatus | 'not_started', today: string) {
+  const step = nextStep(status);
+  return {
+    expected_status: status,
+    ...(step && step !== 'start' && { [STEP_KEYS[step]]: today }),
+  };
 }
 
 const dateOrNull = z.string().nullable();

@@ -78,6 +78,7 @@ const MESSAGES: Record<string, Message> = {
   OVERRIDE_NOT_FOUND: 'That override was already removed. Refresh the page.',
   // Announcements (docs/DECISIONS.md SA-82+).
   ANNOUNCEMENT_ENDED: 'That announcement has ended. Make a new one instead.',
+  STANDEE_CHANGED: 'Someone has changed these standees. Refresh the page and try again.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Support sessions (docs/DECISIONS.md SA-46 to SA-52)

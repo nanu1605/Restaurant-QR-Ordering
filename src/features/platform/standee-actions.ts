@@ -17,12 +17,13 @@ import { createClient } from '@/lib/supabase/server';
 import { todayInIndia } from './platform';
 import { restaurantIdSchema } from './schemas';
 import {
-  STANDEE_STEPS,
+  nextStep,
+  STANDEE_STATUSES,
   standeePayload,
   standeeSchema,
   stepPatch,
   type StandeeInput,
-  type StandeeStep,
+  type StandeeStatus,
 } from './standees';
 
 /**
@@ -53,19 +54,22 @@ export async function saveStandees(
   return actionOk();
 }
 
-/** Marks the next step today, or makes the record ('start'). */
+/**
+ * Marks the step after `status` (as the page showed it) today, or makes the
+ * record; refused if someone has changed it since.
+ */
 export async function markStandeeStep(
   restaurantId: string,
-  step: StandeeStep | 'start',
+  status: StandeeStatus | 'not_started',
 ): Promise<ActionResult> {
   await requirePlatformPermission('restaurants.manage');
   const id = restaurantIdSchema.safeParse(restaurantId);
-  const which = z.enum(['start', ...STANDEE_STEPS]).safeParse(step);
-  if (!id.success || !which.success) return actionError(GENERIC_ERROR);
+  const shown = z.enum(['not_started', ...STANDEE_STATUSES]).safeParse(status);
+  if (!id.success || !shown.success || !nextStep(shown.data)) return actionError(GENERIC_ERROR);
   const supabase = await createClient();
   const { error } = await supabase.rpc('platform_save_standees', {
     p_restaurant_id: id.data,
-    p_standees: stepPatch(which.data, todayInIndia()),
+    p_standees: stepPatch(shown.data, todayInIndia()),
   });
   if (error) return fromDbError(error, 'platform_save_standees');
   refresh();
