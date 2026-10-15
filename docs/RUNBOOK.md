@@ -301,6 +301,16 @@ the discounted price with GST and a subscription with the offer's charge count; 
 charge lands at that price. The months after can't be hurried in test mode; the e2e suite covers
 them against the mock.
 
+Announcements (SA-82, SA-83): Settings → Announcements puts a banner in restaurants' panels,
+for example before planned maintenance. Choose the panels and who sees it, set when it ends and
+check the preview; for a test, choose one test restaurant. The email option needs
+`RESEND_API_KEY` and `EMAIL_FROM`; without them the banner still shows and nobody is emailed.
+End now takes the banner down everywhere at once.
+
+Standees (SA-84, SA-85): Restaurants → Standees lists every restaurant whose setup fee is paid.
+Mark each step as it happens (on the restaurant's Overview or in the list); Finance adds the
+cost. Delivered standees tick the QR step of the restaurant's onboarding checklist.
+
 Everyone after that is invited from Settings → Team (an Admin): the invite email needs
 `RESEND_API_KEY` and `EMAIL_FROM`, and without them the Admin sends the link shown on the page.
 Turning a member off there blocks their login; their lost phone is still fixed as in the README.

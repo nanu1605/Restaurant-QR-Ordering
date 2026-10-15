@@ -636,6 +636,8 @@ Acceptance:
 
 ### 14c. Announcements and standees
 
+Built 2026-10-16 (docs/DECISIONS.md SA-82 to SA-85). An announcement's email goes when it starts, each restaurant has one standee record, and the standee cost is for money roles (owner's choices, 2026-10-15).
+
 Ships:
 
 - **Announcements** (`/super/settings/announcements`): title and text in English, optional Hindi for Hindi logins; audience (everyone, plans, cities or chosen restaurants); panels (admin, worker or both); start and end; dismissible or not; optional email to restaurant owners. Shown as a banner in the chosen panels, with dismissals per user, a preview, and audit rows.

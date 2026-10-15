@@ -3676,7 +3676,7 @@ stay at 13g, since nobody else gets `/super` before then.
   seven steps (plan §5.13) with when each was done: the menu when its fifth active dish was
   added; tables at the first active table; QR codes at the first `table.qr_downloaded` or
   `table.qr_sheet_printed` audit row (SA-14), or the first QR order, since a QR order shows the
-  codes are out and QR use is only recorded since 12b; the team at the first active login that
+  codes are out and QR use is only recorded since 12b, or standees delivered (from 14c, SA-84); the team at the first active login that
   isn't the owner or the first waiter profile; the first accepted QR order; the first bill (void
   ones too: one was made); and paid at the first subscription payment (not a setup fee) or, while
   autopay is on and not ending, since Razorpay first reported it authenticated or active. A step
@@ -4126,3 +4126,46 @@ stay at 13g, since nobody else gets `/super` before then.
   beta flag is a feature override whose key is in no plan: nothing reads one yet, so a pilot ships
   with its own check. The Usage tab lists them. Deal and override audit rows are the team's:
   owners and managers don't see them.
+
+### 14c · Announcements and standees
+
+- **SA-82 · Announcements:** a title and text (up to 500 characters, line breaks kept), with
+  Hindi optionally (both or neither), for the admin panel, the worker panel or both, from a start
+  (empty: this minute) to an optional end, India time, or ended early (then it can't start again);
+  dismissible or not (`announcements`, settings.manage: Admin). Its audience is everyone, plans
+  (the plan a restaurant trials or pays), cities (as restaurants entered them, any case) or
+  chosen restaurants, one kind at a time. A banner sits at the top of each chosen panel, under
+  the support-session and access banners, for every restaurant in its audience whatever its
+  access, three at most, newest first; if they can't load, the panel shows none. Hindi text shows
+  only in the worker panel to Hindi logins: the admin panel and emails stay English (P11-15).
+  Dismissing is per login, in both panels (`announcement_dismissals`); in a support session it is
+  the team member's; made non-dismissible later, it shows again. The team's list shows each
+  one's audience while it runs, how many logins hid it and how many restaurants were emailed, and
+  the form previews the banner. Changes are audited as the
+  platform's: `announcement.created`, `announcement.updated` with what changed,
+  `announcement.ended`.
+- **SA-83 · Its email goes when it starts:** the owner's choice (2026-10-15). Ticked, each active
+  restaurant in the audience is emailed once (`announcement_emails`), to its active owners' own
+  addresses and the restaurant's email, as reminders are, on its first day (India): right after
+  saving once that day has come, otherwise by that day's daily run (03:00), which can be before
+  the banner shows. A restaurant that joins the audience while it runs is emailed by the next save
+  or run. English only: the title, its paragraphs and a link to the admin panel. One email at a
+  time: the run sends them after the reminders.
+- **SA-84 · The standee tracker:** one record per restaurant (owner's choice, 2026-10-15; a
+  reprint edits it): how many (its active tables by default, at least one), the day each step was
+  done (printed, dispatched, delivered, installed; India days, not after today, each on or after
+  the steps before it, and steps may be skipped), vendor, notes and cost (`standees`). Its status
+  is the last step with a day, To print before any; clearing a day takes it back. Delivered or
+  installed does the onboarding QR step from that day (SA-41), and clearing it makes the step to
+  do again. `/super/standees` lists restaurants with standees and active restaurants whose setup
+  fee is paid without any (Not started), by status with counts, the longest waiting first, with
+  the day the setup fee was paid: that is its link to the setup-fee payment, without a column. A
+  restaurant's Overview has a Standees section, and one click marks the next step today; it is
+  refused if someone changed the record since the page loaded (`STANDEE_CHANGED`).
+- **SA-85 · Who works on standees:** everyone with restaurants.view sees the tracker and the
+  section; restaurants.manage (Admin, Sales) makes and changes the record; the cost is money
+  (owner's choice, 2026-10-15), seen with money.view and set with money.record (Admin, Finance),
+  so Finance changes only an existing record's cost and Sales never sees it.
+  `platform_save_standees` checks each part. Changes are audited (`standee.created`,
+  `standee.updated` with what changed), and those rows are the team's: owners and managers don't
+  see them.
