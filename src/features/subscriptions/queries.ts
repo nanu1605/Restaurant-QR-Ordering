@@ -1,9 +1,11 @@
 import 'server-only';
 
 import { FEATURE_KEYS } from '@/features/plans/plan-features';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import type { BillingCycle, CheckoutPlan } from './autopay';
+import { ownerPricesSchema, type OwnerPrices } from './offers';
 import type { OwnerSubscription, SubscriptionPayment } from './summary';
 
 /**
@@ -46,6 +48,18 @@ export async function getOwnerSubscription(
       priceYearlyPaise: data.plan.price_yearly_paise,
     },
   };
+}
+
+/**
+ * Special prices for the owner's page (docs/DECISIONS.md SA-77+): deals are
+ * the team's records, so the service role reads only their prices.
+ */
+export async function getOwnerPrices(restaurantId: string): Promise<OwnerPrices> {
+  const { data, error } = await createAdminClient().rpc('subscription_offer_preview', {
+    p_restaurant_id: restaurantId,
+  });
+  if (error) throw new Error(`Could not load the prices: ${error.message}`);
+  return ownerPricesSchema.parse(data);
 }
 
 /** Subscription payments, newest first. */

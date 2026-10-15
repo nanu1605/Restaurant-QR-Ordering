@@ -32,6 +32,16 @@ function content(reminder: DueReminder): ReminderEmail {
           'Choose a plan before then to keep taking orders. If you have already paid, you can ignore this email.',
         ],
       };
+    // An autopay that finished its charges, an offer's months (docs/DECISIONS.md SA-77+).
+    case 'autopay_ends_7d':
+    case 'autopay_ends_1d':
+      return {
+        subject: `Set up ${APP_NAME} autopay again for ${name}`,
+        paragraphs: [
+          `The autopay for ${name} has made its last payment, and the paid period ends on ${reminder.ends_at ? lastDay(reminder.ends_at, reminder.timezone) : 'soon'}.`,
+          `Set up autopay for ${reminder.plan_name} again before then to keep taking orders.`,
+        ],
+      };
     case 'payment_failed':
       return {
         subject: `Payment failed for ${name}`,

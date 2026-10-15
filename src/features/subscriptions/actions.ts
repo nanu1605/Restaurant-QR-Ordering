@@ -3,12 +3,13 @@
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
-import { actionError, actionOk, type ActionResult } from '@/lib/action-result';
+import { actionError, actionOk, fromDbError, type ActionResult } from '@/lib/action-result';
 import { requireMember, requireUser } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import {
   cancelSubscription,
+  createPlan,
   createSubscription,
   fetchSubscription,
   razorpayConfig,
@@ -21,6 +22,13 @@ import { createClient } from '@/lib/supabase/server';
 
 import { autopayStartAt, autopayState, TOTAL_COUNT } from './autopay';
 import { cancelReasonSchema, type CancelReasonInput } from './cancel-reasons';
+import { withGst } from './gst';
+import {
+  checkoutDealSchema,
+  offerCodeSchema,
+  offerPreviewSchema,
+  type OfferPreview,
+} from './offers';
 import { loadSubscription, razorpayFailed, saveSubscription, stopAutopay } from './razorpay-sync';
 
 /**
@@ -44,6 +52,8 @@ export type CheckoutStart = {
 const startSchema = z.object({
   planCode: z.string().regex(/^[a-z_]{2,30}$/),
   cycle: z.enum(['monthly', 'yearly']),
+  // An offer code the owner applied (docs/DECISIONS.md SA-77+).
+  code: offerCodeSchema.optional(),
 });
 
 const confirmSchema = z.object({
@@ -76,7 +86,7 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
   if (!owner) return actionError(NOT_SET_UP);
   const parsed = startSchema.safeParse(input);
   if (!parsed.success) return actionError(GENERIC_ERROR);
-  const { planCode, cycle } = parsed.data;
+  const { planCode, cycle, code } = parsed.data;
 
   const admin = createAdminClient();
   const [subscription, plan, restaurant] = await Promise.all([
@@ -111,6 +121,15 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
   if (autopayState(subscription) === 'on') {
     return actionError('Autopay is already set up. Refresh the page to see it.');
   }
+  // The team's price for this plan and cycle, or the code's; none: the list price.
+  const taken = await admin.rpc('subscription_checkout_deal', {
+    p_restaurant_id: owner.restaurantId,
+    p_plan_code: planCode,
+    p_cycle: cycle,
+    p_code: code,
+  });
+  if (taken.error) return fromDbError(taken.error, 'Take an offer');
+  const deal = checkoutDealSchema.parse(taken.data);
 
   try {
     // An unfinished checkout, or a mandate that keeps failing, makes way.
@@ -121,11 +140,35 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
       if (!saved.ok) return saved;
     }
 
+    // A special price is a Razorpay plan of its own, charged for the deal's
+    // cycles (docs/DECISIONS.md SA-77+); one plan serves every deal at that price.
+    let dealPlanId = deal?.razorpay_plan_id ?? null;
+    if (deal && !dealPlanId) {
+      dealPlanId = (
+        await createPlan(owner.config, {
+          cycle,
+          name: `${APP_NAME} ${plan.data.name} — ${cycle} at ₹${deal.price_paise / 100}`,
+          amountPaise: withGst(deal.price_paise),
+          notes: { plan_code: planCode, deal_id: deal.deal_id },
+        })
+      ).id;
+      const stored = await admin.rpc('subscription_deal_plan', {
+        p_deal_id: deal.deal_id,
+        p_razorpay_plan_id: dealPlanId,
+      });
+      if (stored.error) return fromDbError(stored.error, 'Save the deal plan');
+    }
+
     const entity = await createSubscription(owner.config, {
-      planId,
-      totalCount: TOTAL_COUNT[cycle],
+      planId: dealPlanId ?? planId,
+      totalCount: deal?.cycles ?? TOTAL_COUNT[cycle],
       startAt: autopayStartAt(subscription, new Date()),
-      notes: { restaurant_id: owner.restaurantId, plan_code: planCode, billing_cycle: cycle },
+      notes: {
+        restaurant_id: owner.restaurantId,
+        plan_code: planCode,
+        billing_cycle: cycle,
+        ...(deal && { deal_id: deal.deal_id }),
+      },
     });
     const saved = await save(owner, entity);
     if (!saved.ok) {
@@ -149,6 +192,19 @@ export async function startSubscription(input: unknown): Promise<ActionResult<Ch
   } catch (error) {
     return razorpayFailed(error, 'could not start a subscription');
   }
+}
+
+/** An offer code's prices for each plan, before the owner subscribes. */
+export async function previewOffer(code: string): Promise<ActionResult<OfferPreview>> {
+  const membership = await requireMember(['owner']);
+  const parsed = offerCodeSchema.safeParse(code);
+  if (!parsed.success) return actionError(parsed.error.issues[0]!.message);
+  const { data, error } = await createAdminClient().rpc('subscription_offer_preview', {
+    p_restaurant_id: membership.restaurant.id,
+    p_code: parsed.data,
+  });
+  if (error) return fromDbError(error, 'Preview an offer');
+  return actionOk(offerPreviewSchema.parse(data));
 }
 
 /**

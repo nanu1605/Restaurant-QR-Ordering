@@ -18,13 +18,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { FEATURE_KEYS, FEATURE_LABELS } from '@/features/plans/plan-features';
 
 import { CANCEL_REASON_LABELS, CANCEL_REASONS, type CancelReason } from '../cancel-reasons';
 import { withGst } from '../gst';
 
-import { cancelAutopay, confirmCheckout, startSubscription, type CheckoutStart } from '../actions';
+import {
+  cancelAutopay,
+  confirmCheckout,
+  previewOffer,
+  startSubscription,
+  type CheckoutStart,
+} from '../actions';
 import type { BillingCycle, CheckoutPlan } from '../autopay';
+import { forCycles, specialPrice, type OfferPreview, type TeamDeal } from '../offers';
 
 /**
  * Paying online (spec §14.3, docs/DECISIONS.md P8-7): plan cards with a
@@ -81,6 +89,8 @@ type AutopayPanelProps = {
   firstPayment: string;
   /** The plan and cycle chosen on the website before signing up (docs/DECISIONS.md W-9). */
   chosen?: { planCode: string | null; cycle: BillingCycle };
+  /** The price the MenuMesh team set for this restaurant (docs/DECISIONS.md SA-77+). */
+  deal?: TeamDeal | null;
 };
 
 export function AutopayPanel({
@@ -89,17 +99,24 @@ export function AutopayPanel({
   cancel,
   firstPayment,
   chosen,
+  deal = null,
 }: AutopayPanelProps) {
   const router = useRouter();
-  const [cycle, setCycle] = useState<BillingCycle>(chosen?.cycle ?? 'monthly');
+  const [cycle, setCycle] = useState<BillingCycle>(
+    deal?.billing_cycle ?? chosen?.cycle ?? 'monthly',
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
+  const [offer, setOffer] = useState<OfferPreview | null>(null);
 
   async function subscribe(plan: CheckoutPlan) {
     setBusy(plan.code);
     let opened = false;
+    // The code goes along only where it gives this plan and cycle a price.
+    const code =
+      !deal && offer && specialPrice(plan.code, cycle, null, offer) ? offer.code : undefined;
     try {
-      const result = await startSubscription({ planCode: plan.code, cycle });
+      const result = await startSubscription({ planCode: plan.code, cycle, code });
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -169,6 +186,16 @@ export function AutopayPanel({
       {cancel && <CancelAutopay {...cancel} />}
       {canSubscribe && plans.length > 0 && (
         <>
+          {deal ? (
+            <p className="rounded-lg border border-brand/30 bg-brand/5 p-3 text-sm text-ink">
+              MenuMesh has set a price for you on{' '}
+              {plans.find((plan) => plan.code === deal.plan_code)?.name ?? 'your plan'},{' '}
+              {deal.billing_cycle}: <Money paise={deal.price_paise} /> + GST
+              {deal.cycles !== null && ` ${forCycles(deal.cycles, deal.billing_cycle)}`}.
+            </p>
+          ) : (
+            <OfferCode offer={offer} onChange={setOffer} />
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-ink-muted">{firstPayment}</p>
             <div
@@ -194,6 +221,9 @@ export function AutopayPanel({
             {plans.map((plan) => {
               const available = plan.cycles.includes(cycle);
               const picked = plan.code === chosen?.planCode;
+              const list = cycle === 'monthly' ? plan.monthlyPaise : plan.yearlyPaise;
+              const special = specialPrice(plan.code, cycle, deal, offer);
+              const per = cycle === 'monthly' ? 'a month' : 'a year';
               return (
                 <li
                   key={plan.code}
@@ -212,16 +242,26 @@ export function AutopayPanel({
                     <h3 className="text-base font-semibold text-ink">{plan.name}</h3>
                     <p className="text-sm text-ink-muted">
                       <span className="text-xl font-semibold text-ink">
-                        <Money paise={cycle === 'monthly' ? plan.monthlyPaise : plan.yearlyPaise} />
+                        <Money paise={special?.pricePaise ?? list} />
                       </span>{' '}
-                      {cycle === 'monthly' ? 'a month' : 'a year'} + GST
+                      {per} + GST
                     </p>
+                    {special && (
+                      <p className="text-sm font-medium text-brand">
+                        {special.cycles === null ? (
+                          <>
+                            Instead of <Money paise={list} />
+                          </>
+                        ) : (
+                          <>
+                            {forCycles(special.cycles, cycle)}, then <Money paise={list} />
+                          </>
+                        )}
+                      </p>
+                    )}
                     <p className="text-sm text-ink-muted">
-                      You pay{' '}
-                      <Money
-                        paise={withGst(cycle === 'monthly' ? plan.monthlyPaise : plan.yearlyPaise)}
-                      />{' '}
-                      {cycle === 'monthly' ? 'a month' : 'a year'} with 18% GST
+                      You pay <Money paise={withGst(special?.pricePaise ?? list)} /> {per} with 18%
+                      GST
                     </p>
                   </div>
                   <ul className="flex flex-col gap-1 text-sm text-ink">
@@ -265,6 +305,69 @@ export function AutopayPanel({
         </>
       )}
     </div>
+  );
+}
+
+/** An offer code: its prices show on the plan cards until it's removed. */
+function OfferCode({
+  offer,
+  onChange,
+}: {
+  offer: OfferPreview | null;
+  onChange: (offer: OfferPreview | null) => void;
+}) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (offer) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p role="status" className="text-sm text-ink">
+          Offer <span className="font-semibold">{offer.code}</span> applied
+          {offer.description && `: ${offer.description}`}.
+        </p>
+        <Button variant="outline" size="touch" onClick={() => onChange(null)}>
+          Remove offer
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        startTransition(async () => {
+          const result = await previewOffer(code);
+          if (result.ok) {
+            setError(null);
+            onChange(result.data);
+          } else setError(result.error);
+        });
+      }}
+    >
+      <label className="flex flex-col gap-1 text-sm text-ink">
+        Offer code
+        <Input
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          maxLength={20}
+          autoComplete="off"
+          className="h-11 w-40 uppercase md:h-9"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'offer-code-error' : undefined}
+        />
+      </label>
+      <Button type="submit" variant="outline" size="touch" disabled={pending || !code.trim()}>
+        {pending ? 'Checking…' : 'Apply'}
+      </Button>
+      {error && (
+        <p id="offer-code-error" role="alert" className="w-full text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }
 

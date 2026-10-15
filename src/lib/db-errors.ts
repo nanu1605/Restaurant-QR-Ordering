@@ -63,6 +63,17 @@ const MESSAGES: Record<string, Message> = {
   LAST_ADMIN: 'Make someone else an Admin first: the team needs one.',
   TEAM_SELF: 'You can’t turn yourself off. Ask another Admin.',
   INVITE_INVALID: 'This invite has expired or was already used. Ask an Admin for a new link.',
+  // Offers and deals (docs/DECISIONS.md SA-77+).
+  OFFER_NOT_FOUND: 'That offer code isn’t right. Check it and try again.',
+  OFFER_EXPIRED: 'That offer has ended.',
+  OFFER_NOT_FOR_PLAN: 'That offer isn’t for this plan or billing cycle.',
+  OFFER_NEW_ONLY: 'That offer is for restaurants that haven’t paid yet.',
+  OFFER_USED_UP: 'That offer has been used up.',
+  OFFER_ALREADY_USED: 'This restaurant has already used that offer.',
+  OFFER_CODE_TAKEN: 'An offer already uses that code. Choose another.',
+  DEAL_SET_BY_TEAM: 'MenuMesh has already set your price, so a code can’t be used.',
+  DEAL_NOT_FOUND: 'This restaurant has no special price to end.',
+  OVERRIDE_NOT_FOUND: 'That override was already removed. Refresh the page.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Support sessions (docs/DECISIONS.md SA-46 to SA-52)
