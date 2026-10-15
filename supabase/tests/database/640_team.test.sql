@@ -209,7 +209,7 @@ select tests.clear_auth();
 select tests.as_service_role();
 select is(
   public.platform_invite_lookup(repeat('a', 64)) - 'user_id',
-  '{"email": "sa640-new@example.test", "display_name": "Neha", "expired": false}'::jsonb,
+  '{"email": "sa640-new@example.test", "display_name": "Neha", "role": "sales", "expired": false}'::jsonb,
   'the join page finds the invite by its hash'
 );
 select is(public.platform_invite_lookup(repeat('9', 64)), null, 'and nothing for a wrong one');
@@ -234,7 +234,7 @@ select public.platform_invite_member(:'late', 'Late', 'support', repeat('e', 64)
 select is(public.platform_renew_invite(:'late', repeat('f', 64)) ->> 'display_name', 'Late',
   'a new link for a member who hasn''t joined');
 select throws_ok(format($$select public.platform_renew_invite(%L, repeat('1', 64))$$, :'newbie'),
-  'P0001', 'MEMBER_NOT_FOUND', 'but not for one who has');
+  'P0001', 'TEAM_MEMBER_NOT_FOUND', 'but not for one who has');
 select tests.clear_auth();
 update public.platform_admins set invite_expires_at = now() - interval '1 minute'
 where user_id = :'late';

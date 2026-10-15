@@ -1918,6 +1918,7 @@ declare
   v_expires timestamptz := now() + interval '7 days';
   v_user uuid;
   v_name text;
+  v_role text;
 begin
   if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
     perform private.fail('INVALID_INPUT', 'token');
@@ -1925,9 +1926,9 @@ begin
   update public.platform_admins a
     set invite_token_hash = p_token_hash, invite_expires_at = v_expires
     where a.user_id = p_user_id and a.joined_at is null and a.disabled_at is null
-    returning a.user_id, a.display_name into v_user, v_name;
+    returning a.user_id, a.display_name, a.role into v_user, v_name, v_role;
   if v_user is null then
-    perform private.fail('MEMBER_NOT_FOUND');
+    perform private.fail('TEAM_MEMBER_NOT_FOUND');
   end if;
   perform private.audit_platform(v_admin, null, 'platform_admin.invite_renewed', 'platform_admin',
     p_user_id);
@@ -1935,6 +1936,7 @@ begin
     'user_id', p_user_id,
     'email', (select u.email from auth.users u where u.id = p_user_id),
     'display_name', v_name,
+    'role', v_role,
     'expires_at', v_expires
   );
 end;
@@ -1960,7 +1962,7 @@ begin
   perform private.assert_keys(v_patch, array['role', 'display_name', 'digest', 'disabled']);
   select * into v_old from public.platform_admins a where a.user_id = p_user_id for update;
   if v_old.user_id is null then
-    perform private.fail('MEMBER_NOT_FOUND');
+    perform private.fail('TEAM_MEMBER_NOT_FOUND');
   end if;
   v_new := v_old;
 
@@ -2055,6 +2057,7 @@ as $$
     'user_id', a.user_id,
     'email', u.email,
     'display_name', a.display_name,
+    'role', a.role,
     'expired', a.invite_expires_at <= now()
   )
   from public.platform_admins a
