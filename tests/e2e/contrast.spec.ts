@@ -106,6 +106,8 @@ test('platform admin panel', async ({ page }) => {
     '/super/restaurants',
     // The Growth pages (13d).
     ...(await growthPaths('contrast')),
+    // Usage, compared, by week (13e).
+    '/super/usage?compare=1&by=week',
     '/super/plans',
     '/super/audit',
     '/super/settings',

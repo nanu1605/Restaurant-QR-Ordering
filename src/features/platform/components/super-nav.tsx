@@ -3,6 +3,7 @@
 import { cn } from 'cn';
 import {
   Building2,
+  ChartColumn,
   CreditCard,
   Funnel,
   HandCoins,
@@ -54,6 +55,7 @@ const NAV: NavGroup[] = [
       { href: '/super/funnel', label: 'Funnel', icon: Funnel },
     ],
   },
+  { title: 'Insights', items: [{ href: '/super/usage', label: 'Usage', icon: ChartColumn }] },
   { title: 'System', items: [{ href: '/super/webhooks', label: 'Webhooks', icon: Webhook }] },
   {
     title: 'Settings',

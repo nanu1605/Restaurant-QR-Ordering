@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
-import Form from 'next/form';
 import Link from 'next/link';
 
 import { Money } from '@/components/shared/money';
 import { PageHeader } from '@/components/shared/page-header';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -22,13 +19,14 @@ import {
   type UpgradeOpportunities,
 } from '@/features/growth/funnel';
 import { getFunnel, getUpgradeOpportunities } from '@/features/growth/queries';
+import { DateRangeBar } from '@/features/platform/components/date-range-bar';
 import { Section } from '@/features/platform/components/restaurant-sections';
 import { SubscriptionStateBadge } from '@/features/platform/components/status-badges';
 import { formatMobile, telHref, whatsappHref } from '@/features/platform/dues-messages';
 import { ACQUISITION_CHANNEL_LABELS, formatDate, todayInIndia } from '@/features/platform/platform';
 import { limitHitLabel } from '@/features/platform/restaurant-page';
 import { requirePlatformPermission } from '@/lib/auth/guards';
-import { addDays, hrefWithParams, platformPresets, readDateRange } from '@/lib/date-range';
+import { addDays, platformPresets, readDateRange } from '@/lib/date-range';
 
 export const metadata: Metadata = {
   title: 'Funnel',
@@ -63,45 +61,13 @@ export default async function FunnelPage({ searchParams }: PageProps<'/super/fun
         title="Funnel"
         description="Where restaurants come from and how far they get. Dates are India time."
       />
-      <nav aria-label="Period" className="flex flex-wrap gap-2">
-        {platformPresets(today).map((preset) => {
-          const active = from === preset.from && to === preset.to;
-          return (
-            <Link
-              key={preset.key}
-              href={hrefWithParams(PATH, { from: preset.from, to: preset.to })}
-              aria-current={active ? 'page' : undefined}
-              className={buttonVariants({ variant: active ? 'default' : 'outline', size: 'sm' })}
-            >
-              {preset.label}
-            </Link>
-          );
-        })}
-      </nav>
-      <Form
-        key={`${from}-${to}`}
-        action={PATH}
-        role="search"
-        aria-label="Dates"
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-3"
-      >
-        <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-          From
-          <Input type="date" name="from" defaultValue={from} className="h-11 md:h-9" />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-          To
-          <Input type="date" name="to" defaultValue={to} className="h-11 md:h-9" />
-        </label>
-        <Button type="submit" size="touch">
-          Show
-        </Button>
-      </Form>
-      {notice && (
-        <p role="status" className="text-sm text-ink">
-          {notice}
-        </p>
-      )}
+      <DateRangeBar
+        path={PATH}
+        presets={platformPresets(today)}
+        from={from}
+        to={to}
+        notice={notice}
+      />
 
       <Steps funnel={funnel} />
       <Cohort funnel={funnel} />

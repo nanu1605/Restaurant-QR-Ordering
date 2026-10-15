@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { onboardingSchema } from '@/features/onboarding/onboarding';
 import { FEATURE_LABELS, type FeatureKey } from '@/features/plans/plan-features';
 import { CANCEL_REASON_LABELS, type CancelReason } from '@/features/subscriptions/cancel-reasons';
+import { featuresUsedSchema } from '@/features/usage/usage';
 import { formatINR } from '@/lib/money';
 
 import { DUES_BUCKETS, RENEWAL_KINDS, SUBSCRIPTION_STATUS_LABELS } from './platform';
@@ -175,6 +176,9 @@ const usageSchema = z.object({
       last_at: iso,
     }),
   ),
+  features_from: z.string(),
+  features_to: z.string(),
+  features: featuresUsedSchema,
 });
 export type RestaurantUsage = z.infer<typeof usageSchema>;
 export const parseUsage = (json: unknown) => usageSchema.parse(json);

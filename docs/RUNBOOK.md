@@ -112,6 +112,11 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   against the stack in `.env.local`; never point `.env.local` at staging or production for it.)
   Subscription history can't be backfilled: it starts with the first nightly snapshot (03:00
   India time).
+- **Once per environment after the usage analytics migration** (stop 13e,
+  `20261023100000_usage.sql`): run the same usage backfill again over the days already stored,
+  so they get the feature counts (waiter bills, split bills, add-ons) that days stored before had
+  at zero. Orders from the Hindi menu can't be recovered: orders record it from this release on.
+  Where 12b's backfill hasn't run yet, running it once after this release does both.
 
 ## Rolling back
 

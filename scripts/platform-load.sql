@@ -131,29 +131,48 @@ begin
 
   -- Daily usage since joining, shaped by the profile: never started has none,
   -- inactive stopped 12 days ago, slowing dropped in the last week.
+  -- Bills, payments (cash, UPI and card), table time, discounts and the
+  -- feature counts for usage analytics (13e) follow the orders.
   insert into public.metrics_usage_daily (
     restaurant_id, business_day, orders, customer_orders, staff_orders, items, bills, gmv_paise,
-    hourly_orders
+    sessions_billed, avg_session_minutes, discount_paise, tax_paise, paid_cash_paise,
+    paid_upi_paise, paid_card_paise, service_requests, waiter_bills, split_bills, addon_orders,
+    hindi_orders, hourly_orders
   )
   select
     u.id, u.day, u.orders, u.orders * 2 / 3, u.orders - u.orders * 2 / 3, u.orders * 3,
-    u.orders / 2, u.orders * (25000 + floor(random() * 35000)::bigint),
+    u.orders / 2, u.gmv, u.orders / 2, case when u.orders >= 2 then 35 + u.n % 40 end,
+    case when u.n % 4 = 0 then u.gmv * 3 / 100 else 0 end, u.gmv * 5 / 105,
+    u.gmv * 40 / 100, u.gmv * 45 / 100, u.gmv - u.gmv * 40 / 100 - u.gmv * 45 / 100,
+    case when u.n % 3 = 0 then u.orders / 5 else 0 end,
+    case when u.n % 2 = 0 then u.orders / 2 else 0 end,
+    case when u.n % 5 = 3 then (u.orders + 9) / 10 else 0 end,
+    case when u.n % 3 = 1 then u.orders / 4 else 0 end,
+    case when u.n % 4 = 1 then u.orders / 5 else 0 end,
     -- A third at lunch (1 pm), the rest at dinner (8 pm).
     array_fill(0, array[13]) || (u.orders / 3) || array_fill(0, array[6])
       || (u.orders - u.orders / 3) || array_fill(0, array[3])
   from (
-    select
-      r.id, d.day::date as day,
-      case
-        when r.profile = 'never' then 0
-        when r.profile = 'inactive' and d.day >= current_date - 12 then 0
-        when r.profile = 'slowing' and d.day >= current_date - 7 then floor(random() * 2)::int
-        else floor(random() * r.daily * 2)::int
-      end as orders
-    from load_r r
-    cross join lateral generate_series(r.created_at::date, current_date - 1, interval '1 day') as d(day)
-  ) as u
-  where u.orders > 0;
+    select x.*, x.orders * (25000 + floor(random() * 35000)::bigint) as gmv
+    from (
+      select
+        r.id, r.n, d.day::date as day,
+        case
+          when r.profile = 'never' then 0
+          when r.profile = 'inactive' and d.day >= current_date - 12 then 0
+          when r.profile = 'slowing' and d.day >= current_date - 7 then floor(random() * 2)::int
+          else floor(random() * r.daily * 2)::int
+        end as orders
+      from load_r r
+      cross join lateral generate_series(r.created_at::date, current_date - 1, interval '1 day') as d(day)
+    ) as x
+    where x.orders > 0
+  ) as u;
+
+  -- UPI QR on bills for a third (Growth, which has it).
+  update public.restaurants r set show_upi_qr_on_bill = true, upi_vpa = 'load@upi'
+  from load_r l
+  where l.id = r.id and l.n % 3 = 1;
 
   -- The last 35 days of usage as accepted orders, at midday India time, in one
   -- session per restaurant.

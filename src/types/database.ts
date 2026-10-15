@@ -898,12 +898,14 @@ export type Database = {
       }
       metrics_usage_daily: {
         Row: {
+          addon_orders: number
           avg_session_minutes: number | null
           bills: number
           business_day: string
           customer_orders: number
           discount_paise: number
           gmv_paise: number
+          hindi_orders: number
           hourly_orders: number[]
           items: number
           orders: number
@@ -914,16 +916,20 @@ export type Database = {
           restaurant_id: string
           service_requests: number
           sessions_billed: number
+          split_bills: number
           staff_orders: number
           tax_paise: number
+          waiter_bills: number
         }
         Insert: {
+          addon_orders?: number
           avg_session_minutes?: number | null
           bills?: number
           business_day: string
           customer_orders?: number
           discount_paise?: number
           gmv_paise?: number
+          hindi_orders?: number
           hourly_orders?: number[]
           items?: number
           orders?: number
@@ -934,16 +940,20 @@ export type Database = {
           restaurant_id: string
           service_requests?: number
           sessions_billed?: number
+          split_bills?: number
           staff_orders?: number
           tax_paise?: number
+          waiter_bills?: number
         }
         Update: {
+          addon_orders?: number
           avg_session_minutes?: number | null
           bills?: number
           business_day?: string
           customer_orders?: number
           discount_paise?: number
           gmv_paise?: number
+          hindi_orders?: number
           hourly_orders?: number[]
           items?: number
           orders?: number
@@ -954,8 +964,10 @@ export type Database = {
           restaurant_id?: string
           service_requests?: number
           sessions_billed?: number
+          split_bills?: number
           staff_orders?: number
           tax_paise?: number
+          waiter_bills?: number
         }
         Relationships: [
           {
@@ -1084,6 +1096,7 @@ export type Database = {
           customer_note: string | null
           decided_at: string | null
           decided_by: string | null
+          guest_lang: string | null
           id: string
           idempotency_key: string
           placed_by_user_id: string | null
@@ -1104,6 +1117,7 @@ export type Database = {
           customer_note?: string | null
           decided_at?: string | null
           decided_by?: string | null
+          guest_lang?: string | null
           id?: string
           idempotency_key: string
           placed_by_user_id?: string | null
@@ -1124,6 +1138,7 @@ export type Database = {
           customer_note?: string | null
           decided_at?: string | null
           decided_by?: string | null
+          guest_lang?: string | null
           id?: string
           idempotency_key?: string
           placed_by_user_id?: string | null
@@ -2802,6 +2817,7 @@ export type Database = {
           p_device_id: string
           p_idempotency_key: string
           p_items: Json
+          p_lang?: string
           p_note?: string
           p_qr_token: string
         }
@@ -3055,6 +3071,10 @@ export type Database = {
         Returns: undefined
       }
       platform_upgrade_opportunities: { Args: never; Returns: Json }
+      platform_usage_report: {
+        Args: { p_compare?: boolean; p_from: string; p_to: string }
+        Returns: Json
+      }
       razorpay_record_webhook: {
         Args: { p_event_id: string; p_payload: Json }
         Returns: string

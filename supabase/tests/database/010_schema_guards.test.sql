@@ -232,7 +232,9 @@ select set_eq(
       ('public.platform_unfinished_signups'),
       ('public.platform_funnel'),
       ('public.platform_upgrade_opportunities'),
-      ('public.platform_set_acquisition_channel')
+      ('public.platform_set_acquisition_channel'),
+      -- Usage (13e)
+      ('public.platform_usage_report')
   $$,
   'authenticated can execute only the allowlisted functions'
 );
