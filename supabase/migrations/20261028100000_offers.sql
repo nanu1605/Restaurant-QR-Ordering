@@ -974,7 +974,10 @@ CREATE OR REPLACE FUNCTION private.dues_rows(p_q text DEFAULT NULL::text)
 AS $function$
   select
     r.id, r.name, r.slug, r.city, r.phone,
-    s.status, s.source, s.billing_cycle, s.trial_ends_at, s.current_period_end,
+    s.status, s.source,
+    -- The cycle what's due is for: a trial's deal, or a new autopay's.
+    coalesce(dd.billing_cycle, case when m.live then s.next_billing_cycle end, s.billing_cycle),
+    s.trial_ends_at, s.current_period_end,
     s.grace_until, s.cancel_at_period_end, s.razorpay_status,
     private.razorpay_managed(s),
     private.renewal_kind(s),
@@ -1096,6 +1099,17 @@ begin
   end if;
 
   if v_sub.razorpay_subscription_id is distinct from v_id then
+    -- An owner's code is spent with the autopay that charged it, also once a
+    -- new checkout has taken that autopay's place and isn't charging yet.
+    if v_status in ('cancelled', 'completed', 'expired') then
+      update public.restaurant_subscriptions s set deal_id = null
+      where s.id = v_sub.id and s.next_plan_id is not null
+        and exists (
+          select 1 from public.subscription_deals d
+          where d.id = s.deal_id and d.created_by is null
+            and (v_status <> 'completed' or coalesce(private.deal_charges_left(d), 0) <= 0)
+        );
+    end if;
     return 'not_current';
   end if;
   -- A charge always pays its period, whatever order the events arrive in: the
@@ -1172,10 +1186,28 @@ begin
       -- Razorpay only ends what Razorpay started and charged for: cancelling a
       -- trial's mandate, a halted subscription or a replacement that never
       -- charged doesn't cut a trial, grace or paid period short.
+      -- A new autopay that completed before its 'active' arrived has made
+      -- every charge (an offer's last, often its only one): it takes over
+      -- first, then finishes like any other.
+      if v_status = 'completed' then
+        update public.restaurant_subscriptions s
+          set status = 'active',
+              source = 'razorpay',
+              plan_id = s.next_plan_id,
+              billing_cycle = coalesce(s.next_billing_cycle, s.billing_cycle),
+              deal_id = s.next_deal_id,
+              next_plan_id = null,
+              next_billing_cycle = null,
+              next_deal_id = null,
+              autopay_finished_at = null,
+              grace_until = null
+          where s.id = v_sub.id and s.next_plan_id is not null;
+      end if;
       -- An autopay that finished its charges (an offer's cycles) runs to the
       -- end of the paid period, while the owner sets up the next (SA-78). An
-      -- owner's code is spent with the autopay that charged it; the team's
-      -- price stays for the next autopay.
+      -- owner's code is spent with the autopay that charged it, once its last
+      -- charge is in (it can arrive after 'completed'); the team's price stays
+      -- for the next autopay.
       update public.restaurant_subscriptions s
         set status = case
               when s.status = 'active' and s.source = 'razorpay' and s.next_plan_id is null
@@ -1192,9 +1224,11 @@ begin
               else s.autopay_finished_at
             end,
             deal_id = case
-              when s.next_plan_id is null and (
-                select d.created_by from public.subscription_deals d where d.id = s.deal_id
-              ) is null then null
+              when s.next_plan_id is null and exists (
+                select 1 from public.subscription_deals d
+                where d.id = s.deal_id and d.created_by is null
+                  and (v_status <> 'completed' or coalesce(private.deal_charges_left(d), 0) <= 0)
+              ) then null
               else s.deal_id
             end,
             next_plan_id = null,
@@ -1419,7 +1453,8 @@ begin
       ))::int, 1);
       new.deal_id := v_deal.id;
       new.list_price_paise := v_deal.list_price_paise * v_count;
-      new.discount_paise := (v_deal.list_price_paise - v_deal.price_paise) * v_count;
+      new.discount_paise := (v_deal.list_price_paise - v_deal.price_paise)
+        * least(v_count, greatest(0, coalesce(private.deal_charges_left(v_deal), v_count)));
     end if;
   end if;
   return new;
@@ -2206,14 +2241,17 @@ as $$
       select 1 from public.subscription_payments sp
       where sp.restaurant_id = p_restaurant_id and sp.purpose = 'subscription'
     ) then 'OFFER_NEW_ONLY'
-    -- A checkout started in the last day, or an autopay set up and waiting for
-    -- its first charge, holds its place.
+    -- A checkout started in the last day, or an autopay authorised and waiting
+    -- for its first charge, holds its place (one never authorised expires).
     when p_offer.max_redemptions is not null and (
       select count(*) from public.subscription_deals d
       where d.offer_id = p_offer.id and d.restaurant_id <> p_restaurant_id
         and (d.used_at is not null
           or (d.ended_at is null and (d.created_at > now() - interval '24 hours'
-            or exists (select 1 from public.restaurant_subscriptions s where s.next_deal_id = d.id))))
+            or exists (
+              select 1 from public.restaurant_subscriptions s
+              where s.next_deal_id = d.id
+                and s.razorpay_status in ('authenticated', 'active', 'pending', 'halted')))))
     ) >= p_offer.max_redemptions then 'OFFER_USED_UP'
   end
 $$;
@@ -2461,6 +2499,8 @@ declare
   v_autopay boolean;
   v_fits boolean;
   v_ended int;
+  v_ended_ids uuid[];
+  v_still_charged boolean;
   v_deal public.subscription_deals;
 begin
   perform private.assert_keys(v_input,
@@ -2493,9 +2533,9 @@ begin
       where d.restaurant_id = p_restaurant_id and d.ended_at is null
         and (d.used_at is null or d.id = v_sub.deal_id)
         and not (v_autopay and coalesce(d.id in (v_sub.deal_id, v_sub.next_deal_id), false))
-      returning d.id, d.price_paise, d.list_price_paise
+      returning d.id
     )
-    select count(*) into v_ended from ended;
+    select count(*), array_agg(ended.id) into v_ended, v_ended_ids from ended;
     if v_ended = 0 then
       perform private.fail(case
         when v_autopay and coalesce(v_sub.deal_id, v_sub.next_deal_id) is not null
@@ -2504,10 +2544,13 @@ begin
     if not v_autopay and v_sub.deal_id is not null then
       update public.restaurant_subscriptions s set deal_id = null where s.id = v_sub.id;
     end if;
+    -- Only the deal waiting ended: a running autopay keeps charging its price.
+    v_still_charged := v_autopay and coalesce(v_sub.deal_id, v_sub.next_deal_id) is not null;
     perform private.audit_platform(v_admin, p_restaurant_id, 'subscription.deal_ended',
-      'subscription_deal', coalesce(v_sub.deal_id, v_sub.next_deal_id), null,
-      jsonb_build_object('ended', v_ended), v_reason);
-    return jsonb_build_object('ended', v_ended);
+      'subscription_deal', v_ended_ids[1], null,
+      jsonb_build_object('ended', v_ended, 'deal_ids', to_jsonb(v_ended_ids),
+        'still_charged', v_still_charged), v_reason);
+    return jsonb_build_object('ended', v_ended, 'still_charged', v_still_charged);
   end if;
 
   select * into v_plan from public.plans p where p.code = private.json_text(v_input, 'plan_code');

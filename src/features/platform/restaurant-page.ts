@@ -156,7 +156,7 @@ export function historyLine(
     }
     case 'subscription.deal_ended':
       return after.still_charged === true
-        ? 'Special price ended: its autopay charges it until it ends'
+        ? 'Waiting price ended: the running autopay keeps its price'
         : 'Special price ended: back to the list price';
     case 'restaurant.suspended':
       return 'Suspended';

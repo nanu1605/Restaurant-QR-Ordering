@@ -142,7 +142,11 @@ export function DealControls({
                 startTransition(async () => {
                   const result = await endDeal(restaurantId);
                   if (result.ok) {
-                    toast.success('Back to the list price');
+                    toast.success(
+                      result.data.stillCharged
+                        ? 'The waiting price ended; the running autopay keeps its price'
+                        : 'Back to the list price',
+                    );
                     setOpen(null);
                   } else toast.error(result.error);
                 })
