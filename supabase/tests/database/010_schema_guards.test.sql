@@ -234,7 +234,10 @@ select set_eq(
       ('public.platform_upgrade_opportunities'),
       ('public.platform_set_acquisition_channel'),
       -- Usage (13e)
-      ('public.platform_usage_report')
+      ('public.platform_usage_report'),
+      -- Revenue (13f)
+      ('public.platform_revenue_report'),
+      ('public.platform_revenue_movements')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

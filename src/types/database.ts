@@ -3017,6 +3017,19 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
+      platform_revenue_movements: {
+        Args: { p_from: string; p_kind: string; p_to: string }
+        Returns: Json
+      }
+      platform_revenue_report: {
+        Args: {
+          p_by?: string
+          p_compare?: boolean
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       platform_save_view: {
         Args: {
           p_name: string
