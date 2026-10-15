@@ -42,6 +42,12 @@ describe('parseServerEnv', () => {
     expect(env.RAZORPAY_API_BASE_URL).toBe('https://api.razorpay.com/v1');
     expect(env.RAZORPAY_KEY_ID).toBeUndefined();
     expect(env.RESEND_API_URL).toBe('https://api.resend.com');
+    // System health (14d): optional, with the real addresses by default.
+    expect(env.RESEND_WEBHOOK_SECRET).toBeUndefined();
+    expect(env.SENTRY_READ_TOKEN).toBeUndefined();
+    expect(env.SENTRY_API_URL).toBe('https://sentry.io/api/0');
+    expect(env.PRODUCTION_APP_URL).toBe('https://menumesh.in');
+    expect(env.STAGING_APP_URL).toBe('https://staging.menumesh.in');
   });
 
   it('coerces numeric settings and rejects a short cookie secret', () => {

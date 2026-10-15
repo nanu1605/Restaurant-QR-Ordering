@@ -360,6 +360,8 @@ test('the daily cleanup deletes old import photos and refuses callers without th
       { step: 'menu import cleanup', ok: true },
       // Support windows that ran out are closed (13c).
       { step: 'support session cleanup', ok: true },
+      // Email log rows past 30 days (14d).
+      { step: 'email log cleanup', ok: true },
     ]),
   );
 

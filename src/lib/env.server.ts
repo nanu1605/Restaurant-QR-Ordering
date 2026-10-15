@@ -51,6 +51,17 @@ const serverSchema = z.object({
   EMAIL_FROM: optionalString,
   // Resend's REST API; tests point it at a local mock (docs/DECISIONS.md P8-12).
   RESEND_API_URL: urlWithDefault('https://api.resend.com'),
+  // Signs Resend's bounce and complaint webhook (docs/DECISIONS.md SA-88).
+  RESEND_WEBHOOK_SECRET: optionalString,
+  // Sentry's issues for /super/system (SA-89): a read-only token (event:read),
+  // apart from the build's SENTRY_AUTH_TOKEN. Tests point the API at a mock.
+  SENTRY_READ_TOKEN: optionalString,
+  SENTRY_ORG: optionalString,
+  SENTRY_PROJECT: optionalString,
+  SENTRY_API_URL: urlWithDefault('https://sentry.io/api/0'),
+  // Whose /api/health versions /super/system shows (SA-92).
+  PRODUCTION_APP_URL: urlWithDefault('https://menumesh.in'),
+  STAGING_APP_URL: urlWithDefault('https://staging.menumesh.in'),
   // Cloudflare Turnstile on the website's forms (docs/DECISIONS.md W-6). The
   // forms are off without both keys, except under `next dev` (test keys).
   TURNSTILE_SITE_KEY: optionalString,

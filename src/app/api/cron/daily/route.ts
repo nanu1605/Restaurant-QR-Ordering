@@ -31,8 +31,8 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * both skipped until Resend is set up), Hindi names that menu edits didn't
  * fill (skipped without a menu import key), website signups older than a
  * week (W-9), password resets older than a day (P11-6), storefront photos of
- * signups that never finished (P11-12), and support screenshots of requests
- * that were never sent (SA-42).
+ * signups that never finished (P11-12), support screenshots of requests
+ * that were never sent (SA-42), and email log rows older than 30 days (SA-87).
  */
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) {
@@ -62,6 +62,7 @@ export async function GET(request: Request) {
     hindiNames,
     signups,
     passwordResets,
+    emailLog,
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
@@ -93,6 +94,11 @@ export async function GET(request: Request) {
     }),
     step(admin, 'password reset cleanup', async () => {
       const { data, error } = await admin.rpc('password_resets_cleanup');
+      if (error) throw new Error(error.message);
+      return { deleted: data };
+    }),
+    step(admin, 'email log cleanup', async () => {
+      const { data, error } = await admin.rpc('email_log_cleanup');
       if (error) throw new Error(error.message);
       return { deleted: data };
     }),
@@ -140,6 +146,7 @@ export async function GET(request: Request) {
     hindiNames,
     signups,
     passwordResets,
+    emailLog,
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
@@ -155,6 +162,7 @@ export async function GET(request: Request) {
       hindiNames,
       signups,
       passwordResets,
+      emailLog,
       storefrontPhotos,
       supportScreenshots,
       supportSessions,
