@@ -20,33 +20,27 @@ select tests.add_member(:'limits', 'owner', 'sa650owner') as owner \gset
 -- ─── Offers ─────────────────────────────────────────────────────────────────
 select tests.authenticate_as_platform_admin(:'admin');
 select is(
-  public.platform_save_offer(null, '{"code": " launch20 ", "discount_kind": "percent",
+  public.platform_save_offer('{"code": " launch20 ", "discount_kind": "percent",
     "discount_value": 20, "duration_cycles": 3, "max_redemptions": 2, "plan_codes": ["growth"],
     "cycles": ["monthly"]}') ->> 'code',
   'LAUNCH20',
   'an offer: its code in capitals'
 );
-select public.platform_save_offer(null,
-  '{"code": "FLAT100", "discount_kind": "flat", "discount_value": 10000, "new_only": true}');
-select public.platform_save_offer(null,
-  '{"code": "ONEONLY", "discount_kind": "percent", "discount_value": 10, "max_redemptions": 1}');
-select public.platform_save_offer(null, '{"code": "OLDDEAL", "discount_kind": "percent",
+select public.platform_save_offer('{"code": "FLAT100", "discount_kind": "flat", "discount_value": 10000, "new_only": true}');
+select public.platform_save_offer('{"code": "ONEONLY", "discount_kind": "percent", "discount_value": 10, "max_redemptions": 1}');
+select public.platform_save_offer('{"code": "OLDDEAL", "discount_kind": "percent",
   "discount_value": 10, "valid_from": "2020-01-01T00:00:00Z", "valid_until": "2020-02-01T00:00:00Z"}');
-select throws_ok($$select public.platform_save_offer(null,
-  '{"code": "LAUNCH20", "discount_kind": "percent", "discount_value": 5}')$$,
+select throws_ok($$select public.platform_save_offer('{"code": "LAUNCH20", "discount_kind": "percent", "discount_value": 5}')$$,
   'P0001', 'OFFER_CODE_TAKEN', 'codes are unique');
-select throws_ok($$select public.platform_save_offer(null,
-  '{"code": "HALF", "discount_kind": "percent", "discount_value": 100}')$$,
+select throws_ok($$select public.platform_save_offer('{"code": "HALF", "discount_kind": "percent", "discount_value": 100}')$$,
   'P0001', 'INVALID_INPUT', 'a percentage below 100');
-select throws_ok($$select public.platform_save_offer(null,
-  '{"code": "ODD", "discount_kind": "flat", "discount_value": 15050}')$$,
+select throws_ok($$select public.platform_save_offer('{"code": "ODD", "discount_kind": "flat", "discount_value": 15050}')$$,
   'P0001', 'INVALID_INPUT', 'a flat discount in whole rupees');
-select throws_ok($$select public.platform_save_offer(null,
-  '{"code": "NOPLAN", "discount_kind": "flat", "discount_value": 100, "plan_codes": ["gold"]}')$$,
+select throws_ok($$select public.platform_save_offer('{"code": "NOPLAN", "discount_kind": "flat", "discount_value": 100, "plan_codes": ["gold"]}')$$,
   'P0001', 'INVALID_INPUT', 'only plans that exist');
 select id as launch20 from public.offers where code = 'LAUNCH20' \gset
-select public.platform_save_offer(:'launch20', '{"description": "Launch month", "max_redemptions": 3}');
-select throws_ok(format($$select public.platform_save_offer(%L, '{"discount_value": 50}')$$, :'launch20'),
+select public.platform_save_offer('{"description": "Launch month", "max_redemptions": 3}', :'launch20');
+select throws_ok(format($$select public.platform_save_offer('{"discount_value": 50}', %L)$$, :'launch20'),
   'P0001', 'INVALID_INPUT', 'its terms don''t change');
 select tests.clear_auth();
 select is(
@@ -194,6 +188,11 @@ select is(
 );
 select throws_ok(format($$select public.subscription_checkout_deal(%L, 'growth', 'monthly', 'launch20')$$, :'auto'),
   'P0001', 'OFFER_ALREADY_USED', 'an offer is used once per restaurant');
+select is(
+  public.subscription_offer_preview(:'auto') ->> 'current_price_paise',
+  '71900',
+  'the owner''s page shows the price it pays'
+);
 
 -- The last discounted charge: the autopay finishes and runs to its period end.
 select public.razorpay_record_webhook('sa650_2', jsonb_build_object(

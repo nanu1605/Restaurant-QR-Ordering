@@ -2203,7 +2203,7 @@ $$;
 
 -- A new offer, or an existing one's description, end date or maximum, or
 -- ending it. Its terms don't change once made: end it and make another.
-create function public.platform_save_offer(p_offer_id uuid, p_offer jsonb)
+create function public.platform_save_offer(p_offer jsonb, p_offer_id uuid default null)
 returns jsonb
 language plpgsql
 security definer
@@ -2600,8 +2600,8 @@ end;
 $$;
 
 -- ─── The owner's checkout (service role: the Subscription page) ─────────────
--- The team's deal waiting for this restaurant, or an offer code's prices for
--- each plan and cycle. A deal from the team stands: codes are for everyone else.
+-- The team's deal waiting for this restaurant (with the deal prices it pays
+-- now and next), or an offer code's prices for each plan and cycle. A deal from the team stands: codes are for everyone else.
 create function public.subscription_offer_preview(p_restaurant_id uuid, p_code text default null)
 returns jsonb
 language plpgsql
@@ -2617,15 +2617,26 @@ begin
   select * into v_team from public.subscription_deals d
   where d.restaurant_id = p_restaurant_id and d.ended_at is null and d.created_by is not null;
   if p_code is null then
-    return case when v_team.id is not null then jsonb_build_object(
-      'deal', jsonb_build_object(
+    -- Also the deal prices the restaurant pays now and its next autopay will.
+    return jsonb_build_object(
+      'deal', case when v_team.id is not null then jsonb_build_object(
         'plan_code', (select p.code from public.plans p where p.id = v_team.plan_id),
         'billing_cycle', v_team.billing_cycle,
         'list_price_paise', v_team.list_price_paise,
         'price_paise', v_team.price_paise,
         'cycles', v_team.cycles
+      ) end,
+      'current_price_paise', (
+        select d.price_paise from public.restaurant_subscriptions s
+        join public.subscription_deals d on d.id = s.deal_id
+        where s.restaurant_id = p_restaurant_id
+      ),
+      'next_price_paise', (
+        select d.price_paise from public.restaurant_subscriptions s
+        join public.subscription_deals d on d.id = s.next_deal_id
+        where s.restaurant_id = p_restaurant_id
       )
-    ) end;
+    );
   end if;
   if v_team.id is not null then
     perform private.fail('DEAL_SET_BY_TEAM');
@@ -2856,8 +2867,8 @@ revoke execute on function private.offer_price_paise(public.offers, public.plans
   from public, anon, authenticated;
 revoke execute on function public.platform_list_offers() from public, anon;
 grant execute on function public.platform_list_offers() to authenticated;
-revoke execute on function public.platform_save_offer(uuid, jsonb) from public, anon;
-grant execute on function public.platform_save_offer(uuid, jsonb) to authenticated;
+revoke execute on function public.platform_save_offer(jsonb, uuid) from public, anon;
+grant execute on function public.platform_save_offer(jsonb, uuid) to authenticated;
 revoke execute on function public.platform_set_deal(uuid, jsonb) from public, anon;
 grant execute on function public.platform_set_deal(uuid, jsonb) to authenticated;
 revoke execute on function public.platform_set_override(uuid, jsonb) from public, anon;
