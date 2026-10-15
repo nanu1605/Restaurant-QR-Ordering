@@ -52,12 +52,14 @@ const monthLabel = new Intl.DateTimeFormat('en-IN', {
 export default async function SuperHomePage({ searchParams }: PageProps<'/super'>) {
   await requirePlatformPermission('restaurants.view');
   const params = readHomeParams(await searchParams);
-  const [money, growth, support, audit] = await Promise.all([
+  const [money, growth, support, audit, manage] = await Promise.all([
     hasPlatformPermission('money.view'),
     hasPlatformPermission('growth.manage'),
     hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
+    hasPlatformPermission('restaurants.manage'),
   ]);
+  const denied = (await searchParams).denied === '1';
   const kinds = activityKindsFor({ money, growth, support, audit });
   const activityKinds: ActivityKind[] | undefined = params.kind ? [params.kind] : [...kinds];
   const [home, attention, activity, plans, setupFee] = await Promise.all([
@@ -85,12 +87,19 @@ export default async function SuperHomePage({ searchParams }: PageProps<'/super'
         title="Home"
         description="Money, restaurants and what needs doing today, in India time."
         actions={
-          <Link href="/super/restaurants/new" className={buttonVariants({ size: 'touch' })}>
-            <Plus aria-hidden />
-            Onboard restaurant
-          </Link>
+          manage && (
+            <Link href="/super/restaurants/new" className={buttonVariants({ size: 'touch' })}>
+              <Plus aria-hidden />
+              Onboard restaurant
+            </Link>
+          )
         }
       />
+      {denied && (
+        <p role="status" className="rounded-lg border border-line bg-surface p-3 text-sm text-ink">
+          Your role doesn’t open that page. An Admin can change your role on the Team page.
+        </p>
+      )}
 
       <KeyNumbers home={home} params={params} today={today} />
 

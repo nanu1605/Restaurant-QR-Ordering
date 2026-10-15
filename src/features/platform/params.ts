@@ -190,6 +190,8 @@ export function readDuesFilters(params: SearchParams): DuesFilters {
 export type AuditFilters = {
   restaurant_id?: string;
   actor_type?: ActorType;
+  /** One team member's actions (`?member=`; docs/DECISIONS.md SA-70+). */
+  actor?: string;
   action?: string;
   from?: string;
   to?: string;
@@ -198,6 +200,7 @@ export type AuditFilters = {
 
 export function readAuditFilters(params: SearchParams): AuditFilters {
   const restaurant = firstParam(params, 'restaurant');
+  const member = firstParam(params, 'member');
   const action = firstParam(params, 'action')?.toLowerCase();
   const from = firstParam(params, 'from');
   const to = firstParam(params, 'to');
@@ -205,6 +208,7 @@ export function readAuditFilters(params: SearchParams): AuditFilters {
   return {
     restaurant_id: restaurant && UUID.test(restaurant) ? restaurant : undefined,
     actor_type: oneOf(firstParam(params, 'actor'), ACTOR_TYPES),
+    actor: member && UUID.test(member) ? member : undefined,
     action: action && /^[a-z_.]{1,60}$/.test(action) ? action : undefined,
     from: validFrom,
     to: isDate(to) && (!validFrom || to >= validFrom) ? to : undefined,

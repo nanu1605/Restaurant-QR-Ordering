@@ -146,6 +146,8 @@ type RestaurantActionsProps = {
    * and unused, this team member's, or someone else's.
    */
   support: { state: 'none' | 'open' | 'mine' | 'in_use'; lastName: string };
+  /** What the member's role allows (docs/SUPER_ADMIN_PLAN.md §3). */
+  can: { manage: boolean; record: boolean; support: boolean };
 };
 
 /**
@@ -161,6 +163,7 @@ export function RestaurantActions({
   paymentStart,
   razorpay,
   support,
+  can,
 }: RestaurantActionsProps) {
   const router = useRouter();
   const [open, setOpen] = useState<Dialogs>(null);
@@ -183,48 +186,50 @@ export function RestaurantActions({
           <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-56">
-          {subscription?.status === 'trialing' && (
+          {can.manage && subscription?.status === 'trialing' && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('trial')}>
               <CalendarPlus aria-hidden />
               Extend trial
             </DropdownMenuItem>
           )}
-          {subscription && (
+          {can.manage && subscription && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('plan')}>
               <Tags aria-hidden />
               Change plan
             </DropdownMenuItem>
           )}
-          {subscription && (
+          {can.record && subscription && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('payment')}>
               <CreditCard aria-hidden />
               Record payment
             </DropdownMenuItem>
           )}
-          {subscription && razorpay && (
+          {can.record && subscription && razorpay && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('link')}>
               <Link2 aria-hidden />
               Send payment link
             </DropdownMenuItem>
           )}
-          {razorpay?.subscriptionId && (
+          {can.record && razorpay?.subscriptionId && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={sync} disabled={syncing}>
               <RefreshCw aria-hidden />
               {syncing ? 'Syncing…' : 'Sync with Razorpay'}
             </DropdownMenuItem>
           )}
-          {razorpay?.autopay === 'on' && (
+          {can.record && razorpay?.autopay === 'on' && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('autopay')}>
               <CircleStop aria-hidden />
               Cancel autopay
             </DropdownMenuItem>
           )}
-          {subscription && <DropdownMenuSeparator />}
-          <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('note')}>
-            <NotebookPen aria-hidden />
-            Add note
-          </DropdownMenuItem>
-          {support.state === 'mine' ? (
+          {subscription && (can.manage || can.record) && <DropdownMenuSeparator />}
+          {can.manage && (
+            <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('note')}>
+              <NotebookPen aria-hidden />
+              Add note
+            </DropdownMenuItem>
+          )}
+          {!can.support ? null : support.state === 'mine' ? (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => router.push('/admin')}>
               <Headset aria-hidden />
               Open admin panel
@@ -239,8 +244,8 @@ export function RestaurantActions({
               Start support session
             </DropdownMenuItem>
           )}
-          <DropdownMenuSeparator />
-          {status === 'active' ? (
+          {can.manage && <DropdownMenuSeparator />}
+          {!can.manage ? null : status === 'active' ? (
             <DropdownMenuItem
               variant="destructive"
               className={ITEM_CLASS}

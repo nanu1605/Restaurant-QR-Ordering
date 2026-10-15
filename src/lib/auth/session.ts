@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 
 import type { Lang } from '@/features/ordering/strings';
+import { platformAccessSchema, type PlatformAccess } from '@/features/platform/team';
 import { createClient } from '@/lib/supabase/server';
 import type { Enums } from '@/types/database';
 
@@ -120,6 +121,19 @@ export const getPlatformAdminStatus = cache(async (): Promise<PlatformAdminStatu
   const { data, error } = await supabase.rpc('platform_admin_status');
   if (error) throw new Error(`Could not check platform admin: ${error.message}`);
   return data === 'ok' || data === 'mfa_required' ? data : 'none';
+});
+
+/**
+ * The signed-in team member's role, name and permissions (docs/DECISIONS.md
+ * SA-70), as the database gives them; null for anyone else.
+ */
+export const getPlatformAccess = cache(async (): Promise<PlatformAccess | null> => {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_my_access');
+  if (error) throw new Error(`Could not read the team member's access: ${error.message}`);
+  return platformAccessSchema.parse(data);
 });
 
 /** A platform admin, with or without the second factor yet (routing only). */

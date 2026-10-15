@@ -32,7 +32,7 @@ import {
   type DuesRow,
 } from '@/features/platform/platform';
 import { getSetupFee, listDues, listPlans } from '@/features/platform/queries';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
 import { razorpayConfig } from '@/lib/razorpay/razorpay';
 
@@ -50,6 +50,7 @@ const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
  */
 export default async function DuesPage({ searchParams }: PageProps<'/super/money/dues'>) {
   await requirePlatformPermission('money.view');
+  const manage = await hasPlatformPermission('restaurants.manage');
   const filters = readDuesFilters(await searchParams);
   const [list, plans, setupFee] = await Promise.all([
     listDues(filters),
@@ -70,6 +71,7 @@ export default async function DuesPage({ searchParams }: PageProps<'/super/money
           bucket={bucket}
           row={row}
           linkDefaults={linkDefaults(row)}
+          manage={manage}
         />
       ))}
     </ul>
@@ -252,10 +254,13 @@ function DuesItem({
   bucket,
   row,
   linkDefaults,
+  manage,
 }: {
   bucket: DuesBucket;
   row: DuesRow;
   linkDefaults: LinkDefaults | null;
+  /** Extending a trial needs restaurants.manage (docs/SUPER_ADMIN_PLAN.md §3). */
+  manage: boolean;
 }) {
   const cycle = row.billing_cycle === 'yearly' ? 'yearly' : 'monthly';
   return (
@@ -315,7 +320,7 @@ function DuesItem({
         <DuesActions
           restaurantId={row.restaurant_id}
           restaurantName={row.name}
-          canExtendTrial={row.status === 'trialing'}
+          canExtendTrial={manage && row.status === 'trialing'}
           paymentStart={firstUnpaidDay({
             status: row.status,
             restrictionAt: row.restriction_at,

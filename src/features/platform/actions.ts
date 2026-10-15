@@ -13,7 +13,7 @@ import {
   fromZodError,
   type ActionResult,
 } from '@/lib/action-result';
-import { requirePlatformAdmin, requirePlatformPermission } from '@/lib/auth/guards';
+import { requirePlatformPermission } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { getServerEnv } from '@/lib/env.server';
@@ -71,7 +71,7 @@ export async function suspendRestaurant(
   restaurantId: string,
   input: SuspendInput,
 ): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.manage');
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = suspendSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -89,7 +89,7 @@ export async function suspendRestaurant(
 }
 
 export async function unsuspendRestaurant(restaurantId: string): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.manage');
   const id = restaurantIdSchema.safeParse(restaurantId);
   if (!id.success) return actionError(GENERIC_ERROR);
 
@@ -108,7 +108,7 @@ export async function extendTrial(
   restaurantId: string,
   input: ExtendTrialInput,
 ): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.manage');
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = extendTrialSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -128,7 +128,7 @@ export async function changePlan(
   restaurantId: string,
   input: ChangePlanInput,
 ): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.manage');
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = changePlanSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -149,7 +149,7 @@ export async function recordManualPayment(
   restaurantId: string,
   input: ManualPaymentInput,
 ): Promise<ActionResult<{ extended: boolean }>> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('money.record');
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = manualPaymentSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -194,7 +194,7 @@ export async function resetOwnerPassword(
   memberId: string,
   input: OwnerPasswordInput,
 ): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.support');
   const id = restaurantIdSchema.safeParse(memberId);
   const parsed = ownerPasswordSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -251,7 +251,7 @@ const ONBOARD_FIELD_ERRORS: Record<string, { field: keyof OnboardFormInput; mess
 export async function onboardNewRestaurant(
   input: OnboardFormInput,
 ): Promise<ActionResult<OnboardHandover>> {
-  const user = await requirePlatformAdmin();
+  const user = await requirePlatformPermission('restaurants.manage');
   const parsed = onboardSchema.safeParse(input);
   if (!parsed.success) return fromZodError(parsed.error);
   const form = parsed.data;
@@ -305,7 +305,7 @@ export async function createRazorpayPlan(
   planId: string,
   cycle: 'monthly' | 'yearly',
 ): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('settings.manage');
   const id = restaurantIdSchema.safeParse(planId);
   if (!id.success || (cycle !== 'monthly' && cycle !== 'yearly')) {
     return actionError(GENERIC_ERROR);
@@ -357,7 +357,7 @@ export async function createRazorpayPlan(
 
 /** Saves a plan (spec §13.4 Plans); the database audits what changed. */
 export async function updatePlan(planId: string, input: PlanFormInput): Promise<ActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('settings.manage');
   const id = restaurantIdSchema.safeParse(planId);
   const parsed = planFormSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -504,7 +504,7 @@ export async function sendPaymentLink(
   restaurantId: string,
   input: PaymentLinkInput,
 ): Promise<ActionResult<{ shortUrl: string; sentTo: string[] }>> {
-  const user = await requirePlatformAdmin();
+  const user = await requirePlatformPermission('money.record');
   const id = restaurantIdSchema.safeParse(restaurantId);
   const parsed = paymentLinkSchema.safeParse(input);
   if (!id.success) return actionError(GENERIC_ERROR);
@@ -579,7 +579,7 @@ export async function sendPaymentLink(
 
 /** Saves what Razorpay says about the restaurant's subscription now. */
 export async function syncRazorpay(restaurantId: string): Promise<ActionResult> {
-  const user = await requirePlatformAdmin();
+  const user = await requirePlatformPermission('money.record');
   const id = restaurantIdSchema.safeParse(restaurantId);
   if (!id.success) return actionError(GENERIC_ERROR);
   const config = razorpayConfig();
@@ -591,7 +591,7 @@ export async function syncRazorpay(restaurantId: string): Promise<ActionResult> 
 
 /** Stops the restaurant's autopay, as the owner can (at period end once it has charged). */
 export async function cancelRestaurantAutopay(restaurantId: string): Promise<ActionResult> {
-  const user = await requirePlatformAdmin();
+  const user = await requirePlatformPermission('money.record');
   const id = restaurantIdSchema.safeParse(restaurantId);
   if (!id.success) return actionError(GENERIC_ERROR);
   const config = razorpayConfig();
@@ -605,7 +605,7 @@ export async function cancelRestaurantAutopay(restaurantId: string): Promise<Act
 export async function reprocessWebhook(
   eventId: string,
 ): Promise<ActionResult<{ result: string; error: string | null }>> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('settings.manage');
   const id = restaurantIdSchema.safeParse(eventId);
   if (!id.success) return actionError(GENERIC_ERROR);
   const supabase = await createClient();

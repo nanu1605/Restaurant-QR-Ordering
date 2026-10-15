@@ -10,7 +10,7 @@ import { AuditFiltersForm } from '@/features/platform/components/audit-filters';
 import { filterParams, readAuditFilters, type AuditFilters } from '@/features/platform/params';
 import { ACTOR_TYPE_LABELS, formatDateTime, type AuditRow } from '@/features/platform/platform';
 import { listPlatformAudit } from '@/features/platform/queries';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { requirePlatformPermission } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
 
 export const metadata: Metadata = {
@@ -21,10 +21,11 @@ const PATH = '/super/audit';
 
 /** Platform audit log (spec §13.4, docs/DECISIONS.md P7-11), newest first. */
 export default async function SuperAuditPage({ searchParams }: PageProps<'/super/audit'>) {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('audit.view');
   const filters = readAuditFilters(await searchParams);
   const list = await listPlatformAudit(filters);
   const restaurantName = filters.restaurant_id ? list.rows[0]?.restaurant_name : null;
+  const memberName = filters.actor ? (list.rows[0]?.actor_name ?? list.rows[0]?.actor_email) : null;
 
   return (
     <>
@@ -40,6 +41,17 @@ export default async function SuperAuditPage({ searchParams }: PageProps<'/super
             className="font-medium text-brand underline underline-offset-4"
           >
             Show every restaurant
+          </Link>
+        </p>
+      )}
+      {filters.actor && (
+        <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-ink">
+          Showing what {memberName ?? 'one team member'} did only.
+          <Link
+            href={auditHref({ ...filters, actor: undefined, page: 1 })}
+            className="font-medium text-brand underline underline-offset-4"
+          >
+            Show everyone
           </Link>
         </p>
       )}
@@ -85,6 +97,7 @@ function auditHref(filters: AuditFilters) {
     filterParams({
       restaurant: filters.restaurant_id,
       actor: filters.actor_type,
+      member: filters.actor,
       action: filters.action,
       from: filters.from,
       to: filters.to,
@@ -111,7 +124,7 @@ function AuditTableRow({ row }: { row: AuditRow }) {
         )}
       </td>
       <td className="px-3 py-2">
-        <div>{row.actor_label}</div>
+        <div>{row.actor_name ?? row.actor_label}</div>
         <div className="text-xs text-ink-muted">
           {ACTOR_TYPE_LABELS[row.actor_type]}
           {row.actor_role ? `, ${row.actor_role}` : ''}

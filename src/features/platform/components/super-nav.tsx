@@ -16,6 +16,7 @@ import {
   ScrollText,
   Settings,
   Tags,
+  UsersRound,
   Webhook,
   type LucideIcon,
 } from 'lucide-react';
@@ -26,55 +27,126 @@ import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
+import type { PlatformPermission } from '@/lib/auth/permissions';
+
 import { useAttentionCount } from './alerts-bell';
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** The permission that opens it (docs/SUPER_ADMIN_PLAN.md §3). */
+  permission: PlatformPermission;
+  /** Current only on this page, not the ones under it. */
+  exact?: boolean;
+};
 type NavGroup = { title: string | null; items: NavItem[] };
 
-// docs/SUPER_ADMIN_PLAN.md §2: a group appears once it has a page (docs/DECISIONS.md SA-3).
+// docs/SUPER_ADMIN_PLAN.md §2: a group appears once it has a page (docs/DECISIONS.md SA-3)
+// the member's role opens (SA-70).
 const NAV: NavGroup[] = [
-  { title: null, items: [{ href: '/super', label: 'Home', icon: House }] },
+  {
+    title: null,
+    items: [
+      { href: '/super', label: 'Home', icon: House, permission: 'restaurants.view', exact: true },
+    ],
+  },
   {
     title: 'Money',
     items: [
-      { href: '/super/money/payments', label: 'Payments', icon: ReceiptIndianRupee },
-      { href: '/super/money/dues', label: 'Dues', icon: HandCoins },
-      { href: '/super/money/subscriptions', label: 'Subscriptions', icon: CreditCard },
-      { href: '/super/money/revenue', label: 'Revenue', icon: ChartLine },
+      {
+        href: '/super/money/payments',
+        label: 'Payments',
+        icon: ReceiptIndianRupee,
+        permission: 'money.view',
+      },
+      { href: '/super/money/dues', label: 'Dues', icon: HandCoins, permission: 'money.view' },
+      {
+        href: '/super/money/subscriptions',
+        label: 'Subscriptions',
+        icon: CreditCard,
+        permission: 'restaurants.view',
+      },
+      { href: '/super/money/revenue', label: 'Revenue', icon: ChartLine, permission: 'money.view' },
     ],
   },
   {
     title: 'Restaurants',
     items: [
-      { href: '/super/restaurants', label: 'Restaurants', icon: Building2 },
-      { href: '/super/support', label: 'Support inbox', icon: LifeBuoy },
+      {
+        href: '/super/restaurants',
+        label: 'Restaurants',
+        icon: Building2,
+        permission: 'restaurants.view',
+      },
+      {
+        href: '/super/support',
+        label: 'Support inbox',
+        icon: LifeBuoy,
+        permission: 'restaurants.support',
+      },
     ],
   },
   {
     title: 'Growth',
     items: [
-      { href: '/super/leads', label: 'Leads', icon: Inbox },
-      { href: '/super/funnel', label: 'Funnel', icon: Funnel },
+      { href: '/super/leads', label: 'Leads', icon: Inbox, permission: 'growth.manage' },
+      { href: '/super/funnel', label: 'Funnel', icon: Funnel, permission: 'growth.manage' },
     ],
   },
-  { title: 'Insights', items: [{ href: '/super/usage', label: 'Usage', icon: ChartColumn }] },
-  { title: 'System', items: [{ href: '/super/webhooks', label: 'Webhooks', icon: Webhook }] },
+  {
+    title: 'Insights',
+    items: [
+      { href: '/super/usage', label: 'Usage', icon: ChartColumn, permission: 'insights.view' },
+    ],
+  },
+  {
+    title: 'System',
+    items: [
+      { href: '/super/webhooks', label: 'Webhooks', icon: Webhook, permission: 'system.view' },
+    ],
+  },
   {
     title: 'Settings',
     items: [
-      { href: '/super/settings', label: 'Platform settings', icon: Settings },
-      { href: '/super/plans', label: 'Plans', icon: Tags },
-      { href: '/super/audit', label: 'Audit log', icon: ScrollText },
+      {
+        href: '/super/settings',
+        label: 'Platform settings',
+        icon: Settings,
+        permission: 'settings.manage',
+        exact: true,
+      },
+      {
+        href: '/super/settings/team',
+        label: 'Team',
+        icon: UsersRound,
+        permission: 'team.manage',
+      },
+      { href: '/super/plans', label: 'Plans', icon: Tags, permission: 'settings.manage' },
+      { href: '/super/audit', label: 'Audit log', icon: ScrollText, permission: 'audit.view' },
     ],
   },
 ];
 
-function isActive(pathname: string, href: string) {
-  if (href === '/super') return pathname === '/super';
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, { href, exact }: NavItem) {
+  return pathname === href || (!exact && pathname.startsWith(`${href}/`));
 }
 
-export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
+/** The groups and pages a member with these permissions can open. */
+export function navFor(permissions: readonly string[]): NavGroup[] {
+  return NAV.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => permissions.includes(item.permission)),
+  })).filter((group) => group.items.length > 0);
+}
+
+export function SuperNav({
+  permissions,
+  onNavigate,
+}: {
+  permissions: readonly string[];
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   // The nav renders twice (sidebar and sheet), so headings need unique ids.
   const ids = useId();
@@ -83,7 +155,7 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <nav aria-label="Platform sections" className="flex flex-col gap-4">
-      {NAV.map(({ title, items }, index) => (
+      {navFor(permissions).map(({ title, items }, index) => (
         <div key={title ?? 'home'} className="flex flex-col gap-1">
           {title && (
             <p
@@ -97,8 +169,9 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
             aria-labelledby={title ? `${ids}-${index}` : undefined}
             className="flex flex-col gap-0.5"
           >
-            {items.map(({ href, label, icon: Icon }) => {
-              const active = isActive(pathname, href);
+            {items.map((item) => {
+              const { href, label, icon: Icon } = item;
+              const active = isActive(pathname, item);
               return (
                 <li key={href}>
                   <Link
@@ -130,7 +203,7 @@ export function SuperNav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 /** The sections in a sheet on narrow screens. */
-export function SuperMobileNav() {
+export function SuperMobileNav({ permissions }: { permissions: readonly string[] }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -146,7 +219,7 @@ export function SuperMobileNav() {
         <SheetTitle className="px-3 pt-1 text-sm font-semibold text-brand">
           Platform admin
         </SheetTitle>
-        <SuperNav onNavigate={() => setOpen(false)} />
+        <SuperNav permissions={permissions} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

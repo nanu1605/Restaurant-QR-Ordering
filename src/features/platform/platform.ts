@@ -648,6 +648,7 @@ const auditRowSchema = z.object({
   actor_label: z.string(),
   actor_role: z.string().nullable(),
   actor_email: z.string().nullable(),
+  actor_name: z.string().nullable(),
   action: z.string(),
   entity_type: z.string().nullable(),
   entity_id: z.string().nullable(),

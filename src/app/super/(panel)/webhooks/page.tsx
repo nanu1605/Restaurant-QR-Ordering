@@ -10,7 +10,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { ReprocessButton } from '@/features/platform/components/reprocess-button';
 import { formatDateTime } from '@/features/platform/platform';
 import { listWebhookEvents, WEBHOOK_PAGE_SIZE } from '@/features/platform/queries';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
 
 export const metadata: Metadata = {
@@ -24,7 +24,8 @@ const PATH = '/super/webhooks';
  * first. A failed one keeps its error and can be run again.
  */
 export default async function SuperWebhooksPage({ searchParams }: PageProps<'/super/webhooks'>) {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('system.view');
+  const reprocess = await hasPlatformPermission('settings.manage');
   const params = await searchParams;
   const failedOnly = params.status === 'failed';
   const requested = Math.max(1, Number.parseInt(String(params.page ?? '1'), 10) || 1);
@@ -96,7 +97,7 @@ export default async function SuperWebhooksPage({ searchParams }: PageProps<'/su
                       <div className="flex flex-col items-start gap-2">
                         <span className="font-medium text-destructive">Failed</span>
                         <span className="text-xs break-words">{row.processing_error}</span>
-                        <ReprocessButton eventId={row.id} />
+                        {reprocess && <ReprocessButton eventId={row.id} />}
                       </div>
                     ) : row.processed_at ? (
                       <span>Processed {formatDateTime(row.processed_at)}</span>

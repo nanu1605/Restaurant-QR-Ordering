@@ -201,7 +201,12 @@ export default async function RestaurantOverviewPage({
                       Last login {formatDateTime(owner.last_sign_in_at)}
                     </span>
                   </div>
-                  <OwnerPasswordButton memberId={owner.member_id} ownerName={owner.display_name} />
+                  {support && (
+                    <OwnerPasswordButton
+                      memberId={owner.member_id}
+                      ownerName={owner.display_name}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

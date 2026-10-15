@@ -2,12 +2,14 @@ import 'server-only';
 
 import { redirect } from 'next/navigation';
 
+import type { PlatformPermission } from './permissions';
 import { homePathFor } from './redirects';
 import type { MemberRole } from './roles';
 import {
   getCurrentMembership,
   getCurrentUser,
   getIsPlatformAdmin,
+  getPlatformAccess,
   getPlatformAdminStatus,
   type CurrentMembership,
   type CurrentUser,
@@ -54,39 +56,27 @@ export async function requirePlatformAdmin(): Promise<CurrentUser> {
   return user;
 }
 
-/** The super-admin permissions (docs/SUPER_ADMIN_PLAN.md §3), checked again in SQL. */
-export type PlatformPermission =
-  | 'restaurants.view'
-  | 'restaurants.manage'
-  | 'restaurants.support'
-  | 'restaurants.close'
-  | 'money.view'
-  | 'money.record'
-  | 'growth.manage'
-  | 'insights.view'
-  | 'settings.manage'
-  | 'team.manage'
-  | 'system.view'
-  | 'audit.view';
+export type { PlatformPermission } from './permissions';
 
-/** A platform admin allowed to do `permission` (docs/DECISIONS.md SA-2). */
+/**
+ * A team member whose role holds `permission` (docs/DECISIONS.md SA-2, SA-70);
+ * anyone else goes to Home, which says the page isn't theirs. SQL checks again.
+ */
 export async function requirePlatformPermission(
   permission: PlatformPermission,
 ): Promise<CurrentUser> {
-  // ponytail: every platform admin holds every permission until team roles (13g) check it.
-  void permission;
-  return requirePlatformAdmin();
+  const user = await requirePlatformAdmin();
+  if (!(await hasPlatformPermission(permission))) redirect('/super?denied=1');
+  return user;
 }
 
 /**
- * Whether the platform admin holds a permission, for what only some see (money
- * on the restaurants list); the page itself is guarded by requirePlatformPermission.
+ * Whether the team member's role holds a permission, for what only some see
+ * (money on the restaurants list, actions on a restaurant's page).
  */
 export async function hasPlatformPermission(permission: PlatformPermission): Promise<boolean> {
-  // ponytail: every platform admin holds every permission until team roles (13g) check it.
-  void permission;
   await requirePlatformAdmin();
-  return true;
+  return (await getPlatformAccess())?.permissions.includes(permission) ?? false;
 }
 
 /** A platform admin, second factor or not: only for the /super/mfa page. */
