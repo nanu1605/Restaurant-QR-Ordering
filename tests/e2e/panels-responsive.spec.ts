@@ -146,6 +146,8 @@ test('the platform admin money, insights and team pages fit every screen', async
     // Announcements and standees (14c).
     '/super/settings/announcements',
     '/super/standees',
+    // System health (14d).
+    '/super/system',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

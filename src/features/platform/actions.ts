@@ -415,6 +415,8 @@ export async function updatePlatformSettings(input: PlatformSettingsInput): Prom
       health_inactive_days: settings.healthInactiveDays,
       health_slowing_percent: settings.healthSlowingPercent,
       health_slowing_min_orders: settings.healthSlowingMinOrders,
+      db_limit_mb: settings.dbLimitMb === '' ? null : Number(settings.dbLimitMb),
+      storage_limit_mb: settings.storageLimitMb === '' ? null : Number(settings.storageLimitMb),
     },
   });
   if (error) return fromDbError(error, 'platform_update_settings');

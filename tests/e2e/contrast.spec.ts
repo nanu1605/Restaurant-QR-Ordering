@@ -148,6 +148,8 @@ test('platform admin settings and standees', async ({ page }) => {
     // Announcements and standees (14c).
     '/super/settings/announcements',
     '/super/standees',
+    // System health (14d).
+    '/super/system',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

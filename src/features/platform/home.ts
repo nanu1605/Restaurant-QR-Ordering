@@ -77,8 +77,11 @@ export const ATTENTION_GROUPS = [
   'inactive',
   'slowing',
   'duplicates',
+  'menu_imports',
   'webhooks',
   'cron',
+  'email',
+  'capacity',
 ] as const;
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string> = {
@@ -90,8 +93,11 @@ const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string
   stuck_onboarding: 'Stuck in onboarding',
   slowing: 'Orders slowing down',
   duplicates: 'Possible duplicate signups',
+  menu_imports: 'Menu imports that failed',
   webhooks: 'Failed webhooks',
-  cron: 'Failed scheduled steps',
+  cron: 'Scheduled jobs that failed or missed a run',
+  email: 'Emails that failed or bounced',
+  capacity: 'Running out of space',
 };
 
 /** A group's heading; how long "inactive" is comes from the health settings. */
@@ -189,14 +195,54 @@ const attentionGroupSchema = z.discriminatedUnion('group', [
     ),
   }),
   z.object({
+    group: z.literal('menu_imports'),
+    count,
+    items: item(
+      z.object({
+        import_id: z.string(),
+        restaurant_id: z.string(),
+        name: z.string(),
+        source: z.enum(['photo', 'csv']),
+        error: z.string().nullable(),
+        completed_at: iso,
+      }),
+    ),
+  }),
+  z.object({
     group: z.literal('cron'),
     count,
     items: item(
       z.object({
         job: z.string(),
-        step: z.string(),
+        // Null: the whole job missed its run (docs/DECISIONS.md SA-86).
+        step: z.string().nullable(),
         started_at: iso,
         detail: z.string().nullable(),
+        missing: z.boolean(),
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('email'),
+    count,
+    items: item(
+      z.object({
+        kind: z.string(),
+        failed: z.number(),
+        bounced: z.number(),
+        complained: z.number(),
+        last_at: iso,
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('capacity'),
+    count,
+    items: item(
+      z.object({
+        what: z.enum(['database', 'storage']),
+        used_bytes: z.number(),
+        limit_bytes: z.number(),
       }),
     ),
   }),

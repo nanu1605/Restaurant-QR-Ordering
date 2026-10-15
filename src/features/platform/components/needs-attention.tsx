@@ -7,6 +7,7 @@ import { buttonVariants } from '@/components/ui/button';
 
 import { ONBOARDING_STEP_LABELS } from '@/features/onboarding/onboarding';
 import { SUPPORT_STATUS_LABELS, SUPPORT_TOPIC_LABELS } from '@/features/support/support';
+import { emailKindLabel, formatBytes, jobLabel } from '@/features/system/system';
 
 import { duesMessage, formatMobile, telHref } from '../dues-messages';
 import { attentionGroupLabel, type Attention, type AttentionGroupList } from '../home';
@@ -34,6 +35,8 @@ const SEE_ALL: Partial<Record<AttentionGroupList['group'], string>> = {
   inactive: '/super/restaurants?health=inactive',
   slowing: '/super/restaurants?health=slowing',
   webhooks: '/super/webhooks?status=failed',
+  cron: '/super/system',
+  email: '/super/system',
 };
 
 // Groups whose list holds more than the group (the inbox, every stuck restaurant):
@@ -286,21 +289,95 @@ function items(group: AttentionGroupList, linkDefaults: (row: DuesRow) => LinkDe
           }
         />
       ));
+    case 'menu_imports':
+      return group.items.map(({ key, data }) => (
+        <Row
+          key={key}
+          itemKey={key}
+          label={`${data.name} menu import`}
+          title={<RestaurantLink id={data.restaurant_id} name={data.name} />}
+          details={[
+            `${data.source === 'photo' ? 'Photo' : 'CSV'} import failed ${formatDateTime(data.completed_at)}`,
+            data.error,
+          ]}
+          action={
+            <Link
+              href={`/super/restaurants/${data.restaurant_id}/menu-import/${data.import_id}`}
+              aria-label={`Open the menu import of ${data.name}`}
+              className={actionClass}
+            >
+              Open
+            </Link>
+          }
+        />
+      ));
     case 'cron':
       return group.items.map(({ key, data }) => (
         <Row
           key={key}
           itemKey={key}
-          label={`${data.job} ${data.step}`}
+          label={`${jobLabel(data.job)} ${data.step ?? ''}`}
           title={
             <span className="font-medium text-ink">
-              {data.job === 'daily' ? 'Nightly job' : data.job}: {data.step}
+              {jobLabel(data.job)}
+              {data.step && `: ${data.step}`}
             </span>
           }
-          details={[formatDateTime(data.started_at), data.detail]}
+          details={
+            data.step === null
+              ? [`Missed its run: nothing since ${formatDateTime(data.started_at)}`]
+              : data.missing
+                ? [`Didn’t finish; last done ${formatDateTime(data.started_at)}`]
+                : [`Failed ${formatDateTime(data.started_at)}`, data.detail]
+          }
           action={null}
         />
       ));
+    case 'email':
+      return group.items.map(({ key, data }) => (
+        <Row
+          key={key}
+          itemKey={key}
+          label={emailKindLabel(data.kind)}
+          title={<span className="font-medium text-ink">{emailKindLabel(data.kind)}</span>}
+          details={[
+            [
+              data.failed > 0 && `${data.failed} failed`,
+              data.bounced > 0 && `${data.bounced} bounced`,
+              data.complained > 0 && `${data.complained} marked as spam`,
+            ]
+              .filter(Boolean)
+              .join(', '),
+            `Last ${formatDateTime(data.last_at)}`,
+          ]}
+          action={null}
+        />
+      ));
+    case 'capacity':
+      return group.items.map(({ key, data }) => {
+        const what = data.what === 'database' ? 'Database' : 'Storage';
+        return (
+          <Row
+            key={key}
+            itemKey={key}
+            label={what}
+            title={<span className="font-medium text-ink">{what}</span>}
+            details={[
+              `${formatBytes(data.used_bytes)} of ${formatBytes(data.limit_bytes)} (${Math.round((data.used_bytes / data.limit_bytes) * 100)}%)`,
+              'Move to a bigger plan or clear space',
+            ]}
+            action={
+              <Link
+                href="/super/system"
+                aria-label={`Open ${what.toLowerCase()} space`}
+                className={actionClass}
+              >
+                Open
+              </Link>
+            }
+          />
+        );
+      });
   }
 }
 

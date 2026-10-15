@@ -384,7 +384,7 @@ export async function getPlatformSettings() {
   const { data, error } = await supabase
     .from('platform_settings')
     .select(
-      'trial_days, grace_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at, support_phone, support_email, health_setup_days, health_inactive_days, health_slowing_percent, health_slowing_min_orders',
+      'trial_days, grace_days, setup_fee_paise, setup_fee_discount_paise, setup_fee_discount_ends_at, support_phone, support_email, health_setup_days, health_inactive_days, health_slowing_percent, health_slowing_min_orders, db_limit_mb, storage_limit_mb',
     )
     .eq('id', 1)
     .single();

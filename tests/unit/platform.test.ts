@@ -333,6 +333,8 @@ describe('platformSettingsSchema', () => {
     healthInactiveDays: '7',
     healthSlowingPercent: '50',
     healthSlowingMinOrders: '10',
+    dbLimitMb: '',
+    storageLimitMb: '',
   };
 
   it('accepts the launch settings', () => {
@@ -340,6 +342,14 @@ describe('platformSettingsSchema', () => {
     expect(
       platformSettingsSchema.safeParse({ ...valid, discountLastDay: '2026-12-31' }).success,
     ).toBe(true);
+  });
+
+  it('takes the plan limits in whole MB, or empty (SA-90)', () => {
+    expect(platformSettingsSchema.safeParse({ ...valid, dbLimitMb: '8192' }).success).toBe(true);
+    for (const bad of ['0', '8.5', '8 GB', '10000001'])
+      expect(platformSettingsSchema.safeParse({ ...valid, storageLimitMb: bad }).success).toBe(
+        false,
+      );
   });
 
   it('keeps the discount below the fee', () => {

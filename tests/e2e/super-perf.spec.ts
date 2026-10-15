@@ -31,6 +31,7 @@ const PATHS = [
   '/super/settings/offers',
   '/super/settings/announcements',
   '/super/standees',
+  '/super/system',
   '/super/restaurants?manager=none',
   '/super/restaurants?onboarding=stuck',
   '/super/support',

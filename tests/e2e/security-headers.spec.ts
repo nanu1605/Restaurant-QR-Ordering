@@ -117,6 +117,8 @@ test('the platform admin pages run under the policy without violations', async (
     // Announcements and standees (14c).
     '/super/settings/announcements',
     '/super/standees',
+    // System health, with Sentry and the versions streamed in (14d).
+    '/super/system',
     // A restaurant's Overview (its chart) and Billing.
     ...(await restaurantPagePaths('csp')).slice(0, 2),
     // The support inbox and a request with its screenshot link (13b).

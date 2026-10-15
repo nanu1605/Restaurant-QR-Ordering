@@ -296,6 +296,16 @@ const daysSchema = (min: number, max: number) =>
         .max(max, `${max} or less.`),
     );
 
+// The Supabase plan's limits in MB (docs/DECISIONS.md SA-90); empty until entered.
+const planLimitSchema = z
+  .string()
+  .trim()
+  .refine(
+    (text) =>
+      text === '' || (/^\d+$/.test(text) && Number(text) >= 1 && Number(text) <= 10_000_000),
+    'Leave empty, or enter 1 to 10,000,000 MB.',
+  );
+
 export const platformSettingsSchema = z
   .object({
     trialDays: daysSchema(1, 365),
@@ -316,6 +326,8 @@ export const platformSettingsSchema = z
     healthInactiveDays: daysSchema(1, 60),
     healthSlowingPercent: daysSchema(1, 99),
     healthSlowingMinOrders: daysSchema(1, 10000),
+    dbLimitMb: planLimitSchema,
+    storageLimitMb: planLimitSchema,
   })
   .refine(
     (input) =>

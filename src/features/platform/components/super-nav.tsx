@@ -2,6 +2,7 @@
 
 import { cn } from 'cn';
 import {
+  Activity,
   Building2,
   ChartColumn,
   ChartLine,
@@ -112,6 +113,7 @@ const NAV: NavGroup[] = [
   {
     title: 'System',
     items: [
+      { href: '/super/system', label: 'Health', icon: Activity, permission: 'system.view' },
       { href: '/super/webhooks', label: 'Webhooks', icon: Webhook, permission: 'system.view' },
     ],
   },
