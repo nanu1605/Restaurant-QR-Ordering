@@ -391,7 +391,7 @@ select is(
 -- The signed-in user's claims, run as postgres: private functions aren't callable directly.
 select tests.authenticate_as_platform_admin(:'admin');
 select set_config('role', 'none', true);
-select is(private.has_platform_permission('money.view'), true, 'an admin holds money.view (until 13g)');
+select is(private.has_platform_permission('money.view'), true, 'an Admin holds money.view');
 select throws_ok($$select private.has_platform_permission('money.veiw')$$,
   'P0001', null, 'a misspelt permission still fails');
 select tests.authenticate_as(:'n_owner');

@@ -237,7 +237,14 @@ select set_eq(
       ('public.platform_usage_report'),
       -- Revenue (13f)
       ('public.platform_revenue_report'),
-      ('public.platform_revenue_movements')
+      ('public.platform_revenue_movements'),
+      -- Team and roles (13g)
+      ('public.platform_can'),
+      ('public.platform_my_access'),
+      ('public.platform_list_team'),
+      ('public.platform_invite_member'),
+      ('public.platform_renew_invite'),
+      ('public.platform_update_member')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

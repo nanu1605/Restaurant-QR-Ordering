@@ -1296,16 +1296,43 @@ export type Database = {
         Row: {
           alerts_seen_at: string | null
           created_at: string
+          digest: boolean
+          disabled_at: string | null
+          display_name: string | null
+          invite_expires_at: string | null
+          invite_token_hash: string | null
+          invited_at: string | null
+          invited_by: string | null
+          joined_at: string | null
+          role: string
           user_id: string
         }
         Insert: {
           alerts_seen_at?: string | null
           created_at?: string
+          digest?: boolean
+          disabled_at?: string | null
+          display_name?: string | null
+          invite_expires_at?: string | null
+          invite_token_hash?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          role?: string
           user_id: string
         }
         Update: {
           alerts_seen_at?: string | null
           created_at?: string
+          digest?: boolean
+          disabled_at?: string | null
+          display_name?: string | null
+          invite_expires_at?: string | null
+          invite_token_hash?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          role?: string
           user_id?: string
         }
         Relationships: []
@@ -2924,6 +2951,7 @@ export type Database = {
         Args: { p_link: Json; p_restaurant_id: string }
         Returns: undefined
       }
+      platform_can: { Args: { p_permission: string }; Returns: boolean }
       platform_change_plan: {
         Args: { p_plan_code: string; p_restaurant_id: string }
         Returns: Json
@@ -2957,6 +2985,17 @@ export type Database = {
         Returns: Json
       }
       platform_home: { Args: { p_period?: string }; Returns: Json }
+      platform_invite_accept: { Args: { p_token_hash: string }; Returns: Json }
+      platform_invite_lookup: { Args: { p_token_hash: string }; Returns: Json }
+      platform_invite_member: {
+        Args: {
+          p_display_name: string
+          p_role: string
+          p_token_hash: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       platform_lead_matches: { Args: { p_phone: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
@@ -2969,12 +3008,14 @@ export type Database = {
         Args: { p_filters: Json }
         Returns: Json
       }
+      platform_list_team: { Args: never; Returns: Json }
       platform_mark_alerts_seen: { Args: { p_seen: string }; Returns: string }
       platform_metrics_backfill_usage: {
         Args: { p_from: string; p_to: string }
         Returns: number
       }
       platform_metrics_snapshot: { Args: { p_day?: string }; Returns: Json }
+      platform_my_access: { Args: never; Returns: Json }
       platform_needs_attention: { Args: never; Returns: Json }
       platform_onboarding_support_session: {
         Args: { p_restaurant_id: string; p_staff_name: string }
@@ -2991,6 +3032,10 @@ export type Database = {
       }
       platform_record_setup_fee: {
         Args: { p_payment: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_renew_invite: {
+        Args: { p_token_hash: string; p_user_id: string }
         Returns: Json
       }
       platform_reprocess_webhook: {
@@ -3073,6 +3118,10 @@ export type Database = {
       platform_update_lead: {
         Args: { p_lead_id: string; p_patch: Json }
         Returns: undefined
+      }
+      platform_update_member: {
+        Args: { p_patch: Json; p_user_id: string }
+        Returns: Json
       }
       platform_update_plan: {
         Args: { p_patch: Json; p_plan_id: string }
