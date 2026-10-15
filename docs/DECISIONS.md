@@ -3820,21 +3820,23 @@ stay at 13g, since nobody else gets `/super` before then.
   stage (New, Contacted, Demo scheduled, Demo done, Trial, Won, Lost), a reason that Lost needs
   and that goes when the lead leaves Lost (price, not interested, using another system, no
   response, closed down, other), the assignee (a platform admin), the next follow-up and the
-  demo times, the linked restaurant and who added it. `lead_events` is the history: stage,
-  assignee, follow-up, demo and restaurant changes (from and to) and notes, by whom or
+  demo times, the linked restaurant and who added it. `lead_events` is the history: stage
+  (Lost with its reason), assignee, follow-up, demo and restaurant changes (from and to) and notes, by whom or
   automatically. Only the team reads either. Existing leads start as New. A lead added by hand
   skips the website's rate limits and Turnstile, starts as New or Contacted, and never counts as
   a demo request. Lead changes don't go to the audit log: the history is their record, as in
   the support inbox.
 - **SA-54 · Linked and moved on by themselves:** a restaurant created by signup or by the team
   takes every unlinked lead with its mobile (`private.phone10`), and they move to Trial; its
-  first subscription payment moves its leads to Won (a setup fee doesn't). Both are triggers, so
+  first subscription payment moves its leads to Won (a setup fee doesn't, and later payments leave
+  a lead the team moved back alone). Both are triggers, so
   every path (signup, the wizard, Razorpay, a manual payment) does it, and neither moves a lead
   back from Won; a lost lead that signs up comes back as Trial. Linking by hand (by restaurant
   code, or one click on a restaurant with the same mobile) moves it the same way, to Won when the
   restaurant has paid; unlinking keeps the stage. A lead added for a mobile that already has a
   restaurant isn't linked by itself (it may be a second outlet): its page offers the link. The
-  migration links existing leads the same way. A self-signup's "Found us" is now the channel of
+  migration links existing leads the same way, to the first restaurant with the mobile created
+  after the lead came in. A self-signup's "Found us" is now the channel of
   the earliest lead with its mobile (a field visit stays a field visit), else website; SA-12 made
   any lead a demo request.
 - **SA-55 · The pipeline:** `/super/leads` (growth.manage): stage tabs with counts (Open, New to

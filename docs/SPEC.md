@@ -399,7 +399,7 @@ Primary key (kind, value): a value is claimed once.
 | gstin | text null | validated format (15 chars) when present |
 | fssai_license | text null | printed on bill when present; required at website signup |
 | storefront_photo_path | text null | the photo of the front sent at website signup, in the private `storefront-photos` bucket; only the platform admin sees it |
-| acquisition_channel | text null | how it found MenuMesh: `website`, `website_lead` (set by signup), `field_visit`, `referral`, `phone`, `whatsapp`, `social`, `other` (asked by the onboarding wizard); null is unknown (docs/DECISIONS.md SA-12) |
+| acquisition_channel | text null | how it found MenuMesh: `website`, `website_lead`, `field_visit`, `referral`, `phone`, `whatsapp`, `social`, `other`; signup sets the channel of the earliest lead with its mobile, else `website` (SA-54), the onboarding wizard asks, and the team can change it on the restaurant's Documents tab, audited (SA-59); null is unknown (docs/DECISIONS.md SA-12) |
 | gst_mode | enum `none` \| `regular` \| `composition` | default `none` |
 | gst_rate_bps | int | default 500 |
 | prices_include_tax | bool | default false |
