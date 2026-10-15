@@ -88,7 +88,7 @@ export default async function LeadPage({ params }: PageProps<'/super/leads/[lead
           </Section>
 
           <Section title="Next steps">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-4">
               <LeadTimeField
                 leadId={lead.id}
                 field="follow_up_at"

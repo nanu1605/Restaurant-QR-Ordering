@@ -130,7 +130,11 @@ function Steps({ funnel }: { funnel: Funnel }) {
     {
       label: 'Restaurants created by signup',
       value: signup.created,
-      share: started === null ? null : `${formatShare(signup.created, started)} signups started`,
+      // Only against signups counted over the same dates.
+      share:
+        started === null || funnel.signups_counted_from
+          ? null
+          : `${formatShare(signup.created, started)} signups started`,
       note: 'Entering the emailed code creates the restaurant at once, so verified and created are one step.',
     },
     { label: 'Restaurants onboarded by the team', value: team.created, share: null },
