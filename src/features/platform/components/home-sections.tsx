@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Money } from '@/components/shared/money';
 import { ScrollRegion } from '@/components/shared/scroll-region';
 import { buttonVariants } from '@/components/ui/button';
+import { businessTodayInIndia } from '@/features/usage/usage';
 import { hrefWithParams } from '@/lib/date-range';
 
 import {
@@ -77,6 +78,12 @@ export function KeyNumbers({
   today: string;
 }) {
   const month = home.period === 'month';
+  // Usage for the same business dates (docs/DECISIONS.md SA-62).
+  const businessToday = businessTodayInIndia();
+  const usageHref = hrefWithParams('/super/usage', {
+    from: month ? `${businessToday.slice(0, 8)}01` : businessToday,
+    to: businessToday,
+  });
   const change =
     home.mrr_paise === null ? null : mrrChange(home.mrr_paise, home.mrr_month_ago_paise);
 
@@ -154,15 +161,12 @@ export function KeyNumbers({
         </Figure>
         <Figure
           label={month ? 'GMV this month' : 'GMV today'}
-          href="/super/restaurants?sort=gmv"
+          href={usageHref}
           note="Diners' bills, taxes included"
         >
           <Money paise={rupees(home.gmv_paise)} fraction="auto" />
         </Figure>
-        <Figure
-          label={month ? 'Orders this month' : 'Orders today'}
-          href="/super/restaurants?sort=gmv"
-        >
+        <Figure label={month ? 'Orders this month' : 'Orders today'} href={usageHref}>
           {home.orders.toLocaleString('en-IN')}
         </Figure>
         <Figure label="Open tables now">{home.open_tables.toLocaleString('en-IN')}</Figure>
@@ -187,10 +191,13 @@ export function ChartPanel({
   empty,
   chart,
   table,
+  action,
 }: {
   id: string;
   title: string;
   description: string;
+  /** Links beside the title, such as the grouping. */
+  action?: ReactNode;
   /** Shown instead of the chart while there is nothing to draw. */
   empty: string | null;
   chart: ReactNode;
@@ -201,9 +208,12 @@ export function ChartPanel({
       aria-labelledby={id}
       className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-surface p-3"
     >
-      <h2 id={id} className="text-base font-semibold text-ink">
-        {title}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={id} className="text-base font-semibold text-ink">
+          {title}
+        </h2>
+        {action}
+      </div>
       <p className="text-sm text-ink-muted">{description}</p>
       {empty ? (
         <p className="flex h-56 items-center justify-center rounded-md border border-dashed border-line px-4 text-center text-sm text-ink-muted">

@@ -10,6 +10,7 @@ import {
   getRestaurantUsage,
 } from '@/features/platform/queries';
 import { limitHitLabel } from '@/features/platform/restaurant-page';
+import { FeaturesUsed } from '@/features/usage/components/usage-sections';
 import { requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
@@ -24,7 +25,8 @@ const ofLimit = (n: number, max: number | null | undefined) =>
 /**
  * A restaurant's Usage tab (docs/SUPER_ADMIN_PLAN.md 13a, docs/DECISIONS.md
  * SA-37): what it uses against its plan's limits, its busy hours and the
- * limits it ran into. Features in use arrive with usage analytics (13e).
+ * limits it ran into, and the features it uses, by usage analytics' rules
+ * (13e, SA-63).
  */
 export default async function RestaurantUsagePage({
   params,
@@ -85,6 +87,14 @@ export default async function RestaurantUsagePage({
           )}
         </Section>
       </div>
+
+      <Section title="Features in use">
+        <p className="text-sm text-ink-muted">
+          In its last 30 finished business days, {formatDate(noon(usage.features_from))} to{' '}
+          {formatDate(noon(usage.features_to))}, as on the Usage page.
+        </p>
+        <FeaturesUsed used={usage.features} />
+      </Section>
 
       <Section title="Busy hours">
         <p className="text-sm text-ink-muted">
