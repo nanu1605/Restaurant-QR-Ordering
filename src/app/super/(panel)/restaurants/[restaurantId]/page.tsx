@@ -8,11 +8,18 @@ import { NoteItem } from '@/features/platform/components/notes';
 import { OnboardingChecklist } from '@/features/platform/components/onboarding-checklist';
 import { OwnerPasswordButton } from '@/features/platform/components/restaurant-actions';
 import { Section } from '@/features/platform/components/restaurant-sections';
+import { StandeesSection } from '@/features/platform/components/standees-section';
 import { activityKindsFor, activityLine } from '@/features/platform/home';
-import { formatDate, formatDateTime, formatShortDate } from '@/features/platform/platform';
+import {
+  formatDate,
+  formatDateTime,
+  formatShortDate,
+  todayInIndia,
+} from '@/features/platform/platform';
 import {
   getRestaurantDetail,
   getRestaurantOverview,
+  getStandees,
   listActivity,
   listNotes,
 } from '@/features/platform/queries';
@@ -25,9 +32,9 @@ const linkClass = 'text-sm font-medium text-brand underline-offset-4 hover:under
 
 /**
  * A restaurant's Overview (docs/SUPER_ADMIN_PLAN.md 13a, docs/DECISIONS.md
- * SA-35, SA-41): its last 30 days in numbers, 90 days of orders and GMV, the
- * onboarding checklist, pinned and latest notes, the latest activity and its
- * owner's login.
+ * SA-35, SA-41, SA-84): its last 30 days in numbers, 90 days of orders and
+ * GMV, the onboarding checklist, standees, pinned and latest notes, the latest
+ * activity and its owner's login.
  */
 export default async function RestaurantOverviewPage({
   params,
@@ -36,13 +43,14 @@ export default async function RestaurantOverviewPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [money, support, audit, manage] = await Promise.all([
+  const [money, support, audit, manage, record] = await Promise.all([
     hasPlatformPermission('money.view'),
     hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
     hasPlatformPermission('restaurants.manage'),
+    hasPlatformPermission('money.record'),
   ]);
-  const [overview, notes, activity] = await Promise.all([
+  const [overview, notes, activity, standees] = await Promise.all([
     getRestaurantOverview(restaurantId),
     listNotes(restaurantId),
     listActivity({
@@ -50,6 +58,7 @@ export default async function RestaurantOverviewPage({
       kinds: activityKindsFor({ money, growth: false, support, audit }),
       limit: 5,
     }),
+    getStandees(restaurantId),
   ]);
   const { last_30: last30, days } = overview;
   const average = last30.bills > 0 ? Math.round(last30.gmv_paise / last30.bills) : null;
@@ -121,6 +130,12 @@ export default async function RestaurantOverviewPage({
 
         <div className="flex min-w-0 flex-col gap-4">
           <OnboardingChecklist onboarding={overview.onboarding} />
+          <StandeesSection
+            restaurantId={restaurantId}
+            detail={standees}
+            today={todayInIndia()}
+            can={{ manage, record, money }}
+          />
           <Section
             title="Notes"
             action={

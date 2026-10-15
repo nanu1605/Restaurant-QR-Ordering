@@ -39,6 +39,7 @@ import {
 import { parseBilling, parseNotes, parseOverview, parseTeam, parseUsage } from './restaurant-page';
 import { setupFeeDiscountPaise } from './setup-fee';
 import { parseOffers } from './offers';
+import { parseStandeeDetail, parseStandeeList, type StandeeFilters } from './standees';
 import { parseTeamList } from './team';
 
 /**
@@ -244,6 +245,27 @@ export async function listOffers() {
   const { data, error } = await supabase.rpc('platform_list_offers');
   if (error) throw new Error(`Could not load the offers: ${error.message}`);
   return parseOffers(data);
+}
+
+/** One restaurant's standees, active tables and setup fee (docs/DECISIONS.md SA-84). */
+export async function getStandees(restaurantId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_get_standees', {
+    p_restaurant_id: restaurantId,
+  });
+  if (error) throw new Error(`Could not load the standees: ${error.message}`);
+  return parseStandeeDetail(data);
+}
+
+/** The standee tracker, by status (docs/DECISIONS.md SA-84). */
+export async function listStandees(filters: StandeeFilters) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('platform_list_standees', {
+    p_status: filters.status ?? 'open',
+    p_page: filters.page,
+  });
+  if (error) throw new Error(`Could not load the standees: ${error.message}`);
+  return parseStandeeList(data);
 }
 
 /** Everyone on the team, for the Team page (docs/DECISIONS.md SA-70+). */

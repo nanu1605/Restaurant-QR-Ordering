@@ -29,6 +29,8 @@ const PATHS = [
   '/super/money/revenue?compare=1&by=day&move=new',
   '/super/settings/team',
   '/super/settings/offers',
+  '/super/settings/announcements',
+  '/super/standees',
   '/super/restaurants?manager=none',
   '/super/restaurants?onboarding=stuck',
   '/super/support',

@@ -128,7 +128,9 @@ test('a restaurant page shows its onboarding, and the list has an Onboarding vie
   const onboarding = page.getByRole('region', { name: 'Onboarding' });
   await expect(onboarding).toContainText(/\d of 7 done/);
   await expect(
-    onboarding.getByRole('listitem').filter({ hasText: 'QR codes downloaded or printed' }),
+    onboarding
+      .getByRole('listitem')
+      .filter({ hasText: 'QR codes downloaded, printed or delivered' }),
   ).toContainText('(done)');
   await expect(onboarding).toContainText('Next:');
 

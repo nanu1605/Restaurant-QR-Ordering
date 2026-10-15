@@ -137,6 +137,9 @@ test('platform admin money and insights', async ({ page }) => {
     '/super/settings/team',
     // Offers (14b).
     '/super/settings/offers',
+    // Announcements and standees (14c).
+    '/super/settings/announcements',
+    '/super/standees',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

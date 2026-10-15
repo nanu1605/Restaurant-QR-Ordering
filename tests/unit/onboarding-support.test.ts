@@ -21,7 +21,7 @@ describe('onboarding', () => {
   it('names the next step with how many are done', () => {
     expect(
       onboardingLabel({ done: 2, next: 'qr', since: '2026-10-10T05:00:00Z', stuck: true }),
-    ).toBe('2 of 7: QR codes downloaded or printed');
+    ).toBe('2 of 7: QR codes downloaded, printed or delivered');
     expect(
       onboardingLabel({ done: 7, next: null, since: '2026-10-10T05:00:00Z', stuck: false }),
     ).toBe('Done');
