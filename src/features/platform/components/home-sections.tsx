@@ -65,27 +65,31 @@ export function Figure({
 
 /**
  * Key numbers (docs/SUPER_ADMIN_PLAN.md 12e, docs/DECISIONS.md SA-27): one
- * compact strip, each figure a link to the rows behind it. MenuMesh money
- * and GMV are never added together.
+ * compact strip, each figure a link to the rows behind it when the role opens
+ * them. MenuMesh money and GMV are never added together.
  */
 export function KeyNumbers({
   home,
   params,
   today,
+  can,
 }: {
   home: Home;
   params: HomeParams;
   today: string;
+  can: { money: boolean; insights: boolean };
 }) {
   const month = home.period === 'month';
   // Usage for the same business dates (docs/DECISIONS.md SA-62): Home's month
   // starts on India's 1st, and before 4 am that day nothing is in it yet.
   const businessToday = businessTodayInIndia();
   const usageFrom = month ? `${today.slice(0, 8)}01` : businessToday;
-  const usageHref = hrefWithParams('/super/usage', {
-    from: usageFrom,
-    to: businessToday < usageFrom ? usageFrom : businessToday,
-  });
+  const usageHref = can.insights
+    ? hrefWithParams('/super/usage', {
+        from: usageFrom,
+        to: businessToday < usageFrom ? usageFrom : businessToday,
+      })
+    : undefined;
   const change =
     home.mrr_paise === null ? null : mrrChange(home.mrr_paise, home.mrr_month_ago_paise);
 
@@ -158,7 +162,10 @@ export function KeyNumbers({
         <Figure label="On trial" href="/super/money/subscriptions?state=trial">
           {home.restaurants.trial}
         </Figure>
-        <Figure label="Payment failed" href="/super/money/dues?bucket=payment_failed">
+        <Figure
+          label="Payment failed"
+          href={can.money ? '/super/money/dues?bucket=payment_failed' : undefined}
+        >
           {home.restaurants.payment_failed}
         </Figure>
         <Figure

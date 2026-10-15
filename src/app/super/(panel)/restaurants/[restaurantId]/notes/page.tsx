@@ -34,7 +34,7 @@ export default async function RestaurantNotesPage({
         ) : (
           <ul className="-mx-3 -my-2 flex flex-col divide-y divide-line">
             {notes.map((note) => (
-              <NoteItem key={note.id} note={note} />
+              <NoteItem key={note.id} note={note} canManage={manage} />
             ))}
           </ul>
         )}

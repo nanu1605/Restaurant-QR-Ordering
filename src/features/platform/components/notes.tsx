@@ -78,8 +78,11 @@ export function NoteForm({ restaurantId, onDone }: { restaurantId: string; onDon
   );
 }
 
-/** One note: its text, who wrote it and when, Pin, and Edit for its author's first 15 minutes. */
-export function NoteItem({ note }: { note: RestaurantNote }) {
+/**
+ * One note: its text, who wrote it and when, and with restaurants.manage, Pin
+ * and Edit for its author's first 15 minutes.
+ */
+export function NoteItem({ note, canManage }: { note: RestaurantNote; canManage: boolean }) {
   const [editing, setEditing] = useState(false);
   const [pinning, startPin] = useTransition();
   const editable = note.editable_until !== null;
@@ -110,7 +113,7 @@ export function NoteItem({ note }: { note: RestaurantNote }) {
           {note.author ?? 'A former team member'}, {formatDateTime(note.created_at)}
           {note.edited_at && ' (edited)'}
         </p>
-        {!editing && (
+        {canManage && !editing && (
           <div className="flex gap-2">
             {editable && (
               <Button variant="ghost" className="h-11 md:h-8" onClick={() => setEditing(true)}>

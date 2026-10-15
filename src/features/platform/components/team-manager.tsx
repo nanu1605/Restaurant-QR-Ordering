@@ -365,9 +365,11 @@ function InviteForm({ onSent }: { onSent: (sent: InviteSent) => void }) {
             type="email"
             autoComplete="off"
             className="h-11 md:h-9"
+            aria-invalid={errors.email ? true : undefined}
+            aria-describedby={errors.email ? `${ids}-email-error` : undefined}
             {...register('email')}
           />
-          <FieldError errors={[errors.email]} />
+          <FieldError id={`${ids}-email-error`} errors={[errors.email]} />
         </Field>
         <Field data-invalid={errors.displayName ? true : undefined}>
           <FieldLabel htmlFor={`${ids}-name`}>Name</FieldLabel>
@@ -375,9 +377,11 @@ function InviteForm({ onSent }: { onSent: (sent: InviteSent) => void }) {
             id={`${ids}-name`}
             autoComplete="off"
             className="h-11 md:h-9"
+            aria-invalid={errors.displayName ? true : undefined}
+            aria-describedby={errors.displayName ? `${ids}-name-error` : undefined}
             {...register('displayName')}
           />
-          <FieldError errors={[errors.displayName]} />
+          <FieldError id={`${ids}-name-error`} errors={[errors.displayName]} />
         </Field>
         <RoleField id={`${ids}-role`} register={register} role={role} error={errors.role} />
       </FieldGroup>

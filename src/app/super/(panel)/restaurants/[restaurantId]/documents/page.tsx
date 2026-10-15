@@ -4,9 +4,13 @@ import { notFound } from 'next/navigation';
 
 import { ChannelMenu } from '@/features/growth/components/channel-menu';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
-import { formatDate, LOOKALIKE_REASON_LABELS } from '@/features/platform/platform';
+import {
+  ACQUISITION_CHANNEL_LABELS,
+  formatDate,
+  LOOKALIKE_REASON_LABELS,
+} from '@/features/platform/platform';
 import { getLookalikes, getRestaurantDetail, getSignupReview } from '@/features/platform/queries';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Documents',
@@ -30,9 +34,10 @@ export default async function RestaurantDocumentsPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [review, lookalikes] = await Promise.all([
+  const [review, lookalikes, manage] = await Promise.all([
     getSignupReview(restaurantId),
     getLookalikes([restaurantId]),
+    hasPlatformPermission('restaurants.manage'),
   ]);
   const similar = lookalikes[restaurantId] ?? [];
   const { restaurant } = detail;
@@ -58,11 +63,17 @@ export default async function RestaurantDocumentsPage({
             ['FSSAI licence', review.fssaiLicense ?? '—'],
             [
               'Found us',
-              <ChannelMenu
-                key="channel"
-                restaurantId={restaurant.id}
-                channel={restaurant.acquisition_channel}
-              />,
+              manage ? (
+                <ChannelMenu
+                  key="channel"
+                  restaurantId={restaurant.id}
+                  channel={restaurant.acquisition_channel}
+                />
+              ) : restaurant.acquisition_channel ? (
+                ACQUISITION_CHANNEL_LABELS[restaurant.acquisition_channel]
+              ) : (
+                'Not known'
+              ),
             ],
             ['Onboarded', formatDate(restaurant.created_at)],
           ]}
