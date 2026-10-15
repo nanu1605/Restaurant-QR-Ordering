@@ -35,20 +35,23 @@ const rupees = (paise: number) => Math.round(paise / 100) * 100;
 
 /**
  * A percentage with a quiet bar under it; the bar is decoration, in the GMV
- * colour unless it shares MenuMesh revenue.
+ * colour unless it shares MenuMesh revenue. `label` replaces the percentage,
+ * for counts that must stay honest when small.
  */
 export function ShareCell({
   part,
   whole,
   bar = 'bg-chart-2',
+  label,
 }: {
   part: number;
   whole: number;
   bar?: 'bg-chart-1' | 'bg-chart-2';
+  label?: string;
 }) {
   return (
     <div className="flex min-w-24 flex-col gap-1">
-      <span className="tabular-nums">{percent(part, whole)}</span>
+      <span className="tabular-nums">{label ?? percent(part, whole)}</span>
       <div aria-hidden className="h-1.5 rounded-full bg-line">
         <div
           className={`h-1.5 rounded-full ${bar}`}

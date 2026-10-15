@@ -36,6 +36,18 @@ describe('the Revenue page’s URL', () => {
     expect(readRevenueParams({ ...params, move: 'lost' }, today).move).toBeUndefined();
   });
 
+  it('ends the dates today at the latest', () => {
+    expect(readRevenueParams({ from: '2026-10-01', to: '2026-12-31' }, today)).toMatchObject({
+      from: '2026-10-01',
+      to: today,
+      notice: 'Revenue shows up to today, so the dates end today.',
+    });
+    expect(readRevenueParams({ from: '2026-11-01', to: '2026-11-30' }, today)).toMatchObject({
+      from: today,
+      to: today,
+    });
+  });
+
   it('says so when a date doesn’t exist', () => {
     expect(readRevenueParams({ from: '2026-02-30' }, today)).toMatchObject({
       from: '2025-10-16',

@@ -41,6 +41,7 @@ const totals = z.object({
   opening_paid: z.number().nullable(),
   movements,
   churned: z.number(),
+  lost_paise: z.number(),
   collected: z.object({
     subscription_base_paise: z.number(),
     setup_fee_base_paise: z.number(),
@@ -158,16 +159,24 @@ export type RevenueParams = {
 const oneOf = <T extends string>(value: string | undefined, values: readonly T[]) =>
   values.includes(value as T) ? (value as T) : undefined;
 
-/** The page's dates (the last 12 months unless chosen), compare, grouping and list. */
+/**
+ * The page's dates (the last 12 months unless chosen, never past today),
+ * compare, grouping and list.
+ */
 export function readRevenueParams(params: SearchParams, today: string): RevenueParams {
   const read = readDateRange(params, 'Revenue');
   const { range } = read;
-  const notice =
+  let notice =
     read.notice && !range.from
       ? 'That date doesn’t exist, so the last 12 months are shown.'
       : read.notice;
-  const from = range.from ?? addDays(today, -364);
-  const to = range.to ?? (range.from ? range.from : today);
+  let from = range.from ?? addDays(today, -364);
+  let to = range.to ?? (range.from ? range.from : today);
+  if (to > today) {
+    to = today;
+    if (from > today) from = today;
+    notice = 'Revenue shows up to today, so the dates end today.';
+  }
   const at = firstParam(params, 'at');
   return {
     from,

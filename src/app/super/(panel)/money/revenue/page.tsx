@@ -138,13 +138,26 @@ export default async function RevenuePage({ searchParams }: PageProps<'/super/mo
       )}
       {historyCut && <p className="text-sm text-ink-muted">{historyCut}</p>}
 
-      <RevenueKeyNumbers report={report} period={period} historyNote={historyNote} />
+      <RevenueKeyNumbers
+        report={report}
+        period={period}
+        historyNote={historyNote}
+        live={to === today}
+        churnHref={moveHref('churn')}
+      />
 
       <ChartPanel
         id="chart-revenue-mrr"
         title="MRR"
         description={`MRR before GST at the end of each ${SERIES_UNITS[by]}. ${historyNote}`}
-        empty={withHistory.length === 0 ? historyNote : null}
+        // A line needs two points; one alone draws nothing.
+        empty={
+          withHistory.length === 0
+            ? historyNote
+            : withHistory.length === 1
+              ? 'One bar only: choose more dates, or days or weeks, to see MRR move.'
+              : null
+        }
         action={
           <nav aria-label="Group by" className="flex gap-2">
             {SERIES_BY.map((next) => (
@@ -290,7 +303,7 @@ export default async function RevenuePage({ searchParams }: PageProps<'/super/mo
       />
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <PlanMix report={report} />
+        <PlanMix report={report} live={to === today} historyNote={historyNote} />
         <CancelReasons report={report} />
         <LaunchOffer report={report} />
       </div>

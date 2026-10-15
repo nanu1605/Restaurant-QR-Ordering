@@ -38,19 +38,30 @@ const stateLabel = (state: string | null) =>
 const conversionShare = (c: RevenueReport['totals']['conversion']) =>
   formatShare(c.converted, c.created - c.deciding);
 
+/** Of the failed charges decided (paid again, or not), how many paid again. */
+const recoveryShare = (r: RevenueReport['totals']['recovery']) =>
+  formatShare(r.recovered, r.entered - r.still_failed);
+
 /**
  * The key numbers (plan 13f): MRR and its parts at the end of the dates, what
  * moved and was collected in them, each against the period before when
- * comparing. MRR figures wait for history.
+ * comparing. MRR figures wait for history; today's lists are linked only when
+ * the dates end today.
  */
 export function RevenueKeyNumbers({
   report,
   period,
   historyNote,
+  live,
+  churnHref,
 }: {
   report: RevenueReport;
   period: string;
   historyNote: string;
+  /** Whether the dates end today, so today's lists are the rows behind the figures. */
+  live: boolean;
+  /** The churned restaurants in these dates. */
+  churnHref: string;
 }) {
   const { totals, previous, expected } = report;
   const mrr = totals.mrr_paise;
@@ -58,7 +69,7 @@ export function RevenueKeyNumbers({
   const arpu = mrr !== null && paid ? Math.round(mrr / paid) : null;
   const opened = totals.opening_day !== null;
   const net = netNewPaise(totals.movements);
-  const lost = -(totals.movements.churn.paise + totals.movements.contraction.paise);
+  const paidList = live ? '/super/money/subscriptions?state=paid' : undefined;
   const collected =
     totals.collected.subscription_base_paise + totals.collected.setup_fee_base_paise;
   const change = (now: number | null, before: number | null | undefined) =>
@@ -75,7 +86,7 @@ export function RevenueKeyNumbers({
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg border border-line bg-surface p-4 sm:grid-cols-4">
         <Figure
           label="MRR"
-          href="/super/money/subscriptions?state=paid"
+          href={paidList}
           note={change(mrr, previous?.mrr_paise) ?? 'Before GST, at the end of the dates'}
         >
           {mrr === null ? '—' : <Money paise={rupees(mrr)} fraction="auto" />}
@@ -107,11 +118,7 @@ export function RevenueKeyNumbers({
         >
           {opened ? <Money paise={rupees(net)} fraction="auto" signDisplay="exceptZero" /> : '—'}
         </Figure>
-        <Figure
-          label="Paid restaurants"
-          href="/super/money/subscriptions?state=paid"
-          note={change(paid, previous?.paid)}
-        >
+        <Figure label="Paid restaurants" href={paidList} note={change(paid, previous?.paid)}>
           {paid === null ? '—' : n(paid)}
         </Figure>
         <Figure label="ARPU" note="MRR per Paid restaurant">
@@ -155,7 +162,7 @@ export function RevenueKeyNumbers({
         </Figure>
         <Figure
           label="Restaurant churn"
-          href="#chart-revenue-movement"
+          href={churnHref}
           note={
             opened ? (
               <>
@@ -176,28 +183,35 @@ export function RevenueKeyNumbers({
         </Figure>
         <Figure
           label="Revenue churn"
+          href={churnHref}
           note={
             opened ? (
               <>
-                <Money paise={lost} fraction="auto" /> of MRR lost or reduced
+                <Money paise={totals.lost_paise} fraction="auto" /> of the start’s MRR lost or cut
+                {previous?.opening_day && (
+                  <>
+                    <br />
+                    {percent(previous.lost_paise, previous.opening_mrr_paise ?? 0)} in {period}
+                  </>
+                )}
               </>
             ) : (
               historyNote
             )
           }
         >
-          {opened ? percent(lost, totals.opening_mrr_paise ?? 0) : '—'}
+          {opened ? percent(totals.lost_paise, totals.opening_mrr_paise ?? 0) : '—'}
         </Figure>
         <Figure
           label="Failed-payment recovery"
-          href="/super/money/dues?bucket=payment_failed"
+          href={churnHref}
           note={
             totals.recovery.still_failed > 0
-              ? `${n(totals.recovery.still_failed)} still in Payment failed`
+              ? `Paid again, of those decided; ${n(totals.recovery.still_failed)} still in Payment failed`
               : 'Paid again before going read-only'
           }
         >
-          {opened ? formatShare(totals.recovery.recovered, totals.recovery.entered) : '—'}
+          {opened ? recoveryShare(totals.recovery) : '—'}
         </Figure>
         <Figure
           label="Expected in 30 days, incl. GST"
@@ -280,7 +294,15 @@ export function MovementTable({ list, label }: { list: MovementList; label: stri
 }
 
 /** Paid restaurants by plan, monthly against yearly, at the end of the dates. */
-export function PlanMix({ report }: { report: RevenueReport }) {
+export function PlanMix({
+  report,
+  live,
+  historyNote,
+}: {
+  report: RevenueReport;
+  live: boolean;
+  historyNote: string;
+}) {
   const plans = [...new Set(report.plan_mix.map((row) => row.plan_code))].map((code) => {
     const rows = report.plan_mix.filter((row) => row.plan_code === code);
     const count = (cycle: 'monthly' | 'yearly') =>
@@ -298,7 +320,9 @@ export function PlanMix({ report }: { report: RevenueReport }) {
   return (
     <Section title="Plan mix">
       <p className="text-sm text-ink-muted">Paid restaurants at the end of the dates.</p>
-      {plans.length === 0 ? (
+      {report.totals.mrr_paise === null ? (
+        <p className="text-sm text-ink-muted">{historyNote}</p>
+      ) : plans.length === 0 ? (
         <p className="text-sm text-ink-muted">No Paid restaurants.</p>
       ) : (
         <Table label="Plan mix">
@@ -315,12 +339,19 @@ export function PlanMix({ report }: { report: RevenueReport }) {
             {plans.map((plan) => (
               <TableRow key={plan.code}>
                 <TableCell>
-                  <Link
-                    href={hrefWithParams('/super/restaurants', { state: 'paid', plan: plan.code })}
-                    className={linkClass}
-                  >
-                    {plan.name}
-                  </Link>
+                  {live ? (
+                    <Link
+                      href={hrefWithParams('/super/restaurants', {
+                        state: 'paid',
+                        plan: plan.code,
+                      })}
+                      className={linkClass}
+                    >
+                      {plan.name}
+                    </Link>
+                  ) : (
+                    plan.name
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{n(plan.monthly)}</TableCell>
                 <TableCell className="text-right tabular-nums">{n(plan.yearly)}</TableCell>
@@ -339,13 +370,13 @@ export function PlanMix({ report }: { report: RevenueReport }) {
               <TableCell className="text-right tabular-nums">
                 {n(all('monthly'))}
                 <div className="text-xs text-ink-muted">
-                  {percent(all('monthly'), all('monthly') + all('yearly'))}
+                  {formatShare(all('monthly'), all('monthly') + all('yearly'))}
                 </div>
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {n(all('yearly'))}
                 <div className="text-xs text-ink-muted">
-                  {percent(all('yearly'), all('monthly') + all('yearly'))}
+                  {formatShare(all('yearly'), all('monthly') + all('yearly'))}
                 </div>
               </TableCell>
               <TableCell className="text-right">
@@ -437,7 +468,7 @@ export function CancelReasons({ report }: { report: RevenueReport }) {
         Asked when a restaurant turns autopay off itself; the team’s cancellations don’t ask.
       </p>
       {total === 0 ? (
-        <p className="text-sm text-ink-muted">No cancellations in these dates.</p>
+        <p className="text-sm text-ink-muted">No reasons given in these dates.</p>
       ) : (
         <Table label="Cancellation reasons">
           <TableHeader>
@@ -455,7 +486,12 @@ export function CancelReasons({ report }: { report: RevenueReport }) {
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{n(row.count)}</TableCell>
                 <TableCell>
-                  <ShareCell part={row.count} whole={total} bar="bg-chart-1" />
+                  <ShareCell
+                    part={row.count}
+                    whole={total}
+                    bar="bg-chart-1"
+                    label={formatShare(row.count, total)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
