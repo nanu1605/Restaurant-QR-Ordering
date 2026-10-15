@@ -12,7 +12,7 @@ import { Constants } from '@/types/database';
 import { refusedLines } from './addons';
 import { ensureDeviceId, readDeviceId } from './device';
 import { deviceCookieOptions } from './device-token';
-import { getStrings } from './lang';
+import { getLang, getStrings } from './lang';
 import { getCustomerTable } from './queries';
 import {
   placeOrderSchema,
@@ -20,7 +20,7 @@ import {
   toOrderItemsPayload,
   type PlaceOrderInput,
 } from './schemas';
-import { LANG_COOKIE, refusalMessage, type Strings } from './strings';
+import { LANG_COOKIE, refusalMessage, STRINGS, type Strings } from './strings';
 import type { OrderStatus } from './types';
 
 /**
@@ -49,7 +49,8 @@ export async function placeOrder(
   qrToken: string,
   input: PlaceOrderInput,
 ): Promise<PlaceOrderResult> {
-  const t = await getStrings();
+  const lang = await getLang();
+  const t = STRINGS[lang];
   if (!qrTokenSchema.safeParse(qrToken).success) return actionError(t.errors.TABLE_NOT_FOUND);
   const parsed = placeOrderSchema.safeParse(input);
   if (!parsed.success) return actionError(t.errors.INVALID_INPUT);
@@ -61,6 +62,8 @@ export async function placeOrder(
     p_idempotency_key: parsed.data.idempotencyKey,
     p_items: toOrderItemsPayload(parsed.data.lines),
     p_note: parsed.data.note ?? undefined,
+    // The menu's language, for usage analytics (docs/DECISIONS.md SA-64).
+    p_lang: lang,
   });
 
   if (error) {
