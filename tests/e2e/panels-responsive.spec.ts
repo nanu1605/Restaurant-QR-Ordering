@@ -113,6 +113,8 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super/restaurants/new',
     // The Growth pages (13d).
     ...(await growthPaths('responsive')),
+    // Usage, compared (13e).
+    '/super/usage?compare=1',
     '/super/money/payments',
     '/super/money/dues',
     '/super/money/subscriptions',

@@ -68,6 +68,14 @@ test('a customer switches to Hindi, orders in Hindi and switches back', async ({
   await expect(page.getByText('स्टाफ़ आपका बिल ले आएगा।')).toBeVisible();
   await expect(page.getByRole('button', { name: 'सूचना बंद करें' }).first()).toBeVisible();
   expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
+  // The order keeps the menu's language, for usage analytics (docs/DECISIONS.md SA-64).
+  const { data: placed } = await adminClient()
+    .from('orders')
+    .select('guest_lang')
+    .eq('restaurant_id', table.restaurantId)
+    .single()
+    .throwOnError();
+  expect(placed.guest_lang).toBe('hi');
 
   await page.getByRole('button', { name: 'English' }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
