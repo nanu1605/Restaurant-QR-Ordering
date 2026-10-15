@@ -68,7 +68,7 @@ import { AnnouncementBanner } from './announcement-banner';
 const STATUS_LABELS = { live: 'Live', scheduled: 'Starts later', ended: 'Ended' } as const;
 const CHECK_LABEL = 'flex min-h-11 items-center gap-2 text-sm md:min-h-0';
 
-type Plan = { code: string; name: string };
+type Plan = { code: string; name: string; active: boolean };
 type Dialogs =
   | { kind: 'new' }
   | { kind: 'edit'; row: AnnouncementRow }
@@ -134,9 +134,11 @@ export function AnnouncementsManager({
                   </TableCell>
                   <TableCell className="max-w-56 text-sm whitespace-normal">
                     {audienceLabel(row, planNames)}
-                    <span className="block text-xs text-ink-muted">
-                      {row.audience} {row.audience === 1 ? 'restaurant' : 'restaurants'}
-                    </span>
+                    {row.audience !== null && (
+                      <span className="block text-xs text-ink-muted">
+                        {row.audience} {row.audience === 1 ? 'restaurant' : 'restaurants'}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm">
                     {formatDateTime(row.starts_at)} –{' '}
@@ -431,7 +433,12 @@ function AnnouncementForm({
             <Choices
               label="Plans"
               error={errors.planCodes as FormFieldError | undefined}
-              options={plans.map((plan) => [plan.code, plan.name])}
+              options={plans
+                .filter((plan) => plan.active || row?.plan_codes?.includes(plan.code))
+                .map((plan) => [
+                  plan.code,
+                  plan.active ? plan.name : `${plan.name} (switched off)`,
+                ])}
               register={register('planCodes')}
             />
           )}
@@ -481,20 +488,21 @@ function AnnouncementForm({
             Email the owners when it starts
           </label>
           <FieldDescription>
-            Once per restaurant, in English.
+            Once per restaurant, in English, on its first day: on saving, or at 3 AM for a later
+            day.
             {emailed > 0 && ` ${emailed} already emailed aren’t emailed again.`}
           </FieldDescription>
         </Field>
 
         <section aria-label="Preview" className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-ink">Preview</h3>
-          <AnnouncementBanner title={title || 'Title'} body={body || 'Text'} lang="en">
+          <AnnouncementBanner title={title || 'Title'} body={body || 'Text'} lang="en" preview>
             <Button type="button" variant="outline" size="touch" disabled>
               Dismiss
             </Button>
           </AnnouncementBanner>
           {titleHi && bodyHi && (
-            <AnnouncementBanner title={titleHi} body={bodyHi} lang="hi">
+            <AnnouncementBanner title={titleHi} body={bodyHi} lang="hi" preview>
               <Button type="button" variant="outline" size="touch" disabled lang="hi">
                 छिपाएँ
               </Button>
@@ -615,6 +623,9 @@ function RestaurantPicker({
           placeholder="Name or code"
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.preventDefault();
+          }}
         />
         <FieldError errors={[error]} />
       </Field>

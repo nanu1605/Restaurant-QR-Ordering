@@ -131,6 +131,20 @@ as $$
     and (p_announcement.ends_at is null or p_announcement.ends_at > p_at);
 $$;
 
+-- Its email is due on its first day (India) and until it ends: the daily
+-- run (03:00) sends one starting later that day before it shows (SA-83).
+create function private.announcement_email_due(p_announcement public.announcements, p_at timestamptz)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p_announcement.email and p_announcement.ended_at is null
+    and p_announcement.starts_at
+      < (((p_at at time zone 'Asia/Kolkata')::date + 1)::timestamp at time zone 'Asia/Kolkata')
+    and (p_announcement.ends_at is null or p_announcement.ends_at > p_at);
+$$;
+
 -- ─── Announcements (Settings, settings.manage) ──────────────────────────────
 create function public.platform_list_announcements()
 returns jsonb
@@ -142,7 +156,7 @@ as $$
 declare
   v_admin private.platform_admin_context := private.require_platform_permission('settings.manage');
 begin
-  return coalesce((
+  return jsonb_build_object('announcements', coalesce((
     select jsonb_agg(jsonb_build_object(
       'id', a.id,
       'title', a.title,
@@ -163,10 +177,11 @@ begin
       'ended_at', a.ended_at,
       'dismissible', a.dismissible,
       'email', a.email,
-      'audience', (
+      -- ponytail: counted per restaurant, so only while it runs.
+      'audience', case when a.ended_at is null and (a.ends_at is null or a.ends_at > now()) then (
         select count(*) from public.restaurants r
         where r.status = 'active' and private.in_audience(a, r.id)
-      ),
+      ) end,
       'dismissed', (select count(*) from public.announcement_dismissals d where d.announcement_id = a.id),
       'emailed', (select count(*) from public.announcement_emails e where e.announcement_id = a.id),
       'created_by', u.email,
@@ -174,7 +189,13 @@ begin
     ) order by a.ended_at is not null, a.starts_at desc, a.created_at desc)
     from public.announcements a
     left join auth.users u on u.id = a.created_by
-  ), '[]'::jsonb);
+  ), '[]'::jsonb),
+  'cities', coalesce((
+    select jsonb_agg(c.city order by c.city) from (
+      select distinct btrim(r.city) as city from public.restaurants r
+      where nullif(btrim(r.city), '') is not null
+    ) as c
+  ), '[]'::jsonb));
 end;
 $$;
 
@@ -207,7 +228,7 @@ begin
     if v_patch ? 'ended' then
       perform private.fail('INVALID_INPUT', 'ended');
     end if;
-    v_new.starts_at := now();
+    v_new.starts_at := date_trunc('minute', now());
     v_new.dismissible := true;
     v_new.email := false;
   else
@@ -273,9 +294,9 @@ begin
       if jsonb_typeof(v_patch -> 'cities') <> 'array' then
         perform private.fail('INVALID_INPUT', 'cities');
       end if;
-      select array_agg(distinct private.tidy_text(x)) into v_new.cities
+      select array_agg(distinct btrim(x)) into v_new.cities
       from jsonb_array_elements_text(v_patch -> 'cities') as x
-      where private.tidy_text(x) is not null;
+      where btrim(x) <> '';
       if coalesce(cardinality(v_new.cities), 0) = 0
          or exists (select 1 from unnest(v_new.cities) as c where char_length(c) > 80) then
         perform private.fail('INVALID_INPUT', 'cities');
@@ -304,7 +325,7 @@ begin
   end if;
 
   if v_patch ? 'starts_at' then
-    v_new.starts_at := coalesce(private.json_time(v_patch, 'starts_at'), now());
+    v_new.starts_at := coalesce(private.json_time(v_patch, 'starts_at'), date_trunc('minute', now()));
   end if;
   if v_patch ? 'ends_at' then
     v_new.ends_at := private.json_time(v_patch, 'ends_at');
@@ -371,7 +392,7 @@ begin
     end if;
   end if;
   return jsonb_build_object('id', v_new.id,
-    'live', private.announcement_live(v_new, now()), 'email', v_new.email);
+    'email_due', private.announcement_email_due(v_new, now()));
 end;
 $$;
 
@@ -399,10 +420,10 @@ as $$
       )
       and private.announcement_live(a, now())
       and private.in_audience(a, p_restaurant_id)
-      and not exists (
+      and (not a.dismissible or not exists (
         select 1 from public.announcement_dismissals d
         where d.announcement_id = a.id and d.user_id = (select auth.uid())
-      )
+      ))
     order by a.starts_at desc, a.id
     -- ponytail: three at most; a fourth waits until one ends or is hidden.
     limit 3
@@ -433,8 +454,8 @@ begin
 end;
 $$;
 
--- ─── Emails (service role: the daily run, and saving one that has started) ──
--- Each restaurant in a started email announcement's audience whose owners
+-- ─── Emails (service role: the daily run, and saving one) ───────────────────
+-- Each restaurant in a due email announcement's audience whose owners
 -- weren't emailed yet, with their addresses: active owners' own logins and
 -- the restaurant's email, as for reminders.
 create function public.announcement_emails_due(p_at timestamptz default now())
@@ -460,7 +481,7 @@ as $$
     ) as e
     where nullif(btrim(e.email), '') is not null
   ) as rcpt
-  where a.email and private.announcement_live(a, p_at)
+  where private.announcement_email_due(a, p_at)
     and rcpt.emails is not null
     and not exists (
       select 1 from public.announcement_emails s
@@ -509,12 +530,18 @@ begin
     v_admin := private.require_platform_permission('money.record');
   end if;
   perform private.assert_keys(v_patch, array['quantity', 'printed_on', 'dispatched_on',
-    'delivered_on', 'installed_on', 'vendor', 'notes', 'cost_paise']);
+    'delivered_on', 'installed_on', 'vendor', 'notes', 'cost_paise', 'expected_status']);
   if not exists (select 1 from public.restaurants r where r.id = p_restaurant_id) then
     perform private.fail('RESTAURANT_NOT_FOUND');
   end if;
 
   select * into v_old from public.standees s where s.restaurant_id = p_restaurant_id for update;
+  -- The status the page showed, for one-click steps.
+  if v_patch ? 'expected_status'
+     and coalesce(v_old.status, 'not_started') is distinct from v_patch ->> 'expected_status' then
+    perform private.fail('STANDEE_CHANGED');
+  end if;
+  v_patch := v_patch - 'expected_status';
   if v_old.restaurant_id is null then
     -- Making the record is managing the restaurant, with a cost or not.
     v_admin := private.require_platform_permission('restaurants.manage');
@@ -847,6 +874,8 @@ $function$;
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 revoke execute on function private.in_audience(public.announcements, uuid) from public, anon, authenticated;
 revoke execute on function private.announcement_live(public.announcements, timestamptz)
+  from public, anon, authenticated;
+revoke execute on function private.announcement_email_due(public.announcements, timestamptz)
   from public, anon, authenticated;
 revoke execute on function public.platform_list_announcements() from public, anon;
 grant execute on function public.platform_list_announcements() to authenticated;

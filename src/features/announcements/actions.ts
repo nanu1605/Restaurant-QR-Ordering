@@ -36,9 +36,9 @@ export async function dismissAnnouncement(formData: FormData): Promise<void> {
 }
 
 /**
- * A new announcement or a change to one (settings.manage, again in SQL). One
- * that has started with email on is emailed now; a later one by the daily
- * run on its first day (docs/DECISIONS.md SA-83).
+ * A new announcement or a change to one (settings.manage, again in SQL). With
+ * email on, it is emailed now if its first day (India) has come; a later one
+ * by the daily run that day (docs/DECISIONS.md SA-83).
  */
 export async function saveAnnouncement(
   input: AnnouncementInput,
@@ -55,8 +55,7 @@ export async function saveAnnouncement(
     ...(id && { p_announcement_id: id.data }),
   });
   if (error) return fromDbError(error, 'platform_save_announcement');
-  const saved = data as { live: boolean; email: boolean };
-  const config = saved.live && saved.email ? emailConfig() : null;
+  const config = (data as { email_due: boolean }).email_due ? emailConfig() : null;
   if (config) {
     after(() =>
       sendAnnouncementEmails(createAdminClient(), config, getPublicEnv().NEXT_PUBLIC_APP_URL).catch(

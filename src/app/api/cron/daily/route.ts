@@ -27,7 +27,7 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
  * docs/DECISIONS.md P7-20, P8-12, HN-8): the super-admin snapshots (SA-9),
  * first, before signups are cleaned up; then menu import photo cleanup,
- * subscription reminder emails and announcements that have started (SA-83;
+ * subscription reminder emails, then announcements on their first day (SA-83;
  * both skipped until Resend is set up), Hindi names that menu edits didn't
  * fill (skipped without a menu import key), website signups older than a
  * week (W-9), password resets older than a day (P11-6), storefront photos of
@@ -49,6 +49,11 @@ export async function GET(request: Request) {
     return data;
   });
   const today = todayInIndia();
+  const reminderEmails = step(admin, 'reminders', async () =>
+    email
+      ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+      : { skipped: true },
+  );
   const [
     usage,
     menuImports,
@@ -71,15 +76,14 @@ export async function GET(request: Request) {
       return { rows: data };
     }),
     step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
-    step(admin, 'reminders', async () =>
-      email
-        ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
-        : { skipped: true },
-    ),
-    step(admin, 'announcement emails', async () =>
-      email
-        ? sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
-        : { skipped: true },
+    reminderEmails,
+    // After the reminders: one email at a time under Resend's limit (SA-83).
+    reminderEmails.then(() =>
+      step(admin, 'announcement emails', async () =>
+        email
+          ? sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+          : { skipped: true },
+      ),
     ),
     step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
     step(admin, 'signup cleanup', async () => {

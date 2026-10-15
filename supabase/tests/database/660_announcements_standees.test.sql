@@ -51,8 +51,14 @@ select tests.authenticate_as_platform_admin(:'admin');
 select is(
   public.platform_save_announcement('{"title": "  New   menu  ", "body": "Line one\nLine two ",
     "panels": ["worker", "admin", "admin"]}') - 'id',
-  '{"live": true, "email": false}'::jsonb,
-  'a new one starts now, without email'
+  '{"email_due": false}'::jsonb,
+  'a new one, without email'
+);
+select is(
+  (select (x ->> 'starts_at')::timestamptz
+   from jsonb_array_elements(public.platform_list_announcements() -> 'announcements') as x
+   where x ->> 'title' = 'New menu'),
+  date_trunc('minute', now()), 'a start left empty is this minute, as the form shows it'
 );
 select pg_temp.save('{"title": "Starter only", "body": "x", "panels": ["admin"],
   "plan_codes": ["starter"]}') as for_starter \gset
@@ -151,25 +157,41 @@ select is(pg_temp.seen(:'owner', :'jaipur', 'admin'), array['Jaipur only'],
   'dismissed: gone for that login, in either panel');
 select is(pg_temp.seen(:'waiter', :'jaipur', 'worker'), array['Jaipur only', 'Kitchen only', 'New menu'],
   'still there for the rest of the team');
+select tests.authenticate_as_platform_admin(:'admin');
+select pg_temp.save('{"dismissible": false}', :'new_menu');
+select tests.clear_auth();
+select is(pg_temp.seen(:'owner', :'jaipur', 'admin'), array['Jaipur only', 'New menu'],
+  'made non-dismissible, it shows again');
+select tests.authenticate_as_platform_admin(:'admin');
+select pg_temp.save('{"dismissible": true}', :'new_menu');
+select tests.clear_auth();
 
 -- ─── Changing and the audit ─────────────────────────────────────────────────
 select tests.authenticate_as_platform_admin(:'admin');
 select pg_temp.save('{"title": "Jaipur and Pune", "cities": ["Jaipur", "Pune"]}', :'for_jaipur');
 select is(
   (select jsonb_agg(x.title order by x.title)
-   from jsonb_to_recordset(public.platform_list_announcements()) as x(title text, created_by text)
+   from jsonb_to_recordset(public.platform_list_announcements() -> 'announcements')
+     as x(title text, created_by text)
    where x.created_by = 'sa660-admin@example.test'),
   '["Chosen", "Ended early", "Jaipur and Pune", "Kitchen only", "New menu", "Past", "Starter only", "Tomorrow"]'::jsonb,
   'the team''s list has them all'
 );
 select is(
   (select array[x ->> 'audience', x ->> 'dismissed', x -> 'cities' ->> 1]
-   from jsonb_array_elements(public.platform_list_announcements()) as x
+   from jsonb_array_elements(public.platform_list_announcements() -> 'announcements') as x
    where x ->> 'title' = 'Jaipur and Pune'),
   array[(select count(*)::text from public.restaurants r
      where r.status = 'active' and lower(btrim(r.city)) in ('jaipur', 'pune')), '0', 'Pune'],
   'its audience counts active restaurants, with the cities as chosen'
 );
+select is(
+  (select x ->> 'audience' from jsonb_array_elements(public.platform_list_announcements() -> 'announcements') as x
+   where x ->> 'title' = 'Ended early'),
+  null, 'an ended one''s audience isn''t counted'
+);
+select ok(public.platform_list_announcements() -> 'cities' @> '["Jaipur", "pune"]',
+  'the cities to choose from, trimmed');
 select tests.clear_auth();
 select is(pg_temp.seen(:'pune_owner', :'pune', 'admin'), array['Jaipur and Pune', 'New menu', 'Starter only'],
   'a change of audience shows at once');
@@ -192,7 +214,7 @@ select is(
 select tests.authenticate_as_platform_admin(:'admin');
 select is(
   public.platform_save_announcement('{"email": true}', :'for_starter') - 'id',
-  '{"live": true, "email": true}'::jsonb,
+  '{"email_due": true}'::jsonb,
   'turning email on for a live one: to send now'
 );
 select tests.clear_auth();
@@ -204,14 +226,24 @@ select is(
   array[:'pune' || ' sa660puneowner@sa660-pune.test'],
   'due: the plan''s restaurant, to its owner; nothing for one not started'
 );
+-- The daily run: 03:00 India.
+select (((:'today'::date + 1)::timestamp + interval '3 hours') at time zone 'Asia/Kolkata')
+  as tomorrow_run \gset
 select is(
-  (select count(*) from public.announcement_emails_due(now() + interval '1 day 1 hour')
+  (select count(*) from public.announcement_emails_due(
+     (:'today'::date + time '23:59') at time zone 'Asia/Kolkata')
+   where announcement_id = :'tomorrow'),
+  0::bigint,
+  'the scheduled one isn''t due the day before'
+);
+select is(
+  (select count(*) from public.announcement_emails_due(:'tomorrow_run')
    where announcement_id = :'tomorrow'),
   1::bigint,
-  'on its first day, the scheduled one is due: its active restaurant'
+  'on its first day the run sends it, before it starts: its active restaurant'
 );
 select ok(
-  not exists (select 1 from public.announcement_emails_due(now() + interval '1 day 1 hour')
+  not exists (select 1 from public.announcement_emails_due(:'tomorrow_run')
     where restaurant_id = :'shut'),
   'never a suspended restaurant'
 );
@@ -222,7 +254,7 @@ select is((select count(*) from public.announcement_emails_due() where announcem
 select tests.clear_auth();
 select tests.authenticate_as_platform_admin(:'admin');
 select is(
-  (select x ->> 'emailed' from jsonb_array_elements(public.platform_list_announcements()) as x
+  (select x ->> 'emailed' from jsonb_array_elements(public.platform_list_announcements() -> 'announcements') as x
    where x ->> 'title' = 'Starter only'),
   '1', 'the list counts restaurants emailed'
 );
@@ -258,6 +290,11 @@ select throws_ok(format($$select public.platform_save_standees(%L, '{"quantity":
   'P0001', 'INVALID_INPUT', 'at least one');
 select throws_ok(format($$select public.platform_save_standees(%L, '{"colour": "red"}')$$, :'jaipur'),
   'P0001', 'INVALID_INPUT', 'unknown keys are refused');
+select throws_ok(format($$select public.platform_save_standees(%L, jsonb_build_object(
+    'expected_status', 'to_print', 'printed_on', %L))$$, :'jaipur', :'today'),
+  'P0001', 'STANDEE_CHANGED', 'a one-click step from a page that has since changed is refused');
+select is(public.platform_save_standees(:'jaipur', '{"expected_status": "printed"}'),
+  '{"status": "printed"}'::jsonb, 'and goes when it hasn''t');
 select is(
   (select array[x -> 'standees' ->> 'vendor', coalesce(x -> 'standees' ->> 'cost_paise', '-'),
      x ->> 'tables_active', coalesce(x ->> 'setup_fee', '-')]

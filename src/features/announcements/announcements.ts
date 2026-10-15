@@ -58,14 +58,18 @@ const announcementRowSchema = bannerSchema.extend({
   ends_at: isoOrNull,
   ended_at: isoOrNull,
   email: z.boolean(),
-  audience: z.number(),
+  // Counted while it runs.
+  audience: z.number().nullable(),
   dismissed: z.number(),
   emailed: z.number(),
   created_by: z.string().nullable(),
   created_at: z.string(),
 });
 export type AnnouncementRow = z.infer<typeof announcementRowSchema>;
-export const parseAnnouncements = (json: unknown) => z.array(announcementRowSchema).parse(json);
+export const parseAnnouncements = (json: unknown) =>
+  z
+    .object({ announcements: z.array(announcementRowSchema), cities: z.array(z.string()) })
+    .parse(json);
 
 export function announcementStatus(
   row: Pick<AnnouncementRow, 'starts_at' | 'ends_at' | 'ended_at'>,

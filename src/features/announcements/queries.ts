@@ -23,17 +23,10 @@ export const getBanners = cache(async (restaurantId: string, panel: Panel) => {
   return parseBanners(data);
 });
 
-/** Restaurants' cities as entered, for choosing an audience. */
-export async function listCities() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.from('restaurants').select('city').not('city', 'is', null);
-  if (error) throw new Error(`Could not load the cities: ${error.message}`);
-  return [
-    ...new Set(data.map((row) => row.city?.trim()).filter((city) => !!city)),
-  ].sort() as string[];
-}
-
-/** Every announcement, live and scheduled first (settings.manage). */
+/**
+ * Every announcement, live and scheduled first, and restaurants' cities as
+ * entered, to choose an audience (settings.manage).
+ */
 export async function listAnnouncements() {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('platform_list_announcements');
