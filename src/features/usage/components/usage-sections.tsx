@@ -223,7 +223,9 @@ export function RankedTable({
   return (
     <Section title={title}>
       {rows.length === 0 ? (
-        <p className="text-sm text-ink-muted">No orders in these dates.</p>
+        <p className="text-sm text-ink-muted">
+          {measure === 'gmv' ? 'No bills in these dates.' : 'No orders in these dates.'}
+        </p>
       ) : (
         <Table label={title}>
           <TableHeader>

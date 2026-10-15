@@ -16,6 +16,7 @@ export function DateRangeBar({
   from,
   to,
   compare,
+  keep = {},
   notice,
 }: {
   path: string;
@@ -24,6 +25,8 @@ export function DateRangeBar({
   to: string;
   /** Whether the page compares; undefined leaves the choice out. */
   compare?: boolean;
+  /** The page's other choices, kept when the dates change. */
+  keep?: Record<string, string | undefined>;
   notice: string | null;
 }) {
   const compareParam = compare ? '1' : undefined;
@@ -36,6 +39,7 @@ export function DateRangeBar({
             <Link
               key={preset.key}
               href={hrefWithParams(path, {
+                ...keep,
                 from: preset.from,
                 to: preset.to,
                 compare: compareParam,
@@ -74,6 +78,9 @@ export function DateRangeBar({
             />
             Compare with the previous period
           </label>
+        )}
+        {Object.entries(keep).map(
+          ([name, value]) => value && <input key={name} type="hidden" name={name} value={value} />,
         )}
         <Button type="submit" size="touch">
           Show

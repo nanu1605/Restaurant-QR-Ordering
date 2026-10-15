@@ -78,8 +78,10 @@ export default async function UsagePage({ searchParams }: PageProps<'/super/usag
   const period = previousPeriodLabel(days);
   const points = groupSeries(report.days, from, to, params.by);
   const total = report.totals.gmv_paise;
+  // A month the first date cuts short is labelled by its first day.
+  const wholeMonth = (start: string) => params.by === 'month' && start.endsWith('-01');
   const pointLabel = (start: string) =>
-    params.by === 'month' ? monthLabel.format(new Date(noon(start))) : formatShortDate(noon(start));
+    wholeMonth(start) ? monthLabel.format(new Date(noon(start))) : formatShortDate(noon(start));
   const presets = [
     ...datePresets(today).filter((preset) => preset.key !== 'month'),
     ...platformPresets(today),
@@ -98,6 +100,8 @@ export default async function UsagePage({ searchParams }: PageProps<'/super/usag
         from={from}
         to={to}
         compare={params.compare}
+        // The grouping's default follows the dates, so only the ranking is kept.
+        keep={{ rank: params.rank === 'gmv' ? undefined : params.rank }}
         notice={params.notice}
       />
       {report.previous_from && report.previous_to && (
@@ -148,9 +152,11 @@ export default async function UsagePage({ searchParams }: PageProps<'/super/usag
             'Orders',
           ],
           rows: points.map((point) => [
-            params.by === 'month'
+            wholeMonth(point.start)
               ? monthLabel.format(new Date(noon(point.start)))
-              : formatDate(noon(point.start)),
+              : params.by === 'month'
+                ? `From ${formatDate(noon(point.start))}`
+                : formatDate(noon(point.start)),
             <Money key="gmv" paise={point.gmvPaise} fraction="auto" />,
             point.orders.toLocaleString('en-IN'),
           ]),

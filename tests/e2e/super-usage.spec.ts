@@ -70,10 +70,16 @@ test('usage for today, compared, by city, grouped and ranked; a restaurant’s f
       `/super/restaurants?city=${encodeURIComponent(city).replace(/%20/g, '+')}`,
     );
 
-    // Compared with the day before.
+    // Ranked by restaurants, then compared with the day before: the ranking stays.
+    await page
+      .getByRole('navigation', { name: 'Rank places and plans by' })
+      .getByRole('link', { name: 'Restaurants' })
+      .click();
+    await expect(page).toHaveURL(/rank=restaurants/);
     await page.getByLabel('Compare with the previous period').check();
     await page.getByRole('button', { name: 'Show' }).click();
     await expect(page).toHaveURL(/compare=1/);
+    await expect(page).toHaveURL(/rank=restaurants/);
     await expect(page.getByText(/^Compared with /)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Key numbers' }).locator('..')).toContainText(
       'the day before',
@@ -90,11 +96,6 @@ test('usage for today, compared, by city, grouped and ranked; a restaurant’s f
     await chart.getByText('Show as a table').click();
     await expect(chart.getByRole('columnheader', { name: 'Week from' })).toBeVisible();
 
-    await page
-      .getByRole('navigation', { name: 'Rank places and plans by' })
-      .getByRole('link', { name: 'Restaurants' })
-      .click();
-    await expect(page).toHaveURL(/rank=restaurants/);
     const features = page.getByRole('region', { name: 'Features in use' }).first();
     await expect(features.getByRole('row').filter({ hasText: 'Split payments' })).toBeVisible();
 

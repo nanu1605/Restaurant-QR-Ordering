@@ -78,11 +78,13 @@ export function KeyNumbers({
   today: string;
 }) {
   const month = home.period === 'month';
-  // Usage for the same business dates (docs/DECISIONS.md SA-62).
+  // Usage for the same business dates (docs/DECISIONS.md SA-62): Home's month
+  // starts on India's 1st, and before 4 am that day nothing is in it yet.
   const businessToday = businessTodayInIndia();
+  const usageFrom = month ? `${today.slice(0, 8)}01` : businessToday;
   const usageHref = hrefWithParams('/super/usage', {
-    from: month ? `${businessToday.slice(0, 8)}01` : businessToday,
-    to: businessToday,
+    from: usageFrom,
+    to: businessToday < usageFrom ? usageFrom : businessToday,
   });
   const change =
     home.mrr_paise === null ? null : mrrChange(home.mrr_paise, home.mrr_month_ago_paise);
