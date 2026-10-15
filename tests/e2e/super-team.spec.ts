@@ -33,6 +33,7 @@ test('an invite by email: the link, a password and a second factor, then only Sa
   browser,
   request,
 }) => {
+  test.slow();
   const admin = await createPlatformAdmin('e2e-team');
   const email = `e2e-team-new-${unique()}@platform.test`;
   await logInAsPlatformAdmin(page, admin);
@@ -98,6 +99,8 @@ test('an invite by email: the link, a password and a second factor, then only Sa
 });
 
 test('a new role, turned off and back on', async ({ page, browser }) => {
+  // Two members, each signing in, one of them twice.
+  test.slow();
   const admin = await createPlatformAdmin('e2e-team-admin');
   const support = await createPlatformAdmin('e2e-team-support', 'support');
   await logInAsPlatformAdmin(page, admin);
