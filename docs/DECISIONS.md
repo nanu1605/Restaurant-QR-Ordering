@@ -4041,3 +4041,25 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-75 · The digest by choice:** the owner's choice (2026-10-15). It goes to members who have
   joined, are on, chose it, and whose role sees money (Admin and Finance), since it shows MRR and
   money collected. Existing admins stay on, and new Admin and Finance members start on.
+
+### Needs attention at thousands of restaurants
+
+- **SA-76 · Access read in bulk, checked once:** Needs attention (and the alerts bell, which
+  counts it) and Home's key numbers read every restaurant's access, and
+  `public.restaurant_access` checked its caller on each call: the check cost about six times the
+  access itself, and an Admin's Needs attention took 1.1 s on the 4,300 restaurants of the local
+  database. The access rule now lives in `private.restaurant_access`, without the check; the
+  public one checks, then returns it. Dues rows, Needs attention and Home's key numbers, which
+  check the member once, read the private one. The public check now calls `auth.uid()` directly
+  instead of in a sub-select, so PL/pgSQL keeps its plan from one call to the next, and the other
+  functions that read access in bulk (the restaurants list, the digest, MRR days and the rest)
+  got about three times faster too. The duplicates in Needs attention work out each signup's
+  lookalikes once; they ran twice, once to filter and once for the item. Same results as before.
+  On the local database: Needs attention and the alerts 1.1 s to 0.56 s, Home 0.6 s to 0.35 s.
+  What's left is a probe a restaurant for health, onboarding and lookalikes. The other bulk
+  readers then moved to the private one too: the restaurants list, Subscriptions, the overview,
+  the funnel, upgrade opportunities, Usage, MRR days (Revenue), the digest, the nightly snapshot
+  and the reminders, each after its permission check or as the service role only. Lead detail
+  reads one restaurant and keeps the public check. Same results; for an Admin about twice as
+  fast (the list by state and Subscriptions 0.2 s to 0.09 s, Revenue 0.33 s to 0.22 s), while the
+  service-role ones barely move, since the check skips a call with no signed-in user.
