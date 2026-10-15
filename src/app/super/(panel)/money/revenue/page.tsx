@@ -302,7 +302,8 @@ export default async function RevenuePage({ searchParams }: PageProps<'/super/mo
         }}
       />
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      {/* Five columns in the plan mix: side by side only on the widest screens. */}
+      <div className="grid gap-4 2xl:grid-cols-2">
         <PlanMix report={report} live={to === today} historyNote={historyNote} />
         <CancelReasons report={report} />
         <LaunchOffer report={report} />
