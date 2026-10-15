@@ -73,7 +73,7 @@ export async function VersionsSection() {
         {deployments.map((deployment) => (
           <div key={deployment.name} className="flex flex-col">
             <dt className="text-ink-muted">{deployment.name}</dt>
-            <dd className="font-mono text-ink">
+            <dd className={deployment.state === 'ok' ? 'font-mono text-ink' : undefined}>
               {deployment.state === 'unreachable' ? (
                 <Outcome tone="bad">Couldn’t be reached</Outcome>
               ) : deployment.state === 'error' ? (

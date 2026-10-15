@@ -151,11 +151,12 @@ begin
           'ms', r.ms, 'steps', s.steps, 'failed', s.failed, 'missing_steps', s.missing
         ) order by j.job)
         from cron j
-        -- The latest run: the job's rows from its last 12 hours.
+        -- The latest run: its steps all start within its 300-second limit, so
+        -- the job's rows from 5 minutes before its last (not a rerun's).
         cross join lateral (
           select (extract(epoch from max(x.finished_at) - min(x.started_at)) * 1000)::int as ms
           from public.cron_runs x
-          where x.job = j.job and x.started_at > j.started_at - interval '12 hours'
+          where x.job = j.job and x.started_at >= j.started_at - interval '5 minutes'
         ) as r
         cross join lateral (
           select count(*)::int as steps,

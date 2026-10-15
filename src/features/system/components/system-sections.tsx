@@ -80,7 +80,9 @@ export function JobsSection({ system }: { system: SystemHealth }) {
                     .join(', ')}
                 </Outcome>
               ) : (
-                <Outcome tone="ok">All {job.steps} steps fine</Outcome>
+                <Outcome tone="ok">
+                  {job.steps === 1 ? 'Its step is fine' : `All ${job.steps} steps fine`}
+                </Outcome>
               )}
             </li>
           ))}
@@ -292,7 +294,7 @@ export function SpaceSection({
         <Table
           label="Storage by bucket"
           headings={['Bucket', 'Files', 'Size']}
-          minWidth="min-w-[24rem]"
+          minWidth="min-w-[18rem]"
         >
           {sizes.buckets.map((bucket) => (
             <tr key={bucket.bucket}>

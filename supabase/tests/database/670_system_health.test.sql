@@ -48,6 +48,8 @@ $$;
 insert into public.cron_runs (job, step, started_at, finished_at, ok, detail) values
   -- daily: last night's run, a failed step, one that didn't log, one long gone.
   ('daily', 'a', now() - interval '25 hours', now() - interval '25 hours', false, 'was broken'),
+  -- A rerun by hand earlier today, apart from the latest run's time.
+  ('daily', 'a', now() - interval '3 hours', now() - interval '3 hours', true, '{}'),
   ('daily', 'a', now() - interval '1 hour', now() - interval '1 hour' + interval '2 seconds', true, '{}'),
   ('daily', 'b', now() - interval '1 hour' + interval '1 second', now() - interval '1 hour' + interval '3 seconds', false, 'boom'),
   ('daily', 'c', now() - interval '25 hours', now() - interval '25 hours', true, '{}'),
@@ -87,7 +89,7 @@ select is(
   (select j - 'last_at' from jsonb_array_elements((:'sys'::jsonb) -> 'jobs') as j
    where j ->> 'job' = 'daily'),
   '{"job": "daily", "missing": false, "ms": 3000, "steps": 4, "failed": 1, "missing_steps": 2}'::jsonb,
-  'System: the job''s latest run, how long it took, its steps'
+  'System: the job''s latest run, how long it took (not the rerun before), its steps'
 );
 select is(
   (select array_agg(f ->> 'step' order by f ->> 'started_at' desc)
