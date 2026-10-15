@@ -3982,3 +3982,62 @@ stay at 13g, since nobody else gets `/super` before then.
   shown: each bar's first and last day, MRR and Paid at its end, each movement's count and MRR,
   net new MRR, and subscriptions, setup fees and GST collected, in rupees, empty before history,
   named `revenue-<from>-to-<to>.csv`.
+
+### 13g · Team and roles
+
+- **SA-70 · Roles:** the four of plan §3: Admin (everything), Finance, Sales and Support.
+  `private.role_permissions(role)` is the one map; `private.require_platform_permission` now
+  refuses a member whose role lacks the permission (FORBIDDEN), and `has_platform_permission`
+  answers for what only some see. `platform_my_access()` gives the panel the signed-in member's
+  role, name and permissions once per request, so the code has no copy of the map. Everyone
+  already on the team became an Admin, and a row added without a role (the seed, the SQL in the
+  RUNBOOK) is an Admin.
+- **SA-71 · Every function and page on its permission:** the functions that still let any
+  member in now check their §3 permission: lookalikes, the support view and the subscriptions
+  list (restaurants.view); the old overview, which carries MRR (money.view); suspending, extending a trial and changing a plan
+  (restaurants.manage); an owner's password reset and menu imports by the team
+  (restaurants.support); manual payments, setup fees and payment links (money.record); plans and
+  reprocessing a webhook (settings.manage); the audit log (audit.view). Ending one's own support
+  session stays open to any member. Pages, server actions and downloads check the same
+  permission; a page the role doesn't open sends the member to Home, which says so. Row level
+  security narrows what a member may read directly: payments and MRR snapshots need money.view,
+  leads and the funnel's daily numbers growth.manage, support requests and menu imports restaurants.support, webhooks and cron
+  runs system.view, and the audit log's platform rows audit.view (through `platform_can`);
+  every role reads restaurants, so the rest stay open to any member. A pgTAP matrix calls every
+  permission-checked function as each role.
+- **SA-72 · What each role sees:** the navigation shows only the pages the role opens, and a
+  group only with one of them; the header names the member and their role. On a restaurant's
+  page, restaurants.manage gives extending a trial, changing the plan, adding, pinning and
+  editing notes, tags, the account manager, "Found us" and suspending; money.record gives payments, payment links, the Razorpay sync and
+  cancelling autopay; restaurants.support gives support sessions, the owner's password and the
+  menu imports tab, and in onboarding, the owner's consent to a set-up session. Search lists
+  payments only with money.view and leads only with growth.manage. Reprocessing a webhook needs
+  settings.manage, onboarding a restaurant restaurants.manage, extending a trial on Dues
+  restaurants.manage. Home's money, attention groups and activity follow the permissions as
+  before (SA-27 to SA-29), menu imports in the activity need restaurants.support, and a key
+  number links to its rows only when the role opens that page. A lead is assigned only to a
+  member with growth.manage and a support request only to one with restaurants.support; the
+  pickers list just those.
+- **SA-73 · Invites by our email:** the owner's choice (2026-10-15), instead of Supabase's invite,
+  which would need its own mail server. The Team page (`/super/settings/team`, team.manage) makes
+  the login without a password and emails a join link through Resend, the same as reset codes.
+  The link works once, for 7 days; only a keyed hash of it is stored. The inviting Admin sees it
+  too, to send on WhatsApp, which also covers email not being set up. A team login is never a
+  restaurant's: an email that already has a login is refused. `/login/join` sets the password,
+  signs the member in, and `/super/mfa` then has them set up an authenticator app. A new link
+  replaces the old one. Until they join, a member has no access. Audited: invited, a new link,
+  joined.
+- **SA-74 · Changing and turning off:** an Admin changes a member's role, name and daily digest.
+  The last active Admin can't be moved to another role or turned off, and nobody turns
+  themselves off; changes to the team are taken one at a time, so two Admins can't each remove
+  the other. Turned off, the database refuses the member at once and, in the same transaction,
+  blocks their login (Supabase Auth's `banned_until`, as its ban sets it), deletes its sessions
+  so no refresh token works again, and ends an unused invite link; turned back on, the login is
+  let in, and an invited member needs a new link. Their open support sessions end when they are
+  turned off or move to a role without support. Members turned off
+  get no reset code and can't be chosen as an assignee or account manager; their history stays.
+  Audited: what changed, turned off, turned on. Each member's row opens the audit log filtered to
+  what they did (`?member=`), which now shows team members by name.
+- **SA-75 · The digest by choice:** the owner's choice (2026-10-15). It goes to members who have
+  joined, are on, chose it, and whose role sees money (Admin and Finance), since it shows MRR and
+  money collected. Existing admins stay on, and new Admin and Finance members start on.

@@ -582,6 +582,8 @@ Acceptance:
 
 ### 13g. Team and roles
 
+Built 2026-10-15 (docs/DECISIONS.md SA-70 to SA-75). Invites come by MenuMesh's own email with a join link the Admin can also copy, not Supabase's invite; the digest goes to members who chose it and whose role sees money (owner's choices, 2026-10-15).
+
 Move this stop earlier if team members join before Phase 13.
 
 Ships (`/super/settings/team`, team.manage):

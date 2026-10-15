@@ -294,6 +294,10 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 3. Log in at `https://menumesh.in/login`; the first visit to `/super` asks to enrol an
    authenticator app.
 
+Everyone after that is invited from Settings → Team (an Admin): the invite email needs
+`RESEND_API_KEY` and `EMAIL_FROM`, and without them the Admin sends the link shown on the page.
+Turning a member off there blocks their login; their lost phone is still fixed as in the README.
+
 ## Launching the website
 
 Production keeps its current build until the owner's legal texts and contact details are ready
