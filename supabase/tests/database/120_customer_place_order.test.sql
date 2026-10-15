@@ -77,10 +77,10 @@ $$;
 -- ─── Who may call it ────────────────────────────────────────────────────────
 select ok(
   has_function_privilege(
-    'service_role', 'public.customer_place_order(text, text, text, jsonb, text)', 'execute'
+    'service_role', 'public.customer_place_order(text, text, text, jsonb, text, text)', 'execute'
   )
     and not has_function_privilege(
-      'authenticated', 'public.customer_place_order(text, text, text, jsonb, text)', 'execute'
+      'authenticated', 'public.customer_place_order(text, text, text, jsonb, text, text)', 'execute'
     ),
   'only the server can place customer orders'
 );
