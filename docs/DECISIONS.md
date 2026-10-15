@@ -3892,10 +3892,12 @@ stay at 13g, since nobody else gets `/super` before then.
   can't drift apart. Only restaurants with an order, a bill or a call for a waiter in the last 3
   days are counted live. `metrics_usage_daily` gains four daily counts for feature adoption:
   bills for a table a waiter had, bills paid in more than one payment, accepted orders with an
-  add-on and accepted orders from the Hindi menu. Days stored before 13e have them at zero until
-  the usage backfill runs again (RUNBOOK).
+  add-on and accepted orders from the Hindi menu. Days stored before 13e have the waiter, split
+  and add-on counts at zero until the usage backfill runs again (RUNBOOK); Hindi orders start
+  with 13e (SA-64).
 - **SA-62 · The Usage page:** `/super/usage` (insights.view) for business dates, each
-  restaurant's own, summed like Home; the last 30 days unless chosen, up to a year, and with
+  restaurant's own, summed like Home (a restaurant counts from its first business day); the last
+  30 days unless chosen, up to a year (366 days, as every page), and with
   "Compare with the previous period" the same number of days just before. "Today" is India's
   date until 4 am, the default start of a business day, so it matches Home, whose GMV and
   orders now open this page for the same dates. Key numbers: GMV (diners' bills with the
