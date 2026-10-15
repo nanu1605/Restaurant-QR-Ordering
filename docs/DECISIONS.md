@@ -3882,3 +3882,47 @@ stay at 13g, since nobody else gets `/super` before then.
   payment failed that hit a plan limit in the last 30 days, are at their table or staff limit
   now, or took 600 or more accepted orders in the last 30 business days (owner's choice,
   2026-10-15): why, the orders, Call and WhatsApp; most limit hits first, then the busiest, up to 100. The plan's optional Home alert for them is left out.
+
+### 13e · Usage analytics
+
+- **SA-61 · A day's usage, defined once:** `private.metrics_usage_rows` counts a restaurant's
+  business days the way its own reports do (SA-10). The nightly rebuild stores what it returns
+  for finished days, and the Usage page and a restaurant's Usage tab count the days not stored
+  yet with it: each restaurant's last finished day and today (SA-35), so stored and live figures
+  can't drift apart. Only restaurants with an order, a bill or a call for a waiter in the last 3
+  days are counted live. `metrics_usage_daily` gains four daily counts for feature adoption:
+  bills for a table a waiter had, bills paid in more than one payment, accepted orders with an
+  add-on and accepted orders from the Hindi menu. Days stored before 13e have them at zero until
+  the usage backfill runs again (RUNBOOK).
+- **SA-62 · The Usage page:** `/super/usage` (insights.view) for business dates, each
+  restaurant's own, summed like Home; the last 30 days unless chosen, up to a year, and with
+  "Compare with the previous period" the same number of days just before. "Today" is India's
+  date until 4 am, the default start of a business day, so it matches Home, whose GMV and
+  orders now open this page for the same dates. Key numbers: GMV (diners' bills with the
+  restaurants' taxes, never MenuMesh revenue), orders, bills, average bill, items, active
+  restaurants (an accepted order in the dates) and QR orders, each against the previous period
+  ("Up 12%", or what it was when that was under 5). GMV and orders over time by day, week (from
+  Monday) or month; GMV by city, state and current plan, city and state trimmed and compared
+  without case, a blank one "Not given", ranked by GMV or by restaurants, each linking to the
+  Restaurants list filtered; the top and bottom 10 restaurants by GMV and by orders (the bottom
+  among those with an order, and only once more than 10 had one), with their share; how bills
+  were paid (payments recorded on the dates' bills, by mode), discounts, calls for a waiter or
+  the bill, and table time (from a table's first order to its bill, each day's average weighted
+  by its bills, so a long range can be a minute off the restaurant's own report); orders by
+  weekday and hour, the business day's weekday and each restaurant's clock hour, from 4 am. The
+  places and plans are tables with a share bar, not charts; only GMV and orders over time is a
+  chart, with its table. No CSV export.
+- **SA-63 · Features in use:** of the Paid restaurants (paid now) with an order in the dates,
+  how many use each feature. Used in the dates: waiter assignment (a bill for a table a waiter
+  had), add-ons (an accepted order with one), call waiter and request bill (a guest asked),
+  discounts (a bill with one), split payments (a bill paid in more than one payment), menu photo
+  import (a photo import a restaurant login finished; the team's don't count) and the customer
+  menu in Hindi (SA-64). Set up now, since nothing records their use: UPI QR on bills (turned on
+  with a UPI ID, and in the plan), the worker panel in Hindi (an active login uses it) and the
+  kitchen view (the plan has it and a kitchen login is active; owner's choice, 2026-10-15). One
+  function, `private.restaurant_features`, holds the rules for the page and for a restaurant's
+  Usage tab, which now lists its features in its last 30 finished business days.
+- **SA-64 · The guest's menu language:** a guest's order records whether the menu was in Hindi
+  or English (`orders.guest_lang`, from the phone's language choice; null for staff orders and
+  orders from before), so the Hindi customer menu counts real use from this release on (owner's
+  choice, 2026-10-15). Only usage analytics reads it.

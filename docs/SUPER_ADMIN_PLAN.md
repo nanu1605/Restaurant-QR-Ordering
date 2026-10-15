@@ -553,6 +553,8 @@ Acceptance:
 
 ### 13e. Usage analytics
 
+Built 2026-10-15 (docs/DECISIONS.md SA-61 to SA-64). Guests' orders record the menu's language, so the Hindi customer menu counts from this release on; the kitchen view counts a plan with it and an active kitchen login (owner's choices, 2026-10-15). Places and plans are ranked tables rather than charts; no CSV export.
+
 Ships (`/super/usage`, insights.view, with date range and compare):
 
 - Key numbers: GMV, orders, bills, average bill, items, active restaurants (at least one order in the period), QR adoption.
