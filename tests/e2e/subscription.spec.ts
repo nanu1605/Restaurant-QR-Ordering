@@ -222,6 +222,13 @@ test('an owner subscribes with an offer code, then sets up autopay at the full p
       duration_cycles: 3,
     })
     .throwOnError();
+  // A deal reuses the Razorpay plan of an earlier deal at the same price, but
+  // the mock forgets its plans between runs.
+  await admin
+    .from('subscription_deals')
+    .update({ razorpay_plan_id: null })
+    .eq('price_paise', 71900)
+    .throwOnError();
   const restaurant = await createTestRestaurant({ prefix: 'e2e-offer' });
   await stubCheckout(page);
   await logInAsOwner(page, restaurant);
