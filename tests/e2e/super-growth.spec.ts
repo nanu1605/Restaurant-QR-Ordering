@@ -140,14 +140,12 @@ test('unfinished signups, the funnel and upgrade opportunities, and Found us', a
     code_hash: '0'.repeat(64),
   });
   // More limit hits than any other restaurant, so it leads the list.
-  await admin
-    .from('plan_limit_events')
-    .insert(
-      Array.from({ length: 40 }, () => ({
-        restaurant_id: restaurant.restaurantId,
-        kind: 'tables',
-      })),
-    );
+  await admin.from('plan_limit_events').insert(
+    Array.from({ length: 40 }, () => ({
+      restaurant_id: restaurant.restaurantId,
+      kind: 'tables',
+    })),
+  );
 
   try {
     await logInAsPlatformAdmin(page, team);
