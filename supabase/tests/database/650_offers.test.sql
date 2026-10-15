@@ -66,6 +66,17 @@ select is(
 from public.offers o, public.offers f, public.plans g, public.plans s
 where o.code = 'LAUNCH20' and f.code = 'FLAT100' and g.code = 'growth' and s.code = 'starter';
 
+-- ─── A trial: no cycle yet, so the price applies at once ─────────────────────
+select tests.create_restaurant('sa650-trial') as trial \gset
+select tests.authenticate_as_platform_admin(:'finance');
+select is(
+  public.platform_set_deal(:'trial', '{"plan_code": "growth", "billing_cycle": "monthly",
+    "price_paise": 75000, "reason": "Pilot price"}') ->> 'applied_now',
+  'true',
+  'a trial takes the price now, for when it pays'
+);
+select tests.clear_auth();
+
 -- ─── A custom price for a restaurant paying by hand ─────────────────────────
 select tests.authenticate_as_platform_admin(:'finance');
 select public.platform_record_manual_payment(:'manual', jsonb_build_object(

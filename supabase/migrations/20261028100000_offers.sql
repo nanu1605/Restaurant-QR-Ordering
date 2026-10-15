@@ -2370,6 +2370,7 @@ declare
   v_reason text;
   v_refusal text;
   v_autopay boolean;
+  v_fits boolean;
   v_deal public.subscription_deals;
 begin
   perform private.assert_keys(v_input,
@@ -2467,6 +2468,8 @@ begin
     end if;
   end if;
 
+  -- Its plan, and its cycle or none yet (a trial).
+  v_fits := v_sub.plan_id = v_plan.id and coalesce(v_sub.billing_cycle = v_cycle, true);
   if v_open.id is not null then
     update public.subscription_deals d set ended_at = now() where d.id = v_open.id;
   end if;
@@ -2481,12 +2484,9 @@ begin
   returning * into v_deal;
   -- Not on autopay: the new price from now on, or the list price when the
   -- deal it replaced was in use and this one is for another plan or cycle.
-  if not v_autopay and (
-    (v_sub.plan_id = v_plan.id and v_sub.billing_cycle = v_cycle) or v_sub.deal_id = v_open.id
-  ) then
+  if not v_autopay and (v_fits or v_sub.deal_id = v_open.id) then
     update public.restaurant_subscriptions s
-      set deal_id = case when v_sub.plan_id = v_plan.id and v_sub.billing_cycle = v_cycle
-        then v_deal.id end
+      set deal_id = case when v_fits then v_deal.id end
       where s.id = v_sub.id;
   end if;
   perform private.audit_platform(v_admin, p_restaurant_id, 'subscription.deal_set',
@@ -2494,10 +2494,10 @@ begin
     jsonb_build_object('offer_code', v_offer.code, 'plan_code', v_plan.code,
       'billing_cycle', v_cycle, 'list_price_paise', v_list, 'price_paise', v_price,
       'cycles', v_cycles,
-      'applied_now', not v_autopay and v_sub.plan_id = v_plan.id and v_sub.billing_cycle = v_cycle),
+      'applied_now', not v_autopay and v_fits),
     v_reason);
   return private.deal_json(v_deal.id, true) || jsonb_build_object(
-    'applied_now', not v_autopay and v_sub.plan_id = v_plan.id and v_sub.billing_cycle = v_cycle
+    'applied_now', not v_autopay and v_fits
   );
 end;
 $$;
