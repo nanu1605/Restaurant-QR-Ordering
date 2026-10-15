@@ -115,7 +115,7 @@ export function KeyNumbers({
         {home.mrr_paise !== null && (
           <Figure
             label="MRR"
-            href="/super/money/subscriptions?state=paid"
+            href="/super/money/revenue"
             note={
               change === null ? (
                 'Before GST'

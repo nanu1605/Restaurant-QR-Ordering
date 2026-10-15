@@ -33,14 +33,25 @@ const n = (value: number) => value.toLocaleString('en-IN');
 // Key numbers in whole rupees, as on Home.
 const rupees = (paise: number) => Math.round(paise / 100) * 100;
 
-/** A percentage with a quiet bar under it; the bar is decoration. */
-function ShareCell({ part, whole }: { part: number; whole: number }) {
+/**
+ * A percentage with a quiet bar under it; the bar is decoration, in the GMV
+ * colour unless it shares MenuMesh revenue.
+ */
+export function ShareCell({
+  part,
+  whole,
+  bar = 'bg-chart-2',
+}: {
+  part: number;
+  whole: number;
+  bar?: 'bg-chart-1' | 'bg-chart-2';
+}) {
   return (
     <div className="flex min-w-24 flex-col gap-1">
       <span className="tabular-nums">{percent(part, whole)}</span>
       <div aria-hidden className="h-1.5 rounded-full bg-line">
         <div
-          className="h-1.5 rounded-full bg-chart-2"
+          className={`h-1.5 rounded-full ${bar}`}
           style={{ width: `${whole === 0 ? 0 : (part / whole) * 100}%` }}
         />
       </div>
@@ -48,7 +59,7 @@ function ShareCell({ part, whole }: { part: number; whole: number }) {
   );
 }
 
-function Change({ now, before, period }: { now: number; before: number; period: string }) {
+export function Change({ now, before, period }: { now: number; before: number; period: string }) {
   const change = changeNote(now, before, period);
   return (
     <span className="inline-flex items-center gap-0.5">

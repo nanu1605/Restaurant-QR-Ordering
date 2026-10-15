@@ -20,3 +20,11 @@ export const NewRestaurantsChart = dynamic(
   () => import('./home-chart-views').then((m) => m.NewRestaurantsChart),
   { ssr: false, loading },
 );
+export const MovementChart = dynamic(
+  () => import('./home-chart-views').then((m) => m.MovementChart),
+  { ssr: false, loading },
+);
+export const CollectedChart = dynamic(
+  () => import('./home-chart-views').then((m) => m.CollectedChart),
+  { ssr: false, loading },
+);

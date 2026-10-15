@@ -4,6 +4,7 @@ import { cn } from 'cn';
 import {
   Building2,
   ChartColumn,
+  ChartLine,
   CreditCard,
   Funnel,
   HandCoins,
@@ -39,6 +40,7 @@ const NAV: NavGroup[] = [
       { href: '/super/money/payments', label: 'Payments', icon: ReceiptIndianRupee },
       { href: '/super/money/dues', label: 'Dues', icon: HandCoins },
       { href: '/super/money/subscriptions', label: 'Subscriptions', icon: CreditCard },
+      { href: '/super/money/revenue', label: 'Revenue', icon: ChartLine },
     ],
   },
   {
