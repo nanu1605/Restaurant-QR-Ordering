@@ -3811,3 +3811,72 @@ stay at 13g, since nobody else gets `/super` before then.
   where they see the changes (the plan said "in their activity"). Outside sessions, two team
   tools stay as they were (owner's choice, 2026-10-15): resetting the owner's password from
   /super for an owner locked out, and the /super menu import.
+
+### 13d · Growth: leads, funnel, opportunities
+
+- **SA-53 · One leads table:** `site_leads` keeps every lead: the website's demo requests and the
+  ones the team adds by hand. New columns: the channel (`website_lead` for the website's form;
+  field visit, referral, phone call, WhatsApp, social media or other when added by hand), the
+  stage (New, Contacted, Demo scheduled, Demo done, Trial, Won, Lost), a reason that Lost needs
+  and that goes when the lead leaves Lost (price, not interested, using another system, no
+  response, closed down, other), the assignee (a platform admin), the next follow-up and the
+  demo times, the linked restaurant and who added it. `lead_events` is the history: stage,
+  assignee, follow-up, demo and restaurant changes (from and to) and notes, by whom or
+  automatically. Only the team reads either. Existing leads start as New. A lead added by hand
+  skips the website's rate limits and Turnstile, starts as New or Contacted, and never counts as
+  a demo request. Lead changes don't go to the audit log: the history is their record, as in
+  the support inbox.
+- **SA-54 · Linked and moved on by themselves:** a restaurant created by signup or by the team
+  takes every unlinked lead with its mobile (`private.phone10`), and they move to Trial; its
+  first subscription payment moves its leads to Won (a setup fee doesn't). Both are triggers, so
+  every path (signup, the wizard, Razorpay, a manual payment) does it, and neither moves a lead
+  back from Won; a lost lead that signs up comes back as Trial. Linking by hand (by restaurant
+  code, or one click on a restaurant with the same mobile) moves it the same way, to Won when the
+  restaurant has paid; unlinking keeps the stage. A lead added for a mobile that already has a
+  restaurant isn't linked by itself (it may be a second outlet): its page offers the link. The
+  migration links existing leads the same way. A self-signup's "Found us" is now the channel of
+  the earliest lead with its mobile (a field visit stays a field visit), else website; SA-12 made
+  any lead a demo request.
+- **SA-55 · The pipeline:** `/super/leads` (growth.manage): stage tabs with counts (Open, New to
+  Trial, is the default), filters by assignee, channel, follow-up (overdue, due by tonight) and
+  text (name, restaurant, city or part of the mobile), 50 a page; follow-ups due first, the
+  earliest first, then the newest. The board shows the five open stages, up to 30 each with a
+  link to the rest; no drag and drop, a lead's stage changes on its page. A lead's page: stage
+  (Lost chosen with its reason) and assignee menus; Call, WhatsApp (no message filled in) and
+  email, and after Call or WhatsApp on a new lead, "Mark as contacted?"; the follow-up and the
+  demo in India time; its details and website source; the linked restaurant with its state,
+  linked by code or unlinked; others with the same mobile; notes and history. Add lead warns when
+  the mobile already has a restaurant or a lead, and saves anyway. Links from before (search,
+  Home, alerts with `?lead=`) open the lead's page, and the new-lead email links to it.
+- **SA-56 · Home: leads not contacted:** the Needs attention group is now leads still New 24
+  hours or more after they came in, oldest first (it was every lead from the last 24 hours).
+  Moving one on from New clears it. A new lead is still an alert and an activity item at once.
+- **SA-57 · Unfinished signups:** `/super/leads/signups` lists website signups from the 7 days
+  `site_signups` keeps them that never became a restaurant: the latest per email, leaving out an
+  email that has a login and a mobile that has a restaurant. Each shows the details as typed
+  (name, email, mobile, restaurant, city, plan), how far it got (code sent, asked for a new code,
+  a wrong code, locked out, code ran out), when it started and when it is deleted, newest first,
+  up to 200, with a link when a lead has the mobile. No "Add as lead" until the privacy policy
+  covers following them up (owner's choice, 2026-10-15). "Email verified" isn't recorded on its
+  own: the code check and creating the restaurant are one request, and `verified_at` is set
+  after it.
+- **SA-58 · The funnel:** `/super/funnel` for India dates (the last 30 days unless chosen, up to
+  a year): demo requests (website leads), signups started (the nightly snapshot's count, or
+  `site_signups` for the 7 days it keeps; the page says from when they are counted), restaurants
+  created by signup (against signups started) and by the team, then, of the restaurants created
+  in the dates, a first accepted order and a first subscription payment up to today, each
+  against the restaurants created. "Email verified" is part of created (SA-57). Website visitors
+  wait for a PostHog personal API key: the website's PostHog keeps no visitor id across page
+  loads, so it would count visits, not people (owner's choice, 2026-10-15). Shares follow the
+  small-numbers rule: "2 of 3", "430 of 612, 70%".
+- **SA-59 · Channels and sources:** a channel table: leads that came in and restaurants created
+  in the dates by how they found MenuMesh (Not known too), how many of those restaurants pay now,
+  and their MRR; its restaurants add up to the restaurants created. Website arrivals: website
+  demo requests and signups by utm source, else the site that linked, else "Direct or not
+  known", the top 20 and the rest together, with how many signups pay now. "Found us" is set by
+  the team on a restaurant's Documents tab (restaurants.manage) and audited as
+  `restaurant.channel_changed`, so older restaurants needn't stay Not known.
+- **SA-60 · Upgrade opportunities:** on the Funnel page, Starter restaurants in trial, paid or
+  payment failed that hit a plan limit in the last 30 days, are at their table or staff limit
+  now, or took 600 or more accepted orders in the last 30 business days (owner's choice,
+  2026-10-15): why, the orders, Call and WhatsApp; most limit hits first, then the busiest, up to 100. The plan's optional Home alert for them is left out.
