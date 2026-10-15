@@ -85,7 +85,7 @@ const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string
   payment_failed: 'Payment failed',
   trial_ending: 'Trial ends in 3 days, no autopay',
   needs_payment: 'Needs a payment within 7 days',
-  new_leads: 'Leads from the last 24 hours',
+  new_leads: 'Leads not contacted in 24 hours',
   support_open: 'Support requests open over 24 hours',
   stuck_onboarding: 'Stuck in onboarding',
   slowing: 'Orders slowing down',
@@ -320,6 +320,7 @@ const TEAM_ACTIONS: Record<string, string> = {
   'support_access.allowed': 'Support access given in person',
   'support_session.started': 'Support session started',
   'support_session.ended': 'Support session ended',
+  'restaurant.channel_changed': 'Found us changed',
 };
 
 export type ActivityLine = {
@@ -382,7 +383,7 @@ export function activityLine(item: ActivityItem): ActivityLine {
       return line(
         'New lead',
         [text(data.name), text(data.restaurant_name), text(data.city)].filter(Boolean).join(', '),
-        `/super/leads?lead=${text(data.lead_id) ?? ''}`,
+        `/super/leads/${text(data.lead_id) ?? ''}`,
       );
     case 'menu_import': {
       // menu_imports.imported_counts, as the import's commit writes it.

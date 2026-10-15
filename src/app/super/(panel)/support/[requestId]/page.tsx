@@ -7,7 +7,8 @@ import { Facts, Section } from '@/features/platform/components/restaurant-sectio
 import { formatMobile, telHref, whatsappHref } from '@/features/platform/dues-messages';
 import { formatDateTime } from '@/features/platform/platform';
 import { getTeam } from '@/features/platform/queries';
-import { RequestControls, SupportNoteForm } from '@/features/support/components/request-controls';
+import { NoteForm, RequestControls } from '@/features/support/components/request-controls';
+import { addSupportNote } from '@/features/support/inbox-actions';
 import { PriorityBadge, SupportStatusBadge } from '@/features/support/components/support-badges';
 import { getSupportRequest } from '@/features/support/inbox-queries';
 import {
@@ -114,7 +115,7 @@ export default async function SupportRequestPage({
                 ),
               )}
             </ol>
-            <SupportNoteForm requestId={request.id} />
+            <NoteForm save={addSupportNote.bind(null, request.id)} />
           </Section>
         </div>
 

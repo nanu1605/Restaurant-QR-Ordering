@@ -145,6 +145,59 @@ export async function supportRequestPaths(prefix: string) {
 }
 
 /**
+ * A contacted lead with an overdue follow-up and a note, and the Growth pages
+ * (13d): the pipeline as a table and a board, adding a lead, the lead,
+ * unfinished signups and the funnel, for the sweeps over every super-admin page.
+ */
+export async function growthPaths(prefix: string) {
+  const admin = adminClient();
+  const name = `Sweep ${prefix}`;
+  // Two sweeps can start at once: the oldest of the same name.
+  const found = await admin
+    .from('site_leads')
+    .select('id')
+    .eq('name', name)
+    .order('created_at')
+    .limit(1)
+    .maybeSingle();
+  const id = found.data?.id ?? (await sweepLead(name));
+  return [
+    '/super/leads',
+    '/super/leads?view=board',
+    '/super/leads/new',
+    `/super/leads/${id}`,
+    '/super/leads/signups',
+    '/super/funnel',
+  ];
+}
+
+async function sweepLead(name: string) {
+  const admin = adminClient();
+  const { data } = await admin
+    .from('site_leads')
+    .insert({
+      name,
+      restaurant_name: 'Sweep Cafe',
+      city: 'Indore',
+      phone: `9${Date.now().toString().slice(-9)}`,
+      message: 'Twelve tables, two floors.',
+      stage: 'contacted',
+      follow_up_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  await admin
+    .from('lead_events')
+    .insert([
+      { lead_id: data.id, kind: 'stage', from_value: 'new', to_value: 'contacted' },
+      { lead_id: data.id, kind: 'note', body: 'Wants a demo on Monday.' },
+    ])
+    .throwOnError();
+  return data.id;
+}
+
+/**
  * A restaurant with a pinned note and a tag, and the paths of its page's tabs,
  * for the sweeps over every super-admin page.
  */

@@ -380,6 +380,50 @@ export type Database = {
           },
         ]
       }
+      lead_events: {
+        Row: {
+          actor_id: string | null
+          automatic: boolean
+          body: string | null
+          created_at: string
+          from_value: string | null
+          id: string
+          kind: string
+          lead_id: string
+          to_value: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          automatic?: boolean
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind: string
+          lead_id: string
+          to_value?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          automatic?: boolean
+          body?: string | null
+          created_at?: string
+          from_value?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string
+          to_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "site_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_addon_groups: {
         Row: {
           created_at: string
@@ -1897,45 +1941,87 @@ export type Database = {
       }
       site_leads: {
         Row: {
+          assignee_id: string | null
+          channel: string
           city: string
           created_at: string
+          created_by: string | null
+          demo_at: string | null
           email: string | null
+          follow_up_at: string | null
           id: string
           ip_hash: string | null
+          lost_reason: string | null
           message: string | null
           name: string
           phone: string
           plan_code: string | null
+          restaurant_id: string | null
           restaurant_name: string
           source: Json | null
+          stage: string
+          updated_at: string
         }
         Insert: {
+          assignee_id?: string | null
+          channel?: string
           city: string
           created_at?: string
+          created_by?: string | null
+          demo_at?: string | null
           email?: string | null
+          follow_up_at?: string | null
           id?: string
           ip_hash?: string | null
+          lost_reason?: string | null
           message?: string | null
           name: string
           phone: string
           plan_code?: string | null
+          restaurant_id?: string | null
           restaurant_name: string
           source?: Json | null
+          stage?: string
+          updated_at?: string
         }
         Update: {
+          assignee_id?: string | null
+          channel?: string
           city?: string
           created_at?: string
+          created_by?: string | null
+          demo_at?: string | null
           email?: string | null
+          follow_up_at?: string | null
           id?: string
           ip_hash?: string | null
+          lost_reason?: string | null
           message?: string | null
           name?: string
           phone?: string
           plan_code?: string | null
+          restaurant_id?: string | null
           restaurant_name?: string
           source?: Json | null
+          stage?: string
+          updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "site_leads_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "platform_admins"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "site_leads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       site_signups: {
         Row: {
@@ -2804,6 +2890,10 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_add_lead_note: {
+        Args: { p_body: string; p_lead_id: string }
+        Returns: string
+      }
       platform_add_note: {
         Args: { p_body: string; p_pinned?: boolean; p_restaurant_id: string }
         Returns: string
@@ -2822,6 +2912,7 @@ export type Database = {
         Args: { p_plan_code: string; p_restaurant_id: string }
         Returns: Json
       }
+      platform_create_lead: { Args: { p_lead: Json }; Returns: string }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
       platform_create_tag: {
         Args: { p_colour: string; p_name: string }
@@ -2839,6 +2930,8 @@ export type Database = {
         Args: { p_days: number; p_restaurant_id: string }
         Returns: Json
       }
+      platform_funnel: { Args: { p_from: string; p_to: string }; Returns: Json }
+      platform_get_lead: { Args: { p_lead_id: string }; Returns: Json }
       platform_get_restaurant: {
         Args: { p_restaurant_id: string }
         Returns: Json
@@ -2848,8 +2941,10 @@ export type Database = {
         Returns: Json
       }
       platform_home: { Args: { p_period?: string }; Returns: Json }
+      platform_lead_matches: { Args: { p_phone: string }; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_leads: { Args: { p_filters: Json }; Returns: Json }
       platform_list_notes: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
@@ -2920,6 +3015,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: undefined
       }
+      platform_set_acquisition_channel: {
+        Args: { p_channel: string; p_restaurant_id: string }
+        Returns: undefined
+      }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
         Returns: Json
@@ -2941,6 +3040,11 @@ export type Database = {
         Returns: Json
       }
       platform_team: { Args: never; Returns: Json }
+      platform_unfinished_signups: { Args: never; Returns: Json }
+      platform_update_lead: {
+        Args: { p_lead_id: string; p_patch: Json }
+        Returns: undefined
+      }
       platform_update_plan: {
         Args: { p_patch: Json; p_plan_id: string }
         Returns: Json
@@ -2950,6 +3054,7 @@ export type Database = {
         Args: { p_patch: Json; p_request_id: string }
         Returns: undefined
       }
+      platform_upgrade_opportunities: { Args: never; Returns: Json }
       razorpay_record_webhook: {
         Args: { p_event_id: string; p_payload: Json }
         Returns: string

@@ -531,6 +531,8 @@ Acceptance:
 
 ### 13d. Growth: leads, funnel, opportunities
 
+Built 2026-10-15 (docs/DECISIONS.md SA-53 to SA-60). "Email verified" is part of restaurant created, since one request does both (SA-57); website visitors wait for a PostHog personal API key, and unfinished signups have no "Add as lead" until the privacy policy covers it (owner's choices, 2026-10-15); upgrade opportunities have no Home alert (SA-60).
+
 Ships:
 
 - **Leads** (`/super/leads`, growth.manage), as a table and a board:

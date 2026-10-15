@@ -17,7 +17,7 @@ export function hashIp(ip: string): string {
 }
 
 /** Subject, plain text and HTML for the platform's "new lead" email. */
-export function leadEmail(lead: Lead, planName: string | null, appUrl: string) {
+export function leadEmail(lead: Lead, planName: string | null, appUrl: string, leadId: string) {
   const rows: Array<[string, string]> = [
     ['Name', lead.name],
     ['Restaurant', lead.restaurantName],
@@ -27,12 +27,12 @@ export function leadEmail(lead: Lead, planName: string | null, appUrl: string) {
     ['Plan', planName ?? 'Not chosen'],
     ['Message', lead.message ?? '—'],
   ];
-  const link = `${appUrl.replace(/\/+$/, '')}/super/leads`;
+  const link = `${appUrl.replace(/\/+$/, '')}/super/leads/${leadId}`;
   return {
     subject: `Demo request: ${lead.restaurantName}, ${lead.city}`,
     text: [
       rows.map(([label, value]) => `${label}: ${value}`).join('\n'),
-      `All leads: ${link}`,
+      `Open the lead: ${link}`,
     ].join('\n\n'),
     html: [
       '<table cellpadding="4">',
@@ -41,7 +41,7 @@ export function leadEmail(lead: Lead, planName: string | null, appUrl: string) {
           `<tr><th align="left" valign="top">${label}</th><td style="white-space:pre-wrap">${escapeHtml(value)}</td></tr>`,
       ),
       '</table>',
-      `<p><a href="${escapeHtml(link)}">See all leads</a></p>`,
+      `<p><a href="${escapeHtml(link)}">Open the lead</a></p>`,
       `<p>— ${APP_NAME}</p>`,
     ].join('\n'),
   };
@@ -72,7 +72,7 @@ export async function notifyLead(
   try {
     await sendEmail(config, {
       to: [to],
-      ...leadEmail(lead, plan?.data?.name ?? null, appUrl),
+      ...leadEmail(lead, plan?.data?.name ?? null, appUrl, leadId),
       idempotencyKey: `lead/${leadId}`,
     });
   } catch (error) {

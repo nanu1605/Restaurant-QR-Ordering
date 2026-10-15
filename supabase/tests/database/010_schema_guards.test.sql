@@ -221,7 +221,18 @@ select set_eq(
       ('public.admin_end_support_access'),
       ('public.platform_start_support_session'),
       ('public.platform_onboarding_support_session'),
-      ('public.platform_end_support_session')
+      ('public.platform_end_support_session'),
+      -- Growth (13d)
+      ('public.platform_list_leads'),
+      ('public.platform_get_lead'),
+      ('public.platform_create_lead'),
+      ('public.platform_update_lead'),
+      ('public.platform_add_lead_note'),
+      ('public.platform_lead_matches'),
+      ('public.platform_unfinished_signups'),
+      ('public.platform_funnel'),
+      ('public.platform_upgrade_opportunities'),
+      ('public.platform_set_acquisition_channel')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

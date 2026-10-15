@@ -66,19 +66,32 @@ test('a demo request reaches the platform team', async ({ page, context, request
       const email = emails.find((item) => item.subject === `Demo request: ${restaurant}, Pune`);
       expect(email?.text).toContain(`Phone: +91 ${phone}`);
       expect(email?.text).toContain('Plan: Growth');
+      expect(email?.text).toMatch(/Open the lead: http.*\/super\/leads\/[0-9a-f-]{36}/);
     }).toPass();
 
     await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-leads'));
     await page.getByRole('link', { name: 'Leads' }).first().click();
     await expect(page.getByRole('heading', { name: 'Leads', level: 1 })).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Search' }).fill(restaurant);
+    await page.getByRole('button', { name: 'Apply' }).click();
     const row = page.getByRole('row').filter({ hasText: restaurant });
-    await expect(row).toContainText('Asha Rao');
-    await expect(row).toContainText(`+91 ${phone}`);
-    await expect(row).toContainText('growth');
-    await expect(row).toContainText('Twelve tables.');
+    await expect(row).toContainText('New');
+    await expect(row).toContainText('Demo request on the website');
     await expect(row).toContainText('newsletter / email');
     await expect(row).toContainText('Campaign: launch');
     await expect(row).toContainText('From www.google.com');
+    // The lead's page: how to reach them, the plan and the message (13d).
+    await row.getByRole('link', { name: /Asha Rao/ }).click();
+    await expect(
+      page.getByRole('heading', { name: `Asha Rao: ${restaurant}`, level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Reach them' })).toContainText(
+      `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`,
+    );
+    await expect(page.getByRole('region', { name: 'Details' })).toContainText('growth');
+    await expect(page.getByRole('region', { name: 'Notes and history' })).toContainText(
+      'Twelve tables.',
+    );
   } finally {
     await admin
       .from('platform_settings')

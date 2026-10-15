@@ -4,6 +4,7 @@ import { cn } from 'cn';
 import {
   Building2,
   CreditCard,
+  Funnel,
   HandCoins,
   Inbox,
   House,
@@ -46,7 +47,13 @@ const NAV: NavGroup[] = [
       { href: '/super/support', label: 'Support inbox', icon: LifeBuoy },
     ],
   },
-  { title: 'Growth', items: [{ href: '/super/leads', label: 'Leads', icon: Inbox }] },
+  {
+    title: 'Growth',
+    items: [
+      { href: '/super/leads', label: 'Leads', icon: Inbox },
+      { href: '/super/funnel', label: 'Funnel', icon: Funnel },
+    ],
+  },
   { title: 'System', items: [{ href: '/super/webhooks', label: 'Webhooks', icon: Webhook }] },
   {
     title: 'Settings',

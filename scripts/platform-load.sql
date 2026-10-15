@@ -214,12 +214,25 @@ begin
   ) as st
   on conflict (day, restaurant_id) do nothing;
 
-  insert into public.site_leads (name, restaurant_name, city, phone, created_at)
+  -- Leads in every stage and channel, new ones only in the last two days (13d).
+  insert into public.site_leads (name, restaurant_name, city, phone, channel, stage, lost_reason,
+    follow_up_at, created_at)
   select 'Load lead ' || n, 'Load Cafe ' || n,
          (array['Indore', 'Pune', 'Jaipur', 'Kochi'])[1 + n % 4],
          '9' || lpad((n * 104729 % 1000000000)::text, 9, '0'),
+         (array['website_lead', 'website_lead', 'website_lead', 'field_visit', 'referral', 'phone',
+           'whatsapp'])[1 + n / 7 % 7],
+         s.stage,
+         case when s.stage = 'lost' then (array['price', 'no_response', 'other_system'])[1 + n % 3] end,
+         case when s.stage in ('contacted', 'demo_scheduled', 'demo_done')
+           then now() + make_interval(days => n % 9 - 3) end,
          now() - make_interval(days => n % 200)
-  from generate_series(1, 100) as n;
+  from generate_series(1, 500) as n
+  cross join lateral (
+    select case when n % 200 < 2 then 'new'
+      else (array['contacted', 'demo_scheduled', 'demo_done', 'trial', 'won', 'lost', 'lost'])[1 + n % 7]
+    end as stage
+  ) as s;
 
   -- Tags on a third of them, and notes on some (13a).
   insert into public.platform_tags (name, colour) values

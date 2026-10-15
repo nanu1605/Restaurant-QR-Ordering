@@ -328,36 +328,6 @@ export async function searchPlatform(q: string) {
   return parseSearchResults(data);
 }
 
-export const LEADS_PAGE_SIZE = 50;
-
-/**
- * "Book a demo" requests from the website, newest first (docs/DECISIONS.md
- * W-6); or the one a search result points at (SA-25).
- */
-export async function listSiteLeads(page: number, leadId?: string) {
-  const supabase = await createClient();
-  const load = (at: number) => {
-    const from = (at - 1) * LEADS_PAGE_SIZE;
-    const query = supabase
-      .from('site_leads')
-      .select(
-        'id, name, restaurant_name, city, phone, email, plan_code, message, source, created_at',
-        { count: 'exact' },
-      )
-      .order('created_at', { ascending: false })
-      .range(from, from + LEADS_PAGE_SIZE - 1);
-    return leadId ? query.eq('id', leadId) : query;
-  };
-  let current = page;
-  let { data, error, count } = await load(current);
-  if (error?.code === 'PGRST103' && current > 1) {
-    current = 1;
-    ({ data, error, count } = await load(current));
-  }
-  if (error) throw new Error(`Could not load leads: ${error.message}`);
-  return { rows: data ?? [], total: count ?? 0, page: current };
-}
-
 /** The setup fee a payment link suggests (paise): the usual fee and the discount in force. */
 export async function getSetupFee(): Promise<{ feePaise: number; discountPaise: number }> {
   const settings = await getPlatformSettings();

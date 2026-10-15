@@ -180,7 +180,9 @@ export type RestaurantUsage = z.infer<typeof usageSchema>;
 export const parseUsage = (json: unknown) => usageSchema.parse(json);
 
 /** What a plan-limit hit was about. */
-export function limitHitLabel(hit: RestaurantUsage['limit_hits'][number]): string {
+export function limitHitLabel(
+  hit: Pick<RestaurantUsage['limit_hits'][number], 'kind' | 'feature'>,
+): string {
   if (hit.kind === 'tables') return 'More tables than the plan allows';
   if (hit.kind === 'staff') return 'More staff logins than the plan allows';
   const feature = hit.feature ?? '';
