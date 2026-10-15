@@ -257,7 +257,10 @@ select set_eq(
       ('public.member_dismiss_announcement'),
       ('public.platform_save_standees'),
       ('public.platform_get_standees'),
-      ('public.platform_list_standees')
+      ('public.platform_list_standees'),
+      -- System health (14d)
+      ('public.platform_system'),
+      ('public.platform_email_sends')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

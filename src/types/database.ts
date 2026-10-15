@@ -467,6 +467,42 @@ export type Database = {
           },
         ]
       }
+      email_log: {
+        Row: {
+          created_at: string
+          error: string | null
+          http_status: number | null
+          id: number
+          kind: string
+          provider_id: string | null
+          recipient_hashes: string[]
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          http_status?: number | null
+          id?: never
+          kind: string
+          provider_id?: string | null
+          recipient_hashes: string[]
+          status: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          http_status?: number | null
+          id?: never
+          kind?: string
+          provider_id?: string | null
+          recipient_hashes?: string[]
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       invoice_counters: {
         Row: {
           created_at: string
@@ -1546,6 +1582,7 @@ export type Database = {
       platform_settings: {
         Row: {
           created_at: string
+          db_limit_mb: number | null
           grace_days: number
           health_inactive_days: number
           health_setup_days: number
@@ -1555,6 +1592,7 @@ export type Database = {
           setup_fee_discount_ends_at: string | null
           setup_fee_discount_paise: number
           setup_fee_paise: number
+          storage_limit_mb: number | null
           support_email: string | null
           support_phone: string | null
           trial_days: number
@@ -1562,6 +1600,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          db_limit_mb?: number | null
           grace_days?: number
           health_inactive_days?: number
           health_setup_days?: number
@@ -1571,6 +1610,7 @@ export type Database = {
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
+          storage_limit_mb?: number | null
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -1578,6 +1618,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          db_limit_mb?: number | null
           grace_days?: number
           health_inactive_days?: number
           health_setup_days?: number
@@ -1587,6 +1628,7 @@ export type Database = {
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
+          storage_limit_mb?: number | null
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -3252,6 +3294,11 @@ export type Database = {
         }
         Returns: Json
       }
+      email_log_cleanup: { Args: never; Returns: number }
+      email_log_record_event: {
+        Args: { p_provider_id: string; p_type: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           p_restaurant_id: string
@@ -3378,6 +3425,10 @@ export type Database = {
       platform_edit_note: {
         Args: { p_body: string; p_note_id: string }
         Returns: undefined
+      }
+      platform_email_sends: {
+        Args: { p_recipient_hash: string }
+        Returns: Json
       }
       platform_end_support_session: { Args: never; Returns: undefined }
       platform_extend_trial: {
@@ -3557,6 +3608,7 @@ export type Database = {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
         Returns: Json
       }
+      platform_system: { Args: never; Returns: Json }
       platform_team: { Args: never; Returns: Json }
       platform_unfinished_signups: { Args: never; Returns: Json }
       platform_update_lead: {
