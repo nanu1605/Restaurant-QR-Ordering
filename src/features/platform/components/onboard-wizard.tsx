@@ -39,13 +39,20 @@ type OnboardWizardProps = {
   plans: { code: string; name: string }[];
   defaultTrialDays: number;
   loginUrl: string;
+  /** Whether this member may run the set-up session (restaurants.support). */
+  canSupport: boolean;
 };
 
 /**
  * Onboard a restaurant (spec §13.4): details → owner login → tax → plan and
  * trial, then one save, then the owner's login details to hand over.
  */
-export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWizardProps) {
+export function OnboardWizard({
+  plans,
+  defaultTrialDays,
+  loginUrl,
+  canSupport,
+}: OnboardWizardProps) {
   const ids = useId();
   const [step, setStep] = useState(0);
   const [handover, setHandover] = useState<
@@ -411,20 +418,22 @@ export function OnboardWizard({ plans, defaultTrialDays, loginUrl }: OnboardWiza
               <FieldError errors={[errors.plan]} />
             </Field>
             {field('trialDays', 'Trial days', { type: 'number', inputMode: 'numeric' })}
-            <Field className="sm:col-span-2">
-              <label className="flex min-h-11 items-center gap-2 text-sm text-ink md:min-h-0">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-brand"
-                  checked={setupConsent}
-                  onChange={(event) => setSetupConsent(event.target.checked)}
-                />
-                The owner agrees that MenuMesh may set up the restaurant for the next 24 hours.
-              </label>
-              <FieldDescription>
-                Recorded in the audit log. The owner can end it from Settings.
-              </FieldDescription>
-            </Field>
+            {canSupport && (
+              <Field className="sm:col-span-2">
+                <label className="flex min-h-11 items-center gap-2 text-sm text-ink md:min-h-0">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-brand"
+                    checked={setupConsent}
+                    onChange={(event) => setSetupConsent(event.target.checked)}
+                  />
+                  The owner agrees that MenuMesh may set up the restaurant for the next 24 hours.
+                </label>
+                <FieldDescription>
+                  Recorded in the audit log. The owner can end it from Settings.
+                </FieldDescription>
+              </Field>
+            )}
             {setupConsent && (
               <Field data-invalid={staffNameError ? true : undefined}>
                 <FieldLabel htmlFor={`${ids}-staff-name`}>Your name</FieldLabel>

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 /** A lead from a field visit, a call, a referral or a message (docs/DECISIONS.md SA-55). */
 export default async function NewLeadPage() {
   const user = await requirePlatformPermission('growth.manage');
-  const team = await getTeam();
+  const team = await getTeam('growth.manage');
 
   return (
     <>

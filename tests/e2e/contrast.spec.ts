@@ -62,6 +62,8 @@ test('website and customer menu', async ({ page }) => {
     '/signup',
     '/login',
     '/login/forgot',
+    // An invite link that doesn't work (13g).
+    '/login/join?token=e2e-not-an-invite-token-at-all',
   ];
   paths.push('/terms', '/privacy', '/refund', '/shipping');
   paths.push('/hi', '/hi/features', '/hi/pricing', '/hi/demo', '/hi/contact', '/hi/signup');
@@ -106,20 +108,33 @@ test('platform admin panel', async ({ page }) => {
     '/super/restaurants',
     // The Growth pages (13d).
     ...(await growthPaths('contrast')),
-    // Usage, compared, by week (13e).
-    '/super/usage?compare=1&by=week',
     '/super/plans',
     '/super/audit',
     '/super/settings',
-    '/super/money/payments',
-    '/super/money/dues',
-    '/super/money/subscriptions',
     // A restaurant's page, every tab (13a).
     ...(await restaurantPagePaths('contrast')),
     // The support inbox and a request (13b).
     ...(await supportRequestPaths('contrast')),
     // A support session's admin panel, with its banner (13c).
     ...(await supportSessionPaths('contrast', admin)),
+  ];
+  expect(await sweep(page, paths)).toEqual([]);
+});
+
+// Apart from the rest of the panel, so each sweep stays inside its time.
+test('platform admin money and insights', async ({ page }) => {
+  test.slow();
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast-money'));
+  const paths = [
+    '/super/money/payments',
+    '/super/money/dues',
+    '/super/money/subscriptions',
+    // Revenue, compared, with a movement's restaurants (13f).
+    '/super/money/revenue?compare=1&move=churn',
+    // Usage, compared, by week (13e).
+    '/super/usage?compare=1&by=week',
+    // The team (13g).
+    '/super/settings/team',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

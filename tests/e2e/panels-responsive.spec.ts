@@ -113,11 +113,6 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     '/super/restaurants/new',
     // The Growth pages (13d).
     ...(await growthPaths('responsive')),
-    // Usage, compared (13e).
-    '/super/usage?compare=1',
-    '/super/money/payments',
-    '/super/money/dues',
-    '/super/money/subscriptions',
     '/super/plans',
     '/super/webhooks',
     '/super/audit',
@@ -128,6 +123,24 @@ test('the platform admin panel fits every screen', async ({ page }) => {
     ...(await supportRequestPaths('responsive')),
     // A support session's admin panel, with its banner (13c).
     ...(await supportSessionPaths('responsive', admin)),
+  ];
+  expect(await sweep(page, paths)).toEqual([]);
+});
+
+// Apart from the rest of the panel, so each sweep stays inside its time.
+test('the platform admin money, insights and team pages fit every screen', async ({ page }) => {
+  test.slow();
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('responsive-money'));
+  const paths = [
+    '/super/money/payments',
+    '/super/money/dues',
+    '/super/money/subscriptions',
+    // Revenue, compared, with a movement's restaurants (13f).
+    '/super/money/revenue?compare=1&move=churn',
+    // Usage, compared (13e).
+    '/super/usage?compare=1',
+    // The team (13g).
+    '/super/settings/team',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

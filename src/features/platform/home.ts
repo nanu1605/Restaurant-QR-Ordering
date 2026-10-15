@@ -245,8 +245,8 @@ export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
 };
 
 /**
- * The kinds an admin may see: money, leads, support requests and the team's
- * actions need their permission.
+ * The kinds an admin may see: money, leads, support requests and menu
+ * imports, and the team's actions need their permission.
  */
 export function activityKindsFor(can: {
   money: boolean;
@@ -258,7 +258,7 @@ export function activityKindsFor(can: {
     (kind) =>
       (can.money || (kind !== 'payment' && kind !== 'payment_failed')) &&
       (can.growth || kind !== 'lead') &&
-      (can.support || kind !== 'support') &&
+      (can.support || (kind !== 'support' && kind !== 'menu_import')) &&
       (can.audit || kind !== 'team'),
   );
 }

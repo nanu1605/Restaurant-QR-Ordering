@@ -2,7 +2,8 @@
 -- docs/DECISIONS.md SA-26): 300 restaurants named load-001 to load-300 with
 -- subscriptions in every state, their payments, up to 18 months of daily
 -- usage, the last 35 days of accepted orders, a year of nightly snapshots and
--- 100 leads, and onboarding steps and support requests (13b). The same seed gives the same data. Run by `pnpm seed:platform-load`,
+-- 500 leads, and onboarding steps and support requests (13b). The snapshots
+-- move MRR every way revenue analytics counts (13f). The same seed gives the same data. Run by `pnpm seed:platform-load`,
 -- which queries the local stack only and removes the previous load first.
 do $$
 begin
@@ -36,6 +37,31 @@ begin
       (array['starter', 'growth', 'pro'])[1 + n % 3] as plan_code
     from generate_series(1, 300) as n
   ) as x;
+
+  -- MRR movements for revenue analytics (13f), each on its own day: monthly
+  -- payers that moved up or down a plan, a month away and back, or a failed
+  -- charge paid again within days; cancelled restaurants leave over the year,
+  -- a third of them after failed charges.
+  alter table load_r
+    add column churn_day date,
+    add column step_day date,
+    add column step_plan text,
+    add column gap_from date,
+    add column failed_from date;
+  update load_r set
+    churn_day = case when kind = 'cancelled'
+      then greatest(current_date - (40 + n * 7 % 250), created_at::date + 30) end,
+    step_day = greatest(current_date - (20 + n * 11 % 300), created_at::date + 30),
+    step_plan = case
+      when kind in ('paid_manual', 'paid_razorpay') and n % 7 = 0 and plan_code <> 'starter'
+        then case plan_code when 'pro' then 'growth' else 'starter' end
+      when kind in ('paid_manual', 'paid_razorpay') and n % 7 = 1 and plan_code <> 'pro'
+        then case plan_code when 'starter' then 'growth' else 'pro' end
+    end,
+    gap_from = case when kind = 'paid_manual' and n % 7 = 2
+      then greatest(current_date - (60 + n * 13 % 250), created_at::date + 30) end,
+    failed_from = case when kind = 'paid_razorpay' and n % 7 = 3
+      then greatest(current_date - (30 + n * 17 % 250), created_at::date + 30) end;
 
   insert into public.restaurants (
     id, name, slug, city, state, phone, acquisition_channel, created_at
@@ -75,6 +101,7 @@ begin
     case
       when r.kind = 'trial' then now() + make_interval(days => 1 + r.n % 14)
       when r.kind = 'lapsed' then now() - make_interval(days => 3 + r.n % 60)
+      else r.created_at + interval '14 days'
     end,
     case when r.kind like 'paid%' then now() - make_interval(days => r.n % 28) end,
     case
@@ -115,19 +142,46 @@ begin
     select row_number() over () as k, g as start
     from generate_series(
       r.created_at + interval '14 days',
-      case when r.kind = 'cancelled' then now() - interval '40 days' else now() end,
+      case when r.kind = 'cancelled' then r.churn_day::timestamptz else now() end,
       case when r.kind = 'paid_yearly' then interval '365 days' else interval '30 days' end
     ) as g
   ) as s
   where r.kind like 'paid%' or r.kind in ('payment_failed', 'cancelled');
 
+  -- Setup fees: most with the ₹500 launch offer on ₹999, some at the full fee,
+  -- some without the fee recorded (paid before 12b).
   insert into public.subscription_payments (
-    restaurant_id, source, amount_paise, manual_mode, purpose, created_at
+    restaurant_id, source, amount_paise, manual_mode, purpose, list_price_paise, discount_paise,
+    created_at
   )
-  select r.id, 'manual', private.fee_with_gst(50000), 'upi', 'setup_fee',
+  select r.id, 'manual',
+         private.fee_with_gst(case when r.n % 8 = 2 then 99900 else 49900 end), 'upi', 'setup_fee',
+         case when r.n % 8 <> 6 then 99900 end,
+         case when r.n % 8 = 2 then 0 when r.n % 8 <> 6 then 50000 end,
          r.created_at + interval '14 days'
   from load_r r
   where r.n % 2 = 0 and (r.kind like 'paid%' or r.kind in ('payment_failed', 'cancelled'));
+
+  -- Why the cancelled restaurants turned autopay off, ten days before leaving.
+  update public.restaurant_subscriptions s set
+    cancel_reason = x.reason,
+    cancel_reason_detail = case when x.reason = 'other' then 'Load: opening a second place' end
+  from (
+    select r.id,
+           (array['too_expensive', 'not_using', 'missing_feature', 'closing', 'switching',
+             'other', 'too_expensive', 'not_using'])[1 + r.n / 10 % 8] as reason
+    from load_r r where r.kind = 'cancelled'
+  ) as x
+  where s.restaurant_id = x.id;
+  insert into public.audit_logs (
+    restaurant_id, actor_type, actor_label, action, entity_type, after, created_at
+  )
+  select r.id, 'staff', 'Owner', 'subscription.cancel_reason', 'restaurant_subscription',
+         jsonb_build_object('reason', s.cancel_reason, 'detail', s.cancel_reason_detail),
+         (r.churn_day - 10 + time '13:00') at time zone 'Asia/Kolkata'
+  from load_r r
+  join public.restaurant_subscriptions s on s.restaurant_id = r.id
+  where r.kind = 'cancelled';
 
   -- Daily usage since joining, shaped by the profile: never started has none,
   -- inactive stopped 12 days ago, slowing dropped in the last week.
@@ -200,8 +254,8 @@ begin
   cross join generate_series(1, m.orders) as g
   where m.business_day >= current_date - 35;
 
-  -- A year of nightly snapshots for Home's MRR chart and the lapses in the
-  -- activity: a 14-day trial, then each kind's path.
+  -- A year of nightly snapshots for Home's MRR chart, the lapses in the
+  -- activity and revenue's movements: a 14-day trial, then each kind's path.
   insert into public.metrics_subscription_daily (
     day, restaurant_id, state, plan_id, billing_cycle, source, mrr_paise
   )
@@ -217,7 +271,6 @@ begin
         else p.price_monthly_paise end
     else 0 end
   from load_r r
-  join public.plans p on p.code = r.plan_code
   cross join lateral generate_series(
     greatest(r.created_at::date, current_date - 365), current_date - 1, interval '1 day'
   ) as g(day)
@@ -226,11 +279,18 @@ begin
     select case
       when r.kind = 'lapsed' and d.day >= current_date - (3 + r.n % 60) then 'read_only'
       when d.day < r.created_at::date + 14 or r.kind in ('trial', 'lapsed') then 'trial'
-      when r.kind = 'cancelled' and d.day >= current_date - 40 then 'cancelled'
+      when r.kind = 'cancelled' and d.day >= r.churn_day then
+        case when r.n % 3 = 1 then 'read_only' else 'cancelled' end
+      when r.kind = 'cancelled' and r.n % 3 = 1 and d.day >= r.churn_day - 5 then 'payment_failed'
       when r.kind = 'payment_failed' and d.day >= current_date - 3 then 'payment_failed'
+      when d.day >= r.gap_from and d.day < r.gap_from + 20 then 'cancelled'
+      when d.day >= r.failed_from and d.day < r.failed_from + 4 then 'payment_failed'
       else 'paid'
     end as state
   ) as st
+  join public.plans p
+    on p.code = case when d.day < r.step_day and r.step_plan is not null
+      then r.step_plan else r.plan_code end
   on conflict (day, restaurant_id) do nothing;
 
   -- Leads in every stage and channel, new ones only in the last two days (13d).

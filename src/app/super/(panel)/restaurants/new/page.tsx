@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { OnboardWizard } from '@/features/platform/components/onboard-wizard';
 import { getTrialDays, listPlans } from '@/features/platform/queries';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 import { getPublicEnv } from '@/lib/env';
 
 export const metadata: Metadata = {
@@ -13,8 +13,12 @@ export const metadata: Metadata = {
 
 /** Onboarding wizard (spec §13.4, docs/DECISIONS.md P7-9). */
 export default async function OnboardRestaurantPage() {
-  await requirePlatformAdmin();
-  const [plans, trialDays] = await Promise.all([listPlans(), getTrialDays()]);
+  await requirePlatformPermission('restaurants.manage');
+  const [plans, trialDays, canSupport] = await Promise.all([
+    listPlans(),
+    getTrialDays(),
+    hasPlatformPermission('restaurants.support'),
+  ]);
 
   return (
     <>
@@ -27,6 +31,7 @@ export default async function OnboardRestaurantPage() {
         plans={plans.filter((plan) => plan.is_active).map(({ code, name }) => ({ code, name }))}
         defaultTrialDays={trialDays}
         loginUrl={`${getPublicEnv().NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/login`}
+        canSupport={canSupport}
       />
     </>
   );

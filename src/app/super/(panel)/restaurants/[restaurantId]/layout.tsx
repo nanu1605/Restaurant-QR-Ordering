@@ -24,7 +24,7 @@ import {
 } from '@/features/platform/queries';
 import { paidTillDay } from '@/features/platform/restaurants-csv';
 import { autopayState } from '@/features/subscriptions/autopay';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 import { APP_NAME } from '@/lib/config';
 import { getSupportWindow } from '@/features/support/access-queries';
 import { untilText } from '@/features/support/support-access';
@@ -53,12 +53,15 @@ export default async function RestaurantLayout({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [plans, setupFee, tags, team, support] = await Promise.all([
+  const [plans, setupFee, tags, team, support, manage, record, canSupport] = await Promise.all([
     listPlans(),
     getSetupFee(),
     listTags(),
     getTeam(),
     getSupportWindow(restaurantId, user.id),
+    hasPlatformPermission('restaurants.manage'),
+    hasPlatformPermission('money.record'),
+    hasPlatformPermission('restaurants.support'),
   ]);
   const supportWindow = support.window;
   const { restaurant, subscription, access } = detail;
@@ -136,6 +139,7 @@ export default async function RestaurantLayout({
                     : 'in_use',
               lastName: support.lastName,
             }}
+            can={{ manage, record, support: canSupport }}
           />
         </div>
 
@@ -176,22 +180,30 @@ export default async function RestaurantLayout({
                 ))}
               </ul>
             )}
-            <TagsEditor
-              restaurantId={restaurant.id}
-              restaurantName={restaurant.name}
-              tags={tags}
-              chosen={detail.tags.map((tag) => tag.id)}
-            />
+            {manage && (
+              <TagsEditor
+                restaurantId={restaurant.id}
+                restaurantName={restaurant.name}
+                tags={tags}
+                chosen={detail.tags.map((tag) => tag.id)}
+              />
+            )}
           </div>
-          <AccountManagerMenu
-            restaurantId={restaurant.id}
-            current={
-              detail.account_manager
-                ? { userId: detail.account_manager.user_id, email: detail.account_manager.email }
-                : null
-            }
-            team={team}
-          />
+          {manage ? (
+            <AccountManagerMenu
+              restaurantId={restaurant.id}
+              current={
+                detail.account_manager
+                  ? { userId: detail.account_manager.user_id, email: detail.account_manager.email }
+                  : null
+              }
+              team={team}
+            />
+          ) : (
+            <p className="text-sm text-ink-muted">
+              Account manager: {detail.account_manager?.email ?? 'none'}
+            </p>
+          )}
         </div>
       </header>
 
@@ -201,7 +213,7 @@ export default async function RestaurantLayout({
         </p>
       )}
 
-      <RestaurantTabs restaurantId={restaurant.id} />
+      <RestaurantTabs restaurantId={restaurant.id} menuImports={canSupport} />
       {children}
     </>
   );

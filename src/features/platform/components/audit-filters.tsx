@@ -44,6 +44,7 @@ export function AuditFiltersForm({ filters }: { filters: AuditFilters }) {
     router.push(
       hrefWithParams(pathname, {
         restaurant: filters.restaurant_id,
+        member: filters.actor,
         actor: text('actor'),
         action: text('action'),
         from: text('from'),

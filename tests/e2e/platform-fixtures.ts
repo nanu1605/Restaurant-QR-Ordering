@@ -11,7 +11,10 @@ import { adminClient, createTestRestaurant, logInWithEmail, TEST_PASSWORD } from
  */
 export type PlatformAdmin = { email: string; userId: string; secret?: string };
 
-export async function createPlatformAdmin(prefix = 'admin'): Promise<PlatformAdmin> {
+export async function createPlatformAdmin(
+  prefix = 'admin',
+  role: 'admin' | 'finance' | 'sales' | 'support' = 'admin',
+): Promise<PlatformAdmin> {
   const admin = adminClient();
   const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const email = `${prefix}-${unique}@platform.test`;
@@ -22,7 +25,7 @@ export async function createPlatformAdmin(prefix = 'admin'): Promise<PlatformAdm
   });
   if (created.error) throw created.error;
   const userId = created.data.user.id;
-  const inserted = await admin.from('platform_admins').insert({ user_id: userId });
+  const inserted = await admin.from('platform_admins').insert({ user_id: userId, role });
   if (inserted.error) throw inserted.error;
   return { email, userId };
 }
@@ -59,6 +62,11 @@ function base32Decode(text: string) {
 export async function logInAsPlatformAdmin(page: Page, admin: PlatformAdmin) {
   await page.goto('/login');
   await logInWithEmail(page, admin.email, TEST_PASSWORD);
+  await passSecondFactor(page, admin);
+}
+
+/** From /super/mfa: enrols an authenticator the first time, enters a code, ends on Home. */
+export async function passSecondFactor(page: Page, admin: PlatformAdmin) {
   await expect(page).toHaveURL(/\/super\/mfa$/);
 
   const main = page.getByRole('main');

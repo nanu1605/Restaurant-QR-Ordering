@@ -24,7 +24,7 @@ import {
   SUBSCRIPTION_STATUS_LABELS,
 } from '@/features/platform/platform';
 import { listSubscriptions } from '@/features/platform/queries';
-import { requirePlatformAdmin } from '@/lib/auth/guards';
+import { requirePlatformPermission } from '@/lib/auth/guards';
 import { hrefWithParams } from '@/lib/date-range';
 
 export const metadata: Metadata = {
@@ -40,7 +40,7 @@ const PATH = '/super/money/subscriptions';
 export default async function SuperSubscriptionsPage({
   searchParams,
 }: PageProps<'/super/money/subscriptions'>) {
-  await requirePlatformAdmin();
+  await requirePlatformPermission('restaurants.view');
   const filters = readSubscriptionFilters(await searchParams);
   const list = await listSubscriptions(filters);
 

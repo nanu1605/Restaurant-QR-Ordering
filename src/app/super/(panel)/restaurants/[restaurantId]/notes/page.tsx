@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { NoteForm, NoteItem } from '@/features/platform/components/notes';
 import { Section } from '@/features/platform/components/restaurant-sections';
 import { getRestaurantDetail, listNotes } from '@/features/platform/queries';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Notes',
@@ -21,7 +21,10 @@ export default async function RestaurantNotesPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const notes = await listNotes(restaurantId);
+  const [notes, manage] = await Promise.all([
+    listNotes(restaurantId),
+    hasPlatformPermission('restaurants.manage'),
+  ]);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -31,7 +34,7 @@ export default async function RestaurantNotesPage({
         ) : (
           <ul className="-mx-3 -my-2 flex flex-col divide-y divide-line">
             {notes.map((note) => (
-              <NoteItem key={note.id} note={note} />
+              <NoteItem key={note.id} note={note} canManage={manage} />
             ))}
           </ul>
         )}
@@ -39,9 +42,11 @@ export default async function RestaurantNotesPage({
           <p className="text-xs text-ink-muted">The newest 200 notes are shown.</p>
         )}
       </Section>
-      <Section title="Add a note">
-        <NoteForm restaurantId={restaurantId} />
-      </Section>
+      {manage && (
+        <Section title="Add a note">
+          <NoteForm restaurantId={restaurantId} />
+        </Section>
+      )}
     </div>
   );
 }

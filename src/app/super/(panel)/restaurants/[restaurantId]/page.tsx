@@ -36,10 +36,11 @@ export default async function RestaurantOverviewPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [money, support, audit] = await Promise.all([
+  const [money, support, audit, manage] = await Promise.all([
     hasPlatformPermission('money.view'),
     hasPlatformPermission('restaurants.support'),
     hasPlatformPermission('audit.view'),
+    hasPlatformPermission('restaurants.manage'),
   ]);
   const [overview, notes, activity] = await Promise.all([
     getRestaurantOverview(restaurantId),
@@ -129,11 +130,13 @@ export default async function RestaurantOverviewPage({
             }
           >
             {pinned.length === 0 && !latest ? (
-              <p className="text-sm text-ink-muted">No notes yet. Add one from Actions.</p>
+              <p className="text-sm text-ink-muted">
+                No notes yet.{manage && ' Add one from Actions.'}
+              </p>
             ) : (
               <ul className="-mx-3 -my-2 flex flex-col divide-y divide-line">
                 {[...pinned, ...(latest ? [latest] : [])].map((note) => (
-                  <NoteItem key={note.id} note={note} />
+                  <NoteItem key={note.id} note={note} canManage={manage} />
                 ))}
               </ul>
             )}
@@ -201,7 +204,12 @@ export default async function RestaurantOverviewPage({
                       Last login {formatDateTime(owner.last_sign_in_at)}
                     </span>
                   </div>
-                  <OwnerPasswordButton memberId={owner.member_id} ownerName={owner.display_name} />
+                  {support && (
+                    <OwnerPasswordButton
+                      memberId={owner.member_id}
+                      ownerName={owner.display_name}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

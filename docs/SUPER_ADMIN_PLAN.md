@@ -568,6 +568,8 @@ Acceptance:
 
 ### 13f. Revenue analytics
 
+Built 2026-10-15 (docs/DECISIONS.md SA-65 to SA-69). MRR keeps §5.2's rule, so a failed charge is churn until the restaurant pays again; one CSV of the period table (owner's choices, 2026-10-15). Plan mix, cohorts, reasons and the launch offer are tables rather than charts.
+
 Ships (`/super/money/revenue`, money.view):
 
 - Key numbers: MRR, ARR, net new MRR, Paid restaurants, ARPU, trial conversion, restaurant and revenue churn, failed-payment recovery, expected collections for the next 30 days.
@@ -579,6 +581,8 @@ Acceptance:
 - The movement identity holds for every month in fixtures and in the load data. Cohort fixtures pass. Before history exists, each chart says when it starts.
 
 ### 13g. Team and roles
+
+Built 2026-10-15 (docs/DECISIONS.md SA-70 to SA-75). Invites come by MenuMesh's own email with a join link the Admin can also copy, not Supabase's invite; the digest goes to members who chose it and whose role sees money (owner's choices, 2026-10-15).
 
 Move this stop earlier if team members join before Phase 13.
 

@@ -96,7 +96,10 @@ export default async function SuperRestaurantsPage({
   const params = await searchParams;
   const filters = readRestaurantFilters(params);
   // Lifetime paid is money (docs/DECISIONS.md SA-23).
-  const money = await hasPlatformPermission('money.view');
+  const [money, manage] = await Promise.all([
+    hasPlatformPermission('money.view'),
+    hasPlatformPermission('restaurants.manage'),
+  ]);
   const columns = readRestaurantColumns(params).filter((column) => money || column !== 'lifetime');
   const [list, plans, views, settings, tags, team] = await Promise.all([
     listRestaurants(filters),
@@ -185,10 +188,12 @@ export default async function SuperRestaurantsPage({
               <Download aria-hidden />
               Export CSV
             </a>
-            <Link href="/super/restaurants/new" className={buttonVariants({ size: 'touch' })}>
-              <Plus aria-hidden />
-              Onboard restaurant
-            </Link>
+            {manage && (
+              <Link href="/super/restaurants/new" className={buttonVariants({ size: 'touch' })}>
+                <Plus aria-hidden />
+                Onboard restaurant
+              </Link>
+            )}
           </>
         }
       />

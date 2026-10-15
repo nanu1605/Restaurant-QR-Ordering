@@ -216,7 +216,9 @@ export const noteSchema = z.object({
 export type NoteInput = z.input<typeof noteSchema>;
 
 // ─── Team ────────────────────────────────────────────────────────────────────
-const teamSchema = z.array(z.object({ user_id: z.string(), email: z.string() }));
+const teamSchema = z.array(
+  z.object({ user_id: z.string(), email: z.string(), permissions: z.array(z.string()) }),
+);
 export type TeamMember = z.infer<typeof teamSchema>[number];
 export const parseTeam = (json: unknown) => teamSchema.parse(json);
 

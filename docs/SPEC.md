@@ -292,11 +292,19 @@ Conventions for every table unless stated otherwise:
 
 ### 8.1 Platform
 
-**`platform_admins`**
+**`platform_admins`** (the MenuMesh team, docs/DECISIONS.md SA-70 to SA-75)
 | Column | Type | Notes |
 |---|---|---|
 | user_id | uuid PK → auth.users | |
 | created_at | timestamptz | |
+| role | text | admin, finance, sales or support (docs/SUPER_ADMIN_PLAN.md §3); default admin |
+| display_name | text null | ≤ 80 chars |
+| invited_by, invited_at | uuid null, timestamptz null | who invited them |
+| joined_at | timestamptz null | null until an invited member sets their password |
+| disabled_at | timestamptz null | turned off: no access, login blocked |
+| digest | boolean | the daily digest, for roles that see money |
+| invite_token_hash, invite_expires_at | text null, timestamptz null | the join link's keyed hash, 7 days |
+| alerts_seen_at | timestamptz null | the alerts bell's last look |
 
 **`platform_settings`** (single row)
 | Column | Type | Notes |
@@ -1147,11 +1155,13 @@ The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a gr
 - **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).
 - **Dues** (Money): payment failed, lapsed, trial ending and renewal due, each restaurant in one bucket, with expected collections for 30 days, call and WhatsApp (an editable message in English or Hindi), and the payment actions (SA-19, SA-20).
 - **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled), failed payments first (SA-21).
+- **Revenue** (Money, `/super/money/revenue`): for India dates, with an optional comparison with the period before: MRR, ARR, net new MRR, Paid restaurants and ARPU, collected, trial conversion, restaurant and revenue churn, failed-payment recovery and expected collections for 30 days; MRR and its movement (new, reactivation, expansion, contraction, churn; each opens its restaurants with MRR before and after) and collected by day, week or month; plan mix, trial cohorts, cancellation reasons and launch-offer use; the period table as CSV (docs/DECISIONS.md SA-65 to SA-69).
 - **Leads** (`/super/leads`, growth.manage): demo requests from the website and leads the team adds by hand (a field visit, call, referral or message; with a warning when the mobile already has a restaurant or a lead), by stage (New, Contacted, Demo scheduled, Demo done, Trial, Won, Lost with why), as a table (tabs with counts, filters by assignee, channel, follow-up due and text) or a board of the open stages. A lead's page has the stage and assignee, Call, WhatsApp and email (then "Mark as contacted?"), the next follow-up and the demo, its source, the restaurant it became (linked by mobile by itself, or by hand), others with the same mobile, and notes and history. Unfinished signups lists website signups from the last 7 days that stopped before the restaurant was created, and how far they got (docs/DECISIONS.md SA-53 to SA-57).
 - **Funnel** (`/super/funnel`, growth.manage): for India dates, demo requests and signups started, restaurants created by signup and by the team, and how many of those took a first order and a first payment; restaurants by channel (leads, restaurants, paying now, MRR), website arrivals by source, and Starter restaurants ready for a bigger plan (limit hits, at a limit, or busy) (SA-58 to SA-60).
 - **Usage** (`/super/usage`, insights.view): for business dates (each restaurant's own, summed), with an optional comparison with the period before: GMV, orders, bills, average bill, items, active restaurants and QR orders; GMV and orders by day, week or month; by city, state and plan; the top and bottom 10 restaurants; payments by mode, discounts, calls for a waiter or the bill and table time; orders by weekday and hour; and which features the Paid restaurants use (docs/DECISIONS.md SA-61 to SA-64).
 - **Webhook events**: list with processing status and error, "Reprocess" button.
-- **Audit log**: platform-wide, filterable.
+- **Audit log**: platform-wide, filterable, or one team member's actions.
+- **Team** (Settings, `/super/settings/team`, team.manage): members with their role (Admin, Finance, Sales, Support), status (active, invited, off), second factor, last sign-in and daily digest. Invite by email with a join link (also shown to copy), change role, name or digest, turn off and back on, and see what each member did. The navigation, pages, actions and search follow each member's role (docs/DECISIONS.md SA-70 to SA-75).
 - **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email, and the restaurant health thresholds. Every change is audited (docs/DECISIONS.md SA-4, SA-5, SA-22).
 
 ---

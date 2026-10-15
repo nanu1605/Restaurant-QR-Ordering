@@ -42,7 +42,10 @@ export default async function SupportRequestPage({
 }: PageProps<'/super/support/[requestId]'>) {
   await requirePlatformPermission('restaurants.support');
   const { requestId } = await params;
-  const [found, team] = await Promise.all([getSupportRequest(requestId), getTeam()]);
+  const [found, team] = await Promise.all([
+    getSupportRequest(requestId),
+    getTeam('restaurants.support'),
+  ]);
   if (!found) notFound();
   const { request, screenshotUrl } = found;
 
