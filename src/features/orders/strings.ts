@@ -22,6 +22,8 @@ export type Refusal = { error: string; code?: string; detail?: string };
 const en = {
   panel: 'Worker panel',
   adminPanel: 'Admin panel',
+  // An announcement from MenuMesh (docs/DECISIONS.md SA-82).
+  dismissAnnouncement: 'Dismiss',
   roles: ROLE_LABELS,
   and: 'and',
   close: 'Close',
@@ -316,6 +318,7 @@ const HI_GENERIC = 'कुछ गड़बड़ हो गई। फिर स�
 const hi: StaffStrings = {
   panel: 'वर्कर पैनल',
   adminPanel: 'एडमिन पैनल',
+  dismissAnnouncement: 'छिपाएँ',
   roles: { owner: 'मालिक', manager: 'मैनेजर', waiter: 'वेटर', kitchen: 'किचन' },
   and: 'और',
   close: 'बंद करें',

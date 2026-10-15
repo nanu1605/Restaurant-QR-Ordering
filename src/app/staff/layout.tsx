@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
+import { AnnouncementBanners } from '@/features/announcements/components/announcement-banners';
 import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
 import { boardKey, getQueryClient } from '@/features/live/query-client';
@@ -58,6 +59,13 @@ export default async function StaffLayout({ children }: LayoutProps<'/staff'>) {
             </PanelHeader>
             <StaffNav kitchenView={hasFeature(plan, 'kds')} />
             <BoardAlerts />
+            <AnnouncementBanners
+              restaurantId={membership.restaurant.id}
+              panel="worker"
+              lang={lang}
+              dismissLabel={t.dismissAnnouncement}
+              className="mx-4 mt-4"
+            />
             <OfflineBanner className="mx-4 mt-4" />
             <main className="flex flex-1 flex-col p-4">{children}</main>
           </div>

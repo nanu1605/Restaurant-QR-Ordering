@@ -328,6 +328,11 @@ const TEAM_ACTIONS: Record<string, string> = {
   'offer.created': 'Offer created',
   'offer.updated': 'Offer changed',
   'offer.ended': 'Offer ended',
+  'announcement.created': 'Announcement made',
+  'announcement.updated': 'Announcement changed',
+  'announcement.ended': 'Announcement ended',
+  'standee.created': 'Standees started',
+  'standee.updated': 'Standees updated',
 };
 
 export type ActivityLine = {

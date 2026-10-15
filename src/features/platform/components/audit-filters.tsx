@@ -19,6 +19,8 @@ const ACTION_SUGGESTIONS = [
   'subscription.',
   'plan.updated',
   'offer.',
+  'announcement.',
+  'standee.',
   'platform_settings.updated',
   'support.viewed',
   'webhook.reprocessed',

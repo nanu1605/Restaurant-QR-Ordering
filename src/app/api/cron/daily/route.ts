@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { sendAnnouncementEmails } from '@/features/announcements/email';
 import { fillHindiNames } from '@/features/menu/hindi-names';
 import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
@@ -26,11 +27,12 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
  * docs/DECISIONS.md P7-20, P8-12, HN-8): the super-admin snapshots (SA-9),
  * first, before signups are cleaned up; then menu import photo cleanup,
- * subscription reminder emails (skipped until Resend is set up), Hindi
- * names that menu edits didn't fill (skipped without a menu import key),
- * website signups older than a week (W-9), password resets older than a day
- * (P11-6), storefront photos of signups that never finished (P11-12), and
- * support screenshots of requests that were never sent (SA-42).
+ * subscription reminder emails and announcements that have started (SA-83;
+ * both skipped until Resend is set up), Hindi names that menu edits didn't
+ * fill (skipped without a menu import key), website signups older than a
+ * week (W-9), password resets older than a day (P11-6), storefront photos of
+ * signups that never finished (P11-12), and support screenshots of requests
+ * that were never sent (SA-42).
  */
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) {
@@ -51,6 +53,7 @@ export async function GET(request: Request) {
     usage,
     menuImports,
     reminders,
+    announcements,
     hindiNames,
     signups,
     passwordResets,
@@ -71,6 +74,11 @@ export async function GET(request: Request) {
     step(admin, 'reminders', async () =>
       email
         ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+        : { skipped: true },
+    ),
+    step(admin, 'announcement emails', async () =>
+      email
+        ? sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
         : { skipped: true },
     ),
     step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
@@ -124,6 +132,7 @@ export async function GET(request: Request) {
     usage,
     menuImports,
     reminders,
+    announcements,
     hindiNames,
     signups,
     passwordResets,
@@ -138,6 +147,7 @@ export async function GET(request: Request) {
       usage,
       menuImports,
       reminders,
+      announcements,
       hindiNames,
       signups,
       passwordResets,
