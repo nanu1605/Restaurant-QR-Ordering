@@ -99,6 +99,16 @@ as $$
   ) then 'won' else 'trial' end;
 $$;
 
+-- A stage as the history keeps it: Lost with its reason, 'lost:price'.
+create function private.lead_stage_value(p_stage text, p_reason text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select p_stage || coalesce(':' || p_reason, '');
+$$;
+
 -- Links a lead to a restaurant and moves it on to Trial or Won; a won lead
 -- stays won. No actor: done automatically (SA-54).
 create function private.attach_lead(p_lead public.site_leads, p_restaurant_id uuid, p_actor uuid)
@@ -109,9 +119,13 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_stage text := case when p_lead.stage = 'won' then 'won'
-    else private.lead_stage_for(p_restaurant_id) end;
+  v_stage text;
 begin
+  -- A subscription payment being saved for the restaurant holds a key-share
+  -- lock on it: wait for it, so the stage below sees it.
+  perform 1 from public.restaurants r where r.id = p_restaurant_id for update;
+  v_stage := case when p_lead.stage = 'won' then 'won'
+    else private.lead_stage_for(p_restaurant_id) end;
   update public.site_leads l
   set restaurant_id = p_restaurant_id, stage = v_stage, lost_reason = null, updated_at = now()
   where l.id = p_lead.id;
@@ -120,7 +134,8 @@ begin
     p_lead.restaurant_id::text, p_restaurant_id::text);
   if v_stage <> p_lead.stage then
     insert into public.lead_events (lead_id, kind, actor_id, automatic, from_value, to_value)
-    values (p_lead.id, 'stage', p_actor, p_actor is null, p_lead.stage, v_stage);
+    values (p_lead.id, 'stage', p_actor, p_actor is null,
+      private.lead_stage_value(p_lead.stage, p_lead.lost_reason), v_stage);
   end if;
 end;
 $$;
@@ -151,7 +166,8 @@ create trigger link_restaurant_leads
   after insert on public.restaurants
   for each row execute function private.link_restaurant_leads();
 
--- A first subscription payment wins the restaurant's leads.
+-- A first subscription payment wins the restaurant's leads; later ones leave
+-- a lead the team moved off Won alone.
 create function private.win_restaurant_leads()
 returns trigger
 language plpgsql
@@ -159,9 +175,12 @@ security definer
 set search_path = ''
 as $$
 begin
-  if new.purpose = 'subscription' then
+  if new.purpose = 'subscription' and not exists (
+    select 1 from public.subscription_payments p
+    where p.restaurant_id = new.restaurant_id and p.purpose = 'subscription' and p.id <> new.id
+  ) then
     with won as (
-      select l.id, l.stage from public.site_leads l
+      select l.id, l.stage, l.lost_reason from public.site_leads l
       where l.restaurant_id = new.restaurant_id and l.stage <> 'won'
       for update
     ),
@@ -173,7 +192,7 @@ begin
       returning l.id
     )
     insert into public.lead_events (lead_id, kind, automatic, from_value, to_value)
-    select w.id, 'stage', true, w.stage, 'won'
+    select w.id, 'stage', true, private.lead_stage_value(w.stage, w.lost_reason), 'won'
     from won w
     join moved m on m.id = w.id;
   end if;
@@ -185,7 +204,8 @@ create trigger win_restaurant_leads
   after insert on public.subscription_payments
   for each row execute function private.win_restaurant_leads();
 
--- Leads that already became restaurants: linked now, oldest restaurant first.
+-- Leads that already became restaurants: linked now to the first restaurant
+-- with the mobile created after the lead came in, as the trigger would have.
 do $$
 declare
   v_lead public.site_leads;
@@ -194,7 +214,7 @@ begin
   for v_lead in select * from public.site_leads l order by l.created_at, l.id loop
     select r.id into v_restaurant
     from public.restaurants r
-    where private.phone10(r.phone) = v_lead.phone
+    where private.phone10(r.phone) = v_lead.phone and r.created_at >= v_lead.created_at
     order by r.created_at, r.id
     limit 1;
     if found then
@@ -441,12 +461,12 @@ begin
         'from', e.from_value,
         'to', e.to_value,
         'from_label', case e.kind
-          when 'restaurant' then (select r.name from public.restaurants r where r.id::text = e.from_value)
-          when 'assignee' then (select a.email from auth.users a where a.id::text = e.from_value)
+          when 'restaurant' then (select r.name from public.restaurants r where r.id = e.from_value::uuid)
+          when 'assignee' then (select a.email from auth.users a where a.id = e.from_value::uuid)
         end,
         'to_label', case e.kind
-          when 'restaurant' then (select r.name from public.restaurants r where r.id::text = e.to_value)
-          when 'assignee' then (select a.email from auth.users a where a.id::text = e.to_value)
+          when 'restaurant' then (select r.name from public.restaurants r where r.id = e.to_value::uuid)
+          when 'assignee' then (select a.email from auth.users a where a.id = e.to_value::uuid)
         end,
         'body', e.body,
         'at', e.created_at
@@ -595,7 +615,8 @@ begin
   insert into public.lead_events (lead_id, kind, actor_id, from_value, to_value)
   select v_lead.id, c.kind, v_admin.user_id, c.before, c.after
   from (values
-    ('stage', v_lead.stage, v_stage),
+    ('stage', private.lead_stage_value(v_lead.stage, v_lead.lost_reason),
+      private.lead_stage_value(v_stage, v_reason)),
     ('assignee', v_lead.assignee_id::text, v_assignee::text),
     ('follow_up', v_lead.follow_up_at::text, v_follow_up::text),
     ('demo', v_lead.demo_at::text, v_demo::text)
@@ -1222,6 +1243,7 @@ $function$;
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 revoke execute on function private.json_time(jsonb, text) from public, anon, authenticated;
 revoke execute on function private.lead_stage_for(uuid) from public, anon, authenticated;
+revoke execute on function private.lead_stage_value(text, text) from public, anon, authenticated;
 revoke execute on function private.attach_lead(public.site_leads, uuid, uuid) from public, anon, authenticated;
 revoke execute on function private.link_restaurant_leads() from public, anon, authenticated;
 revoke execute on function private.win_restaurant_leads() from public, anon, authenticated;
