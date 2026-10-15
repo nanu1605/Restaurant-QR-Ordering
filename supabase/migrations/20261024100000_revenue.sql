@@ -8,7 +8,9 @@
 -- Each stored night from the last one on or before p_open, plus today live.
 -- A missing night uses the one before: the previous row is the restaurant's
 -- previous stored night. `movement` follows plan §5.3; the caller counts it
--- only after the opening day (the history's first night has no change).
+-- only after the opening day (the history's first night has no change). A
+-- restaurant that paid before history began (a paid period that had ended)
+-- comes back as Reactivation, not New.
 create function private.mrr_days(p_open date)
 returns table (
   day date,
@@ -63,6 +65,10 @@ as $$
         case when exists (
           select 1 from public.metrics_subscription_daily e
           where e.restaurant_id = l.restaurant_id and e.day < l.day and e.mrr_paise > 0
+        ) or exists (
+          select 1 from public.subscription_payments sp
+          where sp.restaurant_id = l.restaurant_id and sp.purpose = 'subscription'
+            and sp.period_end <= l.day::timestamp at time zone 'Asia/Kolkata'
         ) then 'reactivation' else 'new' end
       when l.before_paise > 0 and l.mrr_paise = 0 then 'churn'
       when l.mrr_paise > l.before_paise then 'expansion'
@@ -91,7 +97,10 @@ $$;
 -- ─── The Revenue page ───────────────────────────────────────────────────────
 -- MenuMesh money by India date. MRR figures need history: the opening is the
 -- last night before the dates, or the history's first night when it starts
--- inside them; with no night before the end, they are null.
+-- inside them; with no night before the end, they are null. The period
+-- compared with needs a night before it, or its MRR figures are null too.
+-- Churn rates count the restaurants Paid at the opening (plan §5.8), so they
+-- stay a share of it over any length of dates.
 create function public.platform_revenue_report(
   p_from date,
   p_to date,
@@ -105,6 +114,7 @@ security definer
 set search_path = ''
 as $$
 declare
+  v_today date := (now() at time zone 'Asia/Kolkata')::date;
   v_start date;
   v_hist date;
   v_result jsonb;
@@ -177,7 +187,10 @@ begin
   bounds as (
     select
       pr.key, pr.f, pr.t,
-      greatest((select max(n.day) from nights n where n.day < pr.f), v_hist) as open_day,
+      case when pr.key = 'now'
+        then greatest((select max(n.day) from nights n where n.day < pr.f), v_hist)
+        else (select max(n.day) from nights n where n.day < pr.f)
+      end as open_day,
       (select max(n.day) from nights n where n.day <= pr.t) as end_day
     from periods pr
   ),
@@ -189,7 +202,8 @@ begin
       'opening_mrr_paise', case when b.open_day <= b.t then tob.mrr end,
       'opening_paid', case when b.open_day <= b.t then tob.paid end,
       'movements', mv.movements,
-      'churned', mv.churned,
+      'churned', lost.churned,
+      'lost_paise', lost.paise,
       'collected', (
         select jsonb_build_object(
           'subscription_base_paise', coalesce(sum(x.subscription), 0),
@@ -222,20 +236,33 @@ begin
     left join nights te on te.day = b.end_day
     left join nights tob on tob.day = b.open_day
     cross join lateral (
-      select
-        jsonb_object_agg(k.kind, jsonb_build_object('count', k.n, 'paise', k.paise)) as movements,
-        max(k.churned) as churned
+      select jsonb_object_agg(k.kind, jsonb_build_object('count', k.n, 'paise', k.paise)) as movements
       from (
-        select
-          kinds.kind,
-          count(m.day) as n,
-          coalesce(sum(m.change), 0) as paise,
-          count(distinct m.restaurant_id) filter (where kinds.kind = 'churn') as churned
+        select kinds.kind, count(m.day) as n, coalesce(sum(m.change), 0) as paise
         from unnest(array['new', 'reactivation', 'expansion', 'contraction', 'churn']) as kinds(kind)
-        left join moves m on m.movement = kinds.kind and m.day between b.f and b.t
+        left join moves m
+          on m.movement = kinds.kind and m.day between b.f and b.t and m.day > b.open_day
         group by kinds.kind
       ) as k
     ) as mv
+    -- Of the restaurants Paid at the opening: those that churned, and the MRR
+    -- they lost or gave up, never more than each one's opening MRR.
+    cross join lateral (
+      select
+        count(*) filter (where x.churned) as churned,
+        coalesce(sum(least(x.opening, x.lost)), 0) as paise
+      from (
+        select
+          o.mrr_paise as opening,
+          bool_or(m.movement = 'churn') as churned,
+          coalesce(-sum(m.change) filter (where m.movement in ('churn', 'contraction')), 0) as lost
+        from d as o
+        join moves m
+          on m.restaurant_id = o.restaurant_id and m.day between b.f and b.t and m.day > b.open_day
+        where o.day = b.open_day and o.mrr_paise > 0
+        group by o.restaurant_id, o.mrr_paise
+      ) as x
+    ) as lost
   ),
   buckets as (
     select private.revenue_bucket(g.day::date, p_from, p_by) as start, max(g.day::date) as finish
@@ -254,8 +281,11 @@ begin
       'gst_paise', coalesce(pd.gst, 0)
     ) order by b.start) as body
     from buckets b
+    -- Bars after today have no MRR yet.
     left join lateral (
-      select n.mrr, n.paid from nights n where n.day <= b.finish order by n.day desc limit 1
+      select n.mrr, n.paid from nights n
+      where n.day <= b.finish and b.start <= v_today
+      order by n.day desc limit 1
     ) as te on true
     cross join lateral (
       select jsonb_object_agg(k.kind, jsonb_build_object('count', k.n, 'paise', k.paise)) as movements

@@ -8,9 +8,10 @@ select tests.create_user('sa630-owner@example.test') as owner_user \gset
 select tests.create_platform_admin('sa630-platform@example.test') as admin \gset
 
 -- ─── Fixtures: March 2020, before any other night ───────────────────────────
--- A new; B churns; C expands on the 18th, a night that is missing; D contracts;
--- E fails a charge and pays again; F fails and goes read-only; G fails and is
--- still failing; I is new, leaves and comes back.
+-- A new; B churns, comes back and churns again; C expands on the 18th, a
+-- night that is missing; D contracts; E fails a charge and pays again; F fails
+-- and goes read-only; G fails and is still failing; H paid before history and
+-- comes back; I is new, leaves and comes back.
 select tests.create_restaurant('sa630-a') as a \gset
 select tests.create_restaurant('sa630-b') as b \gset
 select tests.create_restaurant('sa630-c') as c \gset
@@ -18,6 +19,7 @@ select tests.create_restaurant('sa630-d') as d \gset
 select tests.create_restaurant('sa630-e') as e \gset
 select tests.create_restaurant('sa630-f') as f \gset
 select tests.create_restaurant('sa630-g') as g \gset
+select tests.create_restaurant('sa630-h') as h \gset
 select tests.create_restaurant('sa630-i') as i \gset
 
 insert into public.metrics_subscription_daily (
@@ -28,7 +30,9 @@ from (values
   (:'a'::uuid, date '2020-03-01', date '2020-03-04', 'trial', 'growth', null, 0),
   (:'a'::uuid, date '2020-03-05', date '2020-03-31', 'paid', 'growth', 'monthly', 89900),
   (:'b'::uuid, date '2020-03-01', date '2020-03-09', 'paid', 'starter', 'monthly', 39900),
-  (:'b'::uuid, date '2020-03-10', date '2020-03-31', 'cancelled', 'starter', null, 0),
+  (:'b'::uuid, date '2020-03-10', date '2020-03-19', 'cancelled', 'starter', null, 0),
+  (:'b'::uuid, date '2020-03-20', date '2020-03-27', 'paid', 'starter', 'monthly', 39900),
+  (:'b'::uuid, date '2020-03-28', date '2020-03-31', 'cancelled', 'starter', null, 0),
   (:'c'::uuid, date '2020-03-01', date '2020-03-17', 'paid', 'starter', 'monthly', 39900),
   (:'c'::uuid, date '2020-03-18', date '2020-03-31', 'paid', 'growth', 'monthly', 89900),
   (:'d'::uuid, date '2020-03-01', date '2020-03-19', 'paid', 'pro', 'monthly', 179900),
@@ -41,6 +45,8 @@ from (values
   (:'f'::uuid, date '2020-03-16', date '2020-03-31', 'read_only', 'starter', null, 0),
   (:'g'::uuid, date '2020-03-01', date '2020-03-24', 'paid', 'starter', 'monthly', 39900),
   (:'g'::uuid, date '2020-03-25', date '2020-03-31', 'payment_failed', 'starter', 'monthly', 0),
+  (:'h'::uuid, date '2020-03-01', date '2020-03-04', 'cancelled', 'starter', null, 0),
+  (:'h'::uuid, date '2020-03-05', date '2020-03-31', 'paid', 'starter', 'monthly', 39900),
   (:'i'::uuid, date '2020-03-01', date '2020-03-05', 'trial', 'starter', null, 0),
   (:'i'::uuid, date '2020-03-06', date '2020-03-09', 'paid', 'starter', 'monthly', 39900),
   (:'i'::uuid, date '2020-03-10', date '2020-03-19', 'cancelled', 'starter', null, 0),
@@ -83,7 +89,7 @@ from (values
 where s.restaurant_id = x.id;
 
 -- Payments by India date: three subscriptions and three setup fees in March
--- (with the offer, at the full fee, not recorded), and three outside it.
+-- (with the offer, at the full fee, not recorded), and four outside it.
 insert into public.subscription_payments (
   restaurant_id, source, manual_mode, amount_paise, purpose, list_price_paise, discount_paise,
   period_start, period_end, created_at
@@ -101,7 +107,9 @@ insert into public.subscription_payments (
   (:'d', 'manual', 'upi', private.fee_with_gst(50000), 'setup_fee', null, null,
    null, null, '2020-03-12 09:00+05:30'),
   (:'d', 'manual', 'upi', private.fee_with_gst(50000), 'setup_fee', null, null,
-   null, null, '2020-02-29 23:50+05:30');
+   null, null, '2020-02-29 23:50+05:30'),
+  (:'h', 'manual', 'upi', private.fee_with_gst(39900), 'subscription', null, null,
+   '2020-01-21 10:00+05:30', '2020-02-20 10:00+05:30', '2020-01-21 10:00+05:30');
 insert into public.subscription_payments (
   restaurant_id, source, manual_mode, amount_paise, period_start, period_end, created_at
 ) values (:'i', 'manual', 'upi', private.fee_with_gst(39900), '2020-04-05 10:00+05:30',
@@ -148,22 +156,26 @@ select is(
     :'r'::jsonb #>> '{totals,mrr_paise}',
     :'r'::jsonb #>> '{totals,paid}'
   ],
-  array['2020-03-01', '429400', '6', '399500', '5'],
+  array['2020-03-01', '429400', '6', '439400', '6'],
   'opening on the history''s first night; MRR and Paid at the end'
 );
 select is(
   :'r'::jsonb #> '{totals,movements}',
-  '{"new": {"count": 2, "paise": 129800}, "reactivation": {"count": 2, "paise": 129800},
+  '{"new": {"count": 2, "paise": 129800}, "reactivation": {"count": 4, "paise": 209600},
     "expansion": {"count": 1, "paise": 50000}, "contraction": {"count": 1, "paise": -90000},
-    "churn": {"count": 5, "paise": -249500}}'::jsonb,
-  'each movement: a failed charge is churn, paying again is reactivation, I is new once'
+    "churn": {"count": 6, "paise": -289400}}'::jsonb,
+  'each movement: a failed charge is churn, paying again is reactivation, I is new once, H paid before history'
 );
 select is(
   (select sum((m.value ->> 'paise')::bigint) from jsonb_each(:'r'::jsonb #> '{totals,movements}') as m),
-  399500::numeric - 429400,
+  439400::numeric - 429400,
   'the movements add up to the change in MRR'
 );
-select is((:'r'::jsonb #>> '{totals,churned}')::int, 5, 'five restaurants churned, each once');
+select is(
+  array[:'r'::jsonb #>> '{totals,churned}', :'r'::jsonb #>> '{totals,lost_paise}'],
+  array['4', '299600'],
+  'of the six Paid at the start, four churned (B once though twice); each lost at most its opening MRR'
+);
 select is(
   :'r'::jsonb #> '{totals,recovery}',
   '{"entered": 3, "recovered": 1, "still_failed": 1}'::jsonb,
@@ -203,7 +215,7 @@ select is(
 );
 select is(
   :'r'::jsonb -> 'plan_mix',
-  '[{"plan_code": "starter", "plan_name": "Starter", "billing_cycle": "monthly", "restaurants": 1, "mrr_paise": 39900},
+  '[{"plan_code": "starter", "plan_name": "Starter", "billing_cycle": "monthly", "restaurants": 2, "mrr_paise": 79800},
     {"plan_code": "growth", "plan_name": "Growth", "billing_cycle": "monthly", "restaurants": 3, "mrr_paise": 269700},
     {"plan_code": "growth", "plan_name": "Growth", "billing_cycle": "yearly", "restaurants": 1, "mrr_paise": 89900}]'::jsonb,
   'Paid restaurants at the end by plan and cycle'
@@ -218,7 +230,7 @@ select tests.clear_auth();
 select is(
   (select array[e ->> 'mrr_paise', e #>> '{movements,expansion,count}']
    from jsonb_array_elements(:'by_day'::jsonb -> 'series') as e where e ->> 'start' = '2020-03-18'),
-  array['439500', '0'],
+  array['479400', '0'],
   'the missing 18th keeps the 17th''s MRR'
 );
 select is(
@@ -246,7 +258,8 @@ select is(
 
 -- ─── Comparing, and history starting inside the dates ───────────────────────
 select tests.authenticate_as_platform_admin(:'admin');
-select public.platform_revenue_report('2020-03-16', '2020-03-31', 'week', true)::text as cmp \gset
+select public.platform_revenue_report('2020-03-17', '2020-03-31', 'week', true)::text as cmp \gset
+select public.platform_revenue_report('2020-03-16', '2020-03-31', 'week', true)::text as cut \gset
 select public.platform_revenue_report('2020-02-01', '2020-03-31', 'month')::text as early \gset
 select tests.clear_auth();
 select is(
@@ -255,14 +268,23 @@ select is(
     :'cmp'::jsonb #>> '{totals,opening_day}', :'cmp'::jsonb #>> '{previous,opening_day}',
     :'cmp'::jsonb #>> '{previous,mrr_paise}', :'cmp'::jsonb #>> '{totals,opening_mrr_paise}'
   ],
-  array['2020-02-29', '2020-03-15', '2020-03-15', '2020-03-01', '439500', '439500'],
+  array['2020-03-02', '2020-03-16', '2020-03-16', '2020-03-01', '479400', '479400'],
   'the same number of days before; it ends where this period opens'
 );
 select is(
   (select sum((m.value ->> 'paise')::bigint) from jsonb_each(:'cmp'::jsonb #> '{previous,movements}') as m)
     + (select sum((m.value ->> 'paise')::bigint) from jsonb_each(:'cmp'::jsonb #> '{totals,movements}') as m),
-  399500::numeric - 429400,
+  439400::numeric - 429400,
   'the two periods'' movements make up the month'
+);
+select is(
+  array[
+    :'cut'::jsonb ->> 'previous_from', :'cut'::jsonb #>> '{previous,opening_day}',
+    :'cut'::jsonb #>> '{previous,movements,churn,count}', :'cut'::jsonb #>> '{previous,churned}',
+    :'cut'::jsonb #>> '{previous,recovery,entered}', :'cut'::jsonb #>> '{totals,opening_day}'
+  ],
+  array['2020-02-29', null, '0', '0', '0', '2020-03-15'],
+  'a period before it that history doesn''t cover has no MRR figures to compare'
 );
 select is(
   array[
@@ -279,12 +301,21 @@ select tests.authenticate_as_platform_admin(:'admin');
 select public.platform_revenue_movements('2020-03-01', '2020-03-31', 'churn')::text as churn \gset
 select public.platform_revenue_movements('2020-03-19', '2020-03-19', 'expansion')::text as up \gset
 select public.platform_revenue_movements('2020-03-11', '2020-03-31', 'churn')::text as late \gset
+select public.platform_revenue_movements('2020-03-01', '2020-03-31', 'reactivation')::text as back \gset
 select tests.clear_auth();
 select is(
   (select array_agg(x.n order by x.n) from (
      select r ->> 'name' as n from jsonb_array_elements(:'churn'::jsonb -> 'rows') as r) as x),
-  array['Sa630-B', 'Sa630-E', 'Sa630-F', 'Sa630-G', 'Sa630-I'],
-  'the month''s five churned restaurants'
+  array['Sa630-B', 'Sa630-B', 'Sa630-E', 'Sa630-F', 'Sa630-G', 'Sa630-I'],
+  'the month''s six churns, B twice'
+);
+select is(
+  (select array_agg(x.n order by x.n) from (
+     select r ->> 'name' || ' from ' || (r ->> 'state_before') as n
+     from jsonb_array_elements(:'back'::jsonb -> 'rows') as r) as x),
+  array['Sa630-B from cancelled', 'Sa630-E from payment_failed', 'Sa630-H from cancelled',
+    'Sa630-I from cancelled'],
+  'reactivations, H''s from a paid period before history'
 );
 select is(
   (select r - 'restaurant_id' - 'city' from jsonb_array_elements(:'churn'::jsonb -> 'rows') as r
@@ -299,7 +330,7 @@ select is(
   array['Starter', 'Growth', '39900', '89900'],
   'one day''s bar: C''s upgrade from Starter'
 );
-select is((:'late'::jsonb ->> 'total')::int, 2, 'a later first day leaves out the earlier churn');
+select is((:'late'::jsonb ->> 'total')::int, 3, 'a later first day leaves out the earlier churn');
 
 -- ─── Today: the live row is Home's ──────────────────────────────────────────
 select tests.authenticate_as_platform_admin(:'admin');
