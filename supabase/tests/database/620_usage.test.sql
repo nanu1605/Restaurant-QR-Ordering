@@ -338,6 +338,25 @@ select is(
 );
 select tests.clear_auth();
 
+-- A restaurant opened at 1 am belongs to the business day before: counted for
+-- 29 February, like its orders.
+update public.restaurants set created_at = '2020-03-01 01:00+05:30' where id = :'rest_c';
+select tests.authenticate_as_platform_admin(:'admin');
+select is(
+  public.platform_usage_report('2020-02-01', '2020-02-29') #> '{totals,restaurants}',
+  '3'::jsonb,
+  'a restaurant counts from its first business day'
+);
+select tests.clear_auth();
+update public.restaurants set created_at = '2020-03-01 04:30+05:30' where id = :'rest_c';
+select tests.authenticate_as_platform_admin(:'admin');
+select is(
+  public.platform_usage_report('2020-02-01', '2020-02-29') #> '{totals,restaurants}',
+  '2'::jsonb,
+  'and not before it'
+);
+select tests.clear_auth();
+
 -- ─── Live days ──────────────────────────────────────────────────────────────
 -- Each restaurant's last finished day and today are counted as they happen;
 -- days before are stored. Measured as what one restaurant's activity adds.
@@ -446,10 +465,10 @@ select throws_ok($$select public.platform_usage_report('2020-02-01', '2020-02-29
 select tests.authenticate_as_platform_admin(:'admin');
 select throws_ok($$select public.platform_usage_report('2020-02-10', '2020-02-01')$$,
   'P0001', 'INVALID_INPUT', 'the end before the start');
-select throws_ok($$select public.platform_usage_report('2019-01-01', '2020-01-02')$$,
-  'P0001', 'INVALID_INPUT', 'more than a year');
-select lives_ok($$select public.platform_usage_report('2019-01-01', '2020-01-01', true)$$,
-  'a year, compared with the year before');
+select throws_ok($$select public.platform_usage_report('2019-01-01', '2020-01-03')$$,
+  'P0001', 'INVALID_INPUT', 'more than the pages'' 366 days');
+select lives_ok($$select public.platform_usage_report('2019-01-01', '2020-01-02', true)$$,
+  'the longest range a page sends, compared with the one before');
 select tests.as_anon();
 select throws_ok($$select public.platform_usage_report('2020-02-01', '2020-02-29')$$,
   '42501', null, 'anon may not');

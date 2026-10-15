@@ -454,7 +454,7 @@ declare
   v_hours jsonb;
 begin
   perform private.require_platform_permission('insights.view');
-  if p_from is null or p_to is null or p_to < p_from or p_to - p_from > 365 then
+  if p_from is null or p_to is null or p_to < p_from or p_to - p_from > 366 then
     perform private.fail('INVALID_INPUT', 'dates');
   end if;
   v_start := case when p_compare then p_from - (p_to - p_from + 1) else p_from end;
@@ -468,7 +468,8 @@ begin
       nullif(btrim(x.state), '') as region,
       p.code as plan_code, p.name as plan_name,
       private.business_date(now(), x.timezone, x.business_day_start_hour) as today,
-      (x.created_at at time zone 'Asia/Kolkata')::date <= p_to as counted
+      -- By business date, like the days counted: one opened at 1 am belongs to the day before.
+      private.business_date(x.created_at, x.timezone, x.business_day_start_hour) <= p_to as counted
     from public.restaurants x
     left join public.restaurant_subscriptions s on s.restaurant_id = x.id
     left join public.plans p on p.id = s.plan_id
