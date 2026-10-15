@@ -221,7 +221,7 @@ begin
          (array['Indore', 'Pune', 'Jaipur', 'Kochi'])[1 + n % 4],
          '9' || lpad((n * 104729 % 1000000000)::text, 9, '0'),
          (array['website_lead', 'website_lead', 'website_lead', 'field_visit', 'referral', 'phone',
-           'whatsapp'])[1 + n % 7],
+           'whatsapp'])[1 + n / 7 % 7],
          s.stage,
          case when s.stage = 'lost' then (array['price', 'no_response', 'other_system'])[1 + n % 3] end,
          case when s.stage in ('contacted', 'demo_scheduled', 'demo_done')
