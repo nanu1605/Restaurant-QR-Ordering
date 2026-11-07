@@ -10,6 +10,7 @@ import {
   boardKey,
   QUEUED_MUTATION_KEY,
 } from '@/features/live/query-client';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { createClient } from '@/lib/supabase/browser';
 
 import { markOrderServed, setItemsStatus } from './actions';
@@ -129,6 +130,8 @@ export function useBoardAction<TVars>({
       if (message) toast.success(message);
     },
     onError: (error) => {
+      // An older build's action: the refresh notice says what to do (docs/DECISIONS.md VPS-8).
+      if (isUnrecognizedAction(error)) return;
       toast.error(
         error instanceof ActionFailed
           ? error.message
@@ -137,8 +140,10 @@ export function useBoardAction<TVars>({
             : t.generic,
       );
     },
-    onSettled: (_result, _error, vars) => {
-      queue?.drop(vars);
+    onSettled: (_result, error, vars) => {
+      // An older build's action never reached the server: the change stays on the device, and
+      // the refreshed page sends it (OfflineBanner).
+      if (!isUnrecognizedAction(error)) queue?.drop(vars);
       if (queryClient.isMutating({ mutationKey: BOARD_MUTATION_KEY }) === 1) {
         void queryClient.invalidateQueries({ queryKey: ['board'] });
       }
