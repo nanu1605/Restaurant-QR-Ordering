@@ -138,7 +138,7 @@ export type LinkDefaults = {
 type RestaurantActionsProps = {
   restaurantId: string;
   restaurantName: string;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'closed';
   subscription: { status: SubscriptionStatus; planCode: string } | null;
   plans: { code: string; name: string }[];
   /** The first day a new payment would cover ('YYYY-MM-DD', India). */
@@ -171,9 +171,12 @@ export function RestaurantActions({
   paymentStart,
   razorpay,
   support,
-  can,
+  can: allowed,
 }: RestaurantActionsProps) {
   const router = useRouter();
+  // Closed: money can still arrive, and its Account tab reopens it (SA-94).
+  const closed = status === 'closed';
+  const can = closed ? { manage: false, record: allowed.record, support: false } : allowed;
   const [open, setOpen] = useState<Dialogs>(null);
   const close = () => setOpen(null);
   const [syncing, startSync] = useTransition();
@@ -185,6 +188,9 @@ export function RestaurantActions({
       else toast.error(result.error);
     });
   }
+
+  // Closed and nothing left for this role: no empty menu.
+  if (closed && !(can.record && subscription)) return null;
 
   return (
     <>
@@ -212,7 +218,7 @@ export function RestaurantActions({
               Record payment
             </DropdownMenuItem>
           )}
-          {can.record && subscription && razorpay && (
+          {can.record && !closed && subscription && razorpay && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('link')}>
               <Link2 aria-hidden />
               Send payment link
@@ -754,7 +760,9 @@ function SuspendForm({ restaurantId, onDone }: { restaurantId: string; onDone: (
       <Field data-invalid={errors.reason ? true : undefined}>
         <FieldLabel htmlFor={`${ids}-reason`}>Reason</FieldLabel>
         <Textarea id={`${ids}-reason`} rows={2} {...register('reason')} />
-        <FieldDescription>Kept in the audit log.</FieldDescription>
+        <FieldDescription>
+          Kept in the audit log. If the account is closed, it’s removed with the personal data.
+        </FieldDescription>
         <FieldError errors={[errors.reason]} />
       </Field>
       <FormFooter pending={isSubmitting} label="Suspend" error={errors.root?.message} />

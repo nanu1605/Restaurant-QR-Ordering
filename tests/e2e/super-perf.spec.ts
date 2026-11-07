@@ -37,7 +37,7 @@ const PATHS = [
   '/super/support',
 ];
 // A busy load restaurant with notes and a tag: its page, every tab of its own (13a).
-const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents'];
+const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents', '/account'];
 
 test('each super-admin page answers within 1.5 s', async ({ page }) => {
   test.setTimeout((PATHS.length + TABS.length) * 15_000);

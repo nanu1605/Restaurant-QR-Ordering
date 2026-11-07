@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { getClosure } from '@/features/closure/queries';
 import { NoteForm, NoteItem } from '@/features/platform/components/notes';
 import { Section } from '@/features/platform/components/restaurant-sections';
 import { getRestaurantDetail, listNotes } from '@/features/platform/queries';
@@ -21,9 +22,10 @@ export default async function RestaurantNotesPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [notes, manage] = await Promise.all([
+  const [notes, manage, closure] = await Promise.all([
     listNotes(restaurantId),
     hasPlatformPermission('restaurants.manage'),
+    getClosure(restaurantId),
   ]);
 
   return (
@@ -42,7 +44,8 @@ export default async function RestaurantNotesPage({
           <p className="text-xs text-ink-muted">The newest 200 notes are shown.</p>
         )}
       </Section>
-      {manage && (
+      {/* Once its personal data has gone, a note would stay for good (SA-97). */}
+      {manage && !closure?.removed_at && (
         <Section title="Add a note">
           <NoteForm restaurantId={restaurantId} />
         </Section>

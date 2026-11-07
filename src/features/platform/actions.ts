@@ -517,6 +517,9 @@ export async function sendPaymentLink(
   const detail = await getRestaurantDetail(id.data);
   const subscription = detail?.subscription;
   if (!detail || !subscription) return actionError('This restaurant has no subscription yet.');
+  if (detail.restaurant.status === 'closed') {
+    return actionError('This restaurant’s account is closed. Reopen it first.');
+  }
   const { purpose, months, description } = parsed.data;
   const autopay = autopayState({
     razorpayStatus: subscription.razorpay_status,

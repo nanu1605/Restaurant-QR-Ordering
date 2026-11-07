@@ -67,6 +67,8 @@ export default async function RestaurantOverviewPage({
   const latest = notes.find((note) => !note.pinned);
   const orderDays = days.filter((day) => day.orders > 0 || day.gmv_paise > 0).length;
   const base = restaurantPath(restaurantId);
+  // Closed: its page keeps only what money needs (docs/DECISIONS.md SA-94).
+  const closed = detail.restaurant.status === 'closed';
 
   return (
     <>
@@ -134,7 +136,7 @@ export default async function RestaurantOverviewPage({
             restaurantId={restaurantId}
             detail={standees}
             today={todayInIndia()}
-            can={{ manage, record, money }}
+            can={closed ? { manage: false, record: false, money } : { manage, record, money }}
           />
           <Section
             title="Notes"
@@ -146,7 +148,7 @@ export default async function RestaurantOverviewPage({
           >
             {pinned.length === 0 && !latest ? (
               <p className="text-sm text-ink-muted">
-                No notes yet.{manage && ' Add one from Actions.'}
+                No notes yet.{manage && !closed && ' Add one from Actions.'}
               </p>
             ) : (
               <ul className="-mx-3 -my-2 flex flex-col divide-y divide-line">
@@ -219,7 +221,7 @@ export default async function RestaurantOverviewPage({
                       Last login {formatDateTime(owner.last_sign_in_at)}
                     </span>
                   </div>
-                  {support && (
+                  {support && detail.restaurant.status !== 'closed' && (
                     <OwnerPasswordButton
                       memberId={owner.member_id}
                       ownerName={owner.display_name}

@@ -38,11 +38,13 @@ export default async function RestaurantUsagePage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [usage, overview, manage] = await Promise.all([
+  const [usage, overview, canManage] = await Promise.all([
     getRestaurantUsage(restaurantId),
     getRestaurantOverview(restaurantId),
     hasPlatformPermission('restaurants.manage'),
   ]);
+  // Closed: its page keeps only what money needs (docs/DECISIONS.md SA-94).
+  const manage = canManage && detail.restaurant.status !== 'closed';
   const { usage: counts, subscription } = detail;
   // Accepted orders by finished business day, as on the Overview (plan §1).
   const last7 = overview.days.slice(-7).reduce((sum, day) => sum + day.orders, 0);

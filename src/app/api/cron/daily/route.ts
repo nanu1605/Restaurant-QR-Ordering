@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { sendAnnouncementEmails } from '@/features/announcements/email';
+import { removeDuePersonalData, removeOldExports } from '@/features/closure/cleanup';
 import { fillHindiNames } from '@/features/menu/hindi-names';
 import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
@@ -32,7 +33,9 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * fill (skipped without a menu import key), website signups older than a
  * week (W-9), password resets older than a day (P11-6), storefront photos of
  * signups that never finished (P11-12), support screenshots of requests
- * that were never sent (SA-42), and email log rows older than 30 days (SA-87).
+ * that were never sent (SA-42), email log rows older than 30 days (SA-87),
+ * personal data of accounts closed for 30 days (SA-97), then data export files
+ * past their link's 24 hours or made before that removal (SA-93).
  */
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) {
@@ -54,6 +57,9 @@ export async function GET(request: Request) {
       ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
       : { skipped: true },
   );
+  const closedAccountRemoval = step(admin, 'closed account removal', () =>
+    removeDuePersonalData(admin),
+  );
   const [
     usage,
     menuImports,
@@ -66,6 +72,8 @@ export async function GET(request: Request) {
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
+    closedAccounts,
+    dataExports,
   ] = await Promise.all([
     // Recounts the last few business days (late payments, voids), in its own transaction.
     step(admin, 'usage snapshot', async () => {
@@ -136,6 +144,11 @@ export async function GET(request: Request) {
       if (error) throw new Error(error.message);
       return { closed: data };
     }),
+    closedAccountRemoval,
+    // After the removal: it also takes the copies made before it.
+    closedAccountRemoval.then(() =>
+      step(admin, 'data export cleanup', () => removeOldExports(admin)),
+    ),
   ]);
   const ok = [
     snapshot,
@@ -150,6 +163,8 @@ export async function GET(request: Request) {
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
+    closedAccounts,
+    dataExports,
   ].every((result) => result !== null);
   return NextResponse.json(
     {
@@ -166,6 +181,8 @@ export async function GET(request: Request) {
       storefrontPhotos,
       supportScreenshots,
       supportSessions,
+      closedAccounts,
+      dataExports,
     },
     { status: ok ? 200 : 500, headers: noStore },
   );

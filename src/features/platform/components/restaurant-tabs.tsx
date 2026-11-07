@@ -14,38 +14,43 @@ import { RESTAURANT_TABS, restaurantPath } from '../restaurant-page';
 export function RestaurantTabs({
   restaurantId,
   menuImports,
+  account,
 }: {
   restaurantId: string;
   /** Menu imports need restaurants.support (docs/SUPER_ADMIN_PLAN.md §3). */
   menuImports: boolean;
+  /** Its export and closing need restaurants.close. */
+  account: boolean;
 }) {
   const segment = useSelectedLayoutSegment();
   return (
     <nav aria-label="Restaurant sections" className="-mx-1 min-w-0 overflow-x-auto px-1 pb-1">
       <ul className="flex min-w-max gap-1 border-b border-line">
-        {RESTAURANT_TABS.filter((tab) => menuImports || tab.segment !== 'menu-import').map(
-          (tab) => {
-            const current = tab.segment === segment;
-            return (
-              <li key={tab.label}>
-                <Link
-                  href={restaurantPath(restaurantId, tab.path)}
-                  aria-current={current ? 'page' : undefined}
-                  className={buttonVariants({
-                    variant: 'ghost',
-                    className: `h-11 rounded-b-none border-0 border-b-2 md:h-9 ${
-                      current
-                        ? 'border-brand font-semibold text-ink'
-                        : 'border-transparent text-ink-muted'
-                    }`,
-                  })}
-                >
-                  {tab.label}
-                </Link>
-              </li>
-            );
-          },
-        )}
+        {RESTAURANT_TABS.filter(
+          (tab) =>
+            (menuImports || tab.segment !== 'menu-import') &&
+            (account || tab.segment !== 'account'),
+        ).map((tab) => {
+          const current = tab.segment === segment;
+          return (
+            <li key={tab.label}>
+              <Link
+                href={restaurantPath(restaurantId, tab.path)}
+                aria-current={current ? 'page' : undefined}
+                className={buttonVariants({
+                  variant: 'ghost',
+                  className: `h-11 rounded-b-none border-0 border-b-2 md:h-9 ${
+                    current
+                      ? 'border-brand font-semibold text-ink'
+                      : 'border-transparent text-ink-muted'
+                  }`,
+                })}
+              >
+                {tab.label}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

@@ -165,6 +165,7 @@ describe('the restaurant page', () => {
       'Documents',
       'Support view',
       'Menu imports',
+      'Account',
     ]);
   });
 

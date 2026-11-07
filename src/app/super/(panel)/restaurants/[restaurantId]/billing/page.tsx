@@ -66,7 +66,7 @@ export default async function RestaurantBillingPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <SubscriptionSection detail={detail} />
         <div className="flex min-w-0 flex-col gap-4">
-          <DuesSection dues={billing.dues} suspended={detail.restaurant.status === 'suspended'} />
+          <DuesSection dues={billing.dues} suspended={detail.restaurant.status !== 'active'} />
           <Section title="Access">
             <Facts
               facts={[
@@ -94,7 +94,7 @@ export default async function RestaurantBillingPage({
             monthlyPaise: plan.price_monthly_paise,
             yearlyPaise: plan.price_yearly_paise,
           }))}
-        canRecord={record}
+        canRecord={record && detail.restaurant.status !== 'closed'}
       />
 
       {detail.money && <PaymentsSection payments={detail.payments} />}
@@ -325,7 +325,7 @@ function DuesSection({ dues, suspended }: { dues: RestaurantBilling['dues']; sus
       <Section title="Dues">
         <p className="text-sm text-ink-muted">
           {suspended
-            ? 'Suspended restaurants are left out of Dues: see the subscription for what it owes.'
+            ? 'Suspended and closed restaurants are left out of Dues: see the subscription for what it owes.'
             : 'Nothing due in the next 30 days.'}
         </p>
       </Section>

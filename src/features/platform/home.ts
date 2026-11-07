@@ -351,6 +351,10 @@ const number = (value: unknown): number | null => (typeof value === 'number' ? v
 const TEAM_ACTIONS: Record<string, string> = {
   'restaurant.suspended': 'Suspended',
   'restaurant.unsuspended': 'Unsuspended',
+  'restaurant.closed': 'Account closed',
+  'restaurant.reopened': 'Account reopened',
+  'restaurant.personal_data_removed': 'Personal data removed',
+  'restaurant.data_exported': 'Data export made',
   'subscription.trial_extended': 'Trial extended',
   'subscription.plan_changed': 'Plan changed',
   'subscription.payment_link_sent': 'Payment link sent',

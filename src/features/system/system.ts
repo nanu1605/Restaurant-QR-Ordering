@@ -102,6 +102,7 @@ const EMAIL_KIND_LABELS: Record<string, string> = {
   digest: 'Daily digest',
   support: 'Support requests',
   lead: 'New leads',
+  'account-closed': 'Account closed',
 };
 export const emailKindLabel = (kind: string) => EMAIL_KIND_LABELS[kind] ?? kind;
 

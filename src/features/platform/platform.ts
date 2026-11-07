@@ -43,6 +43,7 @@ export const SUBSCRIPTION_STATES = [
   'payment_failed',
   'paid',
   'cancelled',
+  'closed',
 ] as const;
 export type SubscriptionState = (typeof SUBSCRIPTION_STATES)[number];
 export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
@@ -52,6 +53,7 @@ export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
   payment_failed: 'Payment failed',
   paid: 'Paid',
   cancelled: 'Cancelled',
+  closed: 'Closed',
 };
 
 // A restaurant's health, first match wins (docs/SUPER_ADMIN_PLAN.md §5.11,
@@ -72,6 +74,7 @@ export const ACCESS_STATE_LABELS: Record<string, string> = {
 };
 
 export const ACCESS_REASON_LABELS: Record<string, string> = {
+  closed: 'Account closed',
   suspended: 'Suspended',
   no_subscription: 'No subscription',
   trial_ended: 'Trial ended',
@@ -174,7 +177,7 @@ export const ACTOR_TYPE_LABELS: Record<ActorType, string> = {
 
 const subscriptionStatus = z.enum(SUBSCRIPTION_STATUSES);
 const subscriptionState = z.enum(SUBSCRIPTION_STATES);
-const restaurantStatus = z.enum(['active', 'suspended']);
+const restaurantStatus = z.enum(['active', 'suspended', 'closed']);
 const billingCycle = z.enum(['monthly', 'yearly']);
 
 // ─── Lookalikes (docs/DECISIONS.md P11-13) ───────────────────────────────────

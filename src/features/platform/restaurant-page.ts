@@ -27,6 +27,7 @@ export const RESTAURANT_TABS = [
   { segment: 'documents', path: '/documents', label: 'Documents' },
   { segment: 'support', path: '/support/menu', label: 'Support view' },
   { segment: 'menu-import', path: '/menu-import', label: 'Menu imports' },
+  { segment: 'account', path: '/account', label: 'Account' },
 ] as const;
 
 export const restaurantPath = (restaurantId: string, tab = '') =>
@@ -162,6 +163,12 @@ export function historyLine(
       return 'Suspended';
     case 'restaurant.unsuspended':
       return 'Unsuspended';
+    case 'restaurant.closed':
+      return 'Account closed';
+    case 'restaurant.reopened':
+      return 'Account reopened';
+    case 'restaurant.personal_data_removed':
+      return 'Personal data removed';
     default:
       return entry.action;
   }
