@@ -193,6 +193,29 @@ login, then the owner adds tables, prints QR codes (only once production is live
 `menumesh.in`: the codes carry `NEXT_PUBLIC_APP_URL`), enters the menu and installs the staff
 app on each tablet.
 
+## Closing an account
+
+An owner asks through Get help; only a team member with Admin closes it (`/super` → the
+restaurant → **Account**; SA-93 to SA-100).
+
+1. **A copy first, if they want one.** Prepare a download on the Account tab and copy its link for
+   them (24 hours, and anyone with the link can open it). It works during the hold too, but they
+   can't log in once it closes, so they can't do it themselves after that.
+2. **Close account:** a reason and the typed restaurant code. Anything that could still charge is
+   cancelled first: if Razorpay refuses, nothing closes and it says so; try again in a minute. If
+   it says autopay changed while closing, the owner set it up just then: close again. A refund for
+   paid time is separate, in Razorpay. If it says no email went out, tell the owner yourself: they
+   will only see "Wrong email or password".
+3. **Reopen account** on the same tab until the end of the date it shows. Logins and QR codes
+   return; autopay doesn't, so the owner sets it up again. One that was suspended goes back to
+   suspended.
+4. **After 30 days** the nightly job removes personal data (the list is SA-97), for good, and any
+   download link stops working with it. If its `closed account removal` step fails, Home's
+   scheduled jobs group says which restaurant and it tries again the next night.
+
+Bills, payments and orders stay, with no end date until the CA's answers (SA-98). A returning owner
+is onboarded by the team: their GSTIN and FSSAI number still refuse a self-signup trial.
+
 ## Support requests
 
 Restaurants ask from **Get help** in the admin panel. Each request emails the support address in

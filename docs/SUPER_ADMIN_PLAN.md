@@ -668,6 +668,8 @@ Acceptance:
 
 ### 14e. Close account
 
+Built 2026-11-01 (docs/DECISIONS.md SA-93 to SA-100). Only the team closes; during the hold the owner asks support for a copy; a closed restaurant's QR codes stop working; removal also clears the copies of personal data (owner's choices, 2026-11-01). Financial records have no end date until the CA answers.
+
 Ships:
 
 - **Export**: a ZIP of JSON and CSV files (profile, menu, tables, staff without secrets, waiters, orders, bills, payments, invoices), built on the server into a private bucket, with a download link valid for 24 hours. Audited. Available to the team (restaurants.close) and to the restaurant owner (Settings, Download my data).

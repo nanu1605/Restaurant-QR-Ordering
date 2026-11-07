@@ -192,9 +192,9 @@ bottom of each section.
   stay `true` because the CLI maps it to the whole email provider (turning it off disables
   password sign-in too — first caught by CI). Auth config changes only apply after
   `pnpm db:stop && pnpm db:start`; `db reset` keeps the running auth container.
-- **Unexpected sign-in errors are not "wrong password".** Only `invalid_credentials` shows the
-  generic message and 429 shows the rate-limit message; anything else (auth down, bad key,
-  provider disabled) throws so it's logged instead of hidden.
+- **Unexpected sign-in errors are not "wrong password".** Only `invalid_credentials` (and
+  `user_banned`, since SA-95) shows the generic message and 429 shows the rate-limit message;
+  anything else (auth down, bad key, provider disabled) throws so it's logged instead of hidden.
 
 ### Tooling
 
@@ -1849,6 +1849,12 @@ its own open item before QR printing. Kept: the production dry run, which the ow
 - **P10-16 · Runners pinned to `ubuntu-24.04`:** `ubuntu-latest` moves to Ubuntu 26 from 19
   October 2026; CI, deploy, release and backup stay on 24.04 until a tested change moves them
   (Playwright's system packages and the Supabase CLI).
+- **P10-17 · Next.js 16.4.3:** the audit failed on 16.3.8 from advisories published on 22 October
+  2026: remote code execution through `sharp` in image optimisation, remote code execution in
+  `use cache` functions returning typed arrays (the app has none) and a denial of service through
+  Server Actions, which the app does use. Upgraded, with `zod` 4.6.7 and `dompurify` 3.4.17 (through
+  `posthog-js`), and `sharp` is 0.35.5. Environments keep 16.3.8 until this is released. The
+  release-age exemptions are gone: 16.4.3 had been out for over a week.
 - **A test that expired:** `320_platform_actions` paid for September 2026 against a grace period
   counted from `now()`, so from 30 September the payment no longer extended access (correctly)
   and the test failed. Its periods are now months relative to today.
@@ -4220,3 +4226,102 @@ stay at 13g, since nobody else gets `/super` before then.
   staging's `/api/health` report (`PRODUCTION_APP_URL`, `STAGING_APP_URL`, defaulting to the real
   addresses; tests point them at a stand-in), cached a minute; unreachable or unhealthy says so.
   Not on Home: they differ between releases by design.
+
+### 14e · Close account
+
+- **SA-93 · The data export:** a ZIP of JSON and CSV files (README, profile, menu, tables, staff,
+  waiters, orders, order items, bills as CSV and as full JSON, bill payments, subscription
+  payments), with amounts in rupees and local times in the CSVs. Each table names its columns, so a
+  new column stays out until someone decides otherwise: no logins or user ids, QR tokens, device ids
+  or internal notes. "Invoices" are `bills`: MenuMesh issues none of its own (§14.7). The owner asks
+  in Settings (Download my data, never a support session) and the team on a restaurant's Account tab
+  (restaurants.close, and also after closing); both are audited as `restaurant.data_exported`, at
+  most one an hour, whatever the plan or subscription state. `after()` builds it under the page's
+  5-minute limit: `allRows` reads through the service role a page at a time until an empty page,
+  compressed with `node:zlib` by a small writer (`lib/zip.ts`, checked with Python's zipfile and
+  Windows), into the private `restaurant-exports` bucket with no storage policies. A build that dies
+  reads as failed after 15 minutes, and a failure can be retried at once. The link is a signed URL
+  that ends 24 hours after the build, signed when a page shows it, so whoever holds it can open it:
+  the page says so, and refreshes when it ends (timed by the server's count of seconds left, from
+  when the tab first had that link, by a clock that only counts up: a device's time can be off, and
+  Back brings a page back with its old count). The daily `data export cleanup` step deletes files
+  after 25 hours and rows after 2 days. A file past the bucket's 50 MiB (years of orders) fails
+  visibly.
+- **SA-94 · Closing:** team only, restaurants.close (Admin), on the restaurant's Account tab; the
+  owner asks through Get help (owner's choice, 2026-11-01). A reason and the typed restaurant code
+  confirm it. Whatever could still charge is cancelled first (`mandateCanCharge`: autopay that is
+  on, and a checkout or a retry that hasn't ended, which a retry could otherwise turn back into
+  monthly charges). If Razorpay refuses, nothing has closed and the team tries again, rather than a
+  closed restaurant still being charged. `platform_close_restaurant` makes the same test under the
+  subscription's lock, so autopay the owner sets up during that call is refused
+  (`AUTOPAY_CAN_CHARGE`) and the retry cancels it too. It locks the restaurant `for no key update`
+  (P4-10), so a save or webhook holding the subscription row isn't stuck behind it in a deadlock;
+  the removal does the same. A late save can't hide the owner's new subscription: the team never
+  starts one, so a team save under another id is an old one's, from a sync or cancel that crossed
+  the owner subscribing, and is refused (`RAZORPAY_SUBSCRIPTION_CHANGED`); one that has ended never
+  replaces the one tracked; and a closed restaurant takes no new one. One set to end with its paid
+  period is left alone: it won't charge again, and a paid period isn't refunded by this.
+  `platform_close_restaurant` then does the rest in one transaction and a `restaurant_closures` row
+  records what Reopen needs. The owner is emailed the date and how to ask for a copy or reopen, with
+  the support email and phone from Platform settings. The action waits for that email, so its toast
+  can say when none went out (no address on file, or Resend failed; it stays until dismissed) and
+  the team tells the owner. While closed, its page says so and Actions keeps only what money needs
+  (record a payment that arrives, sync with Razorpay). A tab left open can't do the rest: Suspend,
+  Unsuspend, Extend trial, Change plan, the owner's password, a special price, an override, standees
+  and an onboarding session are refused by the database with `RESTAURANT_CLOSED`. Notes stay open
+  during the hold, for what the owner says. Late Razorpay events still apply: money is a fact.
+  Reopen, until the removal, puts back its status and reason and the logins that were on; autopay
+  stays off, since Razorpay can't undo a cancel. The subscription's clock kept running.
+- **SA-95 · A closed restaurant can't sign in:** closing sets every member `is_active = false`,
+  which refuses them at once in every function and policy, whatever token they hold (tokens last up
+  to an hour; P11-8). It bans the login and deletes its sessions, as for a team member (SA-74), so
+  no new token. `completeSignIn` answers Supabase's `user_banned` as a wrong password: Supabase says
+  banned before it checks the password, so a message of its own would tell anyone which addresses
+  are off. The closing email explains it. A turned-off team member gets the same, where it used to
+  be an error page. A banned login gets no password reset code, and a code sent before the ban no
+  longer sets a password. A login that also leads elsewhere (another restaurant, a team seat: only
+  hand-written SQL makes one) keeps its login and loses only this membership, through
+  `private.users_only_in`. Open support windows end; the owner, who starts new ones, can't sign in.
+- **SA-96 · QR codes and read-only:** `private.customer_table` and the waiter call treat a closed
+  restaurant's QR code as switched off, the same "This QR code isn't working" page (owner's
+  choice): no menu, no restaurant details. Reopening brings the same codes back.
+  `private.restaurant_access` returns read-only with reason `closed`, before any subscription
+  logic. Reminders, announcements, dues and Home's lists already read `status = 'active'`.
+- **SA-97 · Removal after the hold:** 30 days, to the end of that day in India: the owner is told
+  the date, and the nightly job (03:00) runs the morning after it. The daily `closed account
+removal` step runs `closed_restaurant_remove_personal_data` per restaurant, one transaction each;
+  one that fails fails the step (so Home shows it) and is tried tomorrow. **Goes** (owner's choice:
+  the plan's list and the copies, 2026-11-01): logins (`auth.users`, its audit entries by them and
+  about them, member rows), waiters'
+  details (they stay as "Waiter 1" because sessions and bills point at them), the restaurant's
+  phone, email, UPI, bill footer and storefront photo, support requests and their screenshots
+  (the daily sweeps delete a file once nothing points at it), team notes, the linked lead's person
+  and notes (the row stays for the funnel's counts), the phone's trial claim, the owner's words on
+  cancelling, standee notes, the reasons typed for closing and suspending (its status needs one,
+  so it reads "Account closed"), the payer's details in Razorpay's stored events (email, phone, UPI
+  id, card), also in one that
+  arrives later (a payment link can still be paid), and in the audit log staff names and these same
+  details. Data exports made before it go too: the row at once, so no more links, and the file in
+  the cleanup step that follows, even with a day left on a link. A build running at that moment
+  leaves a file no link reaches, which the 25-hour sweep takes. Removed leads share a stand-in
+  phone, which Same mobile ignores. **Stays:** bills byte for byte, including the details and
+  the waiter's name printed on them, payments, orders with diners' free-text notes and device ids
+  (no diner has a name or phone here), the menu and tables, and the restaurant's name, code, legal
+  name, GSTIN, FSSAI licence and address: `subscription_payments` have no copy of those, and
+  MenuMesh's own records need them, and the team's reasons for a special price or an override,
+  part of the money's history. The GSTIN and FSSAI claims still stop a second free trial, so a
+  returning owner is onboarded by the team, not self-signup. After the removal there is no Reopen,
+  and no new note: it would stay for good. A copy can still be prepared, without the people.
+  Razorpay's own customer records aren't ours to delete.
+- **SA-98 · How long financial records stay:** no end date yet. The plan keeps them "for the CA's
+  period", and those answers aren't in (14a waits for them), so nothing deletes them. When the
+  answer comes, it needs its own job and the privacy page's retention text, still a placeholder.
+- **SA-99 · A state of its own:** `private.subscription_state` gives `closed` first, so MRR, Home,
+  the digest and the lists stop counting it as paying, and leaving Paid counts as churn as any
+  other way does. Its badge, filter and Subscriptions tab come from `SUBSCRIPTION_STATES`; history
+  in `metrics_subscription_daily` allows it. Usage's "of Y restaurants" and its city, state and
+  plan counts leave out one closed before the dates begin (one closed during them took orders in
+  them); Revenue's special prices and the standee queues leave out closed ones. Home's total still
+  counts closed restaurants, like cancelled ones. A snapshot row keeps its state for good.
+- **SA-100 · The enum value in its own migration:** Postgres can't use a new enum value in the
+  transaction that adds it, so `20261101100000` only adds `closed` and the next migration uses it.
