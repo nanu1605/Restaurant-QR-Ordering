@@ -13,6 +13,9 @@
 //   Idempotency-Key, as Resend does); GET /inbox?to=<address> lists them.
 // - Cloudflare Turnstile's siteverify under /turnstile (W-6): Cloudflare's
 //   test secret accepts only its dummy token, as the real one does.
+// - Sentry's issues under /sentry/api/0 (SA-89): two fixed issues.
+// - The other deployments' /api/health under /deploy (SA-92): production is
+//   up on a fixed commit, staging answers that its database is down.
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
@@ -23,6 +26,30 @@ const RESEND_AUTH = 'Bearer re_e2e_resend_key';
 /** Cloudflare's always-pass test secret and the token its test widgets give. */
 const TURNSTILE_SECRET = '1x0000000000000000000000000000000AA';
 const TURNSTILE_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX';
+const SENTRY_AUTH = 'Bearer e2e-sentry-token';
+const SENTRY_ISSUES = [
+  {
+    id: '1001',
+    shortId: 'MENUMESH-1',
+    title: 'TypeError: e2e issue one',
+    culprit: 'app/admin/page',
+    count: '42',
+    userCount: 3,
+    lastSeen: '2026-10-16T05:00:00Z',
+    permalink: 'https://sentry.example/issues/1001/',
+  },
+  {
+    id: '1002',
+    shortId: 'MENUMESH-2',
+    title: 'Error: e2e issue two',
+    culprit: null,
+    count: '1',
+    userCount: 1,
+    lastSeen: '2026-10-16T04:00:00Z',
+    permalink: 'https://sentry.example/issues/1002/',
+  },
+];
+const PRODUCTION_SHA = 'abc1234def5678abc1234def5678abc1234def56';
 /** Words the Hindi name stand-in knows (tests/e2e/admin-menu.spec.ts). */
 const HINDI_WORDS = { masala: 'मसाला', chai: 'चाय', kadak: 'कड़क' };
 
@@ -285,6 +312,20 @@ const server = createServer((request, response) => {
   }
   if (path.startsWith('/turnstile/')) {
     turnstile(request, response, path.slice('/turnstile'.length));
+    return;
+  }
+  if (path.startsWith('/sentry/api/0/organizations/')) {
+    if (request.headers.authorization !== SENTRY_AUTH)
+      send(response, 401, { detail: 'Invalid token' });
+    else send(response, 200, path.endsWith('/issues/') ? SENTRY_ISSUES : []);
+    return;
+  }
+  if (path === '/deploy/production/api/health') {
+    send(response, 200, { status: 'ok', db: 'ok', version: PRODUCTION_SHA, time: new Date() });
+    return;
+  }
+  if (path === '/deploy/staging/api/health') {
+    send(response, 503, { status: 'error', db: 'error', time: new Date() });
     return;
   }
   if (request.method !== 'POST' || !path.endsWith('/chat/completions')) {

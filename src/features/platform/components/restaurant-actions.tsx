@@ -74,6 +74,7 @@ import {
   syncRazorpay,
   unsuspendRestaurant,
 } from '../actions';
+import { linkPlanPaise } from '../payment-links';
 import { MANUAL_MODE_LABELS, MANUAL_MODES, type SubscriptionStatus } from '../platform';
 import {
   changePlanSchema,
@@ -122,6 +123,13 @@ export type LinkDefaults = {
   planName: string;
   monthlyPaise: number;
   yearlyPaise: number;
+  /**
+   * A deal's charges left at monthlyPaise or yearlyPaise, then the list price
+   * (docs/DECISIONS.md SA-80); null or absent: every month or year.
+   */
+  dealChargesLeft?: number | null;
+  listMonthlyPaise?: number;
+  listYearlyPaise?: number;
   /** What the restaurant pays for setup, after the discount. */
   setupFeePaise: number;
   setupFeeDiscountPaise: number;
@@ -130,7 +138,7 @@ export type LinkDefaults = {
 type RestaurantActionsProps = {
   restaurantId: string;
   restaurantName: string;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'closed';
   subscription: { status: SubscriptionStatus; planCode: string } | null;
   plans: { code: string; name: string }[];
   /** The first day a new payment would cover ('YYYY-MM-DD', India). */
@@ -163,9 +171,12 @@ export function RestaurantActions({
   paymentStart,
   razorpay,
   support,
-  can,
+  can: allowed,
 }: RestaurantActionsProps) {
   const router = useRouter();
+  // Closed: money can still arrive, and its Account tab reopens it (SA-94).
+  const closed = status === 'closed';
+  const can = closed ? { manage: false, record: allowed.record, support: false } : allowed;
   const [open, setOpen] = useState<Dialogs>(null);
   const close = () => setOpen(null);
   const [syncing, startSync] = useTransition();
@@ -177,6 +188,9 @@ export function RestaurantActions({
       else toast.error(result.error);
     });
   }
+
+  // Closed and nothing left for this role: no empty menu.
+  if (closed && !(can.record && subscription)) return null;
 
   return (
     <>
@@ -204,7 +218,7 @@ export function RestaurantActions({
               Record payment
             </DropdownMenuItem>
           )}
-          {can.record && subscription && razorpay && (
+          {can.record && !closed && subscription && razorpay && (
             <DropdownMenuItem className={ITEM_CLASS} onClick={() => setOpen('link')}>
               <Link2 aria-hidden />
               Send payment link
@@ -746,7 +760,9 @@ function SuspendForm({ restaurantId, onDone }: { restaurantId: string; onDone: (
       <Field data-invalid={errors.reason ? true : undefined}>
         <FieldLabel htmlFor={`${ids}-reason`}>Reason</FieldLabel>
         <Textarea id={`${ids}-reason`} rows={2} {...register('reason')} />
-        <FieldDescription>Kept in the audit log.</FieldDescription>
+        <FieldDescription>
+          Kept in the audit log. If the account is closed, it’s removed with the personal data.
+        </FieldDescription>
         <FieldError errors={[errors.reason]} />
       </Field>
       <FormFooter pending={isSubmitting} label="Suspend" error={errors.root?.message} />
@@ -761,11 +777,7 @@ const rupees = (paise: number) => String(paise / 100);
 function linkAmount(defaults: LinkDefaults, purpose: string, months: number): string {
   if (purpose === 'setup_fee') return rupees(withGst(defaults.setupFeePaise));
   if (!Number.isInteger(months) || months < 1) return '';
-  return rupees(
-    withGst(
-      months % 12 === 0 ? (months / 12) * defaults.yearlyPaise : months * defaults.monthlyPaise,
-    ),
-  );
+  return rupees(withGst(linkPlanPaise(defaults, months)));
 }
 
 function linkDescription(defaults: LinkDefaults, purpose: string, months: number): string {

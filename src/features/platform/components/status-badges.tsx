@@ -6,6 +6,7 @@ import {
   CirclePause,
   CircleSlash,
   CircleAlert,
+  DoorClosed,
   Hourglass,
   Lock,
   Sprout,
@@ -28,6 +29,10 @@ import {
 } from '../platform';
 
 const STATE_STYLES: Record<SubscriptionState, { icon: LucideIcon; className: string }> = {
+  closed: {
+    icon: DoorClosed,
+    className: 'bg-sub-suspended-fill text-sub-suspended-foreground border-transparent',
+  },
   suspended: {
     icon: Ban,
     className: 'bg-sub-suspended-fill text-sub-suspended-foreground border-transparent',
@@ -156,9 +161,10 @@ export function AccessBadge({
   status,
   accessState,
 }: {
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'closed';
   accessState: string;
 }) {
+  if (status === 'closed') return <Badge variant="destructive">Closed</Badge>;
   if (status === 'suspended') return <Badge variant="destructive">Suspended</Badge>;
   return (
     <Badge variant={accessState === 'full' ? 'outline' : 'destructive'}>

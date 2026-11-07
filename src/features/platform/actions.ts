@@ -415,6 +415,8 @@ export async function updatePlatformSettings(input: PlatformSettingsInput): Prom
       health_inactive_days: settings.healthInactiveDays,
       health_slowing_percent: settings.healthSlowingPercent,
       health_slowing_min_orders: settings.healthSlowingMinOrders,
+      db_limit_mb: settings.dbLimitMb === '' ? null : Number(settings.dbLimitMb),
+      storage_limit_mb: settings.storageLimitMb === '' ? null : Number(settings.storageLimitMb),
     },
   });
   if (error) return fromDbError(error, 'platform_update_settings');
@@ -515,6 +517,9 @@ export async function sendPaymentLink(
   const detail = await getRestaurantDetail(id.data);
   const subscription = detail?.subscription;
   if (!detail || !subscription) return actionError('This restaurant has no subscription yet.');
+  if (detail.restaurant.status === 'closed') {
+    return actionError('This restaurant’s account is closed. Reopen it first.');
+  }
   const { purpose, months, description } = parsed.data;
   const autopay = autopayState({
     razorpayStatus: subscription.razorpay_status,

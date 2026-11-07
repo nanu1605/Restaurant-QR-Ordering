@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
+import { AnnouncementBanners } from '@/features/announcements/components/announcement-banners';
 import { LiveProvider } from '@/features/live/live-provider';
 import { LiveStatus } from '@/features/live/live-status';
 import { OfflineBanner } from '@/features/orders/components/offline-banner';
@@ -75,6 +76,11 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
                 <AccessBanner banner={banner} />
               </div>
             )}
+            <AnnouncementBanners
+              restaurantId={membership.restaurant.id}
+              panel="admin"
+              className="print:hidden"
+            />
             <OfflineBanner className="print:hidden" />
             {children}
           </main>

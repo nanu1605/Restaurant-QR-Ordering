@@ -90,7 +90,8 @@ insert into public.cron_runs (job, step, started_at, finished_at, ok, detail) va
   ('sa570', 'broken', now() - interval '1 hour', now() - interval '1 hour', false, 'boom'),
   ('sa570', 'fixed', now() - interval '2 hours', now() - interval '2 hours', false, 'boom'),
   ('sa570', 'fixed', now() - interval '1 hour', now() - interval '1 hour', true, null),
-  ('sa570', 'old', now() - interval '3 days', now() - interval '3 days', false, 'boom');
+  -- Before the 30 days System and Home look at (a step since gone).
+  ('sa570', 'old', now() - interval '31 days', now() - interval '31 days', false, 'boom');
 
 -- ─── Needs attention ────────────────────────────────────────────────────────
 -- Every item (no limit), with p_admin's snoozes.
@@ -144,7 +145,7 @@ select is(
      with ordinality as x(g, n)),
   (select array_agg(g order by n) from unnest(array['payment_failed', 'trial_ending',
      'needs_payment', 'new_leads', 'support_open', 'stuck_onboarding', 'inactive', 'slowing',
-     'duplicates', 'webhooks', 'cron'])
+     'duplicates', 'menu_imports', 'webhooks', 'cron', 'email', 'capacity'])
      with ordinality as x(g, n)
    where g in (select e ->> 'group' from jsonb_array_elements((:'att'::jsonb) -> 'groups') as e)),
   'groups in the plan''s order'

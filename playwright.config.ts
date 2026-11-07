@@ -49,7 +49,7 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testIgnore: [
         /admin-(menu|tables|staff-waiters|settings|read-only)\.spec\.ts/,
-        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-home|super-money|super-restaurant-page|super-restaurants|super-settings|super-support|super-support-email|super-support-session|super-growth|super-usage|super-revenue|super-team|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
+        /(live-orders|offline-queue|staff-board|staff-hindi|billing|reports|super-admin|super-home|super-money|super-restaurant-page|super-restaurants|super-settings|super-support|super-support-email|super-support-session|super-growth|super-usage|super-revenue|super-team|super-offers|super-announcements|super-standees|super-system|super-close-account|menu-import|subscription|razorpay-admin|table-service|menu-addons|security-headers|site-leads|panels-responsive)\.spec\.ts/,
       ],
     },
     // It changes the platform settings that the pricing and payment-link specs read,
@@ -99,6 +99,14 @@ export default defineConfig({
         TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
         TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
         TURNSTILE_VERIFY_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/turnstile/siteverify`,
+        // Signs the Resend webhook in tests (whsec_ + base64 of a test value).
+        RESEND_WEBHOOK_SECRET: 'whsec_ZTJlLXJlc2VuZC13ZWJob29rLXNlY3JldC0zMmJ5dGVz',
+        SENTRY_READ_TOKEN: 'e2e-sentry-token',
+        SENTRY_ORG: 'menumesh',
+        SENTRY_PROJECT: 'menumesh-web',
+        SENTRY_API_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/sentry/api/0`,
+        PRODUCTION_APP_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/deploy/production`,
+        STAGING_APP_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/deploy/staging`,
       },
     },
   ],

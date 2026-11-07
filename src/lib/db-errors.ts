@@ -63,6 +63,22 @@ const MESSAGES: Record<string, Message> = {
   LAST_ADMIN: 'Make someone else an Admin first: the team needs one.',
   TEAM_SELF: 'You can’t turn yourself off. Ask another Admin.',
   INVITE_INVALID: 'This invite has expired or was already used. Ask an Admin for a new link.',
+  // Offers and deals (docs/DECISIONS.md SA-77+).
+  OFFER_NOT_FOUND: 'That offer code isn’t right. Check it and try again.',
+  OFFER_EXPIRED: 'That offer has ended.',
+  OFFER_NOT_FOR_PLAN: 'That offer isn’t for this plan or billing cycle.',
+  OFFER_NEW_ONLY: 'That offer is for restaurants that haven’t paid yet.',
+  OFFER_USED_UP: 'That offer has been used up.',
+  OFFER_ALREADY_USED: 'This restaurant has already used that offer.',
+  OFFER_CODE_TAKEN: 'An offer already uses that code. Choose another.',
+  DEAL_SET_BY_TEAM: 'MenuMesh has already set your price, so a code can’t be used.',
+  DEAL_NOT_FOUND: 'This restaurant has no special price to end.',
+  DEAL_IN_AUTOPAY:
+    'Its autopay charges this price. Cancel autopay first (Actions), then change the price.',
+  OVERRIDE_NOT_FOUND: 'That override was already removed. Refresh the page.',
+  // Announcements (docs/DECISIONS.md SA-82+).
+  ANNOUNCEMENT_ENDED: 'That announcement has ended. Make a new one instead.',
+  STANDEE_CHANGED: 'Someone has changed these standees. Refresh the page and try again.',
   INVALID_SLUG: 'Restaurant codes are 3–32 lowercase letters, numbers or hyphens.',
 
   // Support sessions (docs/DECISIONS.md SA-46 to SA-52)
@@ -79,7 +95,14 @@ const MESSAGES: Record<string, Message> = {
   RAZORPAY_MANAGED:
     'This restaurant pays by Razorpay autopay. Cancel autopay at period end first; the owner then subscribes to the new plan.',
   RAZORPAY_SUBSCRIPTION_LIVE: 'Autopay is already set up. Refresh the page to see it.',
+  RAZORPAY_SUBSCRIPTION_CHANGED: 'Its autopay changed just now. Refresh the page and try again.',
   RESTAURANT_SUSPENDED: 'This restaurant is suspended. Contact support to restore it first.',
+  RESTAURANT_CLOSED: 'This restaurant’s account is closed. Reopen it first.',
+  RESTAURANT_NOT_CLOSED: 'This restaurant isn’t closed. Refresh the page.',
+  AUTOPAY_CAN_CHARGE: 'Its autopay changed while closing. Close again to cancel it first.',
+  CLOSE_CODE_MISMATCH: 'That isn’t this restaurant’s code. Type it as shown.',
+  PERSONAL_DATA_REMOVED: 'Its personal data has been removed, so this can’t be done.',
+  EXPORT_TOO_SOON: 'A download was prepared in the last hour. Use that one, or try again later.',
   WEBHOOK_NOT_FAILED: 'This event has already been processed. Refresh the page.',
 
   // Menu

@@ -9,6 +9,125 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      announcement_dismissals: {
+        Row: {
+          announcement_id: string
+          dismissed_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          dismissed_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          dismissed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_dismissals_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcement_emails: {
+        Row: {
+          announcement_id: string
+          restaurant_id: string
+          sent_at: string
+        }
+        Insert: {
+          announcement_id: string
+          restaurant_id: string
+          sent_at?: string
+        }
+        Update: {
+          announcement_id?: string
+          restaurant_id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_emails_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "announcement_emails_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcements: {
+        Row: {
+          body: string
+          body_hi: string | null
+          cities: string[] | null
+          created_at: string
+          created_by: string | null
+          dismissible: boolean
+          email: boolean
+          ended_at: string | null
+          ends_at: string | null
+          id: string
+          panels: string[]
+          plan_ids: string[] | null
+          restaurant_ids: string[] | null
+          starts_at: string
+          title: string
+          title_hi: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          body_hi?: string | null
+          cities?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          email?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          panels: string[]
+          plan_ids?: string[] | null
+          restaurant_ids?: string[] | null
+          starts_at?: string
+          title: string
+          title_hi?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          body_hi?: string | null
+          cities?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          dismissible?: boolean
+          email?: boolean
+          ended_at?: string | null
+          ends_at?: string | null
+          id?: string
+          panels?: string[]
+          plan_ids?: string[] | null
+          restaurant_ids?: string[] | null
+          starts_at?: string
+          title?: string
+          title_hi?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -347,6 +466,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_log: {
+        Row: {
+          created_at: string
+          error: string | null
+          http_status: number | null
+          id: number
+          kind: string
+          provider_id: string | null
+          recipient_hashes: string[]
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          http_status?: number | null
+          id?: never
+          kind: string
+          provider_id?: string | null
+          recipient_hashes: string[]
+          status: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          http_status?: number | null
+          id?: never
+          kind?: string
+          provider_id?: string | null
+          recipient_hashes?: string[]
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       invoice_counters: {
         Row: {
@@ -979,6 +1134,63 @@ export type Database = {
           },
         ]
       }
+      offers: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          cycles: Database["public"]["Enums"]["billing_cycle"][] | null
+          description: string | null
+          discount_kind: string
+          discount_value: number
+          duration_cycles: number | null
+          ended_at: string | null
+          id: string
+          max_redemptions: number | null
+          new_only: boolean
+          plan_ids: string[] | null
+          updated_at: string
+          valid_from: string
+          valid_until: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          cycles?: Database["public"]["Enums"]["billing_cycle"][] | null
+          description?: string | null
+          discount_kind: string
+          discount_value: number
+          duration_cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          new_only?: boolean
+          plan_ids?: string[] | null
+          updated_at?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          cycles?: Database["public"]["Enums"]["billing_cycle"][] | null
+          description?: string | null
+          discount_kind?: string
+          discount_value?: number
+          duration_cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          new_only?: boolean
+          plan_ids?: string[] | null
+          updated_at?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           addons_snapshot: Json
@@ -1370,6 +1582,7 @@ export type Database = {
       platform_settings: {
         Row: {
           created_at: string
+          db_limit_mb: number | null
           grace_days: number
           health_inactive_days: number
           health_setup_days: number
@@ -1379,6 +1592,7 @@ export type Database = {
           setup_fee_discount_ends_at: string | null
           setup_fee_discount_paise: number
           setup_fee_paise: number
+          storage_limit_mb: number | null
           support_email: string | null
           support_phone: string | null
           trial_days: number
@@ -1386,6 +1600,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          db_limit_mb?: number | null
           grace_days?: number
           health_inactive_days?: number
           health_setup_days?: number
@@ -1395,6 +1610,7 @@ export type Database = {
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
+          storage_limit_mb?: number | null
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -1402,6 +1618,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          db_limit_mb?: number | null
           grace_days?: number
           health_inactive_days?: number
           health_setup_days?: number
@@ -1411,6 +1628,7 @@ export type Database = {
           setup_fee_discount_ends_at?: string | null
           setup_fee_discount_paise?: number
           setup_fee_paise?: number
+          storage_limit_mb?: number | null
           support_email?: string | null
           support_phone?: string | null
           trial_days?: number
@@ -1493,6 +1711,88 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "platform_admins"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      restaurant_closures: {
+        Row: {
+          closed_at: string
+          closed_by: string | null
+          member_ids: string[]
+          prior_reason: string | null
+          prior_status: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at: string
+          removed_at: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          closed_at?: string
+          closed_by?: string | null
+          member_ids: string[]
+          prior_reason?: string | null
+          prior_status: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at: string
+          removed_at?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          closed_at?: string
+          closed_by?: string | null
+          member_ids?: string[]
+          prior_reason?: string | null
+          prior_status?: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at?: string
+          removed_at?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_closures_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_exports: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          finished_at: string | null
+          id: string
+          requested_by: string | null
+          restaurant_id: string
+          size_bytes: number | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          restaurant_id: string
+          size_bytes?: number | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          restaurant_id?: string
+          size_bytes?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_exports_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1581,8 +1881,56 @@ export type Database = {
           },
         ]
       }
+      restaurant_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          feature: string | null
+          id: string
+          kind: string
+          reason: string
+          restaurant_id: string
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          feature?: string | null
+          id?: string
+          kind: string
+          reason: string
+          restaurant_id: string
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          feature?: string | null
+          id?: string
+          kind?: string
+          reason?: string
+          restaurant_id?: string
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_overrides_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_subscriptions: {
         Row: {
+          autopay_finished_at: string | null
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end: boolean
           cancel_reason: string | null
@@ -1590,11 +1938,14 @@ export type Database = {
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
+          deal_id: string | null
+          effective_monthly_paise: number | null
           grace_until: string | null
           id: string
           next_billing_cycle:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id: string | null
           next_plan_id: string | null
           plan_id: string
           razorpay_customer_id: string | null
@@ -1608,6 +1959,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          autopay_finished_at?: string | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
           cancel_reason?: string | null
@@ -1615,11 +1967,14 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          deal_id?: string | null
+          effective_monthly_paise?: number | null
           grace_until?: string | null
           id?: string
           next_billing_cycle?:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id?: string | null
           next_plan_id?: string | null
           plan_id: string
           razorpay_customer_id?: string | null
@@ -1633,6 +1988,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          autopay_finished_at?: string | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           cancel_at_period_end?: boolean
           cancel_reason?: string | null
@@ -1640,11 +1996,14 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          deal_id?: string | null
+          effective_monthly_paise?: number | null
           grace_until?: string | null
           id?: string
           next_billing_cycle?:
             | Database["public"]["Enums"]["billing_cycle"]
             | null
+          next_deal_id?: string | null
           next_plan_id?: string | null
           plan_id?: string
           razorpay_customer_id?: string | null
@@ -1658,6 +2017,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "restaurant_subscriptions_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_subscriptions_next_deal_id_fkey"
+            columns: ["next_deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "restaurant_subscriptions_next_plan_id_fkey"
             columns: ["next_plan_id"]
@@ -2104,12 +2477,142 @@ export type Database = {
         }
         Relationships: []
       }
+      standees: {
+        Row: {
+          cost_paise: number | null
+          created_at: string
+          created_by: string | null
+          delivered_on: string | null
+          dispatched_on: string | null
+          installed_on: string | null
+          notes: string | null
+          printed_on: string | null
+          quantity: number
+          restaurant_id: string
+          status: string
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_on?: string | null
+          dispatched_on?: string | null
+          installed_on?: string | null
+          notes?: string | null
+          printed_on?: string | null
+          quantity: number
+          restaurant_id: string
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          cost_paise?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_on?: string | null
+          dispatched_on?: string | null
+          installed_on?: string | null
+          notes?: string | null
+          printed_on?: string | null
+          quantity?: number
+          restaurant_id?: string
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "standees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_deals: {
+        Row: {
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"]
+          created_at: string
+          created_by: string | null
+          cycles: number | null
+          ended_at: string | null
+          id: string
+          list_price_paise: number
+          offer_id: string | null
+          plan_id: string
+          price_paise: number
+          razorpay_plan_id: string | null
+          reason: string | null
+          restaurant_id: string
+          used_at: string | null
+        }
+        Insert: {
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"]
+          created_at?: string
+          created_by?: string | null
+          cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          list_price_paise: number
+          offer_id?: string | null
+          plan_id: string
+          price_paise: number
+          razorpay_plan_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          used_at?: string | null
+        }
+        Update: {
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"]
+          created_at?: string
+          created_by?: string | null
+          cycles?: number | null
+          ended_at?: string | null
+          id?: string
+          list_price_paise?: number
+          offer_id?: string | null
+          plan_id?: string
+          price_paise?: number
+          razorpay_plan_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_deals_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_deals_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_deals_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_payments: {
         Row: {
           amount_paise: number
           base_paise: number | null
           billing_cycle: Database["public"]["Enums"]["billing_cycle"] | null
           created_at: string
+          deal_id: string | null
           discount_paise: number | null
           gst_bps: number
           gst_paise: number | null
@@ -2132,6 +2635,7 @@ export type Database = {
           base_paise?: number | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
+          deal_id?: string | null
           discount_paise?: number | null
           gst_bps?: number
           gst_paise?: number | null
@@ -2156,6 +2660,7 @@ export type Database = {
           base_paise?: number | null
           billing_cycle?: Database["public"]["Enums"]["billing_cycle"] | null
           created_at?: string
+          deal_id?: string | null
           discount_paise?: number | null
           gst_bps?: number
           gst_paise?: number | null
@@ -2176,6 +2681,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_payments_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_deals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscription_payments_plan_id_fkey"
             columns: ["plan_id"]
@@ -2667,6 +3179,7 @@ export type Database = {
         Returns: string
       }
       admin_create_tables: { Args: { p_labels: string[] }; Returns: Json }
+      admin_data_export: { Args: never; Returns: Json }
       admin_deactivate_staff: {
         Args: { p_member_id: string }
         Returns: undefined
@@ -2753,6 +3266,7 @@ export type Database = {
       admin_report_sales: { Args: { p_filters: Json }; Returns: Json }
       admin_report_tables: { Args: { p_filters: Json }; Returns: Json }
       admin_report_waiters: { Args: { p_filters: Json }; Returns: Json }
+      admin_request_data_export: { Args: never; Returns: string }
       admin_reset_staff_password: {
         Args: { p_member_id: string }
         Returns: string
@@ -2809,6 +3323,20 @@ export type Database = {
           waiter_id: string
         }[]
       }
+      announcement_email_sent: {
+        Args: { p_announcement_id: string; p_restaurant_id: string }
+        Returns: undefined
+      }
+      announcement_emails_due: {
+        Args: { p_at?: string }
+        Returns: {
+          announcement_id: string
+          body: string
+          recipients: string[]
+          restaurant_id: string
+          title: string
+        }[]
+      }
       auth_password_reset_finish: { Args: { p_id: string }; Returns: undefined }
       auth_password_reset_start: {
         Args: { p_code_hash: string; p_email: string; p_ip_hash?: string }
@@ -2822,6 +3350,11 @@ export type Database = {
         Args: { p_slug: string; p_username: string }
         Returns: string
       }
+      closed_restaurant_remove_personal_data: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      closed_restaurants_due: { Args: { p_limit?: number }; Returns: string[] }
       customer_cancel_item: {
         Args: {
           p_device_id: string
@@ -2850,6 +3383,11 @@ export type Database = {
         }
         Returns: Json
       }
+      email_log_cleanup: { Args: never; Returns: number }
+      email_log_record_event: {
+        Args: { p_provider_id: string; p_type: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           p_restaurant_id: string
@@ -2859,6 +3397,14 @@ export type Database = {
       }
       health_check: { Args: never; Returns: string }
       is_platform_admin: { Args: never; Returns: boolean }
+      member_announcements: {
+        Args: { p_panel: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      member_dismiss_announcement: {
+        Args: { p_announcement_id: string }
+        Returns: undefined
+      }
       member_record_plan_limit: {
         Args: { p_code: string; p_detail?: string }
         Returns: undefined
@@ -2956,18 +3502,28 @@ export type Database = {
         Args: { p_plan_code: string; p_restaurant_id: string }
         Returns: Json
       }
+      platform_close_restaurant: {
+        Args: { p_code: string; p_reason: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_closure: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_create_lead: { Args: { p_lead: Json }; Returns: string }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
       platform_create_tag: {
         Args: { p_colour: string; p_name: string }
         Returns: string
       }
+      platform_data_export: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_delete_tag: { Args: { p_tag_id: string }; Returns: undefined }
       platform_delete_view: { Args: { p_id: string }; Returns: undefined }
       platform_digest: { Args: { p_day?: string }; Returns: Json }
       platform_edit_note: {
         Args: { p_body: string; p_note_id: string }
         Returns: undefined
+      }
+      platform_email_sends: {
+        Args: { p_recipient_hash: string }
+        Returns: Json
       }
       platform_end_support_session: { Args: never; Returns: undefined }
       platform_extend_trial: {
@@ -2977,6 +3533,10 @@ export type Database = {
       platform_funnel: { Args: { p_from: string; p_to: string }; Returns: Json }
       platform_get_lead: { Args: { p_lead_id: string }; Returns: Json }
       platform_get_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_get_standees: {
         Args: { p_restaurant_id: string }
         Returns: Json
       }
@@ -2997,12 +3557,18 @@ export type Database = {
         Returns: Json
       }
       platform_lead_matches: { Args: { p_phone: string }; Returns: Json }
+      platform_list_announcements: { Args: never; Returns: Json }
       platform_list_audit: { Args: { p_filters: Json }; Returns: Json }
       platform_list_dues: { Args: { p_filters: Json }; Returns: Json }
       platform_list_leads: { Args: { p_filters: Json }; Returns: Json }
       platform_list_notes: { Args: { p_restaurant_id: string }; Returns: Json }
+      platform_list_offers: { Args: never; Returns: Json }
       platform_list_payments: { Args: { p_filters: Json }; Returns: Json }
       platform_list_restaurants: { Args: { p_filters: Json }; Returns: Json }
+      platform_list_standees: {
+        Args: { p_page?: number; p_status?: string }
+        Returns: Json
+      }
       platform_list_subscriptions: { Args: { p_filters: Json }; Returns: Json }
       platform_list_support_requests: {
         Args: { p_filters: Json }
@@ -3034,13 +3600,25 @@ export type Database = {
         Args: { p_payment: Json; p_restaurant_id: string }
         Returns: Json
       }
+      platform_remove_override: {
+        Args: { p_override_id: string }
+        Returns: undefined
+      }
       platform_renew_invite: {
         Args: { p_token_hash: string; p_user_id: string }
         Returns: Json
       }
+      platform_reopen_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: undefined
+      }
       platform_reprocess_webhook: {
         Args: { p_event_id: string }
         Returns: Json
+      }
+      platform_request_data_export: {
+        Args: { p_restaurant_id: string }
+        Returns: string
       }
       platform_reset_owner_password: {
         Args: { p_member_id: string }
@@ -3075,6 +3653,18 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_save_announcement: {
+        Args: { p_announcement: Json; p_announcement_id?: string }
+        Returns: Json
+      }
+      platform_save_offer: {
+        Args: { p_offer: Json; p_offer_id?: string }
+        Returns: Json
+      }
+      platform_save_standees: {
+        Args: { p_restaurant_id: string; p_standees: Json }
+        Returns: Json
+      }
       platform_save_view: {
         Args: {
           p_name: string
@@ -3092,6 +3682,14 @@ export type Database = {
       platform_set_acquisition_channel: {
         Args: { p_channel: string; p_restaurant_id: string }
         Returns: undefined
+      }
+      platform_set_deal: {
+        Args: { p_deal: Json; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_set_override: {
+        Args: { p_override: Json; p_restaurant_id: string }
+        Returns: Json
       }
       platform_set_restaurant_status: {
         Args: { p_reason: string; p_restaurant_id: string; p_status: string }
@@ -3113,6 +3711,7 @@ export type Database = {
         Args: { p_filters?: Json; p_restaurant_id: string; p_section: string }
         Returns: Json
       }
+      platform_system: { Args: never; Returns: Json }
       platform_team: { Args: never; Returns: Json }
       platform_unfinished_signups: { Args: never; Returns: Json }
       platform_update_lead: {
@@ -3158,6 +3757,14 @@ export type Database = {
           state: string
           warning: string
         }[]
+      }
+      restaurant_export_finish: {
+        Args: { p_export_id: string; p_size_bytes?: number }
+        Returns: undefined
+      }
+      restaurant_exports_to_remove: {
+        Args: { p_limit?: number }
+        Returns: string[]
       }
       restaurant_plan: {
         Args: { p_restaurant_id: string }
@@ -3261,6 +3868,23 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: string[]
       }
+      subscription_checkout_deal: {
+        Args: {
+          p_code?: string
+          p_cycle: string
+          p_plan_code: string
+          p_restaurant_id: string
+        }
+        Returns: Json
+      }
+      subscription_deal_plan: {
+        Args: { p_deal_id: string; p_razorpay_plan_id: string }
+        Returns: undefined
+      }
+      subscription_offer_preview: {
+        Args: { p_code?: string; p_restaurant_id: string }
+        Returns: Json
+      }
       subscription_reminder_sent: {
         Args: { p_due_key: string; p_kind: string; p_restaurant_id: string }
         Returns: boolean
@@ -3269,6 +3893,7 @@ export type Database = {
         Args: { p_at?: string }
         Returns: {
           due_key: string
+          ends_at: string
           kind: string
           plan_name: string
           recipients: string[]
@@ -3316,7 +3941,7 @@ export type Database = {
       paper_width: "58mm" | "80mm"
       payment_mode: "cash" | "upi" | "card" | "other"
       payment_status: "unpaid" | "paid"
-      restaurant_status: "active" | "suspended"
+      restaurant_status: "active" | "suspended" | "closed"
       service_request_status: "open" | "acknowledged" | "resolved"
       service_request_type: "call_waiter" | "request_bill"
       session_status: "open" | "billed" | "closed_unbilled"
@@ -3489,7 +4114,7 @@ export const Constants = {
       paper_width: ["58mm", "80mm"],
       payment_mode: ["cash", "upi", "card", "other"],
       payment_status: ["unpaid", "paid"],
-      restaurant_status: ["active", "suspended"],
+      restaurant_status: ["active", "suspended", "closed"],
       service_request_status: ["open", "acknowledged", "resolved"],
       service_request_type: ["call_waiter", "request_bill"],
       session_status: ["open", "billed", "closed_unbilled"],

@@ -502,6 +502,47 @@ export function CancelReasons({ report }: { report: RevenueReport }) {
   );
 }
 
+/**
+ * What offers and agreed prices took off subscriptions: in the dates, from
+ * payments, and now, a month (docs/DECISIONS.md SA-77+).
+ */
+export function Discounts({ report }: { report: RevenueReport }) {
+  const { discounts } = report;
+  const facts: [string, ReactNode][] = [
+    [
+      'In these dates',
+      <>
+        <Money paise={discounts.discount_paise} fraction="auto" /> off {n(discounts.payments)}{' '}
+        {discounts.payments === 1 ? 'payment' : 'payments'} from {n(discounts.restaurants)}{' '}
+        {discounts.restaurants === 1 ? 'restaurant' : 'restaurants'}
+      </>,
+    ],
+    [
+      'Now',
+      <>
+        {n(discounts.on_deal_now)} {discounts.on_deal_now === 1 ? 'restaurant' : 'restaurants'} on a
+        special price, <Money paise={discounts.monthly_discount_now_paise} fraction="auto" /> a
+        month off
+      </>,
+    ],
+  ];
+  return (
+    <Section title="Discounts">
+      <p className="text-sm text-ink-muted">
+        Subscriptions at an offer&apos;s or an agreed price, before GST. MRR counts the price paid.
+      </p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+        {facts.map(([term, value]) => (
+          <div key={term} className="contents">
+            <dt className="text-ink-muted">{term}</dt>
+            <dd className="text-ink tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Section>
+  );
+}
+
 /** Setup fees paid in the dates, and how many had the launch offer. */
 export function LaunchOffer({ report }: { report: RevenueReport }) {
   const offer = report.launch_offer;

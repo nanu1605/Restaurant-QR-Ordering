@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { getClosure } from '@/features/closure/queries';
 import { AccountManagerMenu } from '@/features/platform/components/account-manager-menu';
 import { Breadcrumbs } from '@/features/platform/components/breadcrumbs';
 import { RestaurantActions } from '@/features/platform/components/restaurant-actions';
@@ -53,16 +54,19 @@ export default async function RestaurantLayout({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [plans, setupFee, tags, team, support, manage, record, canSupport] = await Promise.all([
-    listPlans(),
-    getSetupFee(),
-    listTags(),
-    getTeam(),
-    getSupportWindow(restaurantId, user.id),
-    hasPlatformPermission('restaurants.manage'),
-    hasPlatformPermission('money.record'),
-    hasPlatformPermission('restaurants.support'),
-  ]);
+  const [plans, setupFee, tags, team, support, manage, record, canSupport, canClose, closure] =
+    await Promise.all([
+      listPlans(),
+      getSetupFee(),
+      listTags(),
+      getTeam(),
+      getSupportWindow(restaurantId, user.id),
+      hasPlatformPermission('restaurants.manage'),
+      hasPlatformPermission('money.record'),
+      hasPlatformPermission('restaurants.support'),
+      hasPlatformPermission('restaurants.close'),
+      detail.restaurant.status === 'closed' ? getClosure(restaurantId) : null,
+    ]);
   const supportWindow = support.window;
   const { restaurant, subscription, access } = detail;
   const autopay = subscription
@@ -72,6 +76,8 @@ export default async function RestaurantLayout({
       })
     : 'off';
   const plan = plans.find((p) => p.code === subscription?.plan_code);
+  // The price it pays now, while that deal is open.
+  const deal = subscription?.deal?.ended_at === null ? subscription.deal : null;
 
   return (
     <>
@@ -93,7 +99,7 @@ export default async function RestaurantLayout({
               />
               <HealthBadge
                 health={detail.health}
-                muted={detail.state === 'suspended' || detail.state === 'read_only'}
+                muted={['suspended', 'read_only', 'closed'].includes(detail.state)}
               />
             </p>
           </div>
@@ -121,8 +127,19 @@ export default async function RestaurantLayout({
                     autopay,
                     linkDefaults: {
                       planName: plan?.name ?? '',
-                      monthlyPaise: plan?.price_monthly_paise ?? 0,
-                      yearlyPaise: plan?.price_yearly_paise ?? 0,
+                      // A deal's price for its cycle (docs/DECISIONS.md SA-77+).
+                      monthlyPaise:
+                        (deal?.billing_cycle === 'monthly' ? deal.price_paise : null) ??
+                        plan?.price_monthly_paise ??
+                        0,
+                      yearlyPaise:
+                        (deal?.billing_cycle === 'yearly' ? deal.price_paise : null) ??
+                        plan?.price_yearly_paise ??
+                        0,
+                      dealChargesLeft:
+                        deal?.cycles == null ? null : deal.cycles - deal.charges_used,
+                      listMonthlyPaise: plan?.price_monthly_paise ?? 0,
+                      listYearlyPaise: plan?.price_yearly_paise ?? 0,
                       setupFeePaise: setupFee.feePaise - setupFee.discountPaise,
                       setupFeeDiscountPaise: setupFee.discountPaise,
                     },
@@ -213,7 +230,17 @@ export default async function RestaurantLayout({
         </p>
       )}
 
-      <RestaurantTabs restaurantId={restaurant.id} menuImports={canSupport} />
+      {closure && (
+        <p role="status" className="rounded-lg border-2 border-destructive bg-surface p-3 text-ink">
+          Closed on {formatDate(closure.closed_at)}.{' '}
+          {closure.removed_at
+            ? `Personal data removed on ${formatDate(closure.removed_at)}.`
+            : `Personal data is removed after ${formatDate(closure.removal_due_at)}.`}
+          {closure.reason && ` Reason: ${closure.reason}`}
+        </p>
+      )}
+
+      <RestaurantTabs restaurantId={restaurant.id} menuImports={canSupport} account={canClose} />
       {children}
     </>
   );

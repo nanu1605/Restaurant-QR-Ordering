@@ -44,6 +44,8 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
       healthInactiveDays: settings.health_inactive_days,
       healthSlowingPercent: settings.health_slowing_percent,
       healthSlowingMinOrders: settings.health_slowing_min_orders,
+      dbLimitMb: settings.db_limit_mb?.toString() ?? '',
+      storageLimitMb: settings.storage_limit_mb?.toString() ?? '',
     },
     resetOptions: { keepDirtyValues: true },
   });
@@ -179,6 +181,19 @@ export function PlatformSettingsForm({ settings }: { settings: PlatformSettings 
           })}
           {input('healthSlowingMinOrders', 'Slowing needs at least (orders in those 4 weeks)', {
             inputMode: 'numeric',
+          })}
+        </>,
+      )}
+      {group(
+        'Plan limits',
+        <>
+          {input('dbLimitMb', 'Database limit (MB)', {
+            inputMode: 'numeric',
+            description: 'From the Supabase plan, e.g. 8192 for 8 GB. System health warns at 80%.',
+          })}
+          {input('storageLimitMb', 'Storage limit (MB)', {
+            inputMode: 'numeric',
+            description: 'Leave empty to show the size without a limit.',
           })}
         </>,
       )}

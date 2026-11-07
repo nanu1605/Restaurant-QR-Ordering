@@ -248,6 +248,11 @@ A second cron, `/api/cron/digest` at 08:45 India time, emails the platform team 
 numbers and today's Needs attention counts, once a day (docs/DECISIONS.md SA-31).
 With a real key it emails the addresses in your local database.
 
+Every email is logged for `/super` → Health (docs/DECISIONS.md SA-87), with the addresses only as
+keyed hashes. Optional for that page: `RESEND_WEBHOOK_SECRET` (Resend's bounce and spam reports to
+`/api/webhooks/resend`) and `SENTRY_READ_TOKEN` (Sentry's issues, with `SENTRY_ORG` and
+`SENTRY_PROJECT`); see `.env.example`.
+
 ### Admin panel
 
 Owners and managers set the restaurant up at `/admin`:

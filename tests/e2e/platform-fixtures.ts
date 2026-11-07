@@ -242,6 +242,7 @@ export async function restaurantPagePaths(prefix: string) {
     '/documents',
     '/support/menu',
     '/menu-import',
+    '/account',
   ].map((tab) => `${base}${tab}`);
 }
 

@@ -80,18 +80,36 @@ export async function stopAutopay(
   if (autopayState(subscription) !== 'on' || !subscription.razorpaySubscriptionId) {
     return actionError('Autopay is not on. Refresh the page.');
   }
-  const id = subscription.razorpaySubscriptionId;
-  const atCycleEnd = cancelsAtCycleEnd(subscription.razorpayStatus);
+  return cancelMandate(
+    config,
+    restaurantId,
+    actorUserId,
+    subscription.razorpaySubscriptionId,
+    subscription.razorpayStatus,
+  );
+}
+
+/** Cancels a mandate at Razorpay and saves what it says. Callers decide it should go. */
+export async function cancelMandate(
+  config: RazorpayConfig,
+  restaurantId: string,
+  actorUserId: string,
+  id: string,
+  razorpayStatus: string | null,
+): Promise<ActionResult<void>> {
+  const atCycleEnd = cancelsAtCycleEnd(razorpayStatus);
   let entity: SubscriptionEntity;
   try {
     entity = await cancelSubscription(config, id, atCycleEnd);
   } catch (error) {
     // Razorpay cancels only once: an earlier try may have gone through with
-    // its reply (or the save after it) lost. Then save what Razorpay has.
+    // its reply (or the save after it) lost, or it ended the mandate itself (a
+    // code's checkout expires after a day, with no webhook). Then save what it has.
     const current = await fetchSubscription(config, id).catch(() => null);
     const done =
       current !== null &&
-      (current.status === 'cancelled' || (atCycleEnd && current.has_scheduled_changes === true));
+      (['cancelled', 'completed', 'expired'].includes(current.status) ||
+        (atCycleEnd && current.has_scheduled_changes === true));
     if (!done) return razorpayFailed(error, 'could not cancel autopay');
     entity = current;
   }

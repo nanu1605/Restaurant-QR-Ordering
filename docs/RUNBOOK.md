@@ -89,6 +89,8 @@ and the version check. Re-run the workflow instead.
 | `NEXT_PUBLIC_SENTRY_DSN`                        | the project's DSN               | the same DSN               |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT`                | `staging`                       | `production`               |
 | `SENTRY_ORG`, `SENTRY_PROJECT`                  | for readable stack traces       | same                       |
+| `SENTRY_READ_TOKEN`                             | optional, for System health     | same                       |
+| `RESEND_WEBHOOK_SECRET`                         | optional, bounce reports        | its own webhook's secret   |
 | `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`              | the project key and region host | same                       |
 
 Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
@@ -169,6 +171,20 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   key and set both.
 - **Errors:** Sentry (errors only, no personal data). The server's `console.error` lines for
   unexpected database errors arrive there too.
+- **System health** (`/super` → **Health**, Admin and Support; SA-86 to SA-92): scheduled jobs
+  (a job missed when nothing ran for 26 hours, a step that didn't finish), webhooks, every email
+  sent (find one address's emails there, e.g. "did my reset code go out?"), Sentry's issues of
+  the day, database and storage size, menu imports this month, and the commit each environment
+  runs. Failures also show on Home. To see how full the database and storage are, enter the
+  Supabase plan's limits in Platform settings (in MB; the Pro plan's 8 GB is 8192).
+  - Sentry's issues need `SENTRY_READ_TOKEN`: in Sentry, Settings → Auth Tokens (personal) or
+    an internal integration, with the **event:read** scope only. Set it in Vercel for both
+    environments (`SENTRY_ORG` and `SENTRY_PROJECT` are already there) and deploy.
+  - Bounce reports: in Resend, Webhooks → Add endpoint
+    `https://<domain>/api/webhooks/resend` with the events `email.bounced`,
+    `email.complained`, `email.failed` and `email.suppressed`; copy its signing secret
+    (`whsec_…`) into `RESEND_WEBHOOK_SECRET` for that environment and deploy. Staging and
+    production each have their own endpoint and secret.
 
 ## Onboarding a restaurant
 
@@ -176,6 +192,29 @@ Follow `docs/PILOT.md` → "Setting a restaurant up": onboard at `/super`, hand 
 login, then the owner adds tables, prints QR codes (only once production is live on
 `menumesh.in`: the codes carry `NEXT_PUBLIC_APP_URL`), enters the menu and installs the staff
 app on each tablet.
+
+## Closing an account
+
+An owner asks through Get help; only a team member with Admin closes it (`/super` → the
+restaurant → **Account**; SA-93 to SA-100).
+
+1. **A copy first, if they want one.** Prepare a download on the Account tab and copy its link for
+   them (24 hours, and anyone with the link can open it). It works during the hold too, but they
+   can't log in once it closes, so they can't do it themselves after that.
+2. **Close account:** a reason and the typed restaurant code. Anything that could still charge is
+   cancelled first: if Razorpay refuses, nothing closes and it says so; try again in a minute. If
+   it says autopay changed while closing, the owner set it up just then: close again. A refund for
+   paid time is separate, in Razorpay. If it says no email went out, tell the owner yourself: they
+   will only see "Wrong email or password".
+3. **Reopen account** on the same tab until the end of the date it shows. Logins and QR codes
+   return; autopay doesn't, so the owner sets it up again. One that was suspended goes back to
+   suspended.
+4. **After 30 days** the nightly job removes personal data (the list is SA-97), for good, and any
+   download link stops working with it. If its `closed account removal` step fails, Home's
+   scheduled jobs group says which restaurant and it tries again the next night.
+
+Bills, payments and orders stay, with no end date until the CA's answers (SA-98). A returning owner
+is onboarded by the team: their GSTIN and FSSAI number still refuse a self-signup trial.
 
 ## Support requests
 
@@ -218,6 +257,8 @@ created. A team account that is also a restaurant login can't start sessions.
 | `RAZORPAY_WEBHOOK_SECRET`     | Razorpay webhook settings and Vercel  | Change both together; events in between fail and are retried by Razorpay.                 |
 | `CRON_SECRET`                 | Vercel                                | Vercel Cron sends the new one after the next deploy.                                      |
 | `RESEND_API_KEY`, import keys | the provider, then Vercel             | Create the new key, set, deploy, delete the old key.                                      |
+| `RESEND_WEBHOOK_SECRET`       | Resend webhook settings and Vercel    | Roll it in Resend, set, deploy; reports in between are refused and retried by Resend.     |
+| `SENTRY_READ_TOKEN`           | Sentry, then Vercel                   | Create the new token, set, deploy, revoke the old one.                                    |
 | GitHub deploy secrets         | GitHub repository secrets             | Replace; the next deploy uses them.                                                       |
 | `BACKUP_PASSPHRASE`           | GitHub repository secrets             | New backups use it; keep the old one while its backups (30 days) matter.                  |
 | `…SUPABASE_ACCESS_TOKEN`      | Supabase → Access Tokens, then GitHub | Create a token scoped to that target's project, replace the secret, revoke the old token. |
@@ -293,6 +334,23 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
    `insert into public.platform_admins (user_id) select id from auth.users where email = '…';`
 3. Log in at `https://menumesh.in/login`; the first visit to `/super` asks to enrol an
    authenticator app.
+
+Offers (SA-77 to SA-81): to check one on staging with the Razorpay test keys, make a code in
+Settings → Offers for a plan whose cycle has a Razorpay plan, apply it on a test restaurant's
+Subscription page and subscribe with a test card. Razorpay's dashboard then shows a new plan at
+the discounted price with GST and a subscription with the offer's charge count; the first
+charge lands at that price. The months after can't be hurried in test mode; the e2e suite covers
+them against the mock.
+
+Announcements (SA-82, SA-83): Settings → Announcements puts a banner in restaurants' panels,
+for example before planned maintenance. Choose the panels and who sees it, set when it ends and
+check the preview; for a test, choose one test restaurant. The email option needs
+`RESEND_API_KEY` and `EMAIL_FROM`; without them the banner still shows and nobody is emailed.
+End now takes the banner down everywhere at once.
+
+Standees (SA-84, SA-85): Restaurants → Standees lists every restaurant whose setup fee is paid.
+Mark each step as it happens (on the restaurant's Overview or in the list); Finance adds the
+cost. Delivered standees tick the QR step of the restaurant's onboarding checklist.
 
 Everyone after that is invited from Settings → Team (an Admin): the invite email needs
 `RESEND_API_KEY` and `EMAIL_FROM`, and without them the Admin sends the link shown on the page.

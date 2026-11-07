@@ -77,8 +77,11 @@ export const ATTENTION_GROUPS = [
   'inactive',
   'slowing',
   'duplicates',
+  'menu_imports',
   'webhooks',
   'cron',
+  'email',
+  'capacity',
 ] as const;
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string> = {
@@ -90,8 +93,11 @@ const ATTENTION_GROUP_LABELS: Record<Exclude<AttentionGroup, 'inactive'>, string
   stuck_onboarding: 'Stuck in onboarding',
   slowing: 'Orders slowing down',
   duplicates: 'Possible duplicate signups',
+  menu_imports: 'Menu imports that failed',
   webhooks: 'Failed webhooks',
-  cron: 'Failed scheduled steps',
+  cron: 'Scheduled jobs that failed or missed a run',
+  email: 'Emails that failed or bounced',
+  capacity: 'Running out of space',
 };
 
 /** A group's heading; how long "inactive" is comes from the health settings. */
@@ -189,14 +195,54 @@ const attentionGroupSchema = z.discriminatedUnion('group', [
     ),
   }),
   z.object({
+    group: z.literal('menu_imports'),
+    count,
+    items: item(
+      z.object({
+        import_id: z.string(),
+        restaurant_id: z.string(),
+        name: z.string(),
+        source: z.enum(['photo', 'csv']),
+        error: z.string().nullable(),
+        completed_at: iso,
+      }),
+    ),
+  }),
+  z.object({
     group: z.literal('cron'),
     count,
     items: item(
       z.object({
         job: z.string(),
-        step: z.string(),
+        // Null: the whole job missed its run (docs/DECISIONS.md SA-86).
+        step: z.string().nullable(),
         started_at: iso,
         detail: z.string().nullable(),
+        missing: z.boolean(),
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('email'),
+    count,
+    items: item(
+      z.object({
+        kind: z.string(),
+        failed: z.number(),
+        bounced: z.number(),
+        complained: z.number(),
+        last_at: iso,
+      }),
+    ),
+  }),
+  z.object({
+    group: z.literal('capacity'),
+    count,
+    items: item(
+      z.object({
+        what: z.enum(['database', 'storage']),
+        used_bytes: z.number(),
+        limit_bytes: z.number(),
       }),
     ),
   }),
@@ -305,6 +351,10 @@ const number = (value: unknown): number | null => (typeof value === 'number' ? v
 const TEAM_ACTIONS: Record<string, string> = {
   'restaurant.suspended': 'Suspended',
   'restaurant.unsuspended': 'Unsuspended',
+  'restaurant.closed': 'Account closed',
+  'restaurant.reopened': 'Account reopened',
+  'restaurant.personal_data_removed': 'Personal data removed',
+  'restaurant.data_exported': 'Data export made',
   'subscription.trial_extended': 'Trial extended',
   'subscription.plan_changed': 'Plan changed',
   'subscription.payment_link_sent': 'Payment link sent',
@@ -321,6 +371,18 @@ const TEAM_ACTIONS: Record<string, string> = {
   'support_session.started': 'Support session started',
   'support_session.ended': 'Support session ended',
   'restaurant.channel_changed': 'Found us changed',
+  'subscription.deal_set': 'Price set',
+  'subscription.deal_ended': 'Price ended',
+  'restaurant.override_set': 'Override set',
+  'restaurant.override_removed': 'Override removed',
+  'offer.created': 'Offer created',
+  'offer.updated': 'Offer changed',
+  'offer.ended': 'Offer ended',
+  'announcement.created': 'Announcement made',
+  'announcement.updated': 'Announcement changed',
+  'announcement.ended': 'Announcement ended',
+  'standee.created': 'Standees started',
+  'standee.updated': 'Standees updated',
 };
 
 export type ActivityLine = {

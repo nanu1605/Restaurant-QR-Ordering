@@ -24,6 +24,7 @@ import {
 } from '@/features/subscriptions/components/autopay-panel';
 import {
   getCheckoutPlans,
+  getOwnerPrices,
   getOwnerSubscription,
   getPlanUsage,
   getSubscriptionPayments,
@@ -66,14 +67,22 @@ export default async function SubscriptionPage({ searchParams }: PageProps<'/adm
   const timezone = membership.restaurant.timezone;
   // Paying online needs Razorpay keys (docs/DECISIONS.md P8-1).
   const online = razorpayConfig() !== null;
-  const [subscription, payments, plan, usage, access, checkoutPlans] = await Promise.all([
+  const [listed, payments, plan, usage, access, checkoutPlans, prices] = await Promise.all([
     getOwnerSubscription(restaurantId),
     getSubscriptionPayments(restaurantId),
     getPlanFeatures(restaurantId),
     getPlanUsage(restaurantId),
     getRestaurantAccess(restaurantId),
     online ? getCheckoutPlans() : Promise.resolve([]),
+    getOwnerPrices(restaurantId),
   ]);
+  // A deal's price instead of the list price (docs/DECISIONS.md SA-77+).
+  const subscription = listed && {
+    ...listed,
+    dealPricePaise: prices.current_price_paise,
+    dealCycle: prices.current_price_paise === null ? null : (prices.deal?.billing_cycle ?? null),
+    nextPricePaise: prices.next_price_paise ?? listed.nextPricePaise,
+  };
   const summary = subscriptionSummary({ subscription, access, timezone });
   const autopay = subscription ? autopayState(subscription) : 'off';
   const canSubscribe =
@@ -92,6 +101,7 @@ export default async function SubscriptionPage({ searchParams }: PageProps<'/adm
           cancel={cancel}
           firstPayment={subscription ? firstPayment(subscription, timezone) : ''}
           chosen={chosen}
+          deal={prices.deal}
         />
       </Section>
     ) : (
@@ -298,10 +308,18 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
     facts.push(
       autopayFact(subscription) ?? [
         'Price after the trial',
-        <>
-          <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
-          <Money paise={plan.priceYearlyPaise} /> a year, plus GST
-        </>,
+        subscription.dealPricePaise && subscription.dealCycle ? (
+          <>
+            <Money paise={subscription.dealPricePaise} />{' '}
+            {subscription.dealCycle === 'yearly' ? 'a year' : 'a month'} + GST, the price MenuMesh
+            set for you
+          </>
+        ) : (
+          <>
+            <Money paise={plan.priceMonthlyPaise} /> a month or{' '}
+            <Money paise={plan.priceYearlyPaise} /> a year, plus GST
+          </>
+        ),
       ],
     );
     return facts;
@@ -311,7 +329,11 @@ function details(subscription: OwnerSubscription, timezone: string): [string, Re
   facts.push([
     'Price',
     <>
-      <Money paise={yearly ? plan.priceYearlyPaise : plan.priceMonthlyPaise} />{' '}
+      <Money
+        paise={
+          subscription.dealPricePaise ?? (yearly ? plan.priceYearlyPaise : plan.priceMonthlyPaise)
+        }
+      />{' '}
       {yearly ? 'a year' : 'a month'} + GST
     </>,
   ]);

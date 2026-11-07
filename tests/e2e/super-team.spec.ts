@@ -183,9 +183,9 @@ test('Support sees its pages, and no control its role can’t use', async ({ pag
   const [overview, , , , , documents] = await restaurantPagePaths('e2e-team-role');
   await logInAsPlatformAdmin(page, support);
 
-  // Support: restaurants, the support inbox, usage and webhooks.
+  // Support: restaurants, the support inbox, usage, system health and webhooks.
   const sections = nav(page);
-  for (const name of ['Restaurants', 'Support inbox', 'Usage', 'Webhooks'])
+  for (const name of ['Restaurants', 'Support inbox', 'Usage', 'Health', 'Webhooks'])
     await expect(sections.getByRole('link', { name, exact: true })).toBeVisible();
   for (const name of ['Payments', 'Dues', 'Leads', 'Team', 'Audit log', 'Plans'])
     await expect(sections.getByRole('link', { name, exact: true })).toHaveCount(0);

@@ -133,8 +133,23 @@ test('platform admin money and insights', async ({ page }) => {
     '/super/money/revenue?compare=1&move=churn',
     // Usage, compared, by week (13e).
     '/super/usage?compare=1&by=week',
+  ];
+  expect(await sweep(page, paths)).toEqual([]);
+});
+
+test('platform admin settings and standees', async ({ page }) => {
+  test.slow();
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('contrast-settings'));
+  const paths = [
     // The team (13g).
     '/super/settings/team',
+    // Offers (14b).
+    '/super/settings/offers',
+    // Announcements and standees (14c).
+    '/super/settings/announcements',
+    '/super/standees',
+    // System health (14d).
+    '/super/system',
   ];
   expect(await sweep(page, paths)).toEqual([]);
 });

@@ -2,6 +2,7 @@
 
 import { cn } from 'cn';
 import {
+  Activity,
   Building2,
   ChartColumn,
   ChartLine,
@@ -11,10 +12,13 @@ import {
   Inbox,
   House,
   LifeBuoy,
+  Megaphone,
   Menu,
+  Percent,
   ReceiptIndianRupee,
   ScrollText,
   Settings,
+  Signpost,
   Tags,
   UsersRound,
   Webhook,
@@ -85,6 +89,12 @@ const NAV: NavGroup[] = [
         icon: LifeBuoy,
         permission: 'restaurants.support',
       },
+      {
+        href: '/super/standees',
+        label: 'Standees',
+        icon: Signpost,
+        permission: 'restaurants.view',
+      },
     ],
   },
   {
@@ -103,6 +113,7 @@ const NAV: NavGroup[] = [
   {
     title: 'System',
     items: [
+      { href: '/super/system', label: 'Health', icon: Activity, permission: 'system.view' },
       { href: '/super/webhooks', label: 'Webhooks', icon: Webhook, permission: 'system.view' },
     ],
   },
@@ -123,6 +134,18 @@ const NAV: NavGroup[] = [
         permission: 'team.manage',
       },
       { href: '/super/plans', label: 'Plans', icon: Tags, permission: 'settings.manage' },
+      {
+        href: '/super/settings/offers',
+        label: 'Offers',
+        icon: Percent,
+        permission: 'settings.manage',
+      },
+      {
+        href: '/super/settings/announcements',
+        label: 'Announcements',
+        icon: Megaphone,
+        permission: 'settings.manage',
+      },
       { href: '/super/audit', label: 'Audit log', icon: ScrollText, permission: 'audit.view' },
     ],
   },

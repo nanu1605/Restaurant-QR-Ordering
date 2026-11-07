@@ -19,7 +19,7 @@ describe('the navigation by role', () => {
     ).toEqual([
       [null, ['Home']],
       ['Money', ['Subscriptions']],
-      ['Restaurants', ['Restaurants']],
+      ['Restaurants', ['Restaurants', 'Standees']],
       ['Growth', ['Leads', 'Funnel']],
       ['Insights', ['Usage']],
     ]);
@@ -31,7 +31,7 @@ describe('the navigation by role', () => {
       navFor(all)
         .find((group) => group.title === 'Settings')
         ?.items.map((i) => i.label),
-    ).toEqual(['Platform settings', 'Team', 'Plans', 'Audit log']);
+    ).toEqual(['Platform settings', 'Team', 'Plans', 'Offers', 'Announcements', 'Audit log']);
   });
 });
 

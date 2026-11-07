@@ -4,6 +4,8 @@ import { onboardingSummarySchema } from '@/features/onboarding/onboarding';
 import { CANCEL_REASONS } from '@/features/subscriptions/cancel-reasons';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
+import { dealRowSchema, overrideRowSchema } from './offers';
+
 /**
  * Shapes of the platform_* functions (spec §13.4, docs/DECISIONS.md P7-7 to
  * P7-11), labels, and date formatting for the super-admin panel. The platform
@@ -41,6 +43,7 @@ export const SUBSCRIPTION_STATES = [
   'payment_failed',
   'paid',
   'cancelled',
+  'closed',
 ] as const;
 export type SubscriptionState = (typeof SUBSCRIPTION_STATES)[number];
 export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
@@ -50,6 +53,7 @@ export const SUBSCRIPTION_STATE_LABELS: Record<SubscriptionState, string> = {
   payment_failed: 'Payment failed',
   paid: 'Paid',
   cancelled: 'Cancelled',
+  closed: 'Closed',
 };
 
 // A restaurant's health, first match wins (docs/SUPER_ADMIN_PLAN.md §5.11,
@@ -70,6 +74,7 @@ export const ACCESS_STATE_LABELS: Record<string, string> = {
 };
 
 export const ACCESS_REASON_LABELS: Record<string, string> = {
+  closed: 'Account closed',
   suspended: 'Suspended',
   no_subscription: 'No subscription',
   trial_ended: 'Trial ended',
@@ -157,6 +162,8 @@ export const REMINDER_LABELS: Record<string, string> = {
   trial_ends_1d: 'Trial ends tomorrow',
   payment_failed: 'Payment failed',
   access_restricted: 'Ordering paused',
+  autopay_ends_7d: 'Autopay ends in a week',
+  autopay_ends_1d: 'Autopay ends tomorrow',
 };
 
 export const ACTOR_TYPES = ['staff', 'customer', 'system', 'platform_admin'] as const;
@@ -170,7 +177,7 @@ export const ACTOR_TYPE_LABELS: Record<ActorType, string> = {
 
 const subscriptionStatus = z.enum(SUBSCRIPTION_STATUSES);
 const subscriptionState = z.enum(SUBSCRIPTION_STATES);
-const restaurantStatus = z.enum(['active', 'suspended']);
+const restaurantStatus = z.enum(['active', 'suspended', 'closed']);
 const billingCycle = z.enum(['monthly', 'yearly']);
 
 // ─── Lookalikes (docs/DECISIONS.md P11-13) ───────────────────────────────────
@@ -539,10 +546,19 @@ const restaurantDetailSchema = z.object({
       next_billing_cycle: billingCycle.nullable(),
       cancel_reason: z.enum(CANCEL_REASONS).nullable(),
       cancel_reason_detail: z.string().nullable(),
+      // With overrides (docs/DECISIONS.md SA-77+); the plan's own beside them.
       max_tables: z.number().nullable(),
       max_staff: z.number().nullable(),
+      plan_max_tables: z.number().nullable(),
+      plan_max_staff: z.number().nullable(),
+      effective_monthly_paise: z.number().nullable(),
+      deal: dealRowSchema.nullable(),
+      next_deal: dealRowSchema.nullable(),
     })
     .nullable(),
+  // A price waiting for the next autopay, or not yet in use.
+  open_deal: dealRowSchema.nullable(),
+  overrides: z.array(overrideRowSchema),
   // Whether this admin sees money; payments are empty without it.
   money: z.boolean(),
   payments: z.array(

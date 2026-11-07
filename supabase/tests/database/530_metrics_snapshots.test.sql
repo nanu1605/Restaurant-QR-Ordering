@@ -25,17 +25,18 @@ select
 \gset
 select is(
   array[
-    private.restaurant_mrr_paise('paid', :'growth'::public.plans, 'monthly'),
-    private.restaurant_mrr_paise('paid', :'growth'::public.plans, 'yearly'),
-    private.restaurant_mrr_paise('trial', :'growth'::public.plans, 'monthly'),
-    private.restaurant_mrr_paise('payment_failed', :'growth'::public.plans, 'monthly')
+    private.restaurant_mrr_paise('paid', :'growth'::public.plans, 'monthly', null),
+    private.restaurant_mrr_paise('paid', :'growth'::public.plans, 'yearly', null),
+    private.restaurant_mrr_paise('paid', :'growth'::public.plans, 'monthly', 50000),
+    private.restaurant_mrr_paise('trial', :'growth'::public.plans, 'monthly', 50000),
+    private.restaurant_mrr_paise('payment_failed', :'growth'::public.plans, 'monthly', null)
   ],
   array[
     (:'growth'::public.plans).price_monthly_paise,
     round((:'growth'::public.plans).price_yearly_paise / 12.0)::bigint,
-    0::bigint, 0::bigint
+    50000::bigint, 0::bigint, 0::bigint
   ],
-  'MRR: the monthly price, or yearly ÷ 12, only while Paid'
+  'MRR: a deal''s price, else the monthly price or yearly ÷ 12, only while Paid'
 );
 
 -- ─── Usage, counted like the restaurant's own reports ───────────────────────

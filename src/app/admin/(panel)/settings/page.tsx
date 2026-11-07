@@ -4,6 +4,9 @@ import Link from 'next/link';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { buttonVariants } from '@/components/ui/button';
+import { requestOwnerExport } from '@/features/closure/actions';
+import { DataExportCard } from '@/features/closure/components/data-export-card';
+import { getOwnerExport } from '@/features/closure/queries';
 import { hasFeature, upgradeHint } from '@/features/plans/plan-features';
 import { getPlanFeatures } from '@/features/plans/queries';
 import { SettingsTabs } from '@/features/settings/components/settings-tabs';
@@ -19,15 +22,19 @@ export const metadata: Metadata = {
   title: 'Settings',
 };
 
+// Asking for a data export builds it after the response (docs/DECISIONS.md SA-93).
+export const maxDuration = 300;
+
 export default async function SettingsPage() {
   const membership = await requireMember(ADMIN_PANEL_ROLES);
   const owner = membership.role === 'owner';
-  const [settings, plan, access, supportAccess] = await Promise.all([
+  const [settings, plan, access, supportAccess, dataExport] = await Promise.all([
     getRestaurantSettings(membership.restaurant.id),
     getPlanFeatures(membership.restaurant.id),
     getRestaurantAccess(membership.restaurant.id),
     // MenuMesh support access is the owner's to give (docs/DECISIONS.md SA-47).
     owner ? getSupportAccess(membership.restaurant.id, membership.restaurant.timezone) : null,
+    owner ? getOwnerExport(membership.restaurant.slug) : null,
   ]);
 
   return (
@@ -61,6 +68,18 @@ export default async function SettingsPage() {
           truncated={supportAccess.truncated}
           timezone={membership.restaurant.timezone}
         />
+      )}
+      {dataExport && (
+        <>
+          <DataExportCard
+            title="Download my data"
+            dataExport={dataExport}
+            request={requestOwnerExport}
+          />
+          <p className="text-sm text-ink-muted">
+            To close your account, use Get help at the top of this page.
+          </p>
+        </>
       )}
     </>
   );

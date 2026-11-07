@@ -386,7 +386,8 @@ select is_empty(
         -- Updates the caller's own login row; a session has none
         'member_set_ui_lang',
         -- Owner only
-        'admin_allow_support_access', 'admin_end_support_access', 'admin_record_cancel_reason'
+        'admin_allow_support_access', 'admin_end_support_access', 'admin_record_cancel_reason',
+        'admin_request_data_export'
       )
   $$,
   'every write a member can call refuses sessions or is allowed on purpose'

@@ -272,6 +272,9 @@ Document all of these in `.env.example`. Validate at startup in `src/lib/env.ts`
 | `MENU_IMPORT_MODEL` | server only | Model id for menu extraction; default to the current Claude Sonnet vision model |
 | `RESEND_API_KEY` | server only | Emails (Phase 8) |
 | `EMAIL_FROM` | server only | Sender address |
+| `RESEND_WEBHOOK_SECRET` | server only | Resend's bounce and complaint webhook (`whsec_…`); off without it |
+| `SENTRY_READ_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | server only | Read-only Sentry token (event:read) and slugs for System health's issues; off without them |
+| `PRODUCTION_APP_URL`, `STAGING_APP_URL` | server only | Whose `/api/health` System health reads; default the real addresses |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | mixed | Error monitoring |
 | `NEXT_PUBLIC_POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_HOST` | public | Analytics |
 | `PLATFORM_TRIAL_DAYS` | server | Default 14 |
@@ -319,6 +322,7 @@ Conventions for every table unless stated otherwise:
 | setup_fee_discount_ends_at | timestamptz null | when the discount stops applying (the day after the offer's last day in India); null: until it is set to 0 |
 | health_setup_days, health_inactive_days | int | restaurant health (docs/DECISIONS.md SA-22): days to place a first order (14, 1–90), days without one before Inactive (7, 1–60) |
 | health_slowing_percent, health_slowing_min_orders | int | Slowing: the last 7 days under this share of the weekly average of the 4 weeks before (50, 1–99), when those had at least this many orders (10) |
+| db_limit_mb, storage_limit_mb | int null | the Supabase plan's database and storage limits in MB (1–10,000,000), for System health; null until entered (docs/DECISIONS.md SA-90) |
 
 Edited only through `platform_update_settings` (Platform settings in `/super`), which audits what changed (docs/DECISIONS.md SA-4).
 
@@ -392,6 +396,8 @@ Read by the restaurant's owner and platform admins; written only by `admin_allow
 
 Primary key (kind, value): a value is claimed once.
 
+**`announcements`** (docs/DECISIONS.md SA-82, SA-83; settings.manage, through functions only): `title`, `body`, `title_hi` and `body_hi` (both or neither), `panels` (`admin`, `worker`), the audience as one of `plan_ids`, `cities` or `restaurant_ids` (none: everyone), `starts_at`, `ends_at` (null: no end), `ended_at` (ended early), `dismissible`, `email`, `created_by`. **`announcement_dismissals`** (announcement, login) and **`announcement_emails`** (announcement, restaurant: emailed once) go with it.
+
 ### 8.2 Restaurants and members
 
 **`restaurants`**
@@ -427,7 +433,7 @@ Primary key (kind, value): a value is claimed once.
 | reopen_window_minutes | int | default 30 |
 | business_day_start_hour | int | default 4 (0–23) |
 | timezone | text | default `Asia/Kolkata` |
-| status | enum `active` \| `suspended` | default `active` |
+| status | enum `active` \| `suspended` \| `closed` | default `active`; closed: docs/DECISIONS.md SA-94 |
 | suspended_reason | text null | |
 
 **`restaurant_members`**
@@ -468,6 +474,8 @@ Waiter profiles are unlimited on every plan; only login accounts count toward `m
 | is_active | bool | default true |
 
 QR encodes `${NEXT_PUBLIC_APP_URL}/t/${qr_token}`.
+
+**`standees`** (the team's, one per restaurant, through functions only; docs/DECISIONS.md SA-84, SA-85): `restaurant_id` (primary key), `quantity`, `printed_on`, `dispatched_on`, `delivered_on`, `installed_on` (India days), `status` (generated: the last step with a day, else `to_print`), `vendor`, `cost_paise` (money.view), `notes`, `created_by`.
 
 ### 8.4 Menu
 
@@ -663,16 +671,27 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 | razorpay_subscription_id | text null unique | |
 | razorpay_customer_id | text null | |
 | cancel_reason, cancel_reason_detail | text null | why the owner last turned autopay off (`too_expensive`, `not_using`, `missing_feature`, `closing`, `switching`, `other` with a few words; docs/DECISIONS.md SA-15) |
+| deal_id, next_deal_id | uuid null → subscription_deals | the price being paid, and the one a new autopay will charge (SA-77) |
+| effective_monthly_paise | bigint null | the deal's price a month, kept by trigger; null: the list price (MRR, SA-80) |
 
-**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
+**`offers`** (SA-79): `code` unique, `description`, `discount_kind` (`percent` \| `flat`), `discount_value` (a whole percentage, or paise in whole rupees), `plan_ids` and `cycles` (null: all), `duration_cycles` (null: every charge), `valid_from`, `valid_until`, `max_redemptions`, `new_only`, `ended_at`, `created_by`. Read with settings.manage.
+
+**`subscription_deals`** (SA-77): `restaurant_id`, `offer_id` (null: a price the team agreed, with `reason`), `plan_id`, `billing_cycle`, `list_price_paise`, `price_paise` (before GST, per charge), `cycles`, `razorpay_plan_id`, `created_by` (null: the owner, with a code), `used_at`, `ended_at`; one open deal per restaurant. Read with money.view.
+
+**`restaurant_overrides`** (SA-81): `restaurant_id`, `kind` (`feature` \| `max_tables` \| `max_staff`), `feature`, `value` (null: unlimited), `expires_at`, `reason`, `created_by`; one per kind and feature.
+
+**`subscription_payments`**: `restaurant_id`, `source` (`razorpay` \| `manual` \| `payment_link`), `purpose` (`subscription` \| `setup_fee`), `amount_paise` (what was paid, GST included), `gst_bps` (1800, `private.fee_gst_bps()`), `base_paise` and `gst_paise` (generated from the amount), `list_price_paise` and `discount_paise` null (setup fees: the usual fee and the discount in force; subscription charges at a deal's price: the list price and what it took off, with `deal_id`, SA-80), `razorpay_payment_id` unique null, `manual_mode` (`bank_transfer` \| `cash` \| `upi` \| `cheque`) null, `period_start`, `period_end` (null for a setup fee), `notes`, `recorded_by` null (docs/DECISIONS.md SA-8), `plan_id` and `billing_cycle` (what a subscription payment paid for, stamped on insert; null for a setup fee; SA-17).
 
 **`webhook_events`**: `provider` (`razorpay`), `event_id` unique, `event_type`, `payload jsonb`, `received_at`, `processed_at`, `processing_error`.
 
 **Super-admin metrics** (docs/SUPER_ADMIN_PLAN.md §4.1; docs/DECISIONS.md SA-7 to SA-13). Platform admins read them; only the functions named write them.
-- **`metrics_subscription_daily`** (day, restaurant_id): each restaurant's subscription state (`private.subscription_state`: suspended, read_only, trial, payment_failed, paid, cancelled), plan, cycle, source, MRR (`private.restaurant_mrr_paise`), autopay, cancel at period end and dates, as they stood at the end of an India day; written by `platform_metrics_snapshot`, never rebuilt.
+- **`metrics_subscription_daily`** (day, restaurant_id): each restaurant's subscription state (`private.subscription_state`: closed, suspended, read_only, trial, payment_failed, paid, cancelled), plan, cycle, source, MRR (`private.restaurant_mrr_paise`), autopay, cancel at period end and dates, as they stood at the end of an India day; written by `platform_metrics_snapshot`, never rebuilt.
 - **`metrics_usage_daily`** (restaurant_id, business_day): orders by who placed them and by hour, items, bills, GMV (bill totals with the restaurant's taxes), discount, tax, payments by mode, average table time and service requests, counted like the restaurant's own reports, and for feature adoption, bills for a table a waiter had, bills paid in more than one payment, orders with an add-on and orders from the Hindi menu; the current business day is never stored. One function, `private.metrics_usage_rows`, counts a day for storing and live (docs/DECISIONS.md SA-61). Recounted for the last four days by the daily cron; past days by `platform_metrics_backfill_usage` (`pnpm metrics:backfill`).
 - **`metrics_platform_daily`** (day): signups started and completed, restaurants onboarded by the team, leads; website visitors from PostHog later (null until then).
 - **`cron_runs`**: each step of the daily cron, with its result.
+- **`restaurant_closures`** (restaurant_id): while a restaurant is closed, and for good after its removal: closed_at, closed_by, removal_due_at, removed_at, and what Reopen puts back (prior_status, prior_reason, member_ids). Read only through `platform_closure` (docs/DECISIONS.md SA-94, SA-97).
+- **`restaurant_exports`**: data exports: restaurant, who asked, status (building, ready, failed), size, created_at, finished_at, expires_at; the file is `restaurant-exports/<restaurant_id>/<id>.zip` in a private bucket. Read only through `admin_data_export` and `platform_data_export` (docs/DECISIONS.md SA-93).
+- **`email_log`**: one row per email sent through Resend, kept 30 days: kind, keyed hashes of the addresses, status (sent, failed, already sent, bounced, marked as spam), Resend's id, HTTP status and error; written by the service role (`sendEmail`, Resend's webhook through `email_log_record_event`) and read only through `platform_system` and `platform_email_sends` (docs/DECISIONS.md SA-87, SA-88).
 - **`platform_saved_views`**: a platform admin's saved list views (owner, page, name, query, shared); written through `platform_save_view` and `platform_delete_view` (docs/DECISIONS.md SA-24).
 - **`plan_limit_events`**: refusals because of the plan (tables, staff or a feature), recorded by the server action through `member_record_plan_limit`.
 
@@ -889,7 +908,7 @@ Colour is never the only signal: every status also has a text label and an icon 
 
 `restaurant_access(restaurant_id)` computes:
 
-1. If `restaurants.status = 'suspended'` → `read_only`, reason `suspended`.
+1. If `restaurants.status` is `suspended` or `closed` → `read_only`, with that reason.
 2. Determine the lapse moment:
    - `trialing` → `trial_ends_at`
    - `active` → `current_period_end + 2 days` (buffer for webhook delays)
@@ -1055,6 +1074,8 @@ Performance budget: server-rendered, minimal client JS, images lazy-loaded, firs
 
 ### 13.2 Worker panel (`/staff`) — tablet-first, also works on phones
 
+**Announcements** from MenuMesh for the worker panel sit under the header, in Hindi for Hindi logins when the team wrote it; Dismiss hides one for that login (docs/DECISIONS.md SA-82).
+
 **Board (default)**
 - Grid of table cards sorted by table sort order. Each card: label, state badge, assigned waiter name (or Unassigned badge), elapsed time since session opened, count of items by status, colour per §10.4.
 - Tapping a table opens a side drawer: rounds → items with status chips and one-tap forward buttons (big touch targets ≥ 44 px): "Start preparing", "Mark ready", "Mark served". "Mark all served" per round.
@@ -1132,10 +1153,13 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 - Bill: invoice prefix (changes apply to new bills), paper width, footer text, print waiter name on bill, UPI QR (toggle, VPA, payee name) with test preview.
 - Ordering: require first-order approval, customer cancel window (0–600 s), reopen window (0–120 min), business day start hour, max tables per waiter (1–20), allow worker panel staff to remove served dishes.
 - **MenuMesh support access** (owner only, below the tabs): allow the MenuMesh team in for 1, 4 or 24 hours, see who is working and until when, end it now, and read "Changes made by MenuMesh support" for the last 10 sessions (docs/DECISIONS.md SA-47, SA-52).
+- **Download my data** (owner only, below the tabs): a ZIP of the restaurant's data with a 24-hour link. To close the account, ask through Get help (docs/DECISIONS.md SA-93, SA-94).
 
 **Support session** (a MenuMesh team member, docs/DECISIONS.md SA-46 to SA-50): the admin panel as a manager of the restaurant that allowed it, with a banner on every page (restaurant, end time, Back to MenuMesh admin, End session). Allowed: menu, menu import, tables and QR codes, waiters, waiter and kitchen logins, restaurant details, ordering settings and the bill layout. Refused ("MenuMesh support can't do this. Ask the restaurant owner."): bills and payments, live service, Get help, the subscription, and the settings that move money (tax, legal name, invoice prefix, UPI, reopen window, removing served dishes, business-day start). The worker panel is closed to it.
 
 **Subscription** (owner only): Phase 8.
+
+**Announcements** from MenuMesh for the admin panel sit at the top of every page, in English, three at most; Dismiss hides one for that login in both panels (docs/DECISIONS.md SA-82).
 
 **Get help** (`/admin/help`, owner and manager; from the account menu and Settings): what it is about (Billing, Menu, Printing, Orders and tables, Staff, Other), the message, an optional screenshot (PNG, JPEG or WebP up to 5 MB, private) and how to be reached (call, WhatsApp or email); the page it was opened on, the app's version and the browser go with it. It works while the restaurant is read-only. Below, the restaurant's requests with each status in its words (Received, Being worked on, Waiting for you, Resolved) and when it changed. The MenuMesh team's priority, assignee and notes are never shown (docs/DECISIONS.md SA-42, SA-45). The owner's first-steps card on the Dashboard reads the onboarding checklist's rules (SA-41).
 
@@ -1143,26 +1167,31 @@ Navigation: Dashboard · Live orders · Billing · Total orders · Reports · Me
 
 The sidebar groups the pages (Money, Restaurants, Growth, System, Settings; a group appears once it has a page), and pages below a restaurant show breadcrumbs. §25 and docs/SUPER_ADMIN_PLAN.md describe the redesign in progress.
 
-- **Home**: key numbers for today or this month (MRR, up or down in a month; money collected before GST; paid, on trial and payment failed; GMV and orders by business day; open tables now); **Needs attention**, grouped, one action each, snoozed per admin (failed payments, trials ending without autopay, manual renewals within 7 days, leads not contacted in 24 hours, support requests open over a day, restaurants stuck in onboarding, quiet or slowing restaurants, possible duplicate signups, failed webhooks and scheduled steps); charts of MRR for 12 months, GMV and orders for 30 days and new restaurants per week, each with its table; the activity stream, filtered by kind. The header's alerts bell asks every minute and shows a toast for each new signup, payment, failed payment, lead or support request. A digest email goes to the team at 08:45 every day (docs/DECISIONS.md SA-27 to SA-32).
+- **Home**: key numbers for today or this month (MRR, up or down in a month; money collected before GST; paid, on trial and payment failed; GMV and orders by business day; open tables now); **Needs attention**, grouped, one action each, snoozed per admin (failed payments, trials ending without autopay, manual renewals within 7 days, leads not contacted in 24 hours, support requests open over a day, restaurants stuck in onboarding, quiet or slowing restaurants, possible duplicate signups, failed menu imports, failed webhooks, scheduled jobs that failed or missed a run, emails that failed or bounced, and a database or storage at 80% of its limit); charts of MRR for 12 months, GMV and orders for 30 days and new restaurants per week, each with its table; the activity stream, filtered by kind. The header's alerts bell asks every minute and shows a toast for each new signup, payment, failed payment, lead or support request. A digest email goes to the team at 08:45 every day (docs/DECISIONS.md SA-27 to SA-32).
 - **Search** (Ctrl or ⌘ + K, or the header's Search button): restaurants by name, code, city, part of a phone, GSTIN, FSSAI number or owner email; payments by Razorpay ID; leads (docs/DECISIONS.md SA-25).
 - **Restaurants**: state, plan, paid till, lifetime paid, 30-day GMV, a 7-day orders line, health, last active, phone with Call and WhatsApp, how they found us and created date, the columns chosen per view, and where onboarding stands; filters by state, plan, health, onboarding (not finished, stuck, done), city, Indian state, channel, created and paid-till dates; sortable; built-in and saved views, personal or shared; CSV export (docs/DECISIONS.md SA-22 to SA-24). A "Review" badge marks a restaurant that may be the same as another (`platform_restaurant_lookalikes`; P11-13).
-- **Restaurant page** (docs/DECISIONS.md SA-33 to SA-40): a header with the name, code, city, state and health badges, plan and cycle, paid or trial till, last active, the owner with the phone (Call, WhatsApp) and email, tags (chosen, added or deleted in a dialog) and the account manager (a platform admin), and an **Actions** menu: extend trial (days), change plan, record manual payment (amount with GST, mode, notes; for a subscription the period start/end, or a setup fee with no period), send payment link, sync with Razorpay, cancel autopay, add note, suspend/unsuspend (reason). Tabs, each its own page: **Overview** (orders, GMV, average bill, QR orders and last active over the last 30 finished business days; 90 days of orders and GMV; the onboarding checklist: menu of 5 dishes, tables, QR codes, team, first QR order, first bill, first payment or autopay, each with its date, the next step and whether it is stuck (SA-41); pinned and latest notes; latest activity; the owner's login with reset password); **Billing** (subscription with dates and cancellation reason, Dues state and amount due, access state, payments with GST, payment links sent and whether paid, reminders emailed, plan and subscription history); **Usage** (tables and staff against the plan's limits, waiters, orders 7/30 days, last order, bills; plan limits reached in 90 days; features in use in its last 30 finished business days; orders by weekday and hour); **Activity** (the restaurant's timeline by kind, and its audit log); **Notes** (the team's, pinned first; anyone writes or pins, the author edits within 15 minutes; never shown to the restaurant); **Documents** (profile with the FSSAI licence and GSTIN, how they found us (set by the team, SA-59), the storefront photo sent at signup as a signed link valid an hour, possible duplicates with their reasons); **Support view** (read-only menu, tables, live board and Total Orders: server-side queries via service role, every view audit logged, no write actions); **Menu imports**.
+- **Restaurant page** (docs/DECISIONS.md SA-33 to SA-40): a header with the name, code, city, state and health badges, plan and cycle, paid or trial till, last active, the owner with the phone (Call, WhatsApp) and email, tags (chosen, added or deleted in a dialog) and the account manager (a platform admin), and an **Actions** menu: extend trial (days), change plan, record manual payment (amount with GST, mode, notes; for a subscription the period start/end, or a setup fee with no period), send payment link, sync with Razorpay, cancel autopay, add note, suspend/unsuspend (reason). Tabs, each its own page: **Overview** (orders, GMV, average bill, QR orders and last active over the last 30 finished business days; 90 days of orders and GMV; the onboarding checklist: menu of 5 dishes, tables, QR codes, team, first QR order, first bill, first payment or autopay, each with its date, the next step and whether it is stuck (SA-41); standees (SA-84); pinned and latest notes; latest activity; the owner's login with reset password); **Billing** (subscription with dates and cancellation reason, Dues state and amount due, access state, payments with GST, payment links sent and whether paid, reminders emailed, plan and subscription history); **Usage** (tables and staff against the plan's limits, waiters, orders 7/30 days, last order, bills; plan limits reached in 90 days; features in use in its last 30 finished business days; orders by weekday and hour); **Activity** (the restaurant's timeline by kind, and its audit log); **Notes** (the team's, pinned first; anyone writes or pins, the author edits within 15 minutes; never shown to the restaurant); **Documents** (profile with the FSSAI licence and GSTIN, how they found us (set by the team, SA-59), the storefront photo sent at signup as a signed link valid an hour, possible duplicates with their reasons); **Support view** (read-only menu, tables, live board and Total Orders: server-side queries via service role, every view audit logged, no write actions); **Menu imports**.
+- **Standees** (`/super/standees`, restaurants.view): QR standees for each restaurant from To print, Printed, Dispatched and Delivered to Installed, each with its day, by status with counts, including restaurants whose setup fee is paid and that have none yet; how many, vendor, the day the setup fee was paid, and the cost for money roles. Restaurants.manage marks the next step or changes the record on the restaurant's Overview; money.record sets the cost. Delivered standees do the QR step of the onboarding checklist (docs/DECISIONS.md SA-84, SA-85).
 - **Support inbox** (`/super/support`, restaurants.support): what restaurants sent from Get help, by status (not resolved, open, in progress, waiting on restaurant, resolved, each with its count), filtered by assignee, priority and topic, highest priority and oldest first, with its age. A request shows its message, screenshot (a signed link valid an hour), who asked and how to reach them, the page, app version and browser; its status, priority and assignee are set from menus, and internal notes and every change form its history. A new request emails the platform's support address and is an alert (docs/DECISIONS.md SA-43, SA-44).
 - **Onboard restaurant** wizard: restaurant details → owner account (name, email and/or username, temporary password) → tax defaults → plan to trial → creates restaurant, owner member, subscription (trialing), default settings; shows the owner's login details to hand over. When the owner agrees in person, the last step starts a 24-hour support session for setting the restaurant up (docs/DECISIONS.md SA-51).
 - **Support sessions**: a restaurant's page shows its support access (not allowed, allowed until, or who is using it until when), and Actions → **Start support session** (with the name the restaurant sees) once the owner allows it, or **Open admin panel** while the session is yours (docs/DECISIONS.md SA-47).
 - **Menu import** (Phase 7): import a restaurant's menu from **photos** (§20A) or **CSV** (columns: category, name, description, food_type, price, variant_name, variant_price), with a review screen before anything is saved. Also available to owners in their Menu page.
 - **Plans**: edit prices, limits, features, Razorpay plan IDs, active flag.
+- **Offers** (Settings, `/super/settings/offers`, settings.manage): codes with a percentage or rupees off, their plans, cycles, first charges, dates, most uses and new restaurants only; how often each was used and what it took off; change the description, last day or most uses, or end one (docs/DECISIONS.md SA-77 to SA-79). A restaurant's **Billing** tab shows its price (list, a deal, the next autopay's, one waiting) and, with money.record, sets an offer or an agreed price or goes back to the list price; its **Usage** tab lists overrides and beta flags and, with restaurants.manage, adds or removes them (SA-81).
+- **Announcements** (Settings, `/super/settings/announcements`, settings.manage): a title and text, optionally in Hindi, for the admin panel, the worker panel or both; for everyone, plans, cities or chosen restaurants; from a start to an optional end, dismissible or not, and optionally emailed to the owners on its first day; with a preview, each one's audience while it runs, how many hid it and how many were emailed; change one or end it now (docs/DECISIONS.md SA-82, SA-83).
 - **Payments** (Money): the ledger of what restaurants paid MenuMesh, by period, restaurant, purpose, method and plan; amount, GST and total apart, totals of the filtered rows, CSV export (docs/DECISIONS.md SA-18).
 - **Dues** (Money): payment failed, lapsed, trial ending and renewal due, each restaurant in one bucket, with expected collections for 30 days, call and WhatsApp (an editable message in English or Hindi), and the payment actions (SA-19, SA-20).
-- **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled), failed payments first (SA-21).
+- **Subscriptions** (Money, `/super/money/subscriptions`): list by state (suspended, read-only, trial, payment failed, paid, cancelled, closed), failed payments first (SA-21).
 - **Revenue** (Money, `/super/money/revenue`): for India dates, with an optional comparison with the period before: MRR, ARR, net new MRR, Paid restaurants and ARPU, collected, trial conversion, restaurant and revenue churn, failed-payment recovery and expected collections for 30 days; MRR and its movement (new, reactivation, expansion, contraction, churn; each opens its restaurants with MRR before and after) and collected by day, week or month; plan mix, trial cohorts, cancellation reasons and launch-offer use; the period table as CSV (docs/DECISIONS.md SA-65 to SA-69).
 - **Leads** (`/super/leads`, growth.manage): demo requests from the website and leads the team adds by hand (a field visit, call, referral or message; with a warning when the mobile already has a restaurant or a lead), by stage (New, Contacted, Demo scheduled, Demo done, Trial, Won, Lost with why), as a table (tabs with counts, filters by assignee, channel, follow-up due and text) or a board of the open stages. A lead's page has the stage and assignee, Call, WhatsApp and email (then "Mark as contacted?"), the next follow-up and the demo, its source, the restaurant it became (linked by mobile by itself, or by hand), others with the same mobile, and notes and history. Unfinished signups lists website signups from the last 7 days that stopped before the restaurant was created, and how far they got (docs/DECISIONS.md SA-53 to SA-57).
 - **Funnel** (`/super/funnel`, growth.manage): for India dates, demo requests and signups started, restaurants created by signup and by the team, and how many of those took a first order and a first payment; restaurants by channel (leads, restaurants, paying now, MRR), website arrivals by source, and Starter restaurants ready for a bigger plan (limit hits, at a limit, or busy) (SA-58 to SA-60).
 - **Usage** (`/super/usage`, insights.view): for business dates (each restaurant's own, summed), with an optional comparison with the period before: GMV, orders, bills, average bill, items, active restaurants and QR orders; GMV and orders by day, week or month; by city, state and plan; the top and bottom 10 restaurants; payments by mode, discounts, calls for a waiter or the bill and table time; orders by weekday and hour; and which features the Paid restaurants use (docs/DECISIONS.md SA-61 to SA-64).
+- **Close account** (a restaurant's Account tab, restaurants.close): a data export (a ZIP of JSON and CSV files with a 24-hour link); closing, confirmed by a reason and the typed restaurant code: autopay cancelled, logins off, QR codes off, read-only, the owner emailed; Reopen for 30 days; then personal data is removed nightly while bills, payments and orders stay. The owner has Settings → Download my data and asks through Get help to close (docs/DECISIONS.md SA-93 to SA-100).
+- **System health** (System, `/super/system`, system.view): scheduled jobs (each job's latest run and how long it took, each step's latest run, the week's failures, a missed run or an unfinished step flagged), webhooks failed in 24 hours, email (the last 24 hours by kind, the latest sends, one address's emails found by its hash), Sentry's unresolved issues of 24 hours, database and storage size against the plan's limits, menu imports this month with their failure rate and AI cost, and the commit production and staging run (docs/DECISIONS.md SA-86 to SA-92).
 - **Webhook events**: list with processing status and error, "Reprocess" button.
 - **Audit log**: platform-wide, filterable, or one team member's actions.
 - **Team** (Settings, `/super/settings/team`, team.manage): members with their role (Admin, Finance, Sales, Support), status (active, invited, off), second factor, last sign-in and daily digest. Invite by email with a join link (also shown to copy), change role, name or digest, turn off and back on, and see what each member did. The navigation, pages, actions and search follow each member's role (docs/DECISIONS.md SA-70 to SA-75).
-- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email, and the restaurant health thresholds. Every change is audited (docs/DECISIONS.md SA-4, SA-5, SA-22).
+- **Platform settings**: trial days (new trials only), grace days (payments that fail from then on), the setup fee, its launch discount and the offer's last day, support phone and email, the restaurant health thresholds, and the Supabase plan's database and storage limits. Every change is audited (docs/DECISIONS.md SA-4, SA-5, SA-22).
 
 ---
 
@@ -1182,7 +1211,7 @@ A one-time **setup fee** (₹999, with a ₹500 launch discount for now: `platfo
 
 ### 14.2 Feature keys (`plans.features` jsonb)
 
-`kds`, `discounts`, `split_payments`, `upi_qr_on_bill`, `advanced_reports`, `waiter_reports`, `csv_export`, `remove_branding`. (`waiter_reports` is on for Growth and Pro.)
+`kds`, `discounts`, `split_payments`, `upi_qr_on_bill`, `advanced_reports`, `waiter_reports`, `csv_export`, `remove_branding`. (`waiter_reports` is on for Growth and Pro.) A restaurant's overrides add features and raise limits on top of its plan, and a feature key in no plan is a beta flag (docs/DECISIONS.md SA-81).
 
 Gate features in **both** UI (hide/disable with a short "Available on Growth" hint for owners) and DB functions (reject with `FEATURE_NOT_IN_PLAN`). Limits (`max_tables`, `max_staff`) block creating new tables/staff only; never deactivate existing ones on downgrade.
 
@@ -1211,7 +1240,7 @@ Gate features in **both** UI (hide/disable with a short "Available on Growth" hi
 | `subscription.pending` | status `past_due`; set `grace_until = now + grace_days` if not already set; send reminder email |
 | `subscription.halted` | status `halted` (keep existing `grace_until`); send reminder |
 | `subscription.cancelled` | status `cancelled` |
-| `subscription.completed` | status `expired` |
+| `subscription.completed` | runs to the end of the paid period (`cancel_at_period_end`), and the owner is reminded to set up autopay again (docs/DECISIONS.md SA-78) |
 | `subscription.updated` / `paused` / `resumed` | update plan/status fields accordingly |
 | `payment_link.paid` | If `notes.restaurant_id` present: insert payment, extend period per notes (e.g. `notes.months`), status `active`, source `manual`/`payment_link` |
 
@@ -1223,7 +1252,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. It first takes the super-admin snapshots (§8.9 metrics), before signups are deleted, and records every step in `cron_runs`. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`).
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. It first takes the super-admin snapshots (§8.9 metrics), before signups are deleted, and records every step in `cron_runs`. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`). After the reminders, it emails the owners for announcements whose first day it is (docs/DECISIONS.md SA-83), it deletes email log rows older than 30 days (SA-87), it removes the personal data of accounts closed for 30 days (SA-97), and then it deletes data export files past their link's 24 hours or made before that removal (SA-93).
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 

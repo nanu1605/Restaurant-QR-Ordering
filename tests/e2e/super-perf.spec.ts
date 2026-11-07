@@ -28,12 +28,16 @@ const PATHS = [
   '/super/money/revenue',
   '/super/money/revenue?compare=1&by=day&move=new',
   '/super/settings/team',
+  '/super/settings/offers',
+  '/super/settings/announcements',
+  '/super/standees',
+  '/super/system',
   '/super/restaurants?manager=none',
   '/super/restaurants?onboarding=stuck',
   '/super/support',
 ];
 // A busy load restaurant with notes and a tag: its page, every tab of its own (13a).
-const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents'];
+const TABS = ['', '/billing', '/usage', '/activity', '/notes', '/documents', '/account'];
 
 test('each super-admin page answers within 1.5 s', async ({ page }) => {
   test.setTimeout((PATHS.length + TABS.length) * 15_000);

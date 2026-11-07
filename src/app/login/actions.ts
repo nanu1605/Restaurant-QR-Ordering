@@ -92,7 +92,10 @@ async function completeSignIn(
 
   if (error || !data.user) {
     if (error?.status === 429) return { error: RATE_LIMITED, values };
-    if (error && error.code !== 'invalid_credentials') {
+    // A banned login (a closed restaurant's, a turned-off team member's; SA-74,
+    // SA-95) reads as a wrong password: Supabase says banned before it checks the
+    // password, so saying so would tell anyone which addresses are off.
+    if (error && error.code !== 'invalid_credentials' && error.code !== 'user_banned') {
       // Auth service down, bad API key, etc. Not the user's fault, so don't
       // disguise it as a wrong password.
       throw new Error(

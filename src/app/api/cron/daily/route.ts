@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { sendAnnouncementEmails } from '@/features/announcements/email';
+import { removeDuePersonalData, removeOldExports } from '@/features/closure/cleanup';
 import { fillHindiNames } from '@/features/menu/hindi-names';
 import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
@@ -26,11 +28,14 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
  * docs/DECISIONS.md P7-20, P8-12, HN-8): the super-admin snapshots (SA-9),
  * first, before signups are cleaned up; then menu import photo cleanup,
- * subscription reminder emails (skipped until Resend is set up), Hindi
- * names that menu edits didn't fill (skipped without a menu import key),
- * website signups older than a week (W-9), password resets older than a day
- * (P11-6), storefront photos of signups that never finished (P11-12), and
- * support screenshots of requests that were never sent (SA-42).
+ * subscription reminder emails, then announcements on their first day (SA-83;
+ * both skipped until Resend is set up), Hindi names that menu edits didn't
+ * fill (skipped without a menu import key), website signups older than a
+ * week (W-9), password resets older than a day (P11-6), storefront photos of
+ * signups that never finished (P11-12), support screenshots of requests
+ * that were never sent (SA-42), email log rows older than 30 days (SA-87),
+ * personal data of accounts closed for 30 days (SA-97), then data export files
+ * past their link's 24 hours or made before that removal (SA-93).
  */
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) {
@@ -47,16 +52,28 @@ export async function GET(request: Request) {
     return data;
   });
   const today = todayInIndia();
+  const reminderEmails = step(admin, 'reminders', async () =>
+    email
+      ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+      : { skipped: true },
+  );
+  const closedAccountRemoval = step(admin, 'closed account removal', () =>
+    removeDuePersonalData(admin),
+  );
   const [
     usage,
     menuImports,
     reminders,
+    announcements,
     hindiNames,
     signups,
     passwordResets,
+    emailLog,
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
+    closedAccounts,
+    dataExports,
   ] = await Promise.all([
     // Recounts the last few business days (late payments, voids), in its own transaction.
     step(admin, 'usage snapshot', async () => {
@@ -68,10 +85,14 @@ export async function GET(request: Request) {
       return { rows: data };
     }),
     step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
-    step(admin, 'reminders', async () =>
-      email
-        ? sendSubscriptionReminders(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
-        : { skipped: true },
+    reminderEmails,
+    // After the reminders: one email at a time under Resend's limit (SA-83).
+    reminderEmails.then(() =>
+      step(admin, 'announcement emails', async () =>
+        email
+          ? sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+          : { skipped: true },
+      ),
     ),
     step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
     step(admin, 'signup cleanup', async () => {
@@ -81,6 +102,11 @@ export async function GET(request: Request) {
     }),
     step(admin, 'password reset cleanup', async () => {
       const { data, error } = await admin.rpc('password_resets_cleanup');
+      if (error) throw new Error(error.message);
+      return { deleted: data };
+    }),
+    step(admin, 'email log cleanup', async () => {
+      const { data, error } = await admin.rpc('email_log_cleanup');
       if (error) throw new Error(error.message);
       return { deleted: data };
     }),
@@ -118,18 +144,27 @@ export async function GET(request: Request) {
       if (error) throw new Error(error.message);
       return { closed: data };
     }),
+    closedAccountRemoval,
+    // After the removal: it also takes the copies made before it.
+    closedAccountRemoval.then(() =>
+      step(admin, 'data export cleanup', () => removeOldExports(admin)),
+    ),
   ]);
   const ok = [
     snapshot,
     usage,
     menuImports,
     reminders,
+    announcements,
     hindiNames,
     signups,
     passwordResets,
+    emailLog,
     storefrontPhotos,
     supportScreenshots,
     supportSessions,
+    closedAccounts,
+    dataExports,
   ].every((result) => result !== null);
   return NextResponse.json(
     {
@@ -138,12 +173,16 @@ export async function GET(request: Request) {
       usage,
       menuImports,
       reminders,
+      announcements,
       hindiNames,
       signups,
       passwordResets,
+      emailLog,
       storefrontPhotos,
       supportScreenshots,
       supportSessions,
+      closedAccounts,
+      dataExports,
     },
     { status: ok ? 200 : 500, headers: noStore },
   );

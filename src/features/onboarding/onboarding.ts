@@ -19,7 +19,8 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 export const ONBOARDING_STEP_LABELS: Record<OnboardingStep, string> = {
   menu: 'Menu added (5 dishes)',
   tables: 'Tables created',
-  qr: 'QR codes downloaded or printed',
+  // Delivered: on standees (docs/DECISIONS.md SA-84).
+  qr: 'QR codes downloaded, printed or delivered',
   team: 'Team added',
   first_order: 'First QR order',
   first_bill: 'First bill',

@@ -20,7 +20,9 @@ jobs:
     # Pinned in every workflow: ubuntu-latest moves to Ubuntu 26 from 19 October 2026, and
     # Playwright's system packages and the Supabase CLI should move with a tested change.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # A run took 25 minutes by October 2026, 19.5 of them end-to-end on one worker:
+    # room to grow, and a hung run still stops.
+    timeout-minutes: 45
     env:
       CI: true
       E2E_PORT: 3100

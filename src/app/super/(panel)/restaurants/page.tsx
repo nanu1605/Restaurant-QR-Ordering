@@ -370,7 +370,7 @@ function cell(column: RestaurantColumn, row: RestaurantRow): ReactNode {
       return (
         <HealthBadge
           health={row.health}
-          muted={row.state === 'suspended' || row.state === 'read_only'}
+          muted={['suspended', 'read_only', 'closed'].includes(row.state)}
         />
       );
     case 'onboarding': {

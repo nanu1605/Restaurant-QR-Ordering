@@ -10,7 +10,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { DealControls } from '@/features/platform/components/pricing-controls';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
+import { dealPriceLine, type DealRow } from '@/features/platform/offers';
 import {
   ACCESS_REASON_LABELS,
   DUES_BUCKET_LABELS,
@@ -34,7 +36,7 @@ import {
 } from '@/features/platform/restaurant-page';
 import { autopayState } from '@/features/subscriptions/autopay';
 import { CANCEL_REASON_LABELS } from '@/features/subscriptions/cancel-reasons';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Billing',
@@ -52,7 +54,11 @@ export default async function RestaurantBillingPage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [billing, plans] = await Promise.all([getRestaurantBilling(restaurantId), listPlans()]);
+  const [billing, plans, record] = await Promise.all([
+    getRestaurantBilling(restaurantId),
+    listPlans(),
+    hasPlatformPermission('money.record'),
+  ]);
   const planNames = Object.fromEntries(plans.map((plan) => [plan.code, plan.name]));
 
   return (
@@ -60,7 +66,7 @@ export default async function RestaurantBillingPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <SubscriptionSection detail={detail} />
         <div className="flex min-w-0 flex-col gap-4">
-          <DuesSection dues={billing.dues} suspended={detail.restaurant.status === 'suspended'} />
+          <DuesSection dues={billing.dues} suspended={detail.restaurant.status !== 'active'} />
           <Section title="Access">
             <Facts
               facts={[
@@ -77,6 +83,19 @@ export default async function RestaurantBillingPage({
           </Section>
         </div>
       </div>
+
+      <PriceSection
+        detail={detail}
+        plans={plans
+          .filter((plan) => plan.is_active)
+          .map((plan) => ({
+            code: plan.code,
+            name: plan.name,
+            monthlyPaise: plan.price_monthly_paise,
+            yearlyPaise: plan.price_yearly_paise,
+          }))}
+        canRecord={record && detail.restaurant.status !== 'closed'}
+      />
 
       {detail.money && <PaymentsSection payments={detail.payments} />}
 
@@ -243,13 +262,70 @@ function SubscriptionSection({ detail }: { detail: RestaurantDetail }) {
   );
 }
 
+/** "₹699 a month + GST for 3 months, 1 paid · offer LAUNCH20 · A chain of three". */
+function describeDeal(deal: DealRow) {
+  return [
+    `${dealPriceLine(deal) ?? 'A special price'}${
+      deal.cycles !== null && deal.charges_used > 0 ? `, ${deal.charges_used} paid` : ''
+    }`,
+    deal.offer_code ? `offer ${deal.offer_code}` : 'agreed price',
+    deal.reason,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Its price (docs/SUPER_ADMIN_PLAN.md 14b, docs/DECISIONS.md SA-77+): the list
+ * price or a deal, the next autopay's, and a deal waiting for its autopay.
+ */
+function PriceSection({
+  detail,
+  plans,
+  canRecord,
+}: {
+  detail: RestaurantDetail;
+  plans: React.ComponentProps<typeof DealControls>['plans'];
+  canRecord: boolean;
+}) {
+  const { subscription, open_deal: open } = detail;
+  if (!subscription) return null;
+  const { deal, next_deal: next } = subscription;
+  const facts: [string, string][] = [['Price now', deal ? describeDeal(deal) : 'The list price']];
+  if (next) facts.push(['Next autopay', describeDeal(next)]);
+  if (open) {
+    facts.push([
+      'Waiting',
+      `${describeDeal(open)}, on ${open.plan_name} ${open.billing_cycle}${
+        open.by_owner ? ', from the owner’s checkout' : ', for the owner’s next autopay'
+      }`,
+    ]);
+  }
+  return (
+    <Section title="Price">
+      <Facts facts={facts} />
+      {canRecord && (
+        <DealControls
+          restaurantId={detail.restaurant.id}
+          plans={plans}
+          current={{
+            planCode: subscription.plan_code,
+            cycle: subscription.billing_cycle ?? 'monthly',
+          }}
+          canEnd={open !== null || deal !== null}
+        />
+      )}
+    </Section>
+  );
+}
+
 function DuesSection({ dues, suspended }: { dues: RestaurantBilling['dues']; suspended: boolean }) {
   if (!dues) {
     return (
       <Section title="Dues">
         <p className="text-sm text-ink-muted">
           {suspended
-            ? 'Suspended restaurants are left out of Dues: see the subscription for what it owes.'
+            ? 'Suspended and closed restaurants are left out of Dues: see the subscription for what it owes.'
             : 'Nothing due in the next 30 days.'}
         </p>
       </Section>

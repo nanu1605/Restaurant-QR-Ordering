@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { Heatmap } from '@/features/platform/components/heatmap';
+import { AddOverride, RemoveOverride } from '@/features/platform/components/pricing-controls';
 import { Facts, Section } from '@/features/platform/components/restaurant-sections';
+import { overrideLabel } from '@/features/platform/offers';
+import { discountLastDay } from '@/features/platform/setup-fee';
 import { formatDate, formatDateTime } from '@/features/platform/platform';
 import {
   getRestaurantDetail,
@@ -11,7 +14,7 @@ import {
 } from '@/features/platform/queries';
 import { limitHitLabel } from '@/features/platform/restaurant-page';
 import { FeaturesUsed } from '@/features/usage/components/usage-sections';
-import { requirePlatformPermission } from '@/lib/auth/guards';
+import { hasPlatformPermission, requirePlatformPermission } from '@/lib/auth/guards';
 
 export const metadata: Metadata = {
   title: 'Usage',
@@ -35,10 +38,13 @@ export default async function RestaurantUsagePage({
   const { restaurantId } = await params;
   const detail = await getRestaurantDetail(restaurantId);
   if (!detail) notFound();
-  const [usage, overview] = await Promise.all([
+  const [usage, overview, canManage] = await Promise.all([
     getRestaurantUsage(restaurantId),
     getRestaurantOverview(restaurantId),
+    hasPlatformPermission('restaurants.manage'),
   ]);
+  // Closed: its page keeps only what money needs (docs/DECISIONS.md SA-94).
+  const manage = canManage && detail.restaurant.status !== 'closed';
   const { usage: counts, subscription } = detail;
   // Accepted orders by finished business day, as on the Overview (plan §1).
   const last7 = overview.days.slice(-7).reduce((sum, day) => sum + day.orders, 0);
@@ -60,7 +66,15 @@ export default async function RestaurantUsagePage({
             ]}
           />
           <p className="text-xs text-ink-muted">
-            {subscription && <>Limits are the {subscription.plan_name} plan’s. </>}
+            {subscription && (
+              <>
+                Limits are the {subscription.plan_name} plan’s
+                {detail.overrides.some((o) => o.kind !== 'feature' && !o.expired)
+                  ? ', with the overrides below'
+                  : ''}
+                .{' '}
+              </>
+            )}
             Orders are accepted orders, and the last 30 days are business days the restaurant has
             finished, as on the Overview.
           </p>
@@ -87,6 +101,38 @@ export default async function RestaurantUsagePage({
           )}
         </Section>
       </div>
+
+      <Section title="Overrides and beta flags">
+        {detail.overrides.length === 0 ? (
+          <p className="text-sm text-ink-muted">None: the plan as it is.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-line text-sm">
+            {detail.overrides.map((override) => (
+              <li
+                key={override.id}
+                className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-ink">
+                    {overrideLabel(override)}
+                    {override.expired && <span className="text-ink-muted"> (expired)</span>}
+                  </span>
+                  <span className="text-ink-muted">
+                    {override.reason}
+                    {override.expires_at &&
+                      ` · ${override.expired ? 'ended' : 'last day'} ${formatDate(
+                        discountLastDay(override.expires_at),
+                      )}`}
+                    {override.created_by && ` · ${override.created_by}`}
+                  </span>
+                </span>
+                {manage && <RemoveOverride override={override} />}
+              </li>
+            ))}
+          </ul>
+        )}
+        {manage && <AddOverride restaurantId={restaurantId} />}
+      </Section>
 
       <Section title="Features in use">
         <p className="text-sm text-ink-muted">

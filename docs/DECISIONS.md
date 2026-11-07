@@ -192,9 +192,9 @@ bottom of each section.
   stay `true` because the CLI maps it to the whole email provider (turning it off disables
   password sign-in too — first caught by CI). Auth config changes only apply after
   `pnpm db:stop && pnpm db:start`; `db reset` keeps the running auth container.
-- **Unexpected sign-in errors are not "wrong password".** Only `invalid_credentials` shows the
-  generic message and 429 shows the rate-limit message; anything else (auth down, bad key,
-  provider disabled) throws so it's logged instead of hidden.
+- **Unexpected sign-in errors are not "wrong password".** Only `invalid_credentials` (and
+  `user_banned`, since SA-95) shows the generic message and 429 shows the rate-limit message;
+  anything else (auth down, bad key, provider disabled) throws so it's logged instead of hidden.
 
 ### Tooling
 
@@ -1849,6 +1849,12 @@ its own open item before QR printing. Kept: the production dry run, which the ow
 - **P10-16 · Runners pinned to `ubuntu-24.04`:** `ubuntu-latest` moves to Ubuntu 26 from 19
   October 2026; CI, deploy, release and backup stay on 24.04 until a tested change moves them
   (Playwright's system packages and the Supabase CLI).
+- **P10-17 · Next.js 16.4.3:** the audit failed on 16.3.8 from advisories published on 22 October
+  2026: remote code execution through `sharp` in image optimisation, remote code execution in
+  `use cache` functions returning typed arrays (the app has none) and a denial of service through
+  Server Actions, which the app does use. Upgraded, with `zod` 4.6.7 and `dompurify` 3.4.17 (through
+  `posthog-js`), and `sharp` is 0.35.5. Environments keep 16.3.8 until this is released. The
+  release-age exemptions are gone: 16.4.3 had been out for over a week.
 - **A test that expired:** `320_platform_actions` paid for September 2026 against a grace period
   counted from `now()`, so from 30 September the payment no longer extended access (correctly)
   and the test failed. Its periods are now months relative to today.
@@ -3676,7 +3682,7 @@ stay at 13g, since nobody else gets `/super` before then.
   seven steps (plan §5.13) with when each was done: the menu when its fifth active dish was
   added; tables at the first active table; QR codes at the first `table.qr_downloaded` or
   `table.qr_sheet_printed` audit row (SA-14), or the first QR order, since a QR order shows the
-  codes are out and QR use is only recorded since 12b; the team at the first active login that
+  codes are out and QR use is only recorded since 12b, or standees delivered (from 14c, SA-84); the team at the first active login that
   isn't the owner or the first waiter profile; the first accepted QR order; the first bill (void
   ones too: one was made); and paid at the first subscription payment (not a setup fee) or, while
   autopay is on and not ending, since Razorpay first reported it authenticated or active. A step
@@ -4041,3 +4047,281 @@ stay at 13g, since nobody else gets `/super` before then.
 - **SA-75 · The digest by choice:** the owner's choice (2026-10-15). It goes to members who have
   joined, are on, chose it, and whose role sees money (Admin and Finance), since it shows MRR and
   money collected. Existing admins stay on, and new Admin and Finance members start on.
+
+### Needs attention at thousands of restaurants
+
+- **SA-76 · Access read in bulk, checked once:** Needs attention (and the alerts bell, which
+  counts it) and Home's key numbers read every restaurant's access, and
+  `public.restaurant_access` checked its caller on each call: the check cost about six times the
+  access itself, and an Admin's Needs attention took 1.1 s on the 4,300 restaurants of the local
+  database. The access rule now lives in `private.restaurant_access`, without the check; the
+  public one checks, then returns it. Dues rows, Needs attention and Home's key numbers, which
+  check the member once, read the private one. The public check now calls `auth.uid()` directly
+  instead of in a sub-select, so PL/pgSQL keeps its plan from one call to the next, and the other
+  functions that read access in bulk (the restaurants list, the digest, MRR days and the rest)
+  got about three times faster too. The duplicates in Needs attention work out each signup's
+  lookalikes once; they ran twice, once to filter and once for the item. Same results as before.
+  On the local database: Needs attention and the alerts 1.1 s to 0.56 s, Home 0.6 s to 0.35 s.
+  What's left is a probe a restaurant for health, onboarding and lookalikes. The other bulk
+  readers then moved to the private one too: the restaurants list, Subscriptions, the overview,
+  the funnel, upgrade opportunities, Usage, MRR days (Revenue), the digest, the nightly snapshot
+  and the reminders, each after its permission check or as the service role only. Lead detail
+  reads one restaurant and keeps the public check. Same results; for an Admin about twice as
+  fast (the list by state and Subscriptions 0.2 s to 0.09 s, Revenue 0.33 s to 0.22 s), while the
+  service-role ones barely move, since the check skips a call with no signed-in user.
+
+### 14b · Offers, custom prices, overrides
+
+- **SA-77 · A deal is one restaurant's price:** an offer code or a price the team agreed, for a
+  plan and cycle, before GST, per charge, in whole rupees, optionally for N charges
+  (`subscription_deals`). Not on autopay (a trial included), it is the price at once; on autopay,
+  it waits for the owner's next autopay, since Razorpay can't change a running one (P8-9); one
+  deal waits at a time. `restaurant_subscriptions.deal_id` is the deal being paid and
+  `next_deal_id` the one a set-up autopay will charge; a trigger keeps `effective_monthly_paise`
+  in step, drops a deal when the plan or cycle changes, and ends the one left behind. Charges are
+  counted, not autopays: a payment at a deal's price uses one charge (one per month or year it
+  covers), the deal ends with its last and the list price applies from then, and a new autopay is
+  made for the charges left, so cancelling and subscribing again never restarts it. The team's
+  price stays across a cancelled, halted or finished autopay; an owner's code is spent with the
+  autopay that charged it, once its last charge is in, also when a new checkout has taken that
+  autopay's place. Ending a price goes back to the list price, except one a running autopay
+  charges (cancel that autopay first; only a price waiting behind it ends). A payment for more
+  months than the deal has left is discounted for those it has. Prices: money.record (Admin,
+  Finance; owner's choice, 2026-10-15). Offer codes: settings.manage. The team's price stands:
+  while it is open an owner can't use a code. Deal prices are money: they are left out of the
+  subscriptions table's columns for the team and of the funnel's MRR for Sales.
+- **SA-78 · A Razorpay plan per price, then the full price:** the owner's choice (2026-10-15),
+  instead of Razorpay Offers, whose availability on the account is unknown. Checkout makes a
+  Razorpay plan at `withGst(price)` once per plan, cycle and price, and an offer for N charges is
+  a subscription with `total_count` N (the charges left). Razorpay sends `completed` after the
+  last: the subscription now runs to the end of its paid period (`cancel_at_period_end`) instead
+  of expiring at once (P8-3 changes), and until the owner sets up the next autopay
+  (`autopay_finished_at`) the panel warns a week ahead instead of three days and the owner is
+  emailed a week and a day before (`autopay_ends_7d`, `autopay_ends_1d`) to set it up, at the full
+  price, from the period's end; a checkout started and left doesn't stop them. A charge always
+  pays its period, also when Razorpay's events arrive after `completed`, and a new autopay that
+  Razorpay completes before its first charge is reported takes over as if it had. A checkout with
+  a code can be authorised for a day, as long as the code holds its place; Razorpay sends nothing
+  when it expires, so a new checkout saves the expired one and carries on. Razorpay test mode
+  can't fast-forward months: the e2e suite runs the whole path against the Razorpay mock, and the
+  first discounted charge is checked by hand on staging (RUNBOOK).
+- **SA-79 · Offer rules:** a code (3 to 20 letters or digits), a whole percentage or whole rupees
+  off each charge (a yearly charge too; owner's choice), its plans and cycles (none: all), its
+  first N charges (none: every charge), first and last India days, most uses and new restaurants
+  only (never paid a subscription; owner's choice). A use counts once paid; a checkout started in
+  the last day, or an autopay authorised and waiting for its first charge, holds its place; a
+  restaurant uses an offer once. Codes are promotions, not secrets: checking one isn't limited
+  beyond the owner's sign-in, since guessing one only finds a price MenuMesh offers anyway. The
+  team applying an offer follows the same rules, and its terms don't change once made: end it and
+  make another. Owners check a code before subscribing, through the service role, and see each
+  plan's price "for N months, then" the list price.
+- **SA-80 · Money at the deal's price:** `private.restaurant_mrr_paise` takes the effective price
+  (the three-argument one is dropped so nothing keeps the list price), in Home, the snapshot, the
+  digest, the funnel and Revenue's MRR days, so its movements still add up: a deal on a Paid
+  restaurant is a contraction and the full price after an offer an expansion. Existing rows keep
+  null (the list price), so nothing moves on release, and older snapshots stay as they were. Dues
+  ask for the deal's price, for its cycle, and the list price once an autopay has finished; a
+  payment at a deal's price keeps its list price and discount; payment links suggest it (the
+  restaurant page only for the charges it has left; Dues for every month); Revenue has a Discounts
+  section (taken off in the dates, and now a month).
+- **SA-81 · Overrides and beta flags:** for one restaurant, a feature its plan lacks or more
+  tables or staff (none: unlimited), with a reason and an optional last day
+  (`restaurant_overrides`, restaurants.manage: Admin and Sales). `restaurant_plan`, `has_feature`
+  and `plan_limits` merge the unexpired ones, so every panel and function follows without other
+  changes; a limit is never below the plan's, and tables or staff over a limit stay on (§14.2). A
+  beta flag is a feature override whose key is in no plan: nothing reads one yet, so a pilot ships
+  with its own check. The Usage tab lists them. Deal and override audit rows are the team's:
+  owners and managers don't see them.
+
+### 14c · Announcements and standees
+
+- **SA-82 · Announcements:** a title and text (up to 500 characters, line breaks kept), with
+  Hindi optionally (both or neither), for the admin panel, the worker panel or both, from a start
+  (empty: this minute) to an optional end, India time, or ended early (then it can't start again);
+  dismissible or not (`announcements`, settings.manage: Admin). Its audience is everyone, plans
+  (the plan a restaurant trials or pays), cities (as restaurants entered them, any case) or
+  chosen restaurants, one kind at a time. A banner sits at the top of each chosen panel, under
+  the support-session and access banners, for every restaurant in its audience whatever its
+  access, three at most, newest first; if they can't load, the panel shows none. Hindi text shows
+  only in the worker panel to Hindi logins: the admin panel and emails stay English (P11-15).
+  Dismissing is per login, in both panels (`announcement_dismissals`); in a support session it is
+  the team member's; made non-dismissible later, it shows again. The team's list shows each
+  one's audience while it runs, how many logins hid it and how many restaurants were emailed, and
+  the form previews the banner. Changes are audited as the
+  platform's: `announcement.created`, `announcement.updated` with what changed,
+  `announcement.ended`.
+- **SA-83 · Its email goes when it starts:** the owner's choice (2026-10-15). Ticked, each active
+  restaurant in the audience is emailed once (`announcement_emails`), to its active owners' own
+  addresses and the restaurant's email, as reminders are, on its first day (India): right after
+  saving once that day has come, otherwise by that day's daily run (03:00), which can be before
+  the banner shows. A restaurant that joins the audience while it runs is emailed by the next save
+  or run. English only: the title, its paragraphs and a link to the admin panel. One email at a
+  time: the run sends them after the reminders.
+- **SA-84 · The standee tracker:** one record per restaurant (owner's choice, 2026-10-15; a
+  reprint edits it): how many (its active tables by default, at least one), the day each step was
+  done (printed, dispatched, delivered, installed; India days, not after today, each on or after
+  the steps before it, and steps may be skipped), vendor, notes and cost (`standees`). Its status
+  is the last step with a day, To print before any; clearing a day takes it back. Delivered or
+  installed does the onboarding QR step from that day (SA-41), and clearing it makes the step to
+  do again. `/super/standees` lists restaurants with standees and active restaurants whose setup
+  fee is paid without any (Not started), by status with counts, the longest waiting first, with
+  the day the setup fee was paid: that is its link to the setup-fee payment, without a column. A
+  restaurant's Overview has a Standees section, and one click marks the next step today; it is
+  refused if someone changed the record since the page loaded (`STANDEE_CHANGED`).
+- **SA-85 · Who works on standees:** everyone with restaurants.view sees the tracker and the
+  section; restaurants.manage (Admin, Sales) makes and changes the record; the cost is money
+  (owner's choice, 2026-10-15), seen with money.view and set with money.record (Admin, Finance),
+  so Finance changes only an existing record's cost and Sales never sees it.
+  `platform_save_standees` checks each part. Changes are audited (`standee.created`,
+  `standee.updated` with what changed), and those rows are the team's: owners and managers don't
+  see them.
+
+### 14d · System health
+
+- **SA-86 · Scheduled jobs and missed runs:** `/super/system` (system.view: Admin, Support) shows
+  each job's latest run (when, how long, its steps), each step's latest run and the week's
+  latest failures, from `cron_runs` (`private.cron_status`). Every job runs daily, so a job with
+  no row for 26 hours missed its run; a step whose latest row is 12 hours older than its job's
+  latest missed that run (killed by the time limit or a crash: `cronStep` writes a row only when a
+  step ends), judged once the run has had 10 minutes. A job or step silent for 30 days drops out,
+  so a step that hangs every night stays flagged; a renamed step reads as missing for those 30
+  days, so the migration that renames one deletes its old rows. Failed and missing steps and
+  missed jobs are Home's cron group, `cron:<job>` for a whole job; it links to System.
+- **SA-87 · The email log:** every email goes through `sendEmail`, which logs one row per send in
+  `email_log` (written by the service role, read only through `platform_system` and
+  `platform_email_sends`): its kind (the idempotency key's first part), keyed hashes of the
+  addresses (HMAC-SHA256 with `CUSTOMER_COOKIE_SECRET`, as IPs and codes are), sent, failed or
+  already sent (Resend's 409 for a key it had, the digest's rerun, SA-31), Resend's id, the HTTP
+  status and the error, whose addresses `sendEmail` scrubs before anything (log, Sentry) sees it. Never the subject, body, key or an address. A row
+  that can't be written is logged as an error and the send still counts. Kept 30 days (owner's
+  choice, 2026-10-16): the daily run's `email log cleanup` step. System shows the last day by kind
+  (sends of the last two days reported on in the last day, as Home counts them) and the latest 20,
+  and finds one address's latest 20: the address is posted to a server
+  action and hashed there, never in a URL (owner's choice). Home's email group lists kinds with a
+  failed, bounced or spam-reported email in the last day. Rotating `CUSTOMER_COOKIE_SECRET`
+  orphans older rows for the lookup only.
+- **SA-88 · Resend's bounce reports:** `/api/webhooks/resend` (off until `RESEND_WEBHOOK_SECRET`
+  is set) checks Resend's Svix signature on the raw body (`svix-id.svix-timestamp.body`,
+  HMAC-SHA256 with the secret's base64 part, any `v1` entry, within 5 minutes) and reads only the
+  event type and `data.email_id`: `email.bounced` and `email.suppressed` mark the row bounced,
+  `email.complained` marked as spam, `email.failed` failed; a worse status is never undone, and
+  other events and unknown ids get a 200. The payload, with its addresses, isn't kept, so these
+  aren't `webhook_events` (Razorpay's, with Reprocess).
+- **SA-89 · Sentry issues:** with a read-only token (`SENTRY_READ_TOKEN`, scope event:read, apart
+  from the build's `SENTRY_AUTH_TOKEN`) and `SENTRY_ORG`/`SENTRY_PROJECT`, System lists this
+  environment's unresolved issues seen in 24 hours, most frequent first: how many (up to "100 or
+  more") and the top 5 linked to Sentry. Cached 5 minutes, 3-second timeout; a refused token or
+  wrong slug says what to check, an outage says to try later, and either is logged as a warning, since an error would itself go to Sentry. Not on Home
+  (owner's choice, 2026-10-16): Sentry's own alerts email new issues.
+- **SA-90 · Space:** the database's size (`pg_database_size`, an estimate: Supabase counts disk)
+  and storage by bucket, against the plan's limits in MB entered in Platform settings
+  (`db_limit_mb`, `storage_limit_mb`; empty shows the size without a bar). At 80% of a limit the
+  page warns and Home's capacity group lists it (owner's choice). Storage sums every object: fine
+  to about 100,000 objects, then snapshot it nightly.
+- **SA-91 · Menu imports:** this month (India) by source and outcome, failed out of the finished
+  ones, the AI cost of known calls and how many imports have a call of unknown cost. Each
+  import that failed in the last two days is on Home (owner's choice, 2026-10-16), with the
+  restaurant and the reason, linking to the import.
+- **SA-92 · Versions:** System shows the commit this deployment runs and what production's and
+  staging's `/api/health` report (`PRODUCTION_APP_URL`, `STAGING_APP_URL`, defaulting to the real
+  addresses; tests point them at a stand-in), cached a minute; unreachable or unhealthy says so.
+  Not on Home: they differ between releases by design.
+
+### 14e · Close account
+
+- **SA-93 · The data export:** a ZIP of JSON and CSV files (README, profile, menu, tables, staff,
+  waiters, orders, order items, bills as CSV and as full JSON, bill payments, subscription
+  payments), with amounts in rupees and local times in the CSVs. Each table names its columns, so a
+  new column stays out until someone decides otherwise: no logins or user ids, QR tokens, device ids
+  or internal notes. "Invoices" are `bills`: MenuMesh issues none of its own (§14.7). The owner asks
+  in Settings (Download my data, never a support session) and the team on a restaurant's Account tab
+  (restaurants.close, and also after closing); both are audited as `restaurant.data_exported`, at
+  most one an hour, whatever the plan or subscription state. `after()` builds it under the page's
+  5-minute limit: `allRows` reads through the service role a page at a time until an empty page,
+  compressed with `node:zlib` by a small writer (`lib/zip.ts`, checked with Python's zipfile and
+  Windows), into the private `restaurant-exports` bucket with no storage policies. A build that dies
+  reads as failed after 15 minutes, and a failure can be retried at once. The link is a signed URL
+  that ends 24 hours after the build, signed when a page shows it, so whoever holds it can open it:
+  the page says so, and refreshes when it ends (timed by the server's count of seconds left, from
+  when the tab first had that link, by a clock that only counts up: a device's time can be off, and
+  Back brings a page back with its old count). The daily `data export cleanup` step deletes files
+  after 25 hours and rows after 2 days. A file past the bucket's 50 MiB (years of orders) fails
+  visibly.
+- **SA-94 · Closing:** team only, restaurants.close (Admin), on the restaurant's Account tab; the
+  owner asks through Get help (owner's choice, 2026-11-01). A reason and the typed restaurant code
+  confirm it. Whatever could still charge is cancelled first (`mandateCanCharge`: autopay that is
+  on, and a checkout or a retry that hasn't ended, which a retry could otherwise turn back into
+  monthly charges). If Razorpay refuses, nothing has closed and the team tries again, rather than a
+  closed restaurant still being charged. `platform_close_restaurant` makes the same test under the
+  subscription's lock, so autopay the owner sets up during that call is refused
+  (`AUTOPAY_CAN_CHARGE`) and the retry cancels it too. It locks the restaurant `for no key update`
+  (P4-10), so a save or webhook holding the subscription row isn't stuck behind it in a deadlock;
+  the removal does the same. A late save can't hide the owner's new subscription: the team never
+  starts one, so a team save under another id is an old one's, from a sync or cancel that crossed
+  the owner subscribing, and is refused (`RAZORPAY_SUBSCRIPTION_CHANGED`); one that has ended never
+  replaces the one tracked; and a closed restaurant takes no new one. One set to end with its paid
+  period is left alone: it won't charge again, and a paid period isn't refunded by this.
+  `platform_close_restaurant` then does the rest in one transaction and a `restaurant_closures` row
+  records what Reopen needs. The owner is emailed the date and how to ask for a copy or reopen, with
+  the support email and phone from Platform settings. The action waits for that email, so its toast
+  can say when none went out (no address on file, or Resend failed; it stays until dismissed) and
+  the team tells the owner. While closed, its page says so and Actions keeps only what money needs
+  (record a payment that arrives, sync with Razorpay). A tab left open can't do the rest: Suspend,
+  Unsuspend, Extend trial, Change plan, the owner's password, a special price, an override, standees
+  and an onboarding session are refused by the database with `RESTAURANT_CLOSED`. Notes stay open
+  during the hold, for what the owner says. Late Razorpay events still apply: money is a fact.
+  Reopen, until the removal, puts back its status and reason and the logins that were on; autopay
+  stays off, since Razorpay can't undo a cancel. The subscription's clock kept running.
+- **SA-95 · A closed restaurant can't sign in:** closing sets every member `is_active = false`,
+  which refuses them at once in every function and policy, whatever token they hold (tokens last up
+  to an hour; P11-8). It bans the login and deletes its sessions, as for a team member (SA-74), so
+  no new token. `completeSignIn` answers Supabase's `user_banned` as a wrong password: Supabase says
+  banned before it checks the password, so a message of its own would tell anyone which addresses
+  are off. The closing email explains it. A turned-off team member gets the same, where it used to
+  be an error page. A banned login gets no password reset code, and a code sent before the ban no
+  longer sets a password. A login that also leads elsewhere (another restaurant, a team seat: only
+  hand-written SQL makes one) keeps its login and loses only this membership, through
+  `private.users_only_in`. Open support windows end; the owner, who starts new ones, can't sign in.
+- **SA-96 · QR codes and read-only:** `private.customer_table` and the waiter call treat a closed
+  restaurant's QR code as switched off, the same "This QR code isn't working" page (owner's
+  choice): no menu, no restaurant details. Reopening brings the same codes back.
+  `private.restaurant_access` returns read-only with reason `closed`, before any subscription
+  logic. Reminders, announcements, dues and Home's lists already read `status = 'active'`.
+- **SA-97 · Removal after the hold:** 30 days, to the end of that day in India: the owner is told
+  the date, and the nightly job (03:00) runs the morning after it. The daily `closed account
+removal` step runs `closed_restaurant_remove_personal_data` per restaurant, one transaction each;
+  one that fails fails the step (so Home shows it) and is tried tomorrow. **Goes** (owner's choice:
+  the plan's list and the copies, 2026-11-01): logins (`auth.users`, its audit entries by them and
+  about them, member rows), waiters'
+  details (they stay as "Waiter 1" because sessions and bills point at them), the restaurant's
+  phone, email, UPI, bill footer and storefront photo, support requests and their screenshots
+  (the daily sweeps delete a file once nothing points at it), team notes, the linked lead's person
+  and notes (the row stays for the funnel's counts), the phone's trial claim, the owner's words on
+  cancelling, standee notes, the reasons typed for closing and suspending (its status needs one,
+  so it reads "Account closed"), the payer's details in Razorpay's stored events (email, phone, UPI
+  id, card), also in one that
+  arrives later (a payment link can still be paid), and in the audit log staff names and these same
+  details. Data exports made before it go too: the row at once, so no more links, and the file in
+  the cleanup step that follows, even with a day left on a link. A build running at that moment
+  leaves a file no link reaches, which the 25-hour sweep takes. Removed leads share a stand-in
+  phone, which Same mobile ignores. **Stays:** bills byte for byte, including the details and
+  the waiter's name printed on them, payments, orders with diners' free-text notes and device ids
+  (no diner has a name or phone here), the menu and tables, and the restaurant's name, code, legal
+  name, GSTIN, FSSAI licence and address: `subscription_payments` have no copy of those, and
+  MenuMesh's own records need them, and the team's reasons for a special price or an override,
+  part of the money's history. The GSTIN and FSSAI claims still stop a second free trial, so a
+  returning owner is onboarded by the team, not self-signup. After the removal there is no Reopen,
+  and no new note: it would stay for good. A copy can still be prepared, without the people.
+  Razorpay's own customer records aren't ours to delete.
+- **SA-98 · How long financial records stay:** no end date yet. The plan keeps them "for the CA's
+  period", and those answers aren't in (14a waits for them), so nothing deletes them. When the
+  answer comes, it needs its own job and the privacy page's retention text, still a placeholder.
+- **SA-99 · A state of its own:** `private.subscription_state` gives `closed` first, so MRR, Home,
+  the digest and the lists stop counting it as paying, and leaving Paid counts as churn as any
+  other way does. Its badge, filter and Subscriptions tab come from `SUBSCRIPTION_STATES`; history
+  in `metrics_subscription_daily` allows it. Usage's "of Y restaurants" and its city, state and
+  plan counts leave out one closed before the dates begin (one closed during them took orders in
+  them); Revenue's special prices and the standee queues leave out closed ones. Home's total still
+  counts closed restaurants, like cancelled ones. A snapshot row keeps its state for good.
+- **SA-100 · The enum value in its own migration:** Postgres can't use a new enum value in the
+  transaction that adds it, so `20261101100000` only adds `closed` and the next migration uses it.

@@ -620,6 +620,8 @@ Acceptance:
 
 ### 14b. Offers, custom prices, overrides
 
+Built 2026-10-15 (docs/DECISIONS.md SA-77 to SA-81). Each discounted price is a Razorpay plan of its own, and after an offer's charges the owner sets up autopay at the full price; prices for one restaurant are Admin and Finance's, "new only" means never paid, and a flat discount comes off each charge (owner's choices, 2026-10-15).
+
 Ships:
 
 - **Offers** (`/super/settings/offers`): code, percentage or flat discount, plans and cycles it applies to, first N billing cycles, valid from and until, maximum redemptions, new restaurants only. Applied at the restaurant owner's subscribe step, or by the team for one restaurant. Verify Razorpay's current support for offers on subscriptions on this account; otherwise create a dedicated Razorpay plan for the discounted amount.
@@ -634,6 +636,8 @@ Acceptance:
 
 ### 14c. Announcements and standees
 
+Built 2026-10-16 (docs/DECISIONS.md SA-82 to SA-85). An announcement's email goes when it starts, each restaurant has one standee record, and the standee cost is for money roles (owner's choices, 2026-10-15).
+
 Ships:
 
 - **Announcements** (`/super/settings/announcements`): title and text in English, optional Hindi for Hindi logins; audience (everyone, plans, cities or chosen restaurants); panels (admin, worker or both); start and end; dismissible or not; optional email to restaurant owners. Shown as a banner in the chosen panels, with dismissals per user, a preview, and audit rows.
@@ -644,6 +648,8 @@ Acceptance:
 - Audience targeting fixtures. An announcement shows only between its start and end. Standee status history is audited.
 
 ### 14d. System health
+
+Built 2026-10-16 (docs/DECISIONS.md SA-86 to SA-92). Resend's bounce webhook is built and stays off until its secret is set; Home also lists failed or bounced emails, a database or storage at 80% of its limit and failed menu imports, but not Sentry; the email log keeps 30 days and finds one address's emails by its hash (owner's choices, 2026-10-16). Every job is daily, so a missed run is 26 hours without one.
 
 Ships (`/super/system`, system.view):
 
@@ -661,6 +667,8 @@ Acceptance:
 - A failed cron step shows on Home and on System. A missing run is detected.
 
 ### 14e. Close account
+
+Built 2026-11-01 (docs/DECISIONS.md SA-93 to SA-100). Only the team closes; during the hold the owner asks support for a copy; a closed restaurant's QR codes stop working; removal also clears the copies of personal data (owner's choices, 2026-11-01). Financial records have no end date until the CA answers.
 
 Ships:
 

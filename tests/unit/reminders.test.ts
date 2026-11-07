@@ -30,6 +30,7 @@ const reminder = (overrides: Partial<DueReminder> = {}): DueReminder => ({
   plan_name: 'Growth',
   trial_ends_at: '2026-10-03T16:30:00Z',
   restriction_at: '2026-10-03T22:30:00Z',
+  ends_at: '2026-10-03T22:30:00Z',
   ...overrides,
 });
 
@@ -86,6 +87,13 @@ describe('reminderEmail', () => {
     expect(reminderEmail(reminder({ kind: 'access_restricted' }), 'https://x.test').subject).toBe(
       'Ordering is paused at Spice <Route>',
     );
+  });
+
+  it('asks to set up autopay again when an offer’s last payment is made', () => {
+    const email = reminderEmail(reminder({ kind: 'autopay_ends_7d' }), 'https://x.test');
+    expect(email.subject).toBe('Set up MenuMesh autopay again for Spice <Route>');
+    expect(email.text).toContain('the paid period ends on 3 Oct 2026');
+    expect(email.text).toContain('Set up autopay for Growth again');
   });
 });
 
