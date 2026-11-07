@@ -98,8 +98,8 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
         />
       </div>
       <p className="text-sm text-ink-muted">
-        Each page takes up to a minute. You can leave this page open; coming back later carries on
-        from here.
+        Each page takes up to a minute and a half. You can leave this page open; coming back later
+        carries on from here.
       </p>
       {error && (
         <div className="flex flex-wrap items-center gap-3">

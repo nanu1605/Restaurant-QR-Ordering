@@ -21,12 +21,24 @@ import {
  * are tried in order: an error (unreachable, timeout, any HTTP error) moves the
  * page to the next one. A reply that doesn't match the schema is retried once
  * on the same provider with the problem appended; a second bad reply fails the
- * page. Tokens and cost add up over every call made.
+ * page. Tokens and cost add up over every call made. A call isn't started with
+ * less than MIN_CALL_MS left of the page's time (docs/DECISIONS.md VPS-5).
  */
 
-export const PAGE_TIMEOUT_MS = 60_000;
-/** Everything for one page, retry and fallback included, within the action's time. */
-export const PAGE_DEADLINE_MS = 150_000;
+/** One call to a reader. */
+export const PAGE_TIMEOUT_MS = 40_000;
+/**
+ * Everything for one page, retry and fallback included, counted from the start of its server
+ * action, so that the action answers before Cloudflare cuts a request at 100 s (P7-15, VPS-5).
+ */
+export const PAGE_DEADLINE_MS = 85_000;
+/**
+ * A call isn't started with less time than this left: few pages are read faster, and a call
+ * that is cut off is still paid for.
+ */
+export const MIN_CALL_MS = 15_000;
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 /** US dollars per million tokens, for providers that don't report the cost (P7-13). */
 const PRICES_USD_PER_MTOK: Record<string, { input: number; output: number }> = {
@@ -140,15 +152,24 @@ export async function extractPage({
   ];
 
   for (const provider of providers) {
-    outcome.provider = provider.name;
-    outcome.model = provider.model;
     let messages = baseMessages;
     let useSchema = true;
     let badReplies = 0;
+    let called = false;
 
     while (true) {
-      const remaining = deadlineMs - (now() - started);
-      if (remaining <= 1_000) return outcome;
+      const callAt = now();
+      const remaining = deadlineMs - (callAt - started);
+      if (remaining < MIN_CALL_MS) {
+        // A bad reply that can't be asked again is an unreadable page, not a reader too slow.
+        return badReplies > 0 ? { ...outcome, error: UNREADABLE_PAGE } : outcome;
+      }
+      // Only a reader that was called is recorded as the page's provider.
+      if (!called) {
+        outcome.provider = provider.name;
+        outcome.model = provider.model;
+        called = true;
+      }
 
       let reply;
       try {
@@ -172,7 +193,11 @@ export async function extractPage({
           useSchema = false;
           continue;
         }
-        console.warn(`Menu import: ${error.message}`);
+        // The times, so that PAGE_TIMEOUT_MS can be tuned from the logs.
+        const failedAt = now();
+        console.warn(
+          `Menu import: ${error.message} (the call took ${seconds(failedAt - callAt)}, the page ${seconds(failedAt - started)} so far)`,
+        );
         outcome.error = error.kind === 'response' ? UNREADABLE_PAGE : READER_UNAVAILABLE;
         break; // next provider
       }

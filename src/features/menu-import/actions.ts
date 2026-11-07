@@ -20,7 +20,7 @@ import {
   pageExtractionSchema,
   type Draft,
 } from './draft';
-import { extractPage, READER_UNAVAILABLE } from './extract';
+import { extractPage, PAGE_DEADLINE_MS, READER_UNAVAILABLE } from './extract';
 import { mergePages } from './merge';
 import { menuImportProviders } from './providers';
 import { IMPORT_BUCKET, type ImportedCounts } from './queries';
@@ -166,11 +166,17 @@ function progressOf(pages: PageRow[]): ReadProgress {
   };
 }
 
+/** A page photo is a few hundred KB from Storage: a stall mustn't eat the reader's time. */
+const PHOTO_TIMEOUT_MS = 15_000;
+
 /** Reads one page (spec §20A.1 step 2: one page per request). */
 export async function readMenuPage(
   importId: string,
   page: number,
 ): Promise<ActionResult<ReadProgress>> {
+  // The page's time counts from here, so the answer beats Cloudflare's 100 s cut
+  // (docs/DECISIONS.md P7-15, VPS-5).
+  const started = Date.now();
   await requireUser();
   if (!uuid.safeParse(importId).success || !Number.isInteger(page) || page < 1) {
     return actionError(GENERIC_ERROR);
@@ -204,7 +210,10 @@ export async function readMenuPage(
   if (claim.error) return importError(claim.error, 'Claim import page');
   if (!claim.data) return actionOk(await progressFor(supabase, importId, pages));
 
-  const download = await admin.storage.from(IMPORT_BUCKET).download(path);
+  const photoTimer = AbortSignal.timeout(PHOTO_TIMEOUT_MS);
+  const download = await admin.storage
+    .from(IMPORT_BUCKET)
+    .download(path, {}, { signal: photoTimer });
   const env = getServerEnv();
   const outcome = download.error
     ? null
@@ -212,6 +221,8 @@ export async function readMenuPage(
         imageJpegBase64: Buffer.from(await download.data.arrayBuffer()).toString('base64'),
         providers: menuImportProviders(env),
         usdToInr: env.MENU_IMPORT_USD_INR,
+        // What the steps before the reader left of the page's time.
+        deadlineMs: PAGE_DEADLINE_MS - (Date.now() - started),
       });
 
   const record = outcome
@@ -231,7 +242,10 @@ export async function readMenuPage(
     : {
         index: page,
         status: 'failed',
-        error: 'The photo of this page did not upload. Start a new import with this page.',
+        // A photo slow to arrive is worth another try; a missing one isn't.
+        error: photoTimer.aborted
+          ? READER_UNAVAILABLE
+          : 'The photo of this page did not upload. Start a new import with this page.',
       };
 
   const saved = await admin.rpc('menu_import_record_page', {

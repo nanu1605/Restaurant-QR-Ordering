@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   callCostPaise,
   extractPage,
+  MIN_CALL_MS,
+  PAGE_DEADLINE_MS,
+  PAGE_TIMEOUT_MS,
   parseReplyJson,
   READER_UNAVAILABLE,
   UNREADABLE_PAGE,
@@ -13,7 +16,7 @@ import { parseServerEnv } from '@/lib/env.server';
 import type { VisionProvider } from '@/lib/vision/openai-compatible';
 
 // Reading a menu page through the provider chain (spec §20A.2,
-// docs/DECISIONS.md P7-12, P7-13), against a fake fetch.
+// docs/DECISIONS.md P7-12, P7-13, VPS-5), against a fake fetch.
 
 const primary: VisionProvider = {
   name: 'commandcode',
@@ -195,7 +198,7 @@ describe('extractPage', () => {
     expect(outcome).toMatchObject({ status: 'failed', error: READER_UNAVAILABLE });
   });
 
-  it('stops at the page deadline', async () => {
+  it('stops at the page deadline, naming only the reader it called', async () => {
     let clock = 0;
     const { fetchImpl, calls } = fakeFetch(new Response('busy', { status: 500 }));
     const outcome = await extractPage({
@@ -203,10 +206,107 @@ describe('extractPage', () => {
       providers: [primary, fallback],
       usdToInr: 96,
       fetchImpl,
-      now: () => (clock += 100_000),
-      deadlineMs: 150_000,
+      now: () => (clock += 50_000),
     });
-    expect(outcome.status).toBe('failed');
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: READER_UNAVAILABLE,
+      provider: 'commandcode',
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('gives each call 40 s and the page 85 s, and starts no call that cannot finish', async () => {
+    vi.useFakeTimers();
+    try {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const starts: number[] = [];
+      const fetchImpl = ((_url: string, init?: RequestInit) => {
+        starts.push(Date.now());
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      }) as unknown as typeof fetch;
+
+      const read = extractPage({
+        imageJpegBase64: 'AAAA',
+        providers: [primary, fallback, { ...fallback, name: 'third' }],
+        usdToInr: 96,
+        fetchImpl,
+      });
+      await vi.advanceTimersByTimeAsync(PAGE_DEADLINE_MS);
+      const outcome = await read;
+
+      // The first call is cut at 40 s, the second at 80 s; 5 s are left for the third.
+      expect(starts.map((at) => at - starts[0]!)).toEqual([0, PAGE_TIMEOUT_MS]);
+      expect(outcome).toMatchObject({
+        status: 'failed',
+        error: READER_UNAVAILABLE,
+        provider: 'openrouter',
+      });
+      // The times are logged, to tune the 40 s from.
+      expect(warn.mock.calls.map(([message]) => message)).toEqual([
+        'Menu import: commandcode did not answer in time (the call took 40.0 s, the page 40.0 s so far)',
+        'Menu import: openrouter did not answer in time (the call took 40.0 s, the page 80.0 s so far)',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not ask again for a better reply when the page has no time left', async () => {
+    let clock = 0;
+    const { fetchImpl, calls } = fakeFetch(completion('not json'));
+    const slowReply = (async (...args: Parameters<typeof fetch>) => {
+      clock = 75_000; // 10 s left: under MIN_CALL_MS
+      return fetchImpl(...args);
+    }) as typeof fetch;
+    const outcome = await extractPage({
+      imageJpegBase64: 'AAAA',
+      providers: [primary, fallback],
+      usdToInr: 96,
+      fetchImpl: slowReply,
+      now: () => clock,
+    });
+    // The reader did answer: the page is unreadable, not the reader unavailable.
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: UNREADABLE_PAGE,
+      provider: 'commandcode',
+      inputTokens: 1000,
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('starts no call when the action used up the time, and then names no reader', async () => {
+    const { fetchImpl, calls } = fakeFetch();
+    const outcome = await extractPage({
+      imageJpegBase64: 'AAAA',
+      providers: [primary, fallback],
+      usdToInr: 96,
+      fetchImpl,
+      deadlineMs: MIN_CALL_MS - 1,
+    });
+    expect(calls).toHaveLength(0);
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      error: READER_UNAVAILABLE,
+      provider: null,
+      model: null,
+      costPaise: 0,
+    });
+  });
+
+  it('starts a call with exactly MIN_CALL_MS left', async () => {
+    const { fetchImpl, calls } = fakeFetch(completion(JSON.stringify(goodPage)));
+    const outcome = await extractPage({
+      imageJpegBase64: 'AAAA',
+      providers: [primary],
+      usdToInr: 96,
+      fetchImpl,
+      deadlineMs: MIN_CALL_MS,
+    });
+    expect(outcome.status).toBe('done');
     expect(calls).toHaveLength(1);
   });
 });
