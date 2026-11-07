@@ -95,7 +95,14 @@ const MESSAGES: Record<string, Message> = {
   RAZORPAY_MANAGED:
     'This restaurant pays by Razorpay autopay. Cancel autopay at period end first; the owner then subscribes to the new plan.',
   RAZORPAY_SUBSCRIPTION_LIVE: 'Autopay is already set up. Refresh the page to see it.',
+  RAZORPAY_SUBSCRIPTION_CHANGED: 'Its autopay changed just now. Refresh the page and try again.',
   RESTAURANT_SUSPENDED: 'This restaurant is suspended. Contact support to restore it first.',
+  RESTAURANT_CLOSED: 'This restaurant’s account is closed. Reopen it first.',
+  RESTAURANT_NOT_CLOSED: 'This restaurant isn’t closed. Refresh the page.',
+  AUTOPAY_CAN_CHARGE: 'Its autopay changed while closing. Close again to cancel it first.',
+  CLOSE_CODE_MISMATCH: 'That isn’t this restaurant’s code. Type it as shown.',
+  PERSONAL_DATA_REMOVED: 'Its personal data has been removed, so this can’t be done.',
+  EXPORT_TOO_SOON: 'A download was prepared in the last hour. Use that one, or try again later.',
   WEBHOOK_NOT_FAILED: 'This event has already been processed. Refresh the page.',
 
   // Menu

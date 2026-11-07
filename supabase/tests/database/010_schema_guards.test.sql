@@ -260,7 +260,15 @@ select set_eq(
       ('public.platform_list_standees'),
       -- System health (14d)
       ('public.platform_system'),
-      ('public.platform_email_sends')
+      ('public.platform_email_sends'),
+      -- Close account (14e)
+      ('public.platform_close_restaurant'),
+      ('public.platform_reopen_restaurant'),
+      ('public.platform_closure'),
+      ('public.admin_request_data_export'),
+      ('public.admin_data_export'),
+      ('public.platform_request_data_export'),
+      ('public.platform_data_export')
   $$,
   'authenticated can execute only the allowlisted functions'
 );

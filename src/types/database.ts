@@ -1714,6 +1714,88 @@ export type Database = {
           },
         ]
       }
+      restaurant_closures: {
+        Row: {
+          closed_at: string
+          closed_by: string | null
+          member_ids: string[]
+          prior_reason: string | null
+          prior_status: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at: string
+          removed_at: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          closed_at?: string
+          closed_by?: string | null
+          member_ids: string[]
+          prior_reason?: string | null
+          prior_status: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at: string
+          removed_at?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          closed_at?: string
+          closed_by?: string | null
+          member_ids?: string[]
+          prior_reason?: string | null
+          prior_status?: Database["public"]["Enums"]["restaurant_status"]
+          removal_due_at?: string
+          removed_at?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_closures_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_exports: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          finished_at: string | null
+          id: string
+          requested_by: string | null
+          restaurant_id: string
+          size_bytes: number | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          restaurant_id: string
+          size_bytes?: number | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          restaurant_id?: string
+          size_bytes?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_exports_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_members: {
         Row: {
           created_at: string
@@ -3097,6 +3179,7 @@ export type Database = {
         Returns: string
       }
       admin_create_tables: { Args: { p_labels: string[] }; Returns: Json }
+      admin_data_export: { Args: never; Returns: Json }
       admin_deactivate_staff: {
         Args: { p_member_id: string }
         Returns: undefined
@@ -3183,6 +3266,7 @@ export type Database = {
       admin_report_sales: { Args: { p_filters: Json }; Returns: Json }
       admin_report_tables: { Args: { p_filters: Json }; Returns: Json }
       admin_report_waiters: { Args: { p_filters: Json }; Returns: Json }
+      admin_request_data_export: { Args: never; Returns: string }
       admin_reset_staff_password: {
         Args: { p_member_id: string }
         Returns: string
@@ -3266,6 +3350,11 @@ export type Database = {
         Args: { p_slug: string; p_username: string }
         Returns: string
       }
+      closed_restaurant_remove_personal_data: {
+        Args: { p_restaurant_id: string }
+        Returns: Json
+      }
+      closed_restaurants_due: { Args: { p_limit?: number }; Returns: string[] }
       customer_cancel_item: {
         Args: {
           p_device_id: string
@@ -3413,12 +3502,18 @@ export type Database = {
         Args: { p_plan_code: string; p_restaurant_id: string }
         Returns: Json
       }
+      platform_close_restaurant: {
+        Args: { p_code: string; p_reason: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      platform_closure: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_create_lead: { Args: { p_lead: Json }; Returns: string }
       platform_create_restaurant: { Args: { p_payload: Json }; Returns: Json }
       platform_create_tag: {
         Args: { p_colour: string; p_name: string }
         Returns: string
       }
+      platform_data_export: { Args: { p_restaurant_id: string }; Returns: Json }
       platform_delete_tag: { Args: { p_tag_id: string }; Returns: undefined }
       platform_delete_view: { Args: { p_id: string }; Returns: undefined }
       platform_digest: { Args: { p_day?: string }; Returns: Json }
@@ -3513,9 +3608,17 @@ export type Database = {
         Args: { p_token_hash: string; p_user_id: string }
         Returns: Json
       }
+      platform_reopen_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: undefined
+      }
       platform_reprocess_webhook: {
         Args: { p_event_id: string }
         Returns: Json
+      }
+      platform_request_data_export: {
+        Args: { p_restaurant_id: string }
+        Returns: string
       }
       platform_reset_owner_password: {
         Args: { p_member_id: string }
@@ -3654,6 +3757,14 @@ export type Database = {
           state: string
           warning: string
         }[]
+      }
+      restaurant_export_finish: {
+        Args: { p_export_id: string; p_size_bytes?: number }
+        Returns: undefined
+      }
+      restaurant_exports_to_remove: {
+        Args: { p_limit?: number }
+        Returns: string[]
       }
       restaurant_plan: {
         Args: { p_restaurant_id: string }
@@ -3830,7 +3941,7 @@ export type Database = {
       paper_width: "58mm" | "80mm"
       payment_mode: "cash" | "upi" | "card" | "other"
       payment_status: "unpaid" | "paid"
-      restaurant_status: "active" | "suspended"
+      restaurant_status: "active" | "suspended" | "closed"
       service_request_status: "open" | "acknowledged" | "resolved"
       service_request_type: "call_waiter" | "request_bill"
       session_status: "open" | "billed" | "closed_unbilled"
@@ -4003,7 +4114,7 @@ export const Constants = {
       paper_width: ["58mm", "80mm"],
       payment_mode: ["cash", "upi", "card", "other"],
       payment_status: ["unpaid", "paid"],
-      restaurant_status: ["active", "suspended"],
+      restaurant_status: ["active", "suspended", "closed"],
       service_request_status: ["open", "acknowledged", "resolved"],
       service_request_type: ["call_waiter", "request_bill"],
       session_status: ["open", "billed", "closed_unbilled"],

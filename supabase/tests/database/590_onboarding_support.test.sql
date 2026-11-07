@@ -399,7 +399,8 @@ select ok(public.platform_snooze('support_open:' || :'req_m', 1) > now(), 'a req
 select ok(public.platform_snooze('stuck_onboarding:' || :'other', 1) > now(),
   'and a stuck restaurant');
 select tests.clear_auth();
-select private.attention(null, true, true, true, 50) as att \gset
+-- All of them: a dev database has more than a page of stuck restaurants.
+select private.attention(null, true, true, true, 10000) as att \gset
 
 select is(
   (select array_agg(i -> 'data' ->> 'request_id' order by n)
