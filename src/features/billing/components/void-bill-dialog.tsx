@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useOffline } from '@/features/live/live-provider';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { formatClockTime, tableHeading } from '@/features/ordering/format';
 import { ReasonDialog } from '@/features/orders/components/reason-dialog';
 
@@ -65,8 +66,11 @@ export function VoidBillDialog({
           let result: Awaited<ReturnType<typeof voidBill>>;
           try {
             result = await voidBill({ billId, reason, reopen });
-          } catch {
-            toast.error('Couldn’t reach the server. Check the connection and try again.');
+          } catch (error) {
+            // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+            if (!isUnrecognizedAction(error)) {
+              toast.error('Couldn’t reach the server. Check the connection and try again.');
+            }
             return false;
           }
           if (!result.ok) {

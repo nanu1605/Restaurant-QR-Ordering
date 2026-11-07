@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { BOARD_MUTATION_KEY } from '@/features/live/query-client';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { listNames, tableHeading } from '@/features/ordering/format';
 import type { Board } from '@/features/orders/board';
 import { type WaiterAvailability, waiterAvailability } from '@/features/orders/board-view';
@@ -90,8 +91,11 @@ function Picker({ board, sessionId, tableLabel, currentWaiterId, onDone }: Picke
     let result: AssignWaiterResult;
     try {
       result = await assign.mutateAsync({ waiterId: waiter.id, force });
-    } catch {
-      setError('Couldn’t reach the server. Check the connection and try again.');
+    } catch (error) {
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (!isUnrecognizedAction(error)) {
+        setError('Couldn’t reach the server. Check the connection and try again.');
+      }
       return;
     }
     if (!result.ok) {

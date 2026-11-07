@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useLive } from '@/features/live/live-provider';
 import { BOARD_MUTATION_KEY, menuKey } from '@/features/live/query-client';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import {
   addToCart,
   cartCount,
@@ -148,8 +149,9 @@ function Picker({ board, table, onDone }: { board: Board; table: BoardTable; onD
         lines: toOrderLines(cart),
         note: cart.note.trim() || null,
       });
-    } catch {
-      setError(t.network);
+    } catch (error) {
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (!isUnrecognizedAction(error)) setError(t.network);
       return;
     }
     if (!result.ok) {

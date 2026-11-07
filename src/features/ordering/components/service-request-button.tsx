@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 
 import { requestService } from '../actions';
 import { useStrings } from './lang-provider';
@@ -35,8 +36,9 @@ export function ServiceRequestButton({ qrToken, type, className }: ServiceReques
         return;
       }
       toast.error(result.error);
-    } catch {
-      toast.error(t.networkError);
+    } catch (error) {
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (!isUnrecognizedAction(error)) toast.error(t.networkError);
     }
     setState('idle');
   }

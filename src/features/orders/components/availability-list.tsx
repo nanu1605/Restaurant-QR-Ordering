@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useLive, useOffline } from '@/features/live/live-provider';
 import { MENU_MUTATION_KEY, menuKey } from '@/features/live/query-client';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { filterMenu } from '@/features/ordering/menu-filter';
 import type { CustomerAddonGroup, CustomerCategory } from '@/features/ordering/types';
 import { createClient } from '@/lib/supabase/browser';
@@ -106,6 +107,8 @@ export function AvailabilityList() {
       queryClient.setQueryData<CustomerCategory[]>(key, (current) =>
         current ? withAvailability(current, target, !available) : current,
       );
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (isUnrecognizedAction(error)) return;
       toast.error(
         error instanceof TypeError ? t.network : error instanceof Error ? error.message : t.generic,
       );

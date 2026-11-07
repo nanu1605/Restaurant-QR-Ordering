@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 
 import { finishReading, readMenuPage } from '../actions';
 
@@ -47,8 +48,12 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
             return;
           }
           setDone(result.data.done + result.data.failed);
-        } catch {
-          setError('The connection dropped while reading. Try again.');
+        } catch (error) {
+          // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8), and the
+          // refreshed page carries on reading.
+          if (!isUnrecognizedAction(error)) {
+            setError('The connection dropped while reading. Try again.');
+          }
           return;
         }
       }
@@ -59,8 +64,11 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
           setError(finished.error);
           return;
         }
-      } catch {
-        setError('The connection dropped while reading. Try again.');
+      } catch (error) {
+        // As above.
+        if (!isUnrecognizedAction(error)) {
+          setError('The connection dropped while reading. Try again.');
+        }
         return;
       }
       router.refresh();

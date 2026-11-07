@@ -30,6 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { compressMenuImage } from '@/features/menu/compress-image';
 import { publicImageUrl } from '@/features/menu/images';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { buildUpiUrl, UPI_VPA_PATTERN } from '@/lib/upi';
 
 import { removeLogo, saveSettings, uploadLogo, type SettingsTabName } from '../actions';
@@ -257,6 +258,8 @@ function LogoField({ settings, readOnly, supabaseUrl }: FormProps & { supabaseUr
         if (!result.ok) toast.error(result.error);
         else toast.success('Logo updated');
       } catch (error) {
+        // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+        if (isUnrecognizedAction(error)) return;
         toast.error(error instanceof Error ? error.message : 'This image could not be used.');
       }
     });

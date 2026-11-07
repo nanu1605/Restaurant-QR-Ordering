@@ -27,6 +27,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOffline } from '@/features/live/live-provider';
 import { QUEUED_MUTATION_KEY } from '@/features/live/query-client';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { upgradeHint } from '@/features/plans/plan-features';
 import { tableHeading } from '@/features/ordering/format';
 import { useBoard } from '@/features/orders/use-board';
@@ -160,9 +161,12 @@ export function BillBuilder({ sessionId }: { sessionId: string }) {
         applyServiceCharge: choice.applyServiceCharge,
         expectedGrandTotalPaise: shownTotal,
       });
-    } catch {
+    } catch (error) {
       setGenerating(false);
-      toast.error('Couldn’t reach the server. Check the connection and try again.');
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (!isUnrecognizedAction(error)) {
+        toast.error('Couldn’t reach the server. Check the connection and try again.');
+      }
       return;
     }
     if (!result.ok) {

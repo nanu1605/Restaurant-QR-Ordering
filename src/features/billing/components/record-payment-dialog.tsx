@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useOffline } from '@/features/live/live-provider';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { upgradeHint } from '@/features/plans/plan-features';
 import { paiseToDecimalString } from '@/lib/money';
 
@@ -123,9 +124,12 @@ function PaymentForm({
           reference: row.reference,
         })),
       });
-    } catch {
+    } catch (error) {
       setPending(false);
-      setError('Couldn’t reach the server. Check the connection and try again.');
+      // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+      if (!isUnrecognizedAction(error)) {
+        setError('Couldn’t reach the server. Check the connection and try again.');
+      }
       return;
     }
     setPending(false);

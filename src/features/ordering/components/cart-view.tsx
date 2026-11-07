@@ -12,6 +12,7 @@ import { Money, withRupee } from '@/components/shared/money';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { formatINR } from '@/lib/money';
 
 import { placeOrder } from '../actions';
@@ -102,10 +103,11 @@ export function CartView({ qrToken, table }: CartViewProps) {
           return;
         }
         fail(result.error);
-      } catch {
+      } catch (error) {
         // Nothing may have reached the restaurant, or the order did but the
-        // reply was lost: retrying with the same key is safe either way.
-        fail(t.networkError);
+        // reply was lost: retrying with the same key is safe either way. A page
+        // from an older build gets the refresh notice instead (docs/DECISIONS.md VPS-8).
+        if (!isUnrecognizedAction(error)) fail(t.networkError);
       } finally {
         submitting.current = false;
       }
