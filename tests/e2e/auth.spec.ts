@@ -148,6 +148,17 @@ test('log out ends the session on this device', async ({ page }) => {
   await expect(page).toHaveURL(/\/login\?next=%2Fstaff$/);
 });
 
+// Behind a proxy the server's own address isn't the public one, so neither redirect may
+// carry an absolute address (docs/DECISIONS.md VPS-3).
+test('log out and the sign-in redirect answer with relative addresses', async ({ request }) => {
+  const logout = await request.post('/logout', { maxRedirects: 0 });
+  expect(logout.status()).toBe(303);
+  expect(logout.headers().location).toBe('/login');
+
+  const staff = await request.get('/staff', { maxRedirects: 0 });
+  expect(staff.headers().location).toBe('/login?next=%2Fstaff');
+});
+
 test('an already signed-in user skips the login page', async ({ page }) => {
   await page.goto('/login');
   await logInWithCode(page, 'demo', 'manager');
