@@ -5,6 +5,7 @@ import { SITE_LANG_HEADER, siteLangOf } from '@/features/site/i18n';
 import { APP_DOMAIN, STAFF_PANEL_HEADER } from '@/lib/config';
 import { contentSecurityPolicy } from '@/lib/csp';
 import { getPublicEnv } from '@/lib/env';
+import { requestHostname } from '@/lib/request-host';
 import { updateSession } from '@/lib/supabase/proxy';
 
 export async function proxy(request: NextRequest) {
@@ -39,8 +40,11 @@ export async function proxy(request: NextRequest) {
     : await updateSession(request);
   response.headers.set('Content-Security-Policy', csp);
   // Only menumesh.in is for search engines: not staging, Vercel's own addresses or local runs
-  // (docs/DECISIONS.md W-12).
-  if (request.nextUrl.hostname !== APP_DOMAIN) response.headers.set('X-Robots-Tag', 'noindex');
+  // (docs/DECISIONS.md W-12). Judged by the host the visitor asked for: under next start and
+  // the standalone server, request.nextUrl is the server's own address (VPS-2).
+  if (requestHostname(request.headers) !== APP_DOMAIN) {
+    response.headers.set('X-Robots-Tag', 'noindex');
+  }
   return response;
 }
 

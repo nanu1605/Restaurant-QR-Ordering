@@ -90,6 +90,13 @@ test('hosts other than menumesh.in tell search engines not to index', async ({ r
   expect(response.headers()['x-robots-tag']).toBe('noindex');
 });
 
+test('behind a proxy the public host decides, not the server’s own address', async ({
+  request,
+}) => {
+  const response = await request.get('/', { headers: { 'x-forwarded-host': 'menumesh.in' } });
+  expect(response.headers()['x-robots-tag']).toBeUndefined();
+});
+
 test('the home page has a canonical, a link preview and structured data', async ({ page }) => {
   await page.goto('/');
   const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
