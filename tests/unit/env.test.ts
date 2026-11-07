@@ -78,4 +78,18 @@ describe('parseServerEnv', () => {
       );
     }
   });
+
+  it('names the visitor to Supabase Auth only when asked (docs/DECISIONS.md VPS-4)', () => {
+    expect(parseServerEnv(validServer).SUPABASE_FORWARD_CLIENT_IP).toBe(false);
+    expect(
+      parseServerEnv({ ...validServer, SUPABASE_FORWARD_CLIENT_IP: '' }).SUPABASE_FORWARD_CLIENT_IP,
+    ).toBe(false);
+    expect(
+      parseServerEnv({ ...validServer, SUPABASE_FORWARD_CLIENT_IP: 'true' })
+        .SUPABASE_FORWARD_CLIENT_IP,
+    ).toBe(true);
+    expect(() =>
+      parseServerEnv({ ...validServer, SUPABASE_FORWARD_CLIENT_IP: 'sometimes' }),
+    ).toThrow(/SUPABASE_FORWARD_CLIENT_IP/);
+  });
 });

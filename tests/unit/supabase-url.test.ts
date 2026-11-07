@@ -31,6 +31,7 @@ vi.mock('@/lib/env.server', () => ({
 }));
 vi.mock('next/headers', () => ({
   cookies: async () => ({ getAll: () => [], set: () => undefined }),
+  headers: async () => new Headers(),
 }));
 // The real clients, watched for the address and the options they are given.
 vi.mock('@supabase/ssr', async (importOriginal) => {

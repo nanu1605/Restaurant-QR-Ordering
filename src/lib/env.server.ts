@@ -21,6 +21,10 @@ const serverSchema = z.object({
   // Where the server reaches Supabase when that isn't the public address: the gateway inside
   // the VPS's own network (docs/DECISIONS.md VPS-20). Empty = NEXT_PUBLIC_SUPABASE_URL.
   SUPABASE_INTERNAL_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^https?$/ }).optional()),
+  // Self-hosted Supabase Auth only, on the VPS (docs/DECISIONS.md VPS-4): sign-ins, refreshes and
+  // second-factor codes name the visitor's IP address, for Auth's per-IP limits. Off elsewhere:
+  // hosted Supabase takes it only with a secret key.
+  SUPABASE_FORWARD_CLIENT_IP: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // Domain part of synthetic staff logins: <username>@<slug>.staff.<domain> (spec §9.5).
   STAFF_EMAIL_DOMAIN: z.preprocess(
     emptyToUndefined,

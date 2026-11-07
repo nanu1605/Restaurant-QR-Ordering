@@ -95,6 +95,10 @@ export default defineConfig({
         RESEND_API_KEY: 're_e2e_resend_key',
         RESEND_API_URL: `http://127.0.0.1:${MOCK_APIS_PORT}/resend`,
         EMAIL_FROM: 'MenuMesh <billing@menumesh.test>',
+        // Every sign-in and refresh goes through the client that names the visitor to Auth, as
+        // on the VPS. The local Auth leaves Sb-Forwarded-For off (supabase/config.toml has no
+        // setting for it), so logins behave as before.
+        SUPABASE_FORWARD_CLIENT_IP: 'true',
         // Cloudflare's always-pass test keys; the browser widget is faked (fakeTurnstile).
         TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
         TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
