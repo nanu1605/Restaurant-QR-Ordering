@@ -43,6 +43,20 @@ export function autopayState(
   return subscription.cancelAtPeriodEnd ? 'ending' : 'on';
 }
 
+/**
+ * Whether Razorpay could still charge: autopay is on, or a checkout or a retry
+ * hasn't ended, which 'on' leaves out. Closing an account stops them all
+ * (docs/DECISIONS.md SA-94).
+ */
+export function mandateCanCharge(
+  subscription: Pick<AutopayInput, 'razorpayStatus' | 'cancelAtPeriodEnd'>,
+): boolean {
+  return (
+    autopayState(subscription) === 'on' ||
+    ['created', 'pending', 'halted'].includes(subscription.razorpayStatus ?? '')
+  );
+}
+
 /** Months charged before Razorpay stops: long enough to never matter. */
 export const TOTAL_COUNT: Record<BillingCycle, number> = { monthly: 120, yearly: 10 };
 
