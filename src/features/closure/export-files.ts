@@ -161,6 +161,38 @@ export const COLUMNS = {
   ],
 } as const satisfies { [T in keyof Tables]?: readonly (keyof Tables[T]['Row'])[] };
 
+/**
+ * Bytes of memory per row while the ZIP is built (docs/DECISIONS.md SA-93, VPS-6), rounded up
+ * from Node on rows shaped as PostgREST sends them: a bill is about 2 KB as a row and 2.7 KB
+ * again in bills.json, held as text and as bytes at once (twice that when a name isn't in
+ * Latin letters); the others are a row and a CSV line. The menu, tables, staff and subscription
+ * payments are too small to count.
+ */
+export const EXPORT_ROW_BYTES = {
+  bills: 10_000,
+  order_items: 600,
+  orders: 400,
+  bill_payments: 400,
+  table_sessions: 200,
+} as const satisfies Partial<Record<keyof typeof COLUMNS, number>>;
+
+/** How many rows of those tables a restaurant has. */
+export type ExportCounts = Record<keyof typeof EXPORT_ROW_BYTES, number>;
+
+/** What building the ZIP takes of the heap, from how many rows there are. */
+export const exportMemoryEstimate = (counts: ExportCounts) =>
+  (Object.keys(EXPORT_ROW_BYTES) as (keyof ExportCounts)[]).reduce(
+    (sum, table) => sum + counts[table] * EXPORT_ROW_BYTES[table],
+    0,
+  );
+
+/**
+ * The most one build may take, however large the heap: about 37,000 bills at a usual mix of
+ * one bill to 1.5 orders, 5 dishes, a payment and a session, which is a year at 100 bills a
+ * day. Its ZIP would be about 15 MiB, inside the bucket's 50 MiB.
+ */
+export const EXPORT_MEMORY_CAP = 512 * 1024 * 1024;
+
 type Columns = typeof COLUMNS;
 type RowOf<T extends keyof Columns> = Pick<
   Tables[T]['Row'],
