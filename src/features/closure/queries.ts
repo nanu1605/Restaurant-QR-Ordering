@@ -7,6 +7,7 @@ import { formatBytes } from '@/features/system/system';
 import { APP_NAME } from '@/lib/config';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { toPublicSupabaseUrl } from '@/lib/supabase/url';
 
 import { parseClosure, parseExportRow, type DataExport } from './closure';
 import { EXPORT_BUCKET } from './export';
@@ -39,7 +40,7 @@ async function toDataExport(json: unknown, slug: string): Promise<DataExport> {
   }
   return {
     state: 'ready',
-    url: data.signedUrl,
+    url: toPublicSupabaseUrl(data.signedUrl),
     size: formatBytes(row.size_bytes ?? 0),
     until: formatDateTime(row.expires_at),
     secondsLeft: seconds,

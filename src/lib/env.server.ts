@@ -18,6 +18,9 @@ const urlWithDefault = (fallback: string) =>
 
 const serverSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
+  // Where the server reaches Supabase when that isn't the public address: the gateway inside
+  // the VPS's own network (docs/DECISIONS.md VPS-20). Empty = NEXT_PUBLIC_SUPABASE_URL.
+  SUPABASE_INTERNAL_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^https?$/ }).optional()),
   // Domain part of synthetic staff logins: <username>@<slug>.staff.<domain> (spec §9.5).
   STAFF_EMAIL_DOMAIN: z.preprocess(
     emptyToUndefined,

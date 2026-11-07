@@ -4,6 +4,8 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 import { getPublicEnv } from '@/lib/env';
+import { supabaseAuthCookieName } from '@/lib/supabase/cookie-name';
+import { supabaseServerUrl } from '@/lib/supabase/url';
 import type { Database } from '@/types/database';
 
 /**
@@ -15,9 +17,12 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
-    env.NEXT_PUBLIC_SUPABASE_URL,
+    supabaseServerUrl(),
     env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
+      // The browser reads this cookie too, whichever address the server calls Supabase on
+      // (docs/DECISIONS.md VPS-20).
+      cookieOptions: { name: supabaseAuthCookieName(env.NEXT_PUBLIC_SUPABASE_URL) },
       cookies: {
         getAll() {
           return cookieStore.getAll();

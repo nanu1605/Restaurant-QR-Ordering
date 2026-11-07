@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { toPublicSupabaseUrl } from '@/lib/supabase/url';
 
 import { draftSchema, type Draft } from './draft';
 import type { CurrentMenu } from './merge';
@@ -239,7 +240,7 @@ export async function pageImageUrls(menuImport: MenuImport): Promise<Record<numb
   }
   const urls: Record<number, string> = {};
   data.forEach((entry, index) => {
-    if (entry.signedUrl) urls[index + 1] = entry.signedUrl;
+    if (entry.signedUrl) urls[index + 1] = toPublicSupabaseUrl(entry.signedUrl);
   });
   return urls;
 }

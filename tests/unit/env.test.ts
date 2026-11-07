@@ -62,4 +62,20 @@ describe('parseServerEnv', () => {
   it('requires the secret key and the cookie secret', () => {
     expect(() => parseServerEnv({})).toThrow(/SUPABASE_SECRET_KEY[\s\S]*CUSTOMER_COOKIE_SECRET/);
   });
+
+  it('takes an internal Supabase address as an option (docs/DECISIONS.md VPS-20)', () => {
+    expect(parseServerEnv(validServer).SUPABASE_INTERNAL_URL).toBeUndefined();
+    expect(
+      parseServerEnv({ ...validServer, SUPABASE_INTERNAL_URL: '' }).SUPABASE_INTERNAL_URL,
+    ).toBeUndefined();
+    expect(
+      parseServerEnv({ ...validServer, SUPABASE_INTERNAL_URL: 'http://api-gw:8000' })
+        .SUPABASE_INTERNAL_URL,
+    ).toBe('http://api-gw:8000');
+    for (const SUPABASE_INTERNAL_URL of ['api-gw:8000', 'ftp://api-gw', 'not a url']) {
+      expect(() => parseServerEnv({ ...validServer, SUPABASE_INTERNAL_URL })).toThrow(
+        /SUPABASE_INTERNAL_URL/,
+      );
+    }
+  });
 });
