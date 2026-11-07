@@ -3,6 +3,7 @@ import { cookies, headers } from 'next/headers';
 
 import { AppSplash } from '@/components/shared/app-splash';
 import { Toaster } from '@/components/ui/sonner';
+import { NewVersionNotice } from '@/features/new-version/components/new-version-notice';
 import { getLang } from '@/features/ordering/lang';
 import { type Lang, STRINGS } from '@/features/ordering/strings';
 import { SITE_LANG_HEADER } from '@/features/site/i18n';
@@ -82,6 +83,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
           containerAriaLabel={toasts.region}
           toastOptions={{ closeButtonAriaLabel: toasts.close }}
         />
+        {/* Last: on every page, and after the Toaster and the worker panel's <html lang>. */}
+        <NewVersionNotice />
       </body>
     </html>
   );
