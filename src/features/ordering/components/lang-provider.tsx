@@ -16,3 +16,8 @@ export function LangProvider({ lang, children }: { lang: Lang; children: ReactNo
 export function useStrings(): Strings {
   return STRINGS[use(LangContext)];
 }
+
+/** The customer panel's language, for words kept elsewhere (its error page's). */
+export function useLang(): Lang {
+  return use(LangContext);
+}

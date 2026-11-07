@@ -13,6 +13,10 @@ import {
 } from '../notice';
 import { NEW_VERSION_STRINGS } from '../strings';
 
+// Loaded with the notice, which every page has, so the error pages share one copy of their card
+// rather than each chunk carrying its own (about 2.5 KiB less on a guest's menu).
+export { ErrorFallback } from './error-fallback';
+
 // Before the page hydrates, so its first server action is already watched (as sound.ts
 // installs its listeners).
 if (typeof window !== 'undefined') watchForNewVersion();
