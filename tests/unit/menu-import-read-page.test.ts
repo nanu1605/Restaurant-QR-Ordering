@@ -115,6 +115,30 @@ describe('readMenuPage', () => {
     expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
   });
 
+  it('records a photo cut off after Storage answered as one to read again, too', async () => {
+    // storage-js returns an abort that lands before the headers, but throws one that lands while
+    // the body is read: the page must not stay claimed until the lease runs out.
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
+    db.download.mockRejectedValue(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    );
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(extractPage).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('does the same when the connection drops while the photo downloads', async () => {
+    // undici's error for a reset mid-body: the timer has not fired, and the photo is there.
+    db.download.mockRejectedValue(new TypeError('terminated'));
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(extractPage).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
   it('tells the owner to start again when the photo is not there', async () => {
     db.download.mockResolvedValue({ data: null, error: new Error('Object not found') });
 

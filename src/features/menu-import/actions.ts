@@ -211,19 +211,29 @@ export async function readMenuPage(
   if (!claim.data) return actionOk(await progressFor(supabase, importId, pages));
 
   const photoTimer = AbortSignal.timeout(PHOTO_TIMEOUT_MS);
-  const download = await admin.storage
-    .from(IMPORT_BUCKET)
-    .download(path, {}, { signal: photoTimer });
+  let photo: Blob | null = null;
+  let cut = false;
+  try {
+    const download = await admin.storage
+      .from(IMPORT_BUCKET)
+      .download(path, {}, { signal: photoTimer });
+    photo = download.data;
+  } catch {
+    // storage-js returns a failure that lands before the headers, but throws one that lands while
+    // the body is read: the timer, or a connection reset. The page is recorded either way, or it
+    // stays claimed for 3 minutes and Try again skips it (docs/DECISIONS.md VPS-5).
+    cut = true;
+  }
   const env = getServerEnv();
-  const outcome = download.error
-    ? null
-    : await extractPage({
-        imageJpegBase64: Buffer.from(await download.data.arrayBuffer()).toString('base64'),
+  const outcome = photo
+    ? await extractPage({
+        imageJpegBase64: Buffer.from(await photo.arrayBuffer()).toString('base64'),
         providers: menuImportProviders(env),
         usdToInr: env.MENU_IMPORT_USD_INR,
         // What the steps before the reader left of the page's time.
         deadlineMs: PAGE_DEADLINE_MS - (Date.now() - started),
-      });
+      })
+    : null;
 
   const record = outcome
     ? {
@@ -242,10 +252,11 @@ export async function readMenuPage(
     : {
         index: page,
         status: 'failed',
-        // A photo slow to arrive is worth another try; a missing one isn't.
-        error: photoTimer.aborted
-          ? READER_UNAVAILABLE
-          : 'The photo of this page did not upload. Start a new import with this page.',
+        // A photo slow to arrive, or cut off on the way, is worth another try; a missing one isn't.
+        error:
+          photoTimer.aborted || cut
+            ? READER_UNAVAILABLE
+            : 'The photo of this page did not upload. Start a new import with this page.',
       };
 
   const saved = await admin.rpc('menu_import_record_page', {
