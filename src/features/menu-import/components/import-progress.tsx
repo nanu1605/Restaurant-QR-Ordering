@@ -22,10 +22,13 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
   const waiting = (page: PageState) => page.status === 'pending' || page.status === 'reading';
   const [done, setDone] = useState(pages.filter((page) => !waiting(page)).length);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by "Try again", which also re-reads the pages that failed.
+  // Bumped by "Try again", which reads the page the reading stopped on once more.
   const [attempt, setAttempt] = useState(0);
   const retry = attempt > 0;
   const running = useRef(false);
+  // Only that page. Other failed pages stay out: each was tried twice, or reading the same photo
+  // again cannot help (docs/DECISIONS.md VPS-30).
+  const stoppedAt = useRef<number | null>(null);
 
   // One reading loop at a time. It is not cancelled on unmount: each step is
   // safe to repeat on the server, and a remount (Strict Mode) must not stop it.
@@ -37,10 +40,12 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
       setError(null);
       for (const page of pages) {
         // A page another reader is on is claimed by the server, which returns
-        // the progress without paying for a second read. Failed pages are only
-        // read again when the owner presses "Try again".
-        if (!waiting(page) && !(retry && page.status === 'failed')) continue;
+        // the progress without paying for a second read. A failed page is only
+        // read again when the reading stopped on it and the owner presses "Try again".
+        const again = retry && page.status === 'failed' && page.index === stoppedAt.current;
+        if (!waiting(page) && !again) continue;
         setCurrent(page.index);
+        stoppedAt.current = page.index;
         try {
           const result = await readMenuPage(importId, page.index);
           if (!result.ok) {
@@ -57,6 +62,7 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
           return;
         }
       }
+      stoppedAt.current = null;
       setCurrent(null);
       try {
         const finished = await finishReading(importId);

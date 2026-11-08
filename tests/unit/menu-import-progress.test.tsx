@@ -115,6 +115,62 @@ describe('ImportProgress', () => {
     await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(2));
   });
 
+  it('does not read a page left out after two failures again at the next Try again', async () => {
+    // The reader stays down: each page stops the reading once, then is left out.
+    vi.mocked(readMenuPage).mockResolvedValueOnce({ ok: false, error: READER_STOPPED });
+    const view = render(
+      <ImportProgress
+        importId={IMPORT_ID}
+        pages={[
+          { index: 1, status: 'pending' },
+          { index: 2, status: 'pending' },
+        ]}
+      />,
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(READER_STOPPED);
+    expect(pagesRead()).toEqual([1]);
+
+    // Try again: page 1 fails a second time and is left out, then page 2 stops the reading.
+    router.refresh.mockImplementationOnce(() =>
+      view.rerender(
+        <ImportProgress
+          importId={IMPORT_ID}
+          pages={[
+            { index: 1, status: 'failed' },
+            { index: 2, status: 'pending' },
+          ]}
+        />,
+      ),
+    );
+    vi.mocked(readMenuPage).mockClear();
+    vi.mocked(readMenuPage)
+      .mockResolvedValueOnce({ ok: true, data: { total: 2, done: 0, failed: 1 } })
+      .mockResolvedValueOnce({ ok: false, error: READER_STOPPED });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(pagesRead()).toEqual([1, 2]));
+    expect(await screen.findByRole('alert')).toHaveTextContent(READER_STOPPED);
+
+    // The next Try again reads only page 2: page 1 stays out.
+    router.refresh.mockImplementationOnce(() =>
+      view.rerender(
+        <ImportProgress
+          importId={IMPORT_ID}
+          pages={[
+            { index: 1, status: 'failed' },
+            { index: 2, status: 'failed' },
+          ]}
+        />,
+      ),
+    );
+    vi.mocked(readMenuPage).mockClear();
+    vi.mocked(readMenuPage).mockResolvedValue({ ok: true, data: { total: 2, done: 0, failed: 2 } });
+    vi.mocked(finishReading).mockResolvedValue({ ok: true, data: { status: 'review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(finishReading).toHaveBeenCalledWith(IMPORT_ID));
+    expect(pagesRead()).toEqual([2]);
+  });
+
   it('leaves a page the server recorded as failed alone until Try again is pressed', async () => {
     // What a reload shows: the failed page is not read again by itself, and the reading ends.
     vi.mocked(finishReading).mockResolvedValue({ ok: true, data: { status: 'review' } });
