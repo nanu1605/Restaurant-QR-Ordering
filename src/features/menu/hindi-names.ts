@@ -306,6 +306,29 @@ export async function fillHindiNames(
   return unavailable ? { leased, stored, stopped: 'unavailable' } : { leased, stored };
 }
 
+/** How long the minute job leaves the names alone after a run that found every provider down. */
+export const HINDI_OUTAGE_PAUSE_MS = 30 * 60_000;
+// On globalThis, as the job gates are: Next can bundle this file more than once.
+const PAUSED_UNTIL = Symbol.for('menumesh.hindiNamesPausedUntil');
+const pause = globalThis as { [PAUSED_UNTIL]?: number };
+
+/**
+ * The minute job's fill of every restaurant's waiting names (docs/DECISIONS.md VPS-27). After a
+ * run that found every provider down, it leaves them alone for 30 minutes in this process: each
+ * lease writes its row, which changes the dish photo's cache version and sends Realtime, so a
+ * lasting outage would otherwise lease up to 500 names again every minute. A menu edit's fill and
+ * the daily run still try as they did before there was a minute job.
+ */
+export async function fillWaitingHindiNames(
+  admin: Admin,
+  options: Parameters<typeof fillHindiNames>[1],
+): Promise<Awaited<ReturnType<typeof fillHindiNames>> | { skipped: 'paused' }> {
+  if (Date.now() < (pause[PAUSED_UNTIL] ?? -Infinity)) return { skipped: 'paused' };
+  const result = await fillHindiNames(admin, options);
+  if (result.stopped === 'unavailable') pause[PAUSED_UNTIL] = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+  return result;
+}
+
 /**
  * Fills a restaurant's missing Hindi names once the menu action has answered. No gate: the leases
  * (menu_hindi_names_lease) keep repeated edits, and the other runs, from sending the same names.

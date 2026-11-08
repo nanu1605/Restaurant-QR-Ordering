@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acceptableHindi,
   fillHindiNames,
+  fillWaitingHindiNames,
   HINDI_NAMES_SYSTEM_PROMPT,
   queueHindiNames,
   transliterateNames,
@@ -627,6 +628,53 @@ describe('fillHindiNames', () => {
     await expect(
       fillHindiNames(admin, { lanes: 1, run, providers: [primary], fetchImpl }),
     ).rejects.toThrow('Could not store Hindi names: too slow');
+  });
+});
+
+describe('fillWaitingHindiNames', () => {
+  beforeEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('menumesh.hindiNamesPausedUntil')];
+  });
+
+  it('leaves the names alone for 30 minutes after a run that found every provider down', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
+    const { admin, calls } = fakeAdmin(() => [dish('a')]);
+    const down = vi.fn(
+      async () => new Response('busy', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+    const options = { lanes: 1, run, providers: [primary, fallback], fetchImpl: down };
+
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toMatchObject({
+      stopped: 'unavailable',
+    });
+    expect(calls('menu_hindi_names_lease')).toHaveLength(1);
+
+    // Each lease writes its row: until the pause ends, the minute job leases nothing.
+    vi.setSystemTime(new Date('2026-11-09T10:29:59Z'));
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ skipped: 'paused' });
+    expect(calls('menu_hindi_names_lease')).toHaveLength(1);
+
+    vi.setSystemTime(new Date('2026-11-09T10:30:00Z'));
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toMatchObject({
+      stopped: 'unavailable',
+    });
+    expect(calls('menu_hindi_names_lease')).toHaveLength(2);
+  });
+
+  it('sets no pause after a run that ended any other way', async () => {
+    const { admin, calls } = fakeAdmin([[dish('a')], [], [dish('b')]]);
+    const { fetchImpl } = fakeFetch(
+      completion([{ n: 0, hindi: 'डिश ए' }]),
+      completion([{ n: 0, hindi: 'डिश बी' }]),
+    );
+    const { run } = stoppableRun();
+    const options = { lanes: 1, run, providers: [primary], fetchImpl };
+
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ leased: 1, stored: 1 });
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ leased: 1, stored: 1 });
+    expect(calls('menu_hindi_names_lease')).toHaveLength(4);
   });
 });
 

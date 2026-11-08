@@ -5876,10 +5876,14 @@ review's fixes are listed after Tests.
     12 hours (review finding D3). A timeout, an unusable reply or another 4xx still counts the batch
     as tried, as it can be the names' doing, so that a batch that always fails cannot loop; a reader
     that hangs on every call therefore still sets its batches aside. A lasting outage (a revoked
-    key) has the minute job lease up to 500 waiting names a minute (5 lanes of 100), fail them, and
-    take each again once its lease has run out: a write for every lease, which changes `updated_at`
-    and fires Realtime, until the key is fixed. A pause after an outage, as the emails have after
-    refusals, would cut that.
+    key) would have had the minute job lease up to 500 waiting names a minute (5 lanes of 100), fail
+    them and take each again once its lease ran out: a write for every lease, which changes
+    `updated_at` and fires Realtime, until the key is fixed. So after a run that found every
+    provider down, the minute job leaves the names alone for 30 minutes in that process
+    (`fillWaitingHindiNames`, `HINDI_OUTAGE_PAUSE_MS`), as the emails pause after refusals: a
+    lasting outage costs one batch a lane every 30 minutes, and names are filled within about 30
+    minutes of the reader answering again. A menu edit's fill and the daily run do not pause, so
+    Vercel, which has no minute job, is as before.
 - **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
   (`src/features/announcements/email.ts`) lists the emails due 50 at a time
   (`announcement_emails_next`), lists again each round and goes on until none is left or the run
@@ -6084,7 +6088,7 @@ review's fixes are listed after Tests.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,008 tests, 60 to 66 files):**
+- **Unit (886 to 1,010 tests, 60 to 66 files):**
   - `jobs` (15, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6113,7 +6117,7 @@ review's fixes are listed after Tests.
     failed upload fails the export; a table error stops the other readers and `buildExport` ends
     only once they have, with no read after it; no timer is left on any path; `startExportJobs` runs
     one queue at a time; `parseExportClaim`, busy included.
-  - `menu-hindi-names` (10 to 39): the lease and the settle in place of the claim and the store;
+  - `menu-hindi-names` (10 to 41): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
     lease gives back its share; no batch starts once the run is over; a database error is thrown
@@ -6123,7 +6127,9 @@ review's fixes are listed after Tests.
     the fill then settles nothing and ends with one lease a lane, while a provider that runs out of
     time, sends an unusable or non-JSON reply or answers 422 after another was down still has the
     batch counted as tried; a name holding a control character or half a surrogate pair is dropped
-    and the settle never carries one, while a tab and a joiner are kept; `queueHindiNames`.
+    and the settle never carries one, while a tab and a joiner are kept; after a run that found
+    every provider down the minute job's fill leases nothing for 30 minutes, and a run that ended
+    any other way sets no pause; `queueHindiNames`.
   - `announcement-emails` (28, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in
@@ -6292,8 +6298,9 @@ spec's Hindi column).
   in a way no names can cause (no connection, or 401, 403, 408, 429 or 5xx) now settles nothing,
   leaves its leases to run out and ends the run (`stopped: 'unavailable'`); a timeout, an unusable
   reply or another 4xx still counts as tried, so a batch that always fails cannot loop. A lasting
-  outage costs up to 500 leases a minute until the key is fixed (VPS-27 Limits). (91bdc6f, notes
-  2ccc989)
+  outage then cost up to 500 leases a minute until the key was fixed, each a row write (the photo's
+  cache version, Realtime), so after such a run the minute job now leaves the names alone for 30
+  minutes (VPS-27 Limits). (91bdc6f, notes 2ccc989; the pause in a later commit)
 - **R1 · One Resend blip ended a save's run (VPS-28):** the run ended at the first unavailable
   answer, so on Vercel, which has no minute job, a save's or the daily run left the rest of the
   audience to the next save or night, where before Stop A2 the loop went on. The minute job's run

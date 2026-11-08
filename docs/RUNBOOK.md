@@ -373,9 +373,10 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   `menu_categories`. A name leased in the last 5 minutes (`name_hi_auto_lease_until` in the future)
   is being worked on, and one tried in the last 12 hours (`name_hi_auto_tried_at`) waits until the
   12 hours pass, which includes a name the model could not write. A reader that is down is no try:
-  the logs say `[hindi-names] every provider is down`, the names are leased 5 minutes at a time
-  meanwhile, and they are written within minutes of it answering again (a lasting one is usually
-  the key). To try a restaurant's names at once, clear `name_hi_auto_tried_at` and
+  the logs say `[hindi-names] every provider is down`, the minute job then leaves the names alone
+  for 30 minutes, and they are written within about 30 minutes of it answering again (a lasting
+  one is usually the key; a restart of the web container ends the pause at once). To try a
+  restaurant's names at once, clear `name_hi_auto_tried_at` and
   `name_hi_auto_lease_until` on its rows that have neither `name_hi` nor `name_hi_auto`, then run
   the minute job.
 - **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a

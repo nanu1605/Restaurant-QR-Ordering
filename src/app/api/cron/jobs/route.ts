@@ -2,7 +2,7 @@ import { after, NextResponse } from 'next/server';
 
 import { EMAIL_RUN_MS, sendAnnouncementEmails } from '@/features/announcements/email';
 import { EXPORT_RUN_MS, runExportJobs } from '@/features/closure/export-jobs';
-import { fillHindiNames, HINDI_RUN_MS } from '@/features/menu/hindi-names';
+import { fillWaitingHindiNames, HINDI_RUN_MS } from '@/features/menu/hindi-names';
 import { menuImportProviders } from '@/features/menu-import/providers';
 import { cronAuthorised } from '@/lib/cron';
 import { emailConfig } from '@/lib/email/resend';
@@ -37,7 +37,7 @@ function runner(kind: JobKind, admin: Admin): (() => Promise<unknown>) | null {
       return () => runExclusive(kind, EXPORT_RUN_MS, (run) => runExportJobs(admin, run));
     case 'hindi_names':
       if (menuImportProviders().length === 0) return null;
-      return () => runExclusive(kind, HINDI_RUN_MS, (run) => fillHindiNames(admin, { run }));
+      return () => runExclusive(kind, HINDI_RUN_MS, (run) => fillWaitingHindiNames(admin, { run }));
     case 'announcement_emails': {
       const email = emailConfig();
       if (!email) return null;

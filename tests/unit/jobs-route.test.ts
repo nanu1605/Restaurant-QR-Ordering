@@ -32,7 +32,7 @@ vi.mock('@/features/closure/export-jobs', () => ({
 }));
 vi.mock('@/features/menu/hindi-names', () => ({
   HINDI_RUN_MS: 90_000,
-  fillHindiNames: work.hindi,
+  fillWaitingHindiNames: work.hindi,
 }));
 vi.mock('@/features/announcements/email', () => ({
   EMAIL_RUN_MS: 200_000,
