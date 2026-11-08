@@ -4,10 +4,10 @@ import { NextResponse } from 'next/server';
 const version = process.env.NEXT_PUBLIC_BUILD_SHA ?? null;
 
 /**
- * Liveness: the process answers, nothing more. It never reaches the database, so a Supabase
- * outage doesn't make the web container look dead (docs/DECISIONS.md VPS-17). The container's
- * own check calls this; /api/health, which reaches the database, is for uptime monitors and
- * the deploy.
+ * Liveness: the process answers, nothing more. It never reaches the database, so it tells a web
+ * process that is down from a database that is (docs/DECISIONS.md VPS-17). The container's own
+ * check calls /api/health instead, so that a healthy container means the database answers too;
+ * this one is for local checks (pnpm docker:check).
  */
 export function GET() {
   return NextResponse.json(

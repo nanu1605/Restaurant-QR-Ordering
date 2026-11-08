@@ -13,7 +13,7 @@ test('the health check reaches the database, on the build just deployed', async 
   if (process.env.EXPECTED_VERSION) expect(health.version).toBe(process.env.EXPECTED_VERSION);
 });
 
-// The web container's own check, with no database behind it (docs/DECISIONS.md VPS-17).
+// The liveness route for local checks, with no database behind it (docs/DECISIONS.md VPS-17).
 test('the liveness check answers without the database', async ({ request }) => {
   const response = await request.get('/api/live');
   expect(response.status()).toBe(200);
