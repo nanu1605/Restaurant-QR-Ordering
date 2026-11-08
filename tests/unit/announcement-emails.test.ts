@@ -100,6 +100,29 @@ const refused = (address = 'owner@r1.test') =>
 
 type Reply = (init: RequestInit) => Response | Promise<Response>;
 
+/** Resend's own trouble, nothing to do with the email: what sendFailure calls unavailable. */
+const troubles: [string, Reply][] = [
+  [
+    'does not answer in time',
+    (init) =>
+      new Promise((_, reject) =>
+        init.signal!.addEventListener('abort', () =>
+          reject(new DOMException('This operation was aborted', 'AbortError')),
+        ),
+      ),
+  ],
+  [
+    'cannot be reached',
+    () => {
+      throw new TypeError('fetch failed');
+    },
+  ],
+  ['answers 401', () => answer(401, { name: 'missing_api_key' })],
+  ['answers 403', () => answer(403, { name: 'validation_error' })],
+  ['answers 429', () => answer(429, { name: 'rate_limit_exceeded' })],
+  ['answers 500', () => answer(500, { name: 'application_error' })],
+];
+
 /** Resend, answering each key as given and any other with an accepted email. */
 function resend(replies: Record<string, Reply> = {}, otherwise: Reply = accepted) {
   return vi.fn(async (_url: RequestInfo | URL, init: RequestInit = {}) => {
@@ -312,44 +335,79 @@ describe('sendAnnouncementEmails', () => {
     });
   });
 
-  it.each<[string, Reply]>([
-    [
-      'does not answer in time',
-      (init) =>
-        new Promise((_, reject) =>
-          init.signal!.addEventListener('abort', () =>
-            reject(new DOMException('This operation was aborted', 'AbortError')),
-          ),
-        ),
-    ],
-    [
-      'cannot be reached',
-      () => {
-        throw new TypeError('fetch failed');
-      },
-    ],
-    ['answers 401', () => answer(401, { name: 'missing_api_key' })],
-    ['answers 403', () => answer(403, { name: 'validation_error' })],
-    ['answers 429', () => answer(429, { name: 'rate_limit_exceeded' })],
-    ['answers 500', () => answer(500, { name: 'application_error' })],
-  ])('ends the run with nothing recorded when Resend %s', async (_case, reply) => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-    const { admin, rpc } = fakeDb([due('a1', 'r1'), due('a1', 'r2')]);
-    const fetchImpl = resend({}, reply);
+  it.each(troubles)(
+    'ends the minute job’s run with nothing recorded when Resend %s',
+    async (_case, reply) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      const { admin, rpc } = fakeDb([due('a1', 'r1'), due('a1', 'r2')]);
+      const fetchImpl = resend({}, reply);
 
-    const running = send(admin, fetchImpl);
-    await vi.runAllTimersAsync();
-    await expect(running).resolves.toEqual({
-      sent: 0,
-      duplicate: 0,
-      refused: 0,
-      stopped: 'unavailable',
+      // Its next run comes within a minute.
+      const running = send(admin, fetchImpl, { minuteJob: true });
+      await vi.runAllTimersAsync();
+      await expect(running).resolves.toEqual({
+        sent: 0,
+        duplicate: 0,
+        refused: 0,
+        stopped: 'unavailable',
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(rpc.mock.calls.map(([fn]) => fn)).toEqual(['announcement_emails_next']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(error).not.toHaveBeenCalled();
+    },
+  );
+
+  it('goes on past Resend’s trouble in a save or the daily run, and leaves that email due', async () => {
+    const { admin, calls } = fakeDb([due('a1', 'r1'), due('a1', 'r2'), due('a1', 'r3')]);
+    const fetchImpl = resend({
+      'announcement/a1/r1': () => answer(500, { name: 'application_error' }),
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(rpc.mock.calls.map(([fn]) => fn)).toEqual(['announcement_emails_next']);
+
+    // On Vercel no minute job comes: the others still go.
+    await expect(send(admin, fetchImpl)).resolves.toEqual({ sent: 2, duplicate: 0, refused: 0 });
+    // Asked once: it stays due, for the next run.
+    expect(keysSent(fetchImpl)).toEqual([
+      'announcement/a1/r1',
+      'announcement/a1/r2',
+      'announcement/a1/r3',
+    ]);
+    expect(calls('announcement_email_sent')).toEqual([pair('a1', 'r2'), pair('a1', 'r3')]);
+    expect(calls('announcement_email_failed')).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(error).not.toHaveBeenCalled();
   });
+
+  it.each(troubles)(
+    'ends a save’s or the daily run when Resend %s three times since an email last went',
+    async (_case, reply) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      const { admin, calls } = fakeDb(
+        ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map((r) => due('a1', r)),
+      );
+      // Trouble, a send that starts the count again, then trouble three times.
+      const fetchImpl = resend(
+        { 'announcement/a1/r2': accepted, 'announcement/a1/r6': accepted },
+        reply,
+      );
+
+      const running = send(admin, fetchImpl);
+      await vi.runAllTimersAsync();
+      await expect(running).resolves.toEqual({
+        sent: 1,
+        duplicate: 0,
+        refused: 0,
+        stopped: 'unavailable',
+      });
+      expect(keysSent(fetchImpl)).toEqual(
+        ['r1', 'r2', 'r3', 'r4', 'r5'].map((r) => `announcement/a1/${r}`),
+      );
+      expect(calls('announcement_email_sent')).toEqual([pair('a1', 'r2')]);
+      expect(calls('announcement_email_failed')).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(4);
+      expect(error).not.toHaveBeenCalled();
+    },
+  );
 
   it('ends the run when a send cannot be recorded, for the next run to record', async () => {
     const { admin } = fakeDb([due('a1', 'r1'), due('a1', 'r2')], {

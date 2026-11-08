@@ -45,6 +45,8 @@ const ROUND = 50;
 /** Refusals in a row that point at the setup (EMAIL_FROM) rather than at addresses. */
 const REFUSALS_TO_PAUSE = 3;
 const PAUSE_MS = 30 * 60_000;
+/** Unavailable answers since an email last went that end a save's or the daily run. */
+const UNAVAILABLE_TO_STOP = 3;
 
 // Until when the emails wait after those refusals, in this process. On globalThis, as the job
 // gates are: Next can bundle this file more than once.
@@ -86,8 +88,10 @@ export type AnnouncementEmailsRun =
  * - refused (400, 422: an address Resend won't take): set aside for 20 hours, and the others go
  *   on. Three in a row point at the setup (EMAIL_FROM) instead: the run ends and the emails wait
  *   30 minutes in this process, rather than setting the whole audience aside;
- * - anything else (no answer, 401, 403, 429, 5xx): the run ends with nothing recorded, for the
- *   next run to send.
+ * - anything else (no answer, 401, 403, 429, 5xx): nothing is recorded, for the next run to send.
+ *   The minute job's run ends there, as its next run comes within a minute. A save's or the daily
+ *   run goes on with the others, as on Vercel no minute job comes, and ends at the third such
+ *   answer since an email last went.
  * The minute job (minuteJob) takes only announcements that have started or whose emails have
  * begun. Throws when the list can't be read.
  */
@@ -109,6 +113,7 @@ export async function sendAnnouncementEmails(
   // What this run has sent or asked for: an email Resend was still busy with stays due.
   const tried = new Set<string>();
   let refusedInARow = 0;
+  let unavailableInARow = 0;
   let lastStart = -Infinity;
 
   while (!stopped && !run.stopping()) {
@@ -132,9 +137,22 @@ export async function sendAnnouncementEmails(
       const { outcome, error: sendError } = await send(config, email, appUrl);
       if (outcome === 'in_flight') continue;
       if (outcome === 'unavailable') {
-        console.warn('[announcements] Resend unavailable, the next run sends the rest', sendError);
-        stopped = 'unavailable';
-        break;
+        unavailableInARow += 1;
+        if (minuteJob || unavailableInARow >= UNAVAILABLE_TO_STOP) {
+          console.warn(
+            '[announcements] Resend unavailable, the next run sends the rest',
+            sendError,
+          );
+          stopped = 'unavailable';
+          break;
+        }
+        // Already tried, so this run doesn't ask again.
+        console.warn(
+          '[announcements] Resend unavailable, the next run sends',
+          pairOf(email),
+          sendError,
+        );
+        continue;
       }
       const pair = {
         p_announcement_id: email.announcement_id,
@@ -183,6 +201,7 @@ export async function sendAnnouncementEmails(
       }
       counts[outcome === 'sent' ? 'sent' : 'duplicate'] += 1;
       refusedInARow = 0;
+      unavailableInARow = 0;
     }
   }
 

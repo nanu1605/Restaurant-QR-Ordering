@@ -5864,8 +5864,8 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `concurrent_idempotent_requests` is in flight: the pair stays due and is not asked again in this
     run. Any other 409 means Resend holds an email for the key and sends no other, so the pair is
     recorded as sent and counted as a duplicate. A 400 or 422 is refused (an address Resend will not
-    take). Anything else (no answer, 401, 403, 408, 429, 5xx) is unavailable: the run ends with
-    nothing recorded and the next minute tries again. The errors page lists a third 409,
+    take). Anything else (no answer, 401, 403, 408, 429, 5xx) is unavailable: nothing is recorded,
+    and the pair is left for the next run. The errors page lists a third 409,
     `resource_locked`, for updates rather than sends; this rule would count it as sent. Nothing in
     the documentation says whether a failed request uses up its key. The name is read from the first
     300 characters of Resend's answer, which is what `resend.ts` keeps: were it ever cut off, a pair
@@ -5881,11 +5881,15 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     30-minute window sets aside three more pairs for 20 hours, so about 120 can be set aside at
     once. After fixing `EMAIL_FROM` the table is cleared (RUNBOOK). A refusal counts only once it is
     recorded, and the pause runs on the clock, not on the `now` option, which only sets `p_at`.
-  - **Trouble ends the run.** An unavailable answer logs a warning and ends it; a record that fails
-    (a sent pair or a refusal) ends it with `stopped: 'database'`, and the next run sends the pair
-    again under its key; a list that cannot be read throws. A run that ends at its budget or at a
-    stop reports no reason (`stopped` has none for it), so that a daily step cut short with emails
-    left looks complete in `cron_runs`.
+  - **Trouble ends the run.** An unavailable answer logs a warning and ends the minute job's run,
+    whose next run comes within a minute. A save's or the daily run goes on with the others, not
+    asking that pair again, and ends at the third unavailable answer since an email last went
+    (`stopped: 'unavailable'`): on Vercel no minute job comes, and ending at the first left the
+    rest of the audience to the next save or the next night (review finding R1). A record that
+    fails (a sent pair or a refusal) ends it with `stopped: 'database'`, and the next run sends the
+    pair again under its key; a list that cannot be read throws. A run that ends at its budget or
+    at a stop reports no reason (`stopped` has none for it), and nor does one that went on past an
+    unavailable answer, so that a daily step that left emails due looks complete in `cron_runs`.
   - **What the minute job takes** (the owner's answer, 2026-11-08). With `p_minute_job` on,
     `announcement_emails_next` takes an announcement that has started (`starts_at <= p_at`) or one
     with an `announcement_emails` row already. So a restaurant that joins the audience of a running
@@ -6044,7 +6048,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 982 tests, 60 to 65 files):**
+- **Unit (886 to 989 tests, 60 to 65 files):**
   - `jobs` (12, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; an extra run that throws is logged and the first result kept; nothing starts
@@ -6076,15 +6080,16 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     once every lane has ended; the signal's reason, not a provider error, comes out of an aborted
     call, no other provider is asked, and a signal that never aborts keeps no listener;
     `queueHindiNames`.
-  - `announcement-emails` (21, new, as the reminders' test): each email goes in turn under its key
+  - `announcement-emails` (28, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in
     flight is left for the next run, another is recorded; a refusal is set aside and the others go
-    on; three in a row stop the run and pause the kind for 30 minutes; unavailable answers (a
-    timeout, 401, 403, 429, 5xx) end the run with nothing recorded; a record that fails ends it; the
-    list is read again each round; the minute job asks for its own emails and an idle run logs
-    nothing; `sendFailure`'s cases; and the save path waits for a run going, then lists by the
-    save's rule.
+    on; three in a row stop the run and pause the kind for 30 minutes; an unavailable answer (a
+    timeout, no connection, 401, 403, 429, 5xx) ends the minute job's run with nothing recorded,
+    while a save's or the daily run goes on past it, leaves that pair due, and ends at the third
+    since an email last went, each kind of answer; a record that fails ends it; the list is read
+    again each round; the minute job asks for its own emails and an idle run logs nothing;
+    `sendFailure`'s cases; and the save path waits for a run going, then lists by the save's rule.
   - `close-account` (13): the guard cases call `buildExport` with a claim and a run and expect
     `restaurant_export_fail` with "too big to build in memory", not `restaurant_export_finish`.
   - The menu reader: `menu-import-read-page` (15 to 25: the stop and its two texts, with another
