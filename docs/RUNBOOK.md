@@ -177,6 +177,20 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     closes: the answers still in flight, the idle ones and the sockets an upgrade request left. A
     compose `command:` replaces it, and every stop under traffic then runs the full 25 s and ends in
     the kill.
+  - A stop with job work in flight takes seconds, not as long as the work (VPS-25): at `SIGTERM`
+    the jobs claim nothing more, an export being built goes back to the queue, model calls are
+    aborted and an email being sent is finished. Only the upload of an export's ZIP cannot be
+    aborted, and the stop waits for it. What a kill cuts off is taken up again by its lease: an
+    export within 90 s, Hindi names within 5 minutes, emails within a minute. This depends on the
+    server adding its own `SIGTERM` listener before the app starts, so the rehearsal must run
+    `docker stop` with an export building (exit 143 within seconds, the row `queued` again with
+    `attempts` 0) and `docker kill` with one (once its lease has run out, or `lease_until` is set
+    to the past, the minute job builds it: the row ends `ready` with `attempts` 1).
+  - The scheduler's every-minute line (VPS-29): `GET /api/cron/jobs` on `http://web:3000` with the
+    `CRON_SECRET` bearer and `wget -T 25` (the route answers at once), then a heartbeat ping when
+    the call succeeds. `scheduler-staging` calls `http://web-staging:3000` under staging's own
+    secret. Never through Cloudflare. VPS-29 has the line, and the rehearsal must check that the
+    job's shell sees `$CRON_SECRET`.
   - 1536m of memory for `web` and 768m for `web-staging`, with `NODE_OPTIONS=--max-old-space-size`
     at about 65% of it (1000 and 500). The data export's size limit follows the heap: Node's limit
     in the container is 1096 MiB on `web` and 548 MiB on `web-staging`, so `web` allows the 512 MiB
@@ -325,6 +339,48 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   with `job = 'digest'` say what happened (`skipped` when Resend isn't set up). Run it by hand
   with `curl -H "Authorization: Bearer <CRON_SECRET>" https://<domain>/api/cron/digest`; it goes
   out once a day, so a second run answers "already sent".
+- **A download stays on Preparing** (Settings, or the restaurant's Account tab; VPS-26): exports
+  wait in a queue that builds one at a time. What waits, in the SQL editor:
+  ```sql
+  select id, restaurant_id, status, attempts, lease_until, last_error, created_at
+  from restaurant_exports where status in ('queued', 'building') order by created_at;
+  ```
+  `queued` is waiting its turn: a build takes seconds, so a queue clears fast. `building` with a
+  `lease_until` in the future is running. A `lease_until` in the past means the build was cut off (a
+  deploy, a crash): the next claim, from the minute job or the next request, queues it again within
+  a minute, and `attempts` counts the cuts. Three cuts (`last_error` says "the build was cut off")
+  usually mean the server ran out of memory: look at the web container's restarts. A request still
+  queued or building 15 minutes after it was made shows as failed on the card, and the owner may ask
+  again. To build what waits now, run the minute job (below). To give up on one:
+  ```sql
+  update restaurant_exports set status = 'failed', lease_until = null, finished_at = now(),
+    last_error = 'stopped by hand' where id = '<id>';
+  ```
+- **Hindi names are missing** (guests see the typed name, which is safe; HN-8, VPS-27): they are
+  written after a menu edit, by the daily run and by the minute job, and only where a menu reader
+  key (`MENU_IMPORT_API_KEY` or the fallback key) is set. How many wait:
+  `select count(*) from menu_items where name_hi is null and name_hi_auto is null;`, and the same on
+  `menu_categories`. A name leased in the last 5 minutes (`name_hi_auto_lease_until` in the future)
+  is being worked on, and one tried in the last 12 hours (`name_hi_auto_tried_at`) waits until the
+  12 hours pass, which includes a name the model could not write. To try a restaurant's names at
+  once, clear `name_hi_auto_tried_at` and `name_hi_auto_lease_until` on its rows that have neither
+  `name_hi` nor `name_hi_auto`, then run the minute job.
+- **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a
+  minute, so look at why it stopped. The `[announcements]` lines in the logs say: Resend unavailable
+  (it tries again each minute), a pair refused, or "three emails refused in a row, so none goes for
+  30 minutes: check EMAIL_FROM". A refused pair is in `announcement_email_failures` (with Resend's
+  answer and `tries`) and is left alone for 20 hours, and `email_log` (`/super` → Health) shows
+  every send. After fixing `EMAIL_FROM` or the sending domain, clear the refusals with
+  `delete from public.announcement_email_failures;` and run the minute job.
+- **Run the minute job by hand** (VPS-29), for exports, Hindi names or announcement emails that
+  wait: `curl -H "Authorization: Bearer <CRON_SECRET>" "https://<domain>/api/cron/jobs"`. It answers
+  at once, `{"ok":true,"started":[…]}`, with the kinds it started (an empty list means nothing
+  waits, or this server can't do it: no menu reader key, no Resend), and the work goes on after the
+  answer: watch the logs for `[closure] export ready`, `[hindi-names]` and `[announcements] emails`.
+  `?kinds=data_exports` (or `hindi_names`, `announcement_emails`, several with commas) keeps it to
+  those kinds; a wrong secret is 401, an unknown kind 400, and `{"ok":false}` with 500 means it
+  could not ask the database. It writes no `cron_runs` rows, so System health doesn't show it: the
+  scheduler's heartbeat monitor is its alarm.
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.
@@ -370,11 +426,13 @@ restaurant → **Account**; SA-93 to SA-100).
 
 1. **A copy first, if they want one.** Prepare a download on the Account tab and copy its link for
    them (24 hours, and anyone with the link can open it). It works during the hold too, but they
-   can't log in once it closes, so they can't do it themselves after that. If the download fails
-   every time, look for `[closure] export failed … too big to build in memory` in Sentry or the
-   logs: the restaurant is past what one in-memory build allows (docs/DECISIONS.md SA-93 and
-   VPS-6, about 37,800 bills on the VPS's `web` and about 20,200 on staging, where the limit follows
-   the web container's heap). Tell the owner the copy needs a developer.
+   can't log in once it closes, so they can't do it themselves after that. One asked for just
+   before a deploy or a restart carries on by itself a minute or two later (the queue builds it
+   again, VPS-26); if it stays on Preparing, see Incidents. If the download fails every time, look
+   for `[closure] export failed … too big to build in memory` in Sentry or the logs: the restaurant
+   is past what one in-memory build allows (docs/DECISIONS.md SA-93 and VPS-6, about 37,800 bills
+   on the VPS's `web` and about 20,200 on staging, where the limit follows the web container's
+   heap). Tell the owner the copy needs a developer.
 2. **Close account:** a reason and the typed restaurant code. Anything that could still charge is
    cancelled first: if Razorpay refuses, nothing closes and it says so; try again in a minute. If
    it says autopay changed while closing, the owner set it up just then: close again. A refund for

@@ -226,6 +226,7 @@ tableorder/
 │  │  └─ api/
 │  │     ├─ webhooks/razorpay/route.ts
 │  │     ├─ cron/daily/route.ts    # Phase 8 reminders
+│  │     ├─ cron/jobs/route.ts     # every minute: waiting exports, Hindi names, announcement emails
 │  │     └─ health/route.ts
 │  ├─ components/
 │  │  ├─ ui/                  # shadcn components
@@ -396,7 +397,7 @@ Read by the restaurant's owner and platform admins; written only by `admin_allow
 
 Primary key (kind, value): a value is claimed once.
 
-**`announcements`** (docs/DECISIONS.md SA-82, SA-83; settings.manage, through functions only): `title`, `body`, `title_hi` and `body_hi` (both or neither), `panels` (`admin`, `worker`), the audience as one of `plan_ids`, `cities` or `restaurant_ids` (none: everyone), `starts_at`, `ends_at` (null: no end), `ended_at` (ended early), `dismissible`, `email`, `created_by`. **`announcement_dismissals`** (announcement, login) and **`announcement_emails`** (announcement, restaurant: emailed once) go with it.
+**`announcements`** (docs/DECISIONS.md SA-82, SA-83; settings.manage, through functions only): `title`, `body`, `title_hi` and `body_hi` (both or neither), `panels` (`admin`, `worker`), the audience as one of `plan_ids`, `cities` or `restaurant_ids` (none: everyone), `starts_at`, `ends_at` (null: no end), `ended_at` (ended early), `dismissible`, `email`, `created_by`. **`announcement_dismissals`** (announcement, login), **`announcement_emails`** (announcement, restaurant: emailed once) and **`announcement_email_failures`** (announcement, restaurant: an email Resend refused, with its answer and how often; set aside for 20 hours, docs/DECISIONS.md VPS-28) go with it.
 
 ### 8.2 Restaurants and members
 
@@ -479,7 +480,7 @@ QR encodes `${NEXT_PUBLIC_APP_URL}/t/${qr_token}`.
 
 ### 8.4 Menu
 
-**`menu_categories`**: `name`, `name_hi` (optional Hindi name, ≤ 60 chars), `name_hi_auto` (written by the app, ≤ 60 chars), `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
+**`menu_categories`**: `name`, `name_hi` (optional Hindi name, ≤ 60 chars), `name_hi_auto` (written by the app, ≤ 60 chars), `name_hi_auto_tried_at` and `name_hi_auto_lease_until` (as on `menu_items`), `sort_order`, `is_active`, `source` enum `default` | `manual` | `import` (default `manual`).
 
 Every new restaurant is created with a set of **default categories** so the menu is never an empty screen (§13.3 Menu). They are ordinary rows — the owner can rename, reorder, hide or delete any of them, and add their own at any time. Deleting a category with items asks where to move the items (another category) or hides them.
 
@@ -502,6 +503,8 @@ Every new restaurant is created with a set of **default categories** so the menu
 | name | text | |
 | name_hi | text null | ≤ 80 chars — optional Hindi name, shown on the Hindi customer menu |
 | name_hi_auto | text null | ≤ 80 chars — the name sounded out in Devanagari by the app, used when `name_hi` is empty; cleared when the name changes |
+| name_hi_auto_tried_at | timestamptz null | when the app last handled the name, whether or not it wrote one; a name is tried again after 12 hours; cleared when the name changes |
+| name_hi_auto_lease_until | timestamptz null | set for 5 minutes while a fill works on the name, so that overlapping fills take different names; cleared when the name is settled or changes (docs/DECISIONS.md VPS-27) |
 | description | text null | ≤ 300 chars |
 | price_paise | bigint | used when the item has no variants |
 | food_type | enum `veg` \| `non_veg` \| `egg` | |
@@ -688,9 +691,9 @@ Must log at least: dish removal (who, role, reason), whole-order deletion, waite
 - **`metrics_subscription_daily`** (day, restaurant_id): each restaurant's subscription state (`private.subscription_state`: closed, suspended, read_only, trial, payment_failed, paid, cancelled), plan, cycle, source, MRR (`private.restaurant_mrr_paise`), autopay, cancel at period end and dates, as they stood at the end of an India day; written by `platform_metrics_snapshot`, never rebuilt.
 - **`metrics_usage_daily`** (restaurant_id, business_day): orders by who placed them and by hour, items, bills, GMV (bill totals with the restaurant's taxes), discount, tax, payments by mode, average table time and service requests, counted like the restaurant's own reports, and for feature adoption, bills for a table a waiter had, bills paid in more than one payment, orders with an add-on and orders from the Hindi menu; the current business day is never stored. One function, `private.metrics_usage_rows`, counts a day for storing and live (docs/DECISIONS.md SA-61). Recounted for the last four days by the daily cron; past days by `platform_metrics_backfill_usage` (`pnpm metrics:backfill`).
 - **`metrics_platform_daily`** (day): signups started and completed, restaurants onboarded by the team, leads; website visitors from PostHog later (null until then).
-- **`cron_runs`**: each step of the daily cron, with its result.
+- **`cron_runs`**: each step of the daily cron and of the daily digest, with its result. The every-minute jobs route writes none (docs/DECISIONS.md VPS-25).
 - **`restaurant_closures`** (restaurant_id): while a restaurant is closed, and for good after its removal: closed_at, closed_by, removal_due_at, removed_at, and what Reopen puts back (prior_status, prior_reason, member_ids). Read only through `platform_closure` (docs/DECISIONS.md SA-94, SA-97).
-- **`restaurant_exports`**: data exports: restaurant, who asked, status (building, ready, failed), size, created_at, finished_at, expires_at; the file is `restaurant-exports/<restaurant_id>/<id>.zip` in a private bucket. Read only through `admin_data_export` and `platform_data_export` (docs/DECISIONS.md SA-93).
+- **`restaurant_exports`**: data exports: restaurant, who asked, status (queued, building, ready, failed), size, created_at, finished_at, expires_at, and for the jobs that build them `attempts` (builds cut off), `claim_id` (the claim that holds a building export), `lease_until` (set while it builds) and `last_error` (the server's, never shown); at most one `building` row on the whole platform. The file is `restaurant-exports/<restaurant_id>/<id>.zip` in a private bucket. Read only through `admin_data_export` and `platform_data_export` (docs/DECISIONS.md SA-93); built through `restaurant_export_claim`, `restaurant_export_heartbeat`, `restaurant_export_complete`, `restaurant_export_fail` and `restaurant_export_release`, which only the service role may call (VPS-26).
 - **`email_log`**: one row per email sent through Resend, kept 30 days: kind, keyed hashes of the addresses, status (sent, failed, already sent, bounced, marked as spam), Resend's id, HTTP status and error; written by the service role (`sendEmail`, Resend's webhook through `email_log_record_event`) and read only through `platform_system` and `platform_email_sends` (docs/DECISIONS.md SA-87, SA-88).
 - **`platform_saved_views`**: a platform admin's saved list views (owner, page, name, query, shared); written through `platform_save_view` and `platform_delete_view` (docs/DECISIONS.md SA-24).
 - **`plan_limit_events`**: refusals because of the plan (tables, staff or a feature), recorded by the server action through `member_record_plan_limit`.
@@ -1252,7 +1255,7 @@ Platform admin records a manual payment (bank transfer/cash/UPI/cheque): amount,
 
 ### 14.6 Reminders and banners
 
-- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. It first takes the super-admin snapshots (§8.9 metrics), before signups are deleted, and records every step in `cron_runs`. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`). After the reminders, it emails the owners for announcements whose first day it is (docs/DECISIONS.md SA-83), it deletes email log rows older than 30 days (SA-87), it removes the personal data of accounts closed for 30 days (SA-97), and then it deletes data export files past their link's 24 hours or made before that removal (SA-93).
+- Daily cron (`/api/cron/daily`, Vercel Cron or Supabase scheduled job, protected by `CRON_SECRET`): email owners for trial ending in 3 days / 1 day, payment failed (daily during grace), access restricted. It first takes the super-admin snapshots (§8.9 metrics), before signups are deleted, and records every step in `cron_runs`. The same cron writes automatic Hindi names that menu edits left missing, deletes website signups older than a week (§8.1 `site_signups`), deletes password reset requests older than a day (§8.1 `password_resets`), and deletes storefront photos of signups that never finished, after a week (§8.2 `storefront_photo_path`). After the reminders, it emails the owners for announcements whose first day it is (docs/DECISIONS.md SA-83), it deletes email log rows older than 30 days (SA-87), it removes the personal data of accounts closed for 30 days (SA-97), and then it deletes data export files past their link's 24 hours or made before that removal (SA-93). Once the app runs on the VPS, the scheduler also calls `/api/cron/jobs` every minute, with the same bearer (docs/DECISIONS.md VPS-25, VPS-29): it builds data exports that wait, writes the Hindi names that still wait, and sends the emails of announcements that have started or whose emails have begun, so that work a restart cut off carries on within minutes. It writes no `cron_runs` rows.
 - Admin banners based on `restaurant_access().warning`: "Your trial ends in 3 days — Choose a plan", "Payment failed. Update payment by 18 Sep to keep ordering active", "Ordering is paused because the subscription has lapsed".
 - All data is retained when access is read-only; paying restores full access immediately.
 
@@ -1582,7 +1585,7 @@ Acceptance:
 | Region | Mumbai for Supabase; Vercel functions region closest to Mumbai |
 | Domains | `app.<domain>` for the app; QR codes use `NEXT_PUBLIC_APP_URL` — choose the final domain **before printing QR codes for real restaurants** |
 | Environments | local → staging → production, separate keys everywhere |
-| Cron | Vercel Cron (or Supabase scheduled function) → `/api/cron/daily` |
+| Cron | Vercel Cron (or Supabase scheduled function) → `/api/cron/daily` today; after the move to the VPS, a scheduler container calls `/api/cron/daily`, `/api/cron/digest` and, every minute, `/api/cron/jobs` (docs/DECISIONS.md VPS-1, VPS-24, VPS-29) |
 | Email | Resend with verified sending domain |
 
 ---
@@ -1594,7 +1597,7 @@ Typing 150 menu items is the single biggest obstacle to onboarding a restaurant,
 ### 20A.1 Flow
 
 1. **Upload** — owner or platform admin uploads 1–10 images (JPG/PNG/HEIC) or a PDF from the Menu page. Client-side: resize the long edge to ~1600 px, convert to JPEG at ~85% quality, and reject anything under 800 px wide with "This photo is too small to read. Take a closer photo of one page at a time." Files go to the private `menu-imports` Storage bucket; a `menu_imports` row is created with status `uploaded`.
-2. **Extract** — a server action processes **one page per request** (keeps each call well inside function timeouts), updating the row as it goes; the UI polls for progress ("Reading page 2 of 4…"). Each page is sent to the Anthropic API as a base64 image with the extraction prompt (§20A.2). Results from all pages are merged.
+2. **Extract** — a server action processes **one page per request** (keeps each call well inside function timeouts), updating the row as it goes; the UI polls for progress ("Reading page 2 of 4…"). Each page is sent to the Anthropic API as a base64 image with the extraction prompt (§20A.2). Results from all pages are merged. If the menu reader does not answer for a page, or the page's photo cannot be fetched, the reading stops on that page and offers Try again, which reads only that page; a page that fails a second time is left out and the reading goes on, so each page gets two tries (docs/DECISIONS.md VPS-5, VPS-30). A page the reader answered for but could not read, and a photo that never uploaded, do not stop the reading.
 3. **Review** — status becomes `review` and the owner lands on an editable screen (§20A.4). Nothing has been written to the menu yet.
 4. **Commit** — on "Import menu", a single transaction creates categories and items (§20A.5). Status becomes `imported`, with counts stored.
 5. Photos are deleted from Storage 7 days after the import completes (a cron cleanup), since they are only needed for review.

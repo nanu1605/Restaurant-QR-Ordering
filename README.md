@@ -178,8 +178,9 @@ The reader is any OpenAI-compatible `/chat/completions` API. Set in `.env.local`
 | `MENU_IMPORT_USD_INR`           | `96`                                     |
 
 The same keys write the automatic Hindi dish and category names guests see on the Hindi menu
-(docs/DECISIONS.md HN-5 to HN-8), after menu edits and in the daily cron; without them, names
-the owner gave no Hindi name stay as typed. With neither key set, the Import menu page offers
+(docs/DECISIONS.md HN-5 to HN-8, VPS-27), after menu edits, in the daily cron and, on the VPS, in
+the every-minute job (`/api/cron/jobs`, below); without them, names the owner gave no Hindi name
+stay as typed. With neither key set, the Import menu page offers
 CSV only. A page costs about ₹0.30 with the
 default model; super-admin shows each import's tokens and cost. Five photo imports a day per
 restaurant. Photos are deleted 7 days after an import ends by `/api/cron/daily`, which needs
@@ -247,6 +248,16 @@ Run it by hand with `curl -H "Authorization: Bearer <CRON_SECRET>" http://localh
 A second cron, `/api/cron/digest` at 08:45 India time, emails the platform team yesterday's
 numbers and today's Needs attention counts, once a day (docs/DECISIONS.md SA-31).
 With a real key it emails the addresses in your local database.
+
+A third route, `/api/cron/jobs`, is the every-minute job (docs/DECISIONS.md VPS-25, VPS-29). It
+builds data exports that wait, writes the Hindi names that still wait and sends the emails of
+announcements that have started, so that work a restart cut off carries on within a minute or two.
+The scheduler on the VPS calls it; on Vercel nothing does, and the `after()` work and the daily
+cron do it as before. It takes the same `CRON_SECRET` bearer, answers at once with the kinds it
+started (`data_exports`, `hindi_names`, `announcement_emails`), and `?kinds=` keeps it to some of
+them. Run it by hand with
+`curl -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/cron/jobs?kinds=data_exports"`.
+It works on every restaurant in your local database, so always name a kind.
 
 Every email is logged for `/super` → Health (docs/DECISIONS.md SA-87), with the addresses only as
 keyed hashes. Optional for that page: `RESEND_WEBHOOK_SECRET` (Resend's bounce and spam reports to

@@ -1937,22 +1937,25 @@ On staging the owner asked that dishes without a Hindi name be converted too, wh
   in the prompt, and a call only ever carries one restaurant's names, so the worst a crafted
   name can do is give its own restaurant odd Hindi names. Without a key nothing is written and
   guests see the typed names, as before.
-- **HN-7 · Stale names:** a trigger clears `name_hi_auto` (and the attempt time below) whenever
-  `name` changes, by any path (form, rename, import), so no admin function changed.
-  `menu_set_hindi_names` stores a name only while the row still has the name it was made from
-  and no automatic name, so a rename during the call drops the stale result and repeats are
-  harmless. Claiming and storing bump `updated_at`, which is also the dish photo's cache
-  version: a dish's photo is fetched again after a fill.
+- **HN-7 · Stale names:** a trigger clears `name_hi_auto` (and the attempt time below, and the
+  lease since VPS-27) whenever `name` changes, by any path (form, rename, import), so no admin
+  function changed. `menu_set_hindi_names` (`menu_hindi_names_settle` since VPS-27) stores a name
+  only while the row still has the name it was made from and no automatic name, so a rename during
+  the call drops the stale result and repeats are harmless. Leasing and settling (claiming and
+  storing before VPS-27) bump `updated_at`, which is also the dish photo's cache version: a dish's
+  photo is fetched again after a fill.
 - **HN-8 · When:** after every menu action that can leave a name missing (add or rename a
   category, the suggested sets, save a dish, commit an import), `after()` fills the whole
   restaurant's missing names (up to 300) once the response is sent, so the first edit after
   this release also fills the existing menu. The daily cron sweeps every restaurant (up to 500,
-  five calls at a time) for the rest: default categories of new restaurants and failed calls.
-  `menu_hindi_names_claim` hands out names not tried in the last 12 hours, never-tried first,
-  and stamps `name_hi_auto_tried_at`. So repeated or overlapping edits don't resend names (the
-  cost of a fill is bounded by new or renamed names, not by how often a manager saves), and a
-  name the model can't write (digits only, emoji) waits for the next daily sweep instead of
-  holding the front of the list.
+  five calls at a time) for the rest: default categories of new restaurants and failed calls; on
+  the VPS the every-minute job fills what waits too (VPS-27). `menu_hindi_names_claim` handed out
+  names not tried in the last 12 hours, never-tried first, and stamped `name_hi_auto_tried_at`;
+  VPS-27's lease supersedes it: `menu_hindi_names_lease` hands out the same names but leaves
+  leased ones, and a name is stamped when its batch is settled. So repeated or overlapping edits
+  don't resend names (the cost of a fill is bounded by new or renamed names, not by how often a
+  manager saves), and a name the model can't write (digits only, emoji) waits 12 hours instead of
+  holding the front of the list, for the next daily sweep or the minute job.
 
 ### Review fixes (automatic Hindi names)
 
@@ -1974,10 +1977,19 @@ name even on a deployment without import keys, where nothing breaks.
   trims, skips an automatic name already there, a stale name, a blank or over-long one and a
   wrong kind; price and visibility changes keep the name, renames clear it and its stamp; the
   guest menu and orders page send the automatic name, and the owner's wins.
+- **pgTAP (`691_hindi_names_lease`, VPS-27):** only service_role may lease or settle, and settling
+  takes only a list; leasing returns one restaurant's names (or, with none given, the first
+  waiting restaurant's), categories before dishes, never-tried first, within the limit, for 5
+  minutes and without touching the attempt time; it passes over names with a Hindi name, tried in
+  the last 12 hours or leased, and takes a name again once its lease has run out; settling stores
+  trimmed names, counts one the model did not write as tried, clears the lease and skips renamed
+  names, names with an automatic name and blank or over-long ones; a rename clears the name, its
+  stamp and its lease; an owner's name typed after the lease stays the owner's; the old claim
+  leaves leased names alone; what waits is true and false by the same rules.
 - **Unit:** reply checks (one line of Devanagari, no Latin letters, length); numbers mapped
   back; unusable replies dropped and the fallback asked; a refused `response_format` retried
-  without it; 100 names a call; never two restaurants in one call; storing only usable names;
-  nothing without a provider.
+  without it; 100 names a call; never two restaurants in one call; each batch leased, then
+  settled (VPS-27), storing only the usable names; nothing without a provider.
 - **E2E:** an owner saves "Masala Chai" with no Hindi name; it gets `मसाला चाय`, tagged
   "(auto)" in the editor and offered as the field's placeholder; a rename writes a new one,
   which a guest sees on the Hindi menu. The mock knows only a few words, so other tests' dishes
@@ -3384,7 +3396,8 @@ stay at 13g, since nobody else gets `/super` before then.
   current business day is never stored. `pnpm metrics:backfill` fills the past once per
   environment.
 - **SA-11 · Cron log:** every daily step writes a `cron_runs` row (ok, the result or error), from
-  the route itself; a failed log write doesn't fail the step.
+  the route itself; a failed log write doesn't fail the step. The every-minute jobs route writes
+  none (VPS-25).
 - **SA-12 · Acquisition channel:** `restaurants.acquisition_channel`, set in SQL by signup
   (`website`, or `website_lead` when a demo request has the same mobile) and asked, required, by
   the onboarding wizard (every channel but self-signup). Scripts leave it null (unknown).
@@ -4165,9 +4178,11 @@ stay at 13g, since nobody else gets `/super` before then.
   restaurant in the audience is emailed once (`announcement_emails`), to its active owners' own
   addresses and the restaurant's email, as reminders are, on its first day (India): right after
   saving once that day has come, otherwise by that day's daily run (03:00), which can be before
-  the banner shows. A restaurant that joins the audience while it runs is emailed by the next save
-  or run. English only: the title, its paragraphs and a link to the admin panel. One email at a
-  time: the run sends them after the reminders.
+  the banner shows. A restaurant that joins the audience while it runs (a new signup, a change of
+  plan or city) is emailed within a minute, by the every-minute job (the owner's choice,
+  2026-11-08, VPS-28); before, it waited for the next save or run. English only: the title, its
+  paragraphs and a link to the admin panel. One email at a time, in runs that the next run resumes
+  (VPS-28): the daily run sends them after the reminders.
 - **SA-84 · The standee tracker:** one record per restaurant (owner's choice, 2026-10-15; a
   reprint edits it): how many (its active tables by default, at least one), the day each step was
   done (printed, dispatched, delivered, installed; India days, not after today, each on or after
@@ -4247,11 +4262,13 @@ stay at 13g, since nobody else gets `/super` before then.
   or internal notes. "Invoices" are `bills`: MenuMesh issues none of its own (§14.7). The owner asks
   in Settings (Download my data, never a support session) and the team on a restaurant's Account tab
   (restaurants.close, and also after closing); both are audited as `restaurant.data_exported`, at
-  most one an hour, whatever the plan or subscription state. `after()` builds it under the page's
-  5-minute limit: `allRows` reads through the service role a page at a time until an empty page,
-  compressed with `node:zlib` by a small writer (`lib/zip.ts`, checked with Python's zipfile and
-  Windows), into the private `restaurant-exports` bucket with no storage policies. A build that dies
-  reads as failed after 15 minutes, and a failure can be retried at once. The link is a signed URL
+  most one an hour, whatever the plan or subscription state. The request queues the export and
+  `after()` runs the export queue under the page's 5-minute limit, one build at a time (VPS-26):
+  `allRows` reads through the service role a page at a time until an empty page, compressed with
+  `node:zlib` by a small writer (`lib/zip.ts`, checked with Python's zipfile and Windows), into the
+  private `restaurant-exports` bucket with no storage policies. A build that is cut off is built
+  again within a minute or two; one still not finished 15 minutes after its request reads as
+  failed, and a failure can be retried at once. The link is a signed URL
   that ends 24 hours after the build, signed when a page shows it, so whoever holds it can open it:
   the page says so, and refreshes when it ends (timed by the server's count of seconds left, from
   when the tab first had that link, by a clock that only counts up: a device's time can be off, and
@@ -4262,7 +4279,7 @@ stay at 13g, since nobody else gets `/super` before then.
   passes the limit, half the heap or 512 MiB, whichever is less (about 37,800 bills on the VPS's
   web, a year at 100 a day, whose ZIP would be about 15 MiB, inside the bucket's 50 MiB). The log
   names the counts, and past that the export needs streaming (VPS-6). On the VPS nothing enforces
-  the 5 minutes, and a restart cuts a build until it becomes a restartable job (VPS-22).
+  the 5 minutes, and a restart cuts a build, which the queue then builds again (VPS-22, VPS-26).
 - **SA-94 · Closing:** team only, restaurants.close (Admin), on the restaurant's Account tab; the
   owner asks through Get help (owner's choice, 2026-11-01). A reason and the typed restaurant code
   confirm it. Whatever could still charge is cancelled first (`mandateCanCharge`: autopay that is
@@ -4346,13 +4363,17 @@ removal` step runs `closed_restaurant_remove_personal_data` per restaurant, one 
 
 The owner chose (2026-11-07) to move MenuMesh off Vercel and hosted Supabase onto one shared server,
 run by the Jainav side's scripts. Stop A prepares the app and ships the web image: only changes that
-are safe on Vercel today, plus the Docker image. Compose, the gateway's Envoy config, the Caddy site
-file, the scheduler, backups, the image build in CI and the deploys come in later stops, and Vercel
-stays production until then. The server's contract arrived on 2026-11-08, with adjustments the same
-day, and wins over the first plans where they differ (VPS-24). The owner's answers: live screens
-refresh by themselves at the first stale tap and other pages show a Refresh toast (VPS-8); no
-background update check (VPS-11); the export size cap is fine for now (VPS-6); single-slot deploys
-with a 25 s stop (VPS-22); production deploys run by the owner on the server (VPS-23).
+are safe on Vercel today, plus the Docker image. Stop A2 makes the long background work restartable
+(VPS-25 to VPS-30): migrations that stay backward-compatible and app code that Vercel runs too.
+Compose, the gateway's Envoy config, the Caddy site file, the scheduler, backups, the image build in
+CI and the deploys come in later stops, and Vercel stays production until then. The server's
+contract arrived on 2026-11-08, with adjustments the same day, and wins over the first plans where
+they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale tap
+and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export size
+cap is fine for now (VPS-6); single-slot deploys with a 25 s stop (VPS-22); production deploys run
+by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08), a menu reader that cannot answer
+stops the reading with Try again, and a page that fails twice is left out (VPS-30), and a restaurant
+that joins a running announcement is emailed within a minute (VPS-28).
 
 ### App changes and the web image (Stop A)
 
@@ -4427,20 +4448,22 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   on without this page when you open it again.", or, when no other page can still give dishes, "If
   you leave instead, the import fails when you open it again, and you will need to start a new
   one." The reading stops, Try again reads the page again, and the card, which says while reading
-  that coming back carries on, no longer says so once stopped (R3-1).
+  that coming back carries on, no longer says so once stopped (R3-1). A page that fails a second
+  time is left out and the reading goes on, so each page gets two tries (VPS-30).
   Only a photo that Storage says is not there keeps "did not upload" (reviews A1, R2-1 and R2-2).
   The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the limit for the Hindi names
   the commit fills afterwards), and the progress copy says "up to a minute and a half".
   - **The trade-off.** A page whose reader call takes 40 to 60 s used to pass and now fails as "not
-    answering right now", on Vercel too. That page is recorded as failed but the reading goes on
-    and finishes without it: a one-page import fails with that message and offers only Start a new
-    import, and a longer one is reviewed without the page, with no way to read it again. Try again
-    follows only an error that stops the reading, which a reader that cannot answer does not (a
-    photo that did not arrive does); whether it should is not decided. A reload instead of Try
-    again finishes an import without a failed page too, as the photo error now says (R3-1).
-    Durations aren't stored and production has almost no imports, so nothing says how often; the
-    warning now ends "(the call took X s, the page Y s so far)", so the 40 s can be tuned from the
-    logs.
+    answering right now", on Vercel too. At first that page was recorded as failed and the reading
+    went on and finished without it: a one-page import failed with that message and offered only
+    Start a new import, and a longer one was reviewed without the page, with no way to read it
+    again. Try again followed only an error that stops the reading, which a reader that cannot
+    answer did not give (a photo that did not arrive did). The owner decided on 2026-11-08 that it
+    should: a reader that cannot answer stops the reading, with Try again, and a page that fails
+    twice is left out (VPS-30). A reload instead of Try again finishes an import without a failed
+    page too, as the photo error says (R3-1). Durations aren't stored and production has almost no
+    imports, so nothing says how often; the warning now ends "(the call took X s, the page Y s so
+    far)", so the 40 s can be tuned from the logs.
 - **VPS-6 · A data export too big for memory fails before it starts:** the export (SA-93) builds the
   ZIP in memory, in the one web process every restaurant shares. Before reading a row, `buildExport`
   counts bills, order items, orders, bill payments and sessions (five HEAD requests, exact counts)
@@ -4451,7 +4474,8 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   limit (Sentry gets it), nothing is uploaded and the card says "The last download couldn’t be
   prepared. Try again." At a usual mix (a bill with 1.5 orders, 5 dishes, a payment and a session is
   14,200 bytes) the cap is about 37,800 bills, a year at 100 a day, with a ZIP of about 15 MiB,
-  inside the bucket's 50 MiB.
+  inside the bucket's 50 MiB. Builds run one at a time on the whole platform (VPS-26), so the guard
+  weighs the only build that holds the heap, not one of several (review finding A2).
   - **The memory it assumes.** The deploy sets `--max-old-space-size` to about 65% of a web
     container's memory (VPS-24). Node's heap limit is that old space plus a young generation of
     three semi-spaces, which Node sizes from the container's memory. Measured in the image under the
@@ -4943,52 +4967,62 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     fails the comparison though every script is there; a changed build lacks chunks too, so it
     matters only for a rebuild of identical code onto a read-only volume.
 - **VPS-22 · Single-slot deploys with a 25 s stop; the long `after()` work becomes restartable jobs
-  later:** the server deploys one container in place (`compose up -d --no-deps`) and Caddy retries
-  an upstream for up to 30 s, so a stop of 25 s or less does not show. A 330 s grace would take the
-  site down for minutes on every deploy, and a two-slot switch adds a lot of root-script surface;
-  accepted 2026-11-08, and a two-slot mode for `web` only is not asked for. So `stop_grace_period`
-  is at most 25 s on `web` and `web-staging`, and work that must survive a deploy, an out-of-memory
-  kill or a reboot cannot live in `after()` alone. On `SIGTERM` Next.js closes the server (the
-  image's drain preload ends each connection with its answer, and any socket an upgrade request
-  left, so a connection busy at that moment no longer keeps the close waiting: without it every such
-  stop ended in the kill, VPS-16), waits for every pending `after()` promise without a time limit
-  and exits 143: work done within about 20 s survives; longer work is cut at 25 s with exit 137, as
-  is a request that outlasts the grace, and a crash or reboot cuts all of it, silently. Measured on
-  a throwaway Next.js 16.4.3 route with the first review's preload (the second review changed how
-  connections end, not what `after()` waits for, and these were not run again): 6 s of `after()`
-  work, started before the stop, finished (a stop of 4.2 s, exit 143); 30 s of it was cut at 25.48
-  s, exit 137, with no finish line. `maxDuration` is Vercel's: on the VPS nothing caps a request or
-  `after()` task but each call's own timeout, the stop and Cloudflare's 100 s, so SA-93's "under the
-  page's 5-minute limit" no longer holds.
+  (VPS-25 to VPS-29):** the server deploys one container in place (`compose up -d --no-deps`) and
+  Caddy retries an upstream for up to 30 s, so a stop of 25 s or less does not show. A 330 s grace
+  would take the site down for minutes on every deploy, and a two-slot switch adds a lot of
+  root-script surface; accepted 2026-11-08, and a two-slot mode for `web` only is not asked for. So
+  `stop_grace_period` is at most 25 s on `web` and `web-staging`, and work that must survive a
+  deploy, an out-of-memory kill or a reboot cannot live in `after()` alone. On `SIGTERM` Next.js
+  closes the server (the image's drain preload ends each connection with its answer, and any socket
+  an upgrade request left, so a connection busy at that moment no longer keeps the close waiting:
+  without it every such stop ended in the kill, VPS-16), waits for every pending `after()` promise
+  without a time limit and exits 143: work done within about 20 s survives; longer work is cut at
+  25 s with exit 137, as is a request that outlasts the grace, and a crash or reboot cuts all of it,
+  silently. Measured on a throwaway Next.js 16.4.3 route with the first review's preload (the second
+  review changed how connections end, not what `after()` waits for, and these were not run again):
+  6 s of `after()` work, started before the stop, finished (a stop of 4.2 s, exit 143); 30 s of it
+  was cut at 25.48 s, exit 137, with no finish line. `maxDuration` is Vercel's: on the VPS nothing
+  caps a request or `after()` task but each call's own timeout, the stop and Cloudflare's 100 s, so
+  SA-93's "under the page's 5-minute limit" no longer holds.
   - **Three of the eleven `after()` calls can outlast the stop** (the other eight are one Resend or
     PostHog request, at most about 16 s, so they finish inside the drain; only a crash loses one,
     which costs a welcome email or an analytics event for good, while the rest have a fallback on
-    the page or in the inbox):
+    the page or in the inbox). What each lost when it was killed is how it stood before Stop A2,
+    which made the three restartable (VPS-25):
     - **The export build** (SA-93): 2 to 6 s for a pilot restaurant, 20 to 40 s at the cap (VPS-6).
-      If killed, the row stays "building" and nothing resumes it: the card keeps saying the download
-      is being prepared, with no button, until SQL counts it failed after 15 minutes.
+      If killed, the row stayed "building" and nothing resumed it: the card kept saying the download
+      was being prepared, with no button, until SQL counted it failed after 15 minutes. Now a stop
+      hands the export back to the queue and a kill lets its lease run out within 90 s, so that the
+      next claim builds it again (VPS-26).
     - **The Hindi names fill:** 5 to 25 s from a menu edit, 180 s at worst (4 calls of 45 s), hours
-      at worst from the daily sweep. If killed, the claim has stamped every name and finished
-      batches are lost (results are stored once, at the end), so those names have no Hindi for 12
-      hours: the Hindi menu shows the English spelling, and only the daily cron more than 12 hours
-      later retries them (up to about 31 hours).
+      at worst from the daily sweep. If killed, the claim had stamped every name and finished
+      batches were lost (results were stored once, at the end), so those names had no Hindi for 12
+      hours: the Hindi menu showed the English spelling, and only the daily cron more than 12 hours
+      later retried them (up to about 31 hours). Now each batch is stored when it answers, a lease
+      replaces the stamp so that the names in flight are written again after 5 minutes, and a run
+      starts no batch after 90 s (VPS-27).
     - **The announcement emails:** about 1.2 s a restaurant, so 100 take about 2 minutes, 1,000
       about 20, and about 1,440 outlast the scheduler's `wget -T 1800`. If killed, a prefix of the
-      due list has gone out and the rest stays due, picked up by data at the next daily run or save
-      (Resend's idempotency key covers a repeat for 24 hours); the page shows a partial Emailed
-      count for up to a day.
-  - **The restartable jobs** (a later stop, before the first restaurant moves): `after()` stays as
-    the fast path and a sweep is the guarantee, with row leases and atomic claims (no session
-    advisory locks: each PostgREST call is its own transaction). One bearer-protected route,
-    `GET /api/cron/jobs`, ticked every minute by the scheduler (VPS-24), each tick capped at about
-    20 s and guarded by cheap exists checks so idle ticks cost nothing. The export gets a heartbeat
-    or lease, attempts, `upsert: true` on the upload and builds that run one at a time, a re-run of
-    `buildExport` after a kill included, so that two exports for different restaurants cannot
-    overlap in the process (review A2); the Hindi fill stores after each parallel round and takes a
-    short claim lease apart from the 12-hour stamp; the sweep sends announcement emails in batches
-    of about 15 and stops between sends on `SIGTERM`. The daily cron (20 to 120 s typical) is
-    idempotent step by step: the scheduler tries it again about 30 minutes later, and deploys stay
-    out of 02:55 to 03:30 IST (VPS-24).
+      due list had gone out and the rest stayed due, picked up by data at the next daily run or save
+      (Resend's idempotency key covers a repeat for 24 hours); the page showed a partial Emailed
+      count for up to a day. Now a run starts no send after 200 s (150 s in the daily run) and the
+      minute job sends the rest within a minute (VPS-28).
+  - **The restartable jobs** (built in Stop A2, VPS-25 to VPS-29, before the first restaurant
+    moves): `after()` stays the fast path and row leases are the guarantee, with atomic claims and
+    transaction locks inside one call (no session advisory locks: each PostgREST call is its own
+    transaction). One bearer-protected route, `GET /api/cron/jobs`, is ticked every minute by the
+    scheduler (VPS-24) and guarded by one cheap question, so idle ticks cost nothing. It differs
+    from this plan in three places. A tick is not capped at about 20 s: a build at the cap (20 to
+    40 s) or a model call (up to 45 s) cannot fit one, and a cap would cut calls that are paid for,
+    so the route answers at once, the work goes on in `after()`, and the bounds are the stop and how
+    many units a run starts. The emails go in runs of up to 200 s, not batches of about 15, and stop
+    between sends on `SIGTERM`. The Hindi fill settles each batch as it answers, not each parallel
+    round, under a 5-minute lease apart from the 12-hour stamp. The export has a lease with a
+    heartbeat, attempts and `upsert: true` on the upload, and its builds run one at a time on the
+    whole platform, a re-run after a kill included, so that two exports for different restaurants
+    cannot overlap (review finding A2). The daily cron (20 to 120 s typical) is idempotent step by
+    step: the scheduler tries it again about 30 minutes later, and deploys stay out of 02:55 to
+    03:30 IST (VPS-24).
 - **VPS-23 · Production deploys run by the owner on the server:** decided 2026-11-08, as the server
   team proposed. GitHub cannot require reviewers on a private repository below Enterprise
   (environments with secrets need Pro, and this repository is private on the free plan, P10-1), so a
@@ -5022,8 +5056,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     replaces Vercel Cron: `GET http://web:3000/api/cron/daily` at `30 21 * * *` (03:00 IST) and
     `/api/cron/digest` at `15 3 * * *` (08:45 IST) with the `CRON_SECRET` bearer and BusyBox
     `wget -T 1800`, a second attempt about 30 minutes later, a heartbeat only on HTTP 200, and a
-    per-minute jobs line (VPS-22). Staging gets its own `scheduler-staging` on its network with its
-    own `CRON_SECRET`; one scheduler never joins both. `CRON_SECRET` leaves Vercel at the cut-over.
+    line every minute for `/api/cron/jobs` with `wget -T 25`, since the route answers at once, and a
+    heartbeat of its own (VPS-22, VPS-29). Staging gets its own `scheduler-staging` on its network
+    with its own `CRON_SECRET`, and its minute line calls `http://web-staging:3000`; one scheduler
+    never joins both. `CRON_SECRET` leaves Vercel at the cut-over.
   - **Volumes and limits.** Postgres data, storage objects, the static archive (`/app/.next/static`,
     VPS-21) and the image cache (`/app/.next/cache`, 500 MB, VPS-18) are named volumes. Every
     service has `cap_drop: ALL`, `no-new-privileges`, `mem_limit`, `memswap_limit`, `cpus`,
@@ -5077,7 +5113,8 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     staff addresses on `<slug>.staff.<domain>`, which have no mail records.
   - **The server team's tightening (2026-11-08, later that day).** A review of their kit changed
     what this repo's files must do (their `docs/runbooks/edge.md` §5 and
-    `docker/host/apps/app.conf.example`):
+    `docker/host/apps/app.conf.example`; their kit is merged to their main since,
+    `nanu1605/jainav-infotech` at `5934ae9`, with nothing changed after our review):
     - **Images.** CI labels the web, migrate and backup images
       `org.opencontainers.image.version=<the exact tag>`, set in build-push-action's `labels:`, not
       left to metadata-action. `app-deploy` refuses a digest labelled otherwise, so production is
@@ -5348,28 +5385,30 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
 ### Review fixes (VPS Stop A)
 
 A review of the Stop A branch gave 14 findings: A on the self-hosting changes, B on the reload
-prompt, C on the image and its documents. Thirteen are fixed and one, A2, is deferred. The entries
-above that a fix changed were corrected in place (the Versions table, P3-10, SA-93, VPS-5 to VPS-9,
-VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
+prompt, C on the image and its documents. Thirteen were fixed at once and one, A2, was deferred to
+Stop A2, which fixed it (VPS-26). The entries above that a fix changed were corrected in place (the
+Versions table, P3-10, SA-93, VPS-5 to VPS-9, VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
 
 - **A1 · A photo cut off while it downloads is retryable (VPS-5):** storage-js returns a failure
-  that lands before the response headers, but throws one that lands after them: the 15 s timer, or
-  a reset while the body downloads. `readMenuPage` did not catch the throw, so the page was never
+  that lands before the response headers, but throws one that lands after them: the 15 s timer, or a
+  reset while the body downloads. `readMenuPage` did not catch the throw, so the page was never
   recorded and stayed claimed for its 3-minute lease: Try again skipped it and Finish said "Some
-  pages have not been read yet." It now catches the throw and records the page as failed with the
-  "reader is not answering" text, as for a photo that timed out, and then answers with an error, so
-  that the reading stops and Try again reads the page again (the first version recorded the page
-  and went on, so nothing read it again: R2-1); a missing photo still says "did not upload" (R2-2
-  says when).
-- **A2 · Not fixed, deferred: two large exports at once (VPS-6, VPS-22):** the size guard weighs one
-  build on its own against half the heap, and builds for different restaurants can run at the same
-  time in the one process (`start_export` locks per restaurant, and the build runs in `after()`).
-  Two large exports that each pass could together fill the heap: Node would run out of memory, the
-  container restart, every request in flight fail, and both exports stay "building" until SQL
-  counts them failed after 15 minutes. No restaurant is near the limit (VPS-6, accepted), so it
-  cannot happen with today's data, and the restartable-jobs stop runs builds one at a time
-  (VPS-22), which closes it. If it is wanted sooner: a module-level count of the bytes of the
-  builds in flight, and a refusal for a build that would pass the limit with them.
+  pages have not been read yet." (since reworded, VPS-30). It now catches the throw and records the
+  page as failed with the "reader is not answering" text, as for a photo that timed out, and then
+  answers with an error, so that the reading stops and Try again reads the page again (the first
+  version recorded the page and went on, so nothing read it again: R2-1); a missing photo still says
+  "did not upload" (R2-2 says when).
+- **A2 · Two large exports at once, deferred and then fixed by VPS-26 (VPS-6, VPS-22):** the size
+  guard weighs one build on its own against half the heap, and builds for different restaurants
+  could run at the same time in the one process (`start_export` locked per restaurant, and the build
+  ran in `after()`). Two large exports that each pass could together have filled the heap: Node
+  would run out of memory, the container restart, every request in flight fail, and both exports
+  stay "building" until SQL counts them failed after 15 minutes. No restaurant was near the limit
+  (VPS-6, accepted), so it could not happen with that data, and the fix waited for the
+  restartable-jobs stop. Stop A2 builds one export at a time on the whole platform: a unique index
+  allows one `building` row, so two builds cannot overlap, in one process or across servers
+  (VPS-26). The count of the bytes of the builds in flight, offered here as the quicker fix, was not
+  needed.
 - **B1 · A stale tap on a page that offers Refresh reloaded it (VPS-8, VPS-9):** an action run in
   `useTransition` or `useActionState` without a catch rethrew the older build's error into
   `app/error.tsx` (there is no error page under `/admin`), whose boundary rule refreshed the tab
@@ -5482,8 +5521,9 @@ A1, B1 and Tests; B4 and C1 point here), and so were the RUNBOOK's Deploying and
   this page could not be fetched. Try again." once the page is recorded, so the loop stops and Try
   again reads the page again, which the claim allows while the import is open; a new jsdom test of
   `ImportProgress` drives it. A reload instead of Try again still finishes the import without the
-  page, which the review then lists with the reader's text although the cause was the photo; and a
-  reader that cannot answer still does not stop the reading (VPS-5's trade-off now says so).
+  page, which the review then lists with the reader's text although the cause was the photo (as "The
+  menu reader was not answering." since VPS-30); and a reader that cannot answer still did not stop
+  the reading, which VPS-30 changed.
 - **R2-2 · A Storage outage before the headers told owners to start again (VPS-5):** A1 decided by
   whether storage-js threw, not by what failed. A gateway 503, a refused connection or a reset
   before the headers is returned, not thrown, and was recorded as "did not upload. Start a new
@@ -5537,7 +5577,8 @@ limits, which had said its count comes back only after Refresh.
   dishes, "… the import fails when you open it again, and you will need to start a new one." (A
   first wording said leaving finishes the import, but nothing does until it is opened again, and
   it did not say that a one-page import then fails.) A reload does not read such a page again by
-  itself: today it is the only way past a photo that keeps failing.
+  itself. At first it was the only way past a photo that keeps failing; since VPS-30 a page that
+  fails a second time is left out, so Try again twice gets past it too.
 - **R3-2 · The freeze stopped the buttons that only open a menu or a sheet (VPS-8):** R1-1's rule
   matched every button, so behind a kept answer on a phone the panels' navigation (a sheet below
   1024 px), the account menu with its Get help and panel links, the alerts bell and the website's
@@ -5559,3 +5600,523 @@ limits, which had said its count comes back only after Refresh.
   known limits, the stylesheet's comment and the RUNBOOK; reasoned, not tried with a screen reader.
   Stopping such clicks in the page's capture listener, and marking the controls `aria-disabled`, is
   left for later: it changes how every click on a kept page is handled.
+
+### Restartable jobs (VPS Stop A2)
+
+The three `after()` tasks that can outlast the 25 s stop (VPS-22) are now jobs that a restart, a
+kill or a crash does not lose: a data export, the automatic Hindi names and the announcement
+emails. Stop A2 adds four migrations (`20261108100000_export_jobs.sql`,
+`20261108100100_hindi_names_lease.sql`, `20261108100200_announcement_email_jobs.sql` and
+`20261108100300_jobs_waiting.sql`), each additive and safe while the previous build runs, and app
+code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and VPS-30.
+
+- **VPS-25 · Background work is found in the rows it changes, leased there, and resumed every
+  minute:** each kind of work finds what is waiting in the rows that already hold it, and leases it
+  there. A data export is its `restaurant_exports` row (VPS-26), a Hindi name is a menu row that has
+  none yet (VPS-27) and an announcement email is a (announcement, restaurant) pair that is due and
+  not yet in `announcement_emails` (VPS-28). So nothing is lost between a business write and a
+  separate "enqueue", and the work that no code path starts today is found too: the default
+  categories of a signup, a restaurant that joins an audience, an `after()` that never ran. A jobs
+  table was rejected: it would copy state that the pages already show (the export card, the "(auto)"
+  tag, the Emailed count) and need an enqueue at eight call sites. Repeating a unit is already safe
+  on these rows: the export's id is its file's name, `menu_hindi_names_settle` stores a name only
+  while the row has the name it was made from, and Resend's key and an `on conflict` insert cover
+  the emails. `after()` stays the fast path and the minute job (VPS-29) the guarantee.
+  - **One run of a kind at a time, in a process** (`runExclusive` in `src/lib/jobs.ts`; the gates
+    live on `globalThis`, because Next.js can bundle the module more than once). A caller that finds
+    a run going is turned away with `ifBusy: 'skip'`, the default: no database call is made and its
+    own work is never called, and the run going on goes once more when it ends, with a fresh budget,
+    so that what the caller asked for still happens (many turned-away callers make one more run, not
+    one each). With `'wait'` the caller waits for the run and then runs: the announcement save and
+    the daily run use it. Nothing starts once the server is stopping, and that check comes before
+    the busy one. The first run's result is returned. If it throws, the gate is released and the
+    error thrown, with no extra run; an extra run that throws is logged (`[jobs] <kind> failed`) and
+    ends the extra runs.
+  - **Budgets.** `jobRun(budgetMs)` gives a run a signal and `stopping()`, true once the server is
+    stopping or the budget is spent. The budget caps how long a run keeps starting units (a build, a
+    batch of names, an email) and never cuts one that has started: exports 180 s (`EXPORT_RUN_MS`),
+    the Hindi fill 90 s (`HINDI_RUN_MS`), the emails 200 s (`EMAIL_RUN_MS`; 150 s inside the daily
+    run), so that a run ends inside the `maxDuration` of 300 s of the Vercel page or route that
+    starts it.
+  - **The stop.** `register()` in `src/instrumentation.ts` calls `stopJobsOnSigterm()` on the Node
+    runtime, which makes `drainSignal()` abort at `SIGTERM`, and only beside a `SIGTERM` listener
+    that is already there: `next/dist/server/lib/start-server.js` adds its own before
+    `next/dist/server/next-server.js` runs `register()`. With none there it adds none, so that a
+    stop never changes how the process exits (and calling it twice adds no second listener). The
+    listener only aborts the signal and never exits or holds the process, so it does no harm
+    wherever it lands; it was not run on Vercel.
+  - **At a stop.** No run starts and no claim is made; the reads and model calls in flight abort
+    (the reason is an `AbortError`, which the Supabase client gives up on instead of retrying); an
+    export hands its claim back to the queue without counting a try; and an email being sent is
+    finished (15 s at most) and recorded. A stop with job work in flight takes about a second, 15 s
+    at worst, inside the 25 s grace. The one thing it cannot cut is the upload of an export's ZIP
+    (storage-js takes no signal), which a stop waits for. If the signal never fires, the kill and
+    the leases still recover everything. The image needs no change: the drain preload (VPS-16) stays
+    as it is.
+  - **Killed at any instant.** An export: before its claim it stays `queued` and the next tick
+    builds it; during the build, or after the upload but before `complete`, its lease runs out
+    within 90 s and the next claim queues it again and builds over the same file. The card says
+    "Preparing" throughout (about 3 minutes longer at most), and after three cuts or 15 minutes it
+    says failed and offers Try again. Hindi names: the batches that answered are stored; the rest
+    stay leased for up to 5 minutes and are then written again, and guests see the typed names
+    meanwhile. Emails: the pairs not sent stay due for the next minute, and one that Resend took but
+    the app did not record is sent again under the same key within minutes, with no second email,
+    and recorded then.
+  - **The fast paths and the minute job run the same functions.** An export request starts the queue
+    after its response (`startExportJobs`), a menu edit starts a fill of its restaurant's names
+    (`queueHindiNames`, with no gate: the row leases keep overlapping fills apart), and saving an
+    announcement starts the email run, after one already going. The minute job starts the same runs
+    for what waits. The daily run keeps its Hindi names and announcement emails steps, through the
+    same runners: a backstop on the VPS, and still the only schedule on Vercel.
+  - **What changed from VPS-22's plan.** It had each tick capped at about 20 s and the emails sent
+    in batches of about 15. A build at the cap (20 to 40 s) or a model call (up to 45 s) cannot fit
+    a tick of 20 s, and a cap would cut calls that are paid for. So the route answers at once and
+    the work goes on in `after()`; the bounds are the stop and how many units a run starts.
+  - **Logging and health.** An idle tick writes nothing: `jobs_waiting()` is one read of nearly
+    empty indexes. A unit of work logs one `console.info` line (an export ready, with its rows,
+    bytes and ms: the first real timings; a Hindi call, with its seconds; an email run's counts).
+    `console.error`, which reaches Sentry, is only for real failures, and trouble that the next run
+    retries is a `console.warn`. The minute job writes no `cron_runs` rows: `private.cron_status`
+    would flag a kind quiet for 12 hours as not finished, and the job after 26 hours, and 1,440 rows
+    a day are noise. Its liveness is the scheduler's heartbeat ping after each 200 (VPS-29), and a
+    dead minute job falls back to the behaviour before Stop A2, because the `after()` paths and the
+    daily steps stay.
+  - **Vercel is unchanged.** Migrations run first (`deploy.yml`), `vercel.json` has no minute cron,
+    and the new code runs through `after()` and the daily run, inside the `maxDuration` of 300 s
+    that they already have. A cut is recovered at the next trigger of its kind: any export request
+    (an export), the same restaurant's next menu edit after 5 minutes or the daily run (Hindi
+    names), the next announcement save or the daily run (emails). An export shows as failed on its
+    card 15 minutes after its request. That is never worse than before. Old deployments (Skew
+    Protection, 7 days) keep working: the functions they call keep their signatures and leave the
+    new rows alone (`restaurant_export_finish` finishes only a row no claim has taken,
+    `menu_hindi_names_claim` passes over leased names). The next release's migration drops them,
+    with `menu_set_hindi_names` and `announcement_emails_due`, which no code calls any more (the
+    pgTAP files 440, 660 and 680 use them and change with it).
+  - **Limits.** The gates are per process, which rests on the VPS running one web process per
+    environment (single slot); a second replica would still be correct (database leases, Resend's
+    keys) but could double the email rate. A dead scheduler is noticed only by its external
+    heartbeat; until someone looks, the app behaves as it did before. The fast stop depends on
+    Next.js adding its `SIGTERM` listener before `register()` runs: an upgrade that changes the
+    order turns the signal off without a word, stops would then run to the kill, and the leases
+    would still recover the work (the unit test of the guard and the by-hand `docker stop` below
+    catch it).
+  - **Left out.** The eight one-request `after()` tasks (such as the invitation, welcome, support
+    and lead notices, the reset code and PostHog events): each finishes inside the stop and is lost
+    only in a crash, and there is no email outbox. The subscription reminders in the daily run,
+    which do not resume: a daily run cut short loses the rest of that night's reminders (a candidate
+    fourth kind). A streamed export past the memory cap (VPS-6). An automatic retry of an export's
+    errors. Parking Hindi names that the model cannot write. A minute cron on Vercel. In-app health
+    for the minute job (no rows, no System label, no missing-run rule). Releasing Hindi leases at a
+    stop. A `readMenuPage` read cut by a deploy, which answers "A page is still being read, or its
+    reading was cut off." for up to 3 minutes (VPS-30): it is a request, not a job. The deploy
+    stop's own pieces: the crontab, the heartbeat URLs, the check that the job's shell sees
+    `CRON_SECRET`, and the `scheduler` and `scheduler-staging` services.
+- **VPS-26 · A data export is a queued job, built one at a time:** a request (`start_export`) now
+  inserts its `restaurant_exports` row as `queued`, and a run of the queue builds it after the
+  response (`startExportJobs` in `src/features/closure/export-jobs.ts`). The card says "Preparing
+  the download" for a queued row as for a building one, because `latest_export` reports it as
+  `building`: the page and the previous build's code still see only `building`, `ready` and
+  `failed`. `EXPORT_TOO_SOON` is unchanged. One run of the queue goes at a time in a process, and a
+  request that comes while one runs makes it go once more (VPS-25); what a run leaves waits for the
+  next, which the minute job starts too.
+  - **States and the claim.** `queued`, then `building`, then `ready` or `failed`.
+    `restaurant_export_claim` (service role) takes the oldest queued export (`created_at`, `id`),
+    sets it `building` under a new `claim_id` and a lease of 90 s (30 to 600), and returns
+    `{export_id, restaurant_id, claim_id}`, or null when nothing waits or a build is going; an idle
+    call takes no lock (`private.export_jobs_waiting()`). It picks the row with
+    `select … for update skip locked` and then updates it by id: one `update` with a subquery could
+    set a row back to `building` that a late `complete` had just made `ready`, which the
+    ready-needs-expiry check refuses. The claims are serialised by a transaction advisory lock
+    inside the one call, which is fine through PostgREST (no session locks), and `start_export`
+    takes the same lock after the restaurant's, so it never changes rows while a claim does.
+  - **The fence.** Only the claim that holds a row can finish it. `restaurant_export_heartbeat`
+    renews its lease (every 15 s) and answers false once the claim is gone.
+    `restaurant_export_complete` makes it `ready` for 24 hours with its size; it still counts when
+    the lease ran out but no claim has taken the row since (it is `queued`: the file is good), and a
+    null or negative size is `INVALID_INPUT`. `restaurant_export_fail` marks it `failed` with the
+    error cut to 500 characters in `last_error`, which only the server reads.
+    `restaurant_export_release` puts it back to `queued`. Each answers false and changes nothing for
+    a claim that is gone. `restaurant_exports_lease_check` makes `lease_until` set exactly while a
+    row is `building`, and a building row has a `claim_id`.
+  - **A cut build.** A lease that runs out means the build was cut off (a restart, a crash). Only
+    the next claim handles it: `attempts` goes up by one and the row goes back to `queued`, with
+    `last_error` "the build was cut off"; the third cut (`private.export_claim_limit()`) fails it,
+    so that an export that takes the server down (out of memory) cannot loop. An error in the build
+    fails the export at once, as before, and the card offers Try again: only cuts are resumed. A
+    stop releases the row, which is no cut and does not count.
+  - **The 15-minute bound stays,** in the card (`latest_export`), the claim and `start_export`: a
+    row still queued or building 15 minutes after its request has failed ("not finished in 15
+    minutes"), and a new request may go. At about 5 s a build, that takes around 180 requests queued
+    at once.
+  - **One file per export.** The upload uses `upsert: true` on `<restaurant_id>/<export_id>.zip`:
+    however many builds an export takes, it is one ZIP. How the self-hosted Storage treats
+    `created_at` on an upsert has not been checked.
+  - **Review finding A2 is closed in three layers.** The unique partial index
+    `restaurant_exports_one_building` allows one `building` row on the whole platform, held by the
+    table across processes and Vercel instances. The in-process gate (VPS-25) covers a live build
+    whose lease wrongly lapsed. And the 14 table reads run 4 at a time (`readInTurns`): on the first
+    error, or at a stop, the others abort and `buildExport` returns only once they have ended, so
+    that no read goes on after a build, which also spares PostgREST's pool. VPS-6's memory guard now
+    weighs the only build.
+  - **A build** (`buildExport` in `src/features/closure/export.ts`) ends `ready`, `failed`,
+    `released` or `lost`. It checks the stop and the claim between pages and files, renews the lease
+    every 15 s and once more just before the upload (a claim that is gone by then uploads nothing),
+    and once the upload starts it finishes. The heartbeat, `complete`, `fail` and `release` each
+    carry a 5 s timeout of their own, never the stop's signal, so that a hung heartbeat cannot
+    overlap the next. If `complete` errors the build is `lost`: the ZIP is there but not offered,
+    the lease runs out and the export is built again. It logs `[closure] export ready` with rows,
+    bytes and ms, `[closure] export failed` (Sentry) and a warning for a lost claim.
+  - **The migration's order.** The data step could not come first, as planned: the old status check
+    allows only building, ready and failed, so it would refuse `queued`. The migration adds the
+    columns, swaps the status check and makes `queued` the default, then runs the data step (a
+    `building` row of the previous build holds no lease, so it becomes `queued` when it was
+    requested less than 15 minutes ago and `failed` when older), and only then adds the lease check
+    and the one-building index, which such rows would break.
+  - **The previous build** reports through `restaurant_export_finish`, kept for one release and
+    narrowed to rows that are `queued` with no claim, so that it never touches a row the new code
+    holds. The removal after a closed account's hold (SA-97) deletes its export rows, a building one
+    too, which frees the slot; a build running then loses its claim at its next check, and a file it
+    still uploaded is the 25-hour sweep's.
+  - **Limits.** Memory (VPS-6): the one build still sits beside live traffic, up to 512 MiB of a
+    1,096 MiB heap, and an out-of-memory kill takes down every request in flight. The three-cut
+    limit stops one export from looping on it, but pressing Try again can repeat it; the real answer
+    is a streamed build or a worker container. During the deploy overlap, and on Vercel with Skew
+    Protection, the previous build's own path builds rows directly and can build one that the new
+    runner has claimed on another server: one export built twice, outside the one-at-a-time rule. At
+    the cap the CSV and JSON text blocks the event loop for seconds, so a heartbeat or a stop waits,
+    which suits a 90 s lease and a 25 s grace. A stop during the upload waits for it, and the
+    gateway's storage route needs the raised timeout of VPS-24, or the upload and the export fail.
+    The durations (2 to 6 s for a pilot restaurant, 20 to 40 s at the cap) are still estimates: the
+    new log lines give the first real figures.
+- **VPS-27 · The Hindi fill leases names and settles each batch:** HN-8's claim stamped
+  `name_hi_auto_tried_at` on every name before any call and the results were stored once, at the
+  end, so a fill that was cut off hid its names for 12 hours. Now a fill leases the names it works
+  on, and a name counts as tried only once its batch has answered.
+  - **The lease.** `name_hi_auto_lease_until` on `menu_items` and `menu_categories` (null: free; no
+    default, so no table is rewritten). `menu_hindi_names_lease` (service role) leases up to
+    `p_limit` names (100 by default, 1 to 500) for `p_lease_seconds` (300, 60 to 900) and returns
+    them. A name is eligible as in HN-8, with no Hindi name of either kind and not tried in the last
+    12 hours, and now also not leased; leasing never touches `tried_at`. The names are one
+    restaurant's, HN-6 now held in SQL: the restaurant asked for, or else that of the first eligible
+    name (never tried first, then oldest), categories before dishes. Rows are taken with
+    `for update skip locked`, so that overlapping fills get different names without waiting. When a
+    race leaves nothing of the restaurant chosen, it chooses again, at most 3 times, and each new
+    choice passes over the restaurants already passed over: without that, a call whose first
+    restaurant is held by another call's open transaction would choose it again, because that call's
+    lease is not visible until it commits. A restaurant that was asked for is the only one tried.
+    Partial indexes on `(restaurant_id, name_hi_auto_tried_at, created_at)` where a name has no
+    Hindi name keep "what waits" a look at an almost empty index (`private.hindi_names_waiting()`
+    writes the same test out in full so that they serve it).
+  - **The settle.** `menu_hindi_names_settle(p_names)` takes `[{kind, id, name, name_hi?}]`, every
+    name of a batch that has answered. For each one that still has that name and no automatic name
+    it stores the trimmed `name_hi` when it is there and fits (1 to 60 characters for a category, 1
+    to 80 for a dish), stamps `name_hi_auto_tried_at` and clears the lease; a name the model did not
+    write is stamped too. It never writes `name_hi`, the owner's: guests read
+    `coalesce(name_hi, name_hi_auto)`. It returns how many names it stored, and anything but a list
+    is `INVALID_INPUT`. A rename clears the automatic name, its attempt time and its lease
+    (`private.clear_auto_hindi_name()`), so that a fill still working on the old name stores
+    nothing.
+  - **The fill** (`fillHindiNames` in `src/features/menu/hindi-names.ts`) runs up to 5 lanes (3
+    after a menu edit). Each leases a batch of up to 100, has the model write it with the run's
+    signal and settles it the moment it answers, so a fill that is cut off loses only the batches in
+    flight: their leases run out after 5 minutes and the names are written again. A stop aborts the
+    calls and settles nothing, and the result says `stopped`. A lane asks for no more than
+    `min(100, maxNames - names already asked for)`, so `maxNames` (300 after a menu edit, 500 in the
+    daily run) is an exact cap even when lanes ask together. A database error lets the other lanes
+    end and is then thrown. The log line of a call adds its seconds.
+  - **Kept.** The 12-hour rule: a name the model cannot write is tried again after 12 hours, now by
+    the minute job as well as the daily run, so about every 12 hours at about ₹1 for 100 names
+    (HN-6). Parking such names was left out. The previous build's `menu_hindi_names_claim` stays for
+    one release: it passes over leased names and still stamps. It is dropped with
+    `menu_set_hindi_names`, which stays as it is.
+  - **Limits.** Leasing and settling each update the row, so `updated_at` (the dish photo's cache
+    version, HN-7) changes and Realtime fires on `menu_items`: the same two writes per name as the
+    old claim and store, and one more for a name whose fill was cut off. A stop leaves its leased
+    names for up to 5 minutes instead of releasing them. The fill after a menu edit has no gate, and
+    the row locks that keep two of them apart were proved by hand with two sessions, not by a test
+    that runs. When every provider fails (an outage, not a stop) the batch is still settled as tried
+    and its names wait 12 hours, as the old stamp did, so that a short outage can set aside
+    everything that waits.
+- **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
+  (`src/features/announcements/email.ts`) lists the emails due 50 at a time
+  (`announcement_emails_next`), lists again each round and goes on until none is left or the run
+  stops starting work (200 s, 150 s in the daily run). A send starts at least 600 ms after the last
+  and only after a check of the stop, under Resend's idempotency key
+  `announcement/<announcement id>/<restaurant id>`, and the pair is then recorded
+  (`announcement_email_sent`). A run that is cut off leaves the rest due; a send that Resend took
+  but the app did not record goes again within minutes under the same key, Resend answers as before
+  without a second email, and it is recorded then. There is no lease table: one sender per process
+  (VPS-25), and Resend's key and the `on conflict` insert make an overlap between servers harmless.
+  - **What a failed send means** (`sendFailure` in `src/lib/email/resend.ts`). Resend's idempotency
+    and errors pages (read 2026-11-08) name two 409s: `concurrent_idempotent_requests` (another
+    request with the key is in progress: safe to retry later) and `invalid_idempotent_request` (the
+    key was used in the last 24 hours with another payload, as after an edit). So a 409 that names
+    `concurrent_idempotent_requests` is in flight: the pair stays due and is not asked again in this
+    run. Any other 409 means Resend holds an email for the key and sends no other, so the pair is
+    recorded as sent and counted as a duplicate. A 400 or 422 is refused (an address Resend will not
+    take). Anything else (no answer, 401, 403, 408, 429, 5xx) is unavailable: the run ends with
+    nothing recorded and the next minute tries again. The errors page lists a third 409,
+    `resource_locked`, for updates rather than sends; this rule would count it as sent. Nothing in
+    the documentation says whether a failed request uses up its key. The name is read from the first
+    300 characters of Resend's answer, which is what `resend.ts` keeps: were it ever cut off, a pair
+    would be recorded as sent while the other request is still in flight.
+  - **Refusals.** A refused pair is recorded in `announcement_email_failures` (announcement,
+    restaurant, `failed_at`, `tries`, Resend's answer cut to 300 characters; row level security on,
+    no access for the app's roles, written by `announcement_email_failed`) and left out of
+    `announcement_emails_next` for 20 hours, in every mode: a bad address costs one refused send in
+    20 hours, not one a minute. Sending it later records it and deletes its failure row. Three
+    refusals in a row end the run and pause the kind for 30 minutes in that process, with one
+    `console.error` (check `EMAIL_FROM`), so that a wrong sender cannot set aside the whole
+    audience. That limits the damage and does not prevent it: with a lasting setup error each
+    30-minute window sets aside three more pairs for 20 hours, so about 120 can be set aside at
+    once. After fixing `EMAIL_FROM` the table is cleared (RUNBOOK). A refusal counts only once it is
+    recorded, and the pause runs on the clock, not on the `now` option, which only sets `p_at`.
+  - **Trouble ends the run.** An unavailable answer logs a warning and ends it; a record that fails
+    (a sent pair or a refusal) ends it with `stopped: 'database'`, and the next run sends the pair
+    again under its key; a list that cannot be read throws. A run that ends at its budget or at a
+    stop reports no reason (`stopped` has none for it), so that a daily step cut short with emails
+    left looks complete in `cron_runs`.
+  - **What the minute job takes** (the owner's answer, 2026-11-08). With `p_minute_job` on,
+    `announcement_emails_next` takes an announcement that has started (`starts_at <= p_at`) or one
+    with an `announcement_emails` row already. So a restaurant that joins the audience of a running
+    announcement (a new signup, a change of plan or city) is emailed within a minute, and so is what
+    a run left when it was cut off. The first day's emails of an announcement that starts later that
+    day stay the daily run's, at 03:00, as SA-83 has it, and the form's text ("Once per restaurant,
+    in English, on its first day: on saving, or at 3 AM for a later day") stays true. A save and the
+    daily run take every announcement that is due, as before (the flag is off; null counts as off),
+    and wait for a run already going (`'wait'`, VPS-25), so that a saved announcement that has not
+    started yet is not left unsent because the minute run going on skips it.
+    `announcement_emails_due` is unchanged, for the previous build and pgTAP 660.
+  - **Limits.** Resend's documentation gives 10 requests a second per team, where the code's
+    comments assume 2: the pacing stays 600 ms, and the account's real limit is worth a look in the
+    dashboard. At 03:00 the daily run's reminders and a minute run can overlap, up to about 3.3
+    requests a second; a 429 ends the minute run until the next minute, while one in the reminders
+    is still not retried until the next day. A standing email announcement makes the minute job scan
+    the active restaurants every minute: milliseconds at today's size, and a "scanned at" marker is
+    the answer past a few thousand restaurants. On Vercel, which has no minute job, the daily run's
+    email step now starts no send after 150 s and leaves the rest to the next daily run or save,
+    where it used to run until the 300 s kill.
+- **VPS-29 · The every-minute jobs route:** `GET /api/cron/jobs` (`src/app/api/cron/jobs/route.ts`).
+  - **The contract.** `Authorization: Bearer <CRON_SECRET>`, else 401 `{"error":"Unauthorized"}`
+    (with no secret set nobody gets in). `?kinds=a,b` keeps it to those of `data_exports`,
+    `hindi_names` and `announcement_emails`; an unknown or an empty kind is 400
+    `{"error":"Unknown kind"}`. It asks `public.jobs_waiting()` and, after its answer, starts a run
+    through `after()` of each kind that waits and that this server can do (Hindi names need a menu
+    reader key, emails need Resend), in this order: exports first, since someone waits at the card,
+    then Hindi names, then emails. It answers 200 `{"ok":true,"started":[…]}` at once and never
+    waits for the work; a run of that kind already going in this process goes once more instead
+    (VPS-25). When `jobs_waiting` fails, answers something unreadable or throws, the answer is 500
+    `{"ok":false}`, logged with `console.error` at most once a minute per process, as `/api/health`
+    does. Every answer is `Cache-Control: no-store`, and `maxDuration` is 300, for Vercel only: the
+    work runs after the answer. `src/proxy.ts` needed no change, as its matcher skips every `api/`
+    path.
+  - **What is waiting.** `public.jobs_waiting()` (service role, no writes) answers
+    `{data_exports, hindi_names, announcement_emails}` from three private tests that use the partial
+    indexes and the small announcements table: `private.export_jobs_waiting()` (a queued export, or
+    a building one whose lease ran out), `private.hindi_names_waiting()` and
+    `private.announcement_emails_waiting()` (`announcement_emails_next(now(), 1, true)` gives a
+    row). An idle tick is that one statement.
+  - **The scheduler.** The deploy stop's crontab has it called every minute, from the `scheduler`
+    container to the web container directly and never through Cloudflare (VPS-22): the line is
+    `* * * * * wget -q -O /dev/null -T 25 --header "Authorization: Bearer $CRON_SECRET"` followed,
+    on the same line, by
+    `http://web:3000/api/cron/jobs && wget -q -O /dev/null "$JOBS_HEARTBEAT_URL"`. `-T 25` is
+    plenty, as the route answers at once, and the heartbeat is pinged only after a 200.
+    `scheduler-staging` calls `http://web-staging:3000` with staging's own secret. The rehearsal
+    must check that the job's shell sees `$CRON_SECRET`. The heartbeat variable's name is the deploy
+    stop's to settle.
+  - **Callers.** A tick works the whole platform, so tests and runs by hand name a kind with
+    `?kinds=`. Vercel has no minute cron (`vercel.json` is unchanged), and on a development machine
+    nothing calls it: the `after()` paths do the work, and it is run by hand (README). The smoke
+    suite expects 401 without the bearer.
+- **VPS-30 · A menu reader that cannot answer stops the reading, and a page that fails twice is left
+  out:** the owner's answer of 2026-11-08 to the open question in VPS-5's trade-off. The owner chose
+  the plain option, Stop and offer Try again, over a second try that waits longer for slow pages. A
+  page that the reader could not answer for (`READER_UNAVAILABLE`: a call past 40 s, or every reader
+  failing) used to be recorded as failed while the reading went on, so a one-page import failed with
+  only Start a new import (and used up one of the 5 photo imports of the day), and a longer one was
+  reviewed without the page, with no way to read it again.
+  - **The stop** (`readMenuPage` in `src/features/menu-import/actions.ts`). When the reader cannot
+    answer for a page that was not already `failed` when the call began, the page is recorded and
+    the action answers an error, so the progress screen stops with "Reading stopped." and its Try
+    again button. The text says what leaving does, as the photo's does: "The menu reader is not
+    answering right now. Try this page again in a few minutes. If you leave instead, the import goes
+    on without this page when you open it again.", or, when no other page can still give dishes
+    (`othersLeft`), "… If you leave instead, the import fails when you open it again, and you will
+    need to start a new one." The menu import screens are English only, so there is no Hindi.
+  - **Two tries.** A page that fails a second time (it was already `failed` when the call began)
+    answers ok and is left out, and the reading goes on. The photo that could not be fetched got the
+    same gate, which is a change: it used to stop on every try, for good. A page that the reader
+    answered for but could not read (`UNREADABLE_PAGE`), and a photo that did not upload, do not
+    stop the reading: waiting does not help, a sharper photo or a new import does.
+  - **Try again** (`ImportProgress`) reads only the page that the reading stopped on, and the pages
+    still waiting. It used to read every failed page again, so that with a reader that stays down
+    page 1 of a three-page import was read four times, and a hung reader costs up to about 82 s a
+    page. Other failed pages stay out: a page left out after two failures was tried twice, and one
+    the reader could not make sense of, or whose photo did not upload, would fail again from the
+    same photo. A reload instead of Try again still finishes the import without a failed page, as
+    VPS-5 and R3-1 say.
+  - **The review** lists a page that the reader could not answer for as "The menu reader was not
+    answering." (`reviewPageError` in `src/features/menu-import/extract.ts`), not with the reader's
+    own "Try this page again in a few minutes.", which can no longer be followed there: the reading
+    has gone on without the page. The failed one-page import still says "The menu reader is not
+    answering right now. Try again in a few minutes." beside only Start a new import, unchanged.
+  - **`finishReading`** no longer says "Some pages have not been read yet." for a page that is still
+    held (another tab is reading it, or a deploy cut its read off, for up to 3 minutes from the
+    claim). It says "A page is still being read, or its reading was cut off. Try again in a minute
+    or two." It is a request, not a job, so nothing resumes it.
+
+### Tests (VPS Stop A2)
+
+- **pgTAP (71 to 75 files, 3,311 to 3,541 tests):** four new files; `010_schema_guards` gains a
+  check and the older files around them pass unchanged.
+  - `690_export_jobs` (122): a request gives a `queued` row with no claim or lease, the card says it
+    is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued
+    or a build is live, takes the exports in the order they were asked for across two restaurants,
+    leases 90 s (30 s at least, 10 minutes at most) and is no cut; the table refuses a second
+    `building` row, a building row without a lease or claim, and a lease on any other; the heartbeat
+    renews the holder's lease and answers false for an old claim or a row not building; `complete`
+    with the wrong claim changes nothing, with the right one makes the export ready for 24 hours
+    with no lease, once, and refuses a null or negative size; a late `complete` counts while the row
+    is `queued` and no claim has taken it since; a lapsed lease is claimed again with a new claim id
+    and `attempts` 1, the old build can no longer complete it, and the third cut ends `failed` with
+    "the build was cut off"; `fail` cuts the error to 500 characters; `release` queues it again
+    without counting; a row queued or building for 16 minutes reads failed, a claim fails it instead
+    of building it, `start_export` lets a new request in, and a building row with a live lease is
+    left alone by an idle claim and failed for its age (not as a cut) once the lease lapses; the
+    previous build's `restaurant_export_finish` completes an unclaimed export and not a claimed one;
+    anon, authenticated and signed-out callers get 42501 on all five functions; the removal after a
+    closed account's hold deletes the rows and frees the slot.
+  - `691_hindi_names_lease` (66): the lease and the settle as in VPS-27: who may call, one
+    restaurant at a time (the one asked for, else the first waiting, never-tried first, and a
+    restaurant with nothing waiting gets nothing, not another's), categories before dishes, the
+    limit, 5 minutes, `tried_at` left alone, a lapsed lease leased again, and what is passed over (a
+    Hindi name of either kind, tried in the last 12 hours, leased); the settle stores trimmed names,
+    counts a name the model did not write as tried, clears the lease, leaves a name that is not in
+    the batch leased, and skips a renamed name, one with an automatic name, a wrong kind and a blank
+    or over-long one (80 fit a dish, 60 a category); a rename clears the name, its attempt time and
+    its lease, and a fill working on the old name stores nothing; an owner's name typed after the
+    lease stays the owner's; the old claim skips leased names and still stamps;
+    `hindi_names_waiting` is true and false as the rules say.
+  - `692_announcement_email_jobs` (33): `announcement_emails_next` gives a save or the daily run
+    every email due today, in the due list's order, to its addresses, `p_limit` at a time (at least
+    one, 50 when none is given); the minute job takes an announcement that has started, not one that
+    starts later today until one of its emails went, and a restaurant that joins a running one's
+    audience days later; a refusal is recorded with its answer cut to 300 characters and hides the
+    pair for 20 hours from either mode, a second one counts up, and sending it clears it;
+    `announcement_emails_waiting` follows the same rules; the app's roles can do none of it.
+  - `693_jobs_waiting` (8): nothing waits; each of a queued export, a name without Hindi and an
+    announcement email to send makes its own key true, and none is left once each is done; two calls
+    write nothing; an owner and a signed-out caller cannot ask.
+  - `010_schema_guards` (44) has `announcement_email_failures` in both tenant lists, one more check.
+    `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
+    pass unchanged, so the kept functions behave as before: `680` still finishes exports through
+    `restaurant_export_finish` and reads a queued export as building.
+- **Unit (886 to 979 tests, 60 to 65 files):**
+  - `jobs` (12, new): a run turned away makes no call and the run going on goes once more; kinds
+    keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
+    when work throws; an extra run that throws is logged and the first result kept; nothing starts
+    once the server is stopping, and neither the waiting nor the turned-away work runs after a stop;
+    the gate holds across copies of the module; a run stops starting work at its budget and at once
+    on a stop, aborting what is in flight; `stopJobsOnSigterm` adds no listener to a process without
+    one and aborts the signal beside the one that is there.
+  - `jobs-route` (9, new, with the admin client, `after()` and the runners faked): 401 without the
+    secret, and the database is not asked; 400 for an unknown kind; an idle tick starts nothing; one
+    run per waiting kind after the answer, exports first, within `?kinds=`; no emails without Resend
+    and no Hindi names without a reader; a run that fails is logged and the others still run; 500
+    when `jobs_waiting` fails, answers badly or throws, logged once a minute.
+  - `export-jobs` (17, new, with a fake client and fake timers): one claim when nothing waits; each
+    export built into its own file and completed under its claim; no build once the budget is spent
+    or the server is stopping; a stop during a build hands the export back and ends the run; a claim
+    that throws; the heartbeat every 15 s and once before the upload; a claim that is gone uploads
+    nothing and calls neither `complete` nor `fail`; a stop between files releases it, and one
+    during the upload lets the upload finish and completes; an error or a failed upload fails the
+    export; a table error stops the other readers and `buildExport` ends only once they have, with
+    no read after it; no timer is left on any path; `startExportJobs` runs one queue at a time;
+    `parseExportClaim`.
+  - `menu-hindi-names` (10 to 25): the lease and the settle in place of the claim and the store;
+    each batch is settled before the next lease and while another is still being written; a stop
+    settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
+    lease gives back its share; no batch starts once the run is over; a database error is thrown
+    once every lane has ended; the signal's reason, not a provider error, comes out of an aborted
+    call, no other provider is asked, and a signal that never aborts keeps no listener;
+    `queueHindiNames`.
+  - `announcement-emails` (21, new, as the reminders' test): each email goes in turn under its key
+    and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
+    the run stops starting work or the server stops, and the one in flight is recorded; a 409 in
+    flight is left for the next run, another is recorded; a refusal is set aside and the others go
+    on; three in a row stop the run and pause the kind for 30 minutes; unavailable answers (a
+    timeout, 401, 403, 429, 5xx) end the run with nothing recorded; a record that fails ends it; the
+    list is read again each round; the minute job asks for its own emails and an idle run logs
+    nothing; `sendFailure`'s cases; and the save path waits for a run going, then lists by the
+    save's rule.
+  - `close-account` (13): the guard cases call `buildExport` with a claim and a run and expect
+    `restaurant_export_fail` with "too big to build in memory", not `restaurant_export_finish`.
+  - The menu reader: `menu-import-read-page` (15 to 25: the stop and its two texts, with another
+    page left or none; the record made before the error is answered; a page that had failed goes on,
+    and so does a photo not fetched on a second try; a page whose read a deploy cut off counts as
+    not failed yet; a page the reader answered for but could not read, a page that was read, and an
+    import closed meanwhile do not stop), `menu-import-progress` (2 to 4: the stop and Try again,
+    then finishing; a page left out after two failures is not read at the next Try again),
+    `menu-import-finish-reading` (6, new: the failed import when the reader never answered, the
+    review when only some pages failed, the photos blamed for other failures, and the reworded error
+    for a page still held), and `menu-import-extract` (+1: `reviewPageError`).
+- **Breaks on purpose.** About 40 changes were made to the code one at a time (the runner's gate,
+  the stop and its listener, the export's checks, the settle's name test and the lease's clear, the
+  six wrong versions of `announcement_emails_next`, the 409 rules, the route's seven cases, the
+  reader's gate, order and wording, and the minute rule in the e2e), and each was caught by at least
+  one test.
+- **E2E** (desktop; the specs call the minute job with `?kinds=`, since a tick works the whole
+  platform, and skip when it answers 401, a reused development server without the E2E secret; it
+  answers at once, so they poll the database or the page for up to 60 s): five new tests.
+  - `super-close-account` (3): no bearer or a wrong one gets 401 and `?kinds=nope` gets 400; a
+    `queued` row inserted with the service role, with no run started for it, is built by a
+    `data_exports` tick and the card's link downloads a ZIP whose `profile.json` names the
+    restaurant; an owner on Settings and the team on another restaurant's Account tab ask at the
+    same moment, with no tick, and both links come.
+  - `admin-menu` (1): dishes made with the service role, so no menu save runs a fill; a
+    `hindi_names` tick writes "Masala Chai" as मसाला चाय, no longer leased and counted as tried, and
+    leaves a dish leased for 10 more minutes and one tried an hour ago as they were. The waiting
+    dish is dated 2000-01-01: names are leased oldest first and the local database holds about
+    49,000 from the load seed.
+  - `super-announcements` (1): an announcement that started a minute ago, for a restaurant with an
+    owner address, is emailed once by an `announcement_emails` tick (the mock Resend's inbox holds
+    one email and the `announcement_emails` row exists); a second tick starts nothing
+    (`{ ok: true, started: [] }`) and the inbox still holds one; one that starts later today is not
+    taken by the minute job. That last check reads the tick's answer, not the inbox, because other
+    specs run the daily job, which may send it first. Its start is halfway to midnight in India, two
+    hours ahead at most: after midnight it would not be due for anyone yet, and the check would pass
+    whatever the minute rule said. Both announcements end in a `finally`.
+  - `tests/e2e/helpers.ts` has `CRON_HEADERS` and `runJobs(request, kind)`, and the export download
+    helper of `super-close-account` was split so that these tests wait for a link without pressing
+    the button. The older export tests pass unchanged: the download goes through the queue now, and
+    the failed and expired card test inserts `failed` and `ready` rows, which the lease check
+    allows. `smoke` expects 401 from `/api/cron/jobs` (not run: it needs a deployed site).
+  - Results, `super-close-account`, `admin-menu`, `super-announcements` and `menu-import` together
+    (20 tests, 8 workers): 20 passed in 41 to 47 s, four runs; with `CI=1 --retries=0` and one
+    worker 20 passed in 1.5 minutes. The new tests took under 0.1 s (the 401 and 400 test), 6 s (a
+    queued export built by a tick), 11 s (two asking at once), 3 s (Hindi) and 1 s (the
+    announcement). Each was run 5 to 6 times in parallel and the announcements test 6 times in a
+    row. With the minute rule of `announcement_emails_next` replaced by `and true`, that test failed
+    on its third tick both times; the function was restored and its definition checked.
+  - Limits. The two-at-once test cannot force the runner's go-once-more path, and a tick in the same
+    file can build its rows, so it proves the queue only when no tick runs. The announcements test
+    cannot run twice at once, or beside any other open email announcement with unsent pairs, and
+    fails only in the 2 s before midnight in India. A server killed mid-build leaves the export
+    `building` for up to 90 s, while the export specs wait 60 s. The first Hindi tick on a local
+    database works through the load seed's names in the background, in thousands of small batches
+    that log "sent no usable names" warnings, and the test does not wait for it.
+- **By hand, done:** the migration's data step in a rolled-back transaction with two old `building`
+  rows (one became `queued`, one `failed`); two sessions on the Hindi lease (A holding 3 rows in an
+  open transaction for 6 s while B took the others and a call with no restaurant moved on to the
+  next in 340 ms; every row leased once); the new functions through the local PostgREST;
+  postgrest-js 2.116.0 with a fake `fetch` (an aborted GET or HEAD gives an error result after one
+  fetch, with no retry, and an `rpc` with `AbortSignal.timeout` a `TimeoutError` result); a `queued`
+  export left 12 s with no tick stayed queued and was ready 6 s after one.
+- **By hand, still to do** (under the server's limits, `pnpm docker:run`, in the deploy stop's
+  rehearsal): ask for an export, `docker kill` the container once the row says `building`, start it
+  again, set `lease_until` to the past with SQL and call the minute job: the row ends `ready` with
+  `attempts` 1. `docker stop` with a build in flight: exit 143 within seconds, the row `queued` with
+  `attempts` 0, and the next container's tick builds it (the stop has only been tried with a fake
+  emitter). The scheduler's job shell sees `$CRON_SECRET`. The Resend dashboard's rate limit. How
+  self-hosted Storage treats `created_at` on an upsert.
