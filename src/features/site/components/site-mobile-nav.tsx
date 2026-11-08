@@ -103,6 +103,10 @@ export function SiteMobileNav({
                   <Link
                     href={href}
                     onClick={(event) => goTo(event, href)}
+                    // goTo scrolls to a section of this page itself, once the sheet has closed: the
+                    // new-version notice, which follows other links to a place on this page behind a
+                    // kept answer (VPS-8), leaves this one to it (notice.ts).
+                    data-scrolls-itself
                     className="flex h-12 items-center rounded-lg px-3 text-base font-medium text-ink hover:bg-muted"
                   >
                     {item.label}

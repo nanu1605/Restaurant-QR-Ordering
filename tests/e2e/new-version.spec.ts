@@ -8,6 +8,7 @@ import {
   placeCustomerOrder,
   tableCard,
 } from './live-fixtures';
+import { createPlatformAdmin, logInAsPlatformAdmin } from './platform-fixtures';
 
 // A page from an older build after a deploy (docs/DECISIONS.md VPS-7, VPS-8): the live screens
 // refresh by themselves at the first tap that meets the new build, keep the guest's cart and the
@@ -454,6 +455,53 @@ test('behind a kept answer the toast says nothing was saved, and other switches 
   await expect(page.locator('html')).not.toHaveAttribute('data-new-version', /./);
   await expect(paneer).toBeChecked();
   await expect(chicken).toHaveCSS('pointer-events', 'auto');
+});
+
+// Next.js's own move to a place on this page waits behind the action as well, so the page follows
+// such a link itself (docs/DECISIONS.md VPS-8): the alerts bell's All activity, a link to
+// /super#activity, on a page that is on /super already.
+test('behind a kept answer a link to a place on the same page still goes there', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 500 });
+  const restaurant = await createTestRestaurant({ prefix: 'hash' });
+  const firstLook = page.waitForResponse((response) => response.url().endsWith('/super/alerts'));
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('hash'));
+  await firstLook;
+  // A payment after the first look is new to the bell: opening it marks the alerts seen, an
+  // action in a transition.
+  await adminClient()
+    .from('subscription_payments')
+    .insert({
+      restaurant_id: restaurant.restaurantId,
+      source: 'manual',
+      amount_paise: 118000,
+      manual_mode: 'upi',
+      period_start: new Date().toISOString(),
+      period_end: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+      gst_bps: 1800,
+    })
+    .throwOnError();
+  const looked = page.waitForResponse((response) => response.url().endsWith('/super/alerts'));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await looked;
+
+  await staleActions(page);
+  await mark(page);
+  await page.getByRole('button', { name: /^Alerts, \d+ new$/ }).click();
+  await expect(toast(page, 'A new version is ready')).toBeVisible();
+  const activity = page.locator('#activity');
+  await expect(activity).not.toBeInViewport();
+
+  await page.getByRole('menuitem', { name: 'All activity' }).click();
+  await expect(page).toHaveURL(/\/super#activity$/);
+  await expect(page.getByRole('heading', { name: 'Activity', level: 2 })).toBeInViewport();
+  expect(await marked(page)).toBe(true);
+
+  // The place is a history entry of this page: Back leaves the page where it is.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/super$/);
+  await expectLeftAlone(page);
 });
 
 // The rule's reach, in the browser that matters: the controls that show a change at once are

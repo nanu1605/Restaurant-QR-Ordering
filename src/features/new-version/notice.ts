@@ -81,7 +81,10 @@ const TOAST_ID = 'new-version';
 /** The guest's cart page: there the notice says the cart is kept (it is in localStorage). */
 export const isCartPage = (pathname: string) => /^\/t\/[^/]+\/cart\/?$/.test(pathname);
 
-/** The calls that leave the page, apart so a unit test can replace them: jsdom has no navigation. */
+/**
+ * The calls that leave the page (to a #hash, only scroll it), apart so a unit test can replace
+ * them: jsdom has no navigation.
+ */
 export const pageExit = {
   load: (address: string) => location.assign(address),
   reload: () => location.reload(),
@@ -174,10 +177,18 @@ export function showRefreshedNotice() {
 const withoutHash = (address: string) => address.split('#', 1)[0];
 
 /**
+ * A link with this attribute scrolls to a place on its own page itself, which a click of ours
+ * would double: the website's menu sheet, after it has closed (site-mobile-nav.tsx).
+ */
+const SCROLLS_ITSELF = 'data-scrolls-itself';
+
+/**
  * The address a click should load in full, or null to leave it alone: a plain click on a link to
- * another page of this site. Not what the browser takes elsewhere (a modifier key or another
- * button, a target other than this tab, a download), another site, or the same page, which a
- * #hash only moves within.
+ * another page of this site, or to a place on this one. Next.js's own move to a place waits
+ * behind the action too, so nothing would scroll, but the browser follows the address itself:
+ * it scrolls there and adds a history entry, with no reload. Not what the browser takes
+ * elsewhere (a modifier key or another button, a target other than this tab, a download),
+ * another site, this page without a place, or a link that scrolls itself.
  */
 function linkToLoad(event: MouseEvent): string | null {
   const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
@@ -189,7 +200,8 @@ function linkToLoad(event: MouseEvent): string | null {
     return null;
   }
   if (link.origin !== location.origin) return null;
-  return withoutHash(link.href) === withoutHash(location.href) ? null : link.href;
+  if (withoutHash(link.href) !== withoutHash(location.href)) return link.href;
+  return link.hash && !link.hasAttribute(SCROLLS_ITSELF) ? link.href : null;
 }
 
 function loadLinkInFull(event: MouseEvent) {
@@ -206,12 +218,12 @@ let loadingInFull = false;
 /**
  * Once an answer is kept back the page is on an older build, and a caller inside a transition
  * holds the page's later ones, Next.js's navigations too, until its action ends, which it never
- * does (VPS-8). So from then on a plain click on a link loads its address in full, and back or
- * forward reloads the address the browser moved to: the new build's page, as Next.js itself
- * loads it on a deployment id mismatch (VPS-7). Nothing a tap does is sent either, so <html> is
- * marked for the stylesheet, which stops taps on the controls that show their change at once
- * (globals.css). Installed by the first kept answer and not before, so a page that never meets
- * a newer build is as it was.
+ * does (VPS-8). So from then on a plain click on a link loads its address in full (to a place on
+ * this page, the browser scrolls there), and back or forward reloads the address the browser
+ * moved to: the new build's page, as Next.js itself loads it on a deployment id mismatch
+ * (VPS-7). Nothing a tap does is sent either, so <html> is marked for the stylesheet, which
+ * stops taps on the controls that show their change at once (globals.css). Installed by the
+ * first kept answer and not before, so a page that never meets a newer build is as it was.
  */
 function loadInFullFromNow() {
   if (loadingInFull) return;

@@ -706,6 +706,15 @@ describe('the tab’s notice', () => {
       ],
       ['a link to a place on another page', 'href="/admin/tables#new"', '/admin/tables#new'],
       ['a link that names this tab', 'href="/admin/tables" target="_self"', '/admin/tables'],
+      // The browser scrolls there and adds a history entry, with no reload; Next.js's own move
+      // would wait behind the action and nothing would happen.
+      ['a link to a place on this page', 'href="#prices"', '/admin/menu#prices'],
+      ['a link to this page and a place on it', 'href="/admin/menu#prices"', '/admin/menu#prices'],
+      [
+        'a link to another page of the website’s menu, which scrolls to its own sections itself',
+        'href="/admin/tables" data-scrolls-itself',
+        '/admin/tables',
+      ],
     ])('loads %s in full', async (_, attributes, address) => {
       const { load } = await openKept('/admin/menu');
       expect(click(labelOf(attributes))).toBe(true);
@@ -723,13 +732,33 @@ describe('the tab’s notice', () => {
       ['a link that downloads under a name', 'href="/tables.csv" download="tables.csv"', {}],
       ['a link to another site', 'href="https://example.com/admin/tables"', {}],
       ['a link that is no page', 'href="mailto:help@example.com"', {}],
-      ['a link to a place on this page', 'href="#prices"', {}],
-      ['a link to this page and a place on it', 'href="/admin/menu#prices"', {}],
       ['a link to this page', 'href="/admin/menu"', {}],
+      ['a link to this page without a place', 'href="#"', {}],
+      ['a link that scrolls to its place itself', 'href="#prices" data-scrolls-itself', {}],
+      [
+        'a link to this page and a place on it that scrolls itself',
+        'href="/admin/menu#prices" data-scrolls-itself',
+        {},
+      ],
     ])('leaves %s alone', async (_, attributes, init) => {
       const { load } = await openKept('/admin/menu');
       expect(click(labelOf(attributes), init)).toBe(false);
       expect(load).not.toHaveBeenCalled();
+    });
+
+    it('follows a link to the place the page is at, which scrolls back to it', async () => {
+      const { load } = await openKept('/admin/menu#prices');
+      expect(click(labelOf('href="#prices"'))).toBe(true);
+      expect(load).toHaveBeenCalledExactlyOnceWith(location.origin + '/admin/menu#prices');
+    });
+
+    // The website's menu sheet takes a click on a section of its page over (goTo), and scrolls
+    // once the sheet has closed, adding its own history entry: one more from here would double it.
+    it('leaves the website’s menu sheet the sections it scrolls to itself', () => {
+      const sheet = readFileSync('src/features/site/components/site-mobile-nav.tsx', 'utf8');
+      // The attribute is on the link that goTo handles.
+      const link = sheet.slice(sheet.indexOf('onClick={(event) => goTo(event, href)}'));
+      expect(link.slice(0, link.indexOf('className='))).toContain('data-scrolls-itself');
     });
 
     it('leaves a click that something else has taken over alone', async () => {
