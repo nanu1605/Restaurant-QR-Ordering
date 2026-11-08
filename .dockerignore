@@ -1,0 +1,19 @@
+# What the web image's build may see: only what it needs. An allowlist, so a file added at the
+# root later (a credentials export, scratch notes, a local env file) never reaches the build
+# layers. It also keeps the context small: .next alone is gigabytes. Next.js inlines NEXT_PUBLIC_*
+# from any .env file it finds and copies .env and .env.production into the standalone output, so
+# the Dockerfile fails the build if an env file gets through anyway (docs/DECISIONS.md VPS-13).
+*
+
+!src
+!public
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!next.config.ts
+!tsconfig.json
+!postcss.config.mjs
+
+# Never an environment file, even inside an allowed folder.
+**/.env
+**/.env.*
