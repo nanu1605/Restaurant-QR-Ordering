@@ -35,6 +35,45 @@ export type Database = {
           },
         ]
       }
+      announcement_email_failures: {
+        Row: {
+          announcement_id: string
+          error: string | null
+          failed_at: string
+          restaurant_id: string
+          tries: number
+        }
+        Insert: {
+          announcement_id: string
+          error?: string | null
+          failed_at?: string
+          restaurant_id: string
+          tries?: number
+        }
+        Update: {
+          announcement_id?: string
+          error?: string | null
+          failed_at?: string
+          restaurant_id?: string
+          tries?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_email_failures_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "announcement_email_failures_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       announcement_emails: {
         Row: {
           announcement_id: string
@@ -3341,12 +3380,30 @@ export type Database = {
           waiter_id: string
         }[]
       }
+      announcement_email_failed: {
+        Args: {
+          p_announcement_id: string
+          p_error: string
+          p_restaurant_id: string
+        }
+        Returns: undefined
+      }
       announcement_email_sent: {
         Args: { p_announcement_id: string; p_restaurant_id: string }
         Returns: undefined
       }
       announcement_emails_due: {
         Args: { p_at?: string }
+        Returns: {
+          announcement_id: string
+          body: string
+          recipients: string[]
+          restaurant_id: string
+          title: string
+        }[]
+      }
+      announcement_emails_next: {
+        Args: { p_at?: string; p_limit?: number; p_minute_job?: boolean }
         Returns: {
           announcement_id: string
           body: string
