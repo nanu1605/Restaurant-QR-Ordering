@@ -177,15 +177,21 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     closes: the answers still in flight, the idle ones and the sockets an upgrade request left. A
     compose `command:` replaces it, and every stop under traffic then runs the full 25 s and ends in
     the kill.
-  - A stop with job work in flight takes seconds, not as long as the work (VPS-25): at `SIGTERM`
-    the jobs claim nothing more, an export being built goes back to the queue, model calls are
-    aborted and an email being sent is finished. Only the upload of an export's ZIP cannot be
-    aborted, and the stop waits for it. What a kill cuts off is taken up again by its lease: an
-    export within 90 s, Hindi names within 5 minutes, emails within a minute. This depends on the
-    server adding its own `SIGTERM` listener before the app starts, so the rehearsal must run
-    `docker stop` with an export building (exit 143 within seconds, the row `queued` again with
-    `attempts` 0) and `docker kill` with one (once its lease has run out, or `lease_until` is set
-    to the past, the minute job builds it: the row ends `ready` with `attempts` 1).
+  - A stop with job work in flight takes seconds, not as long as the work (VPS-25): at `SIGTERM` the
+    jobs claim nothing more, an export being built goes back to the queue, model calls are aborted
+    and an email being sent is finished. Two things in an export cannot be aborted, and the stop
+    waits for both: building the file in hand in memory (2.6 s measured for a file of 60,000 rows,
+    about 6 s for the largest at the memory cap) and the upload of its ZIP. What a kill cuts off is
+    taken up again by its lease: an export within 90 s, Hindi names within 5 minutes, emails within
+    a minute. This depends on the server adding its own `SIGTERM` listener before the app starts (a
+    unit test and `pnpm docker:check` watch for that), so the rehearsal runs `docker stop` with an
+    export building. Expect exit 143 within seconds, and the row `queued` again with `attempts` 0,
+    or `ready` with one file if the stop came during the upload; never left `building`, never
+    `attempts` 1. A pilot restaurant's export builds in 2 to 6 s, mostly reading, so to land the
+    stop inside a build use one of 10 s or more: a throwaway restaurant with a very large menu,
+    deleted afterwards. Then `docker kill` with an export building (once its lease has run out, or
+    `lease_until` is set to the past, the minute job builds it: the row ends `ready` with `attempts`
+    1). Both were tried on the local image (DECISIONS, Tests (VPS Stop A2)).
   - The scheduler's every-minute line (VPS-29): `GET /api/cron/jobs` on `http://web:3000` with the
     `CRON_SECRET` bearer and `wget -T 25` (the route answers at once), then a heartbeat ping when
     the call succeeds. `scheduler-staging` calls `http://web-staging:3000` under staging's own

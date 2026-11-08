@@ -5650,14 +5650,17 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     Vercel, which stops its functions its own way). The listener only aborts the signal and never
     exits or holds the process, so it does no harm wherever it lands; it was not run on Vercel.
   - **At a stop.** No run starts and no claim is made, and a run waiting for the export slot ends
-    its wait (VPS-26); the reads and model calls in flight abort
-    (the reason is an `AbortError`, which the Supabase client gives up on instead of retrying); an
-    export hands its claim back to the queue without counting a try; and an email being sent is
-    finished (15 s at most) and recorded. A stop with job work in flight takes about a second, 15 s
-    at worst, inside the 25 s grace. The one thing it cannot cut is the upload of an export's ZIP
-    (storage-js takes no signal), which a stop waits for. If the signal never fires, the kill and
-    the leases still recover everything. The image needs no change: the drain preload (VPS-16) stays
-    as it is.
+    its wait (VPS-26); the reads and model calls in flight abort (the reason is an `AbortError`,
+    which the Supabase client gives up on instead of retrying); an export hands its claim back to
+    the queue without counting a try; and an email being sent is finished (15 s at most) and
+    recorded. A stop with job work in flight takes about a second, 15 s at worst, inside the 25 s
+    grace. An export has two things it cannot cut, and a stop waits for both: the file being built
+    in memory (the stop is checked between files; 2.6 s measured for a file of 60,000 rows, about
+    6 s for the largest at the memory cap) and the upload of its ZIP (storage-js takes no signal). A
+    stop that lands in the upload ends with the export `ready`, not handed back; a stop before it
+    leaves the export `queued` with `attempts` 0 (review finding K2). If the signal never fires, the
+    kill and the leases still recover everything. The image needs no change: the drain preload
+    (VPS-16) stays as it is.
   - **Killed at any instant.** An export: before its claim it stays `queued` and the next tick
     builds it; during the build, or after the upload but before `complete`, its lease runs out
     within 90 s and the next claim queues it again and builds over the same file. The card says
@@ -5704,14 +5707,15 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     environment (single slot); a second replica would still be correct (database leases, Resend's
     keys) but could double the email rate. A dead scheduler is noticed only by its external
     heartbeat; until someone looks, the app behaves as it did before. The fast stop depends on
-    Next.js adding its `SIGTERM` listener before `register()` runs: were it missing, stops would
-    run to the kill, and the leases would still recover the work. The guard's own tests use a fake
+    Next.js adding its `SIGTERM` listener before `register()` runs: were it missing, stops would run
+    to the kill, and the leases would still recover the work. The guard's own tests use a fake
     process, so they cannot see that (review findings R2 and K1). `tests/unit/jobs.test.ts` reads
-    `start-server.js` through Next's package and fails when its listener no longer comes before
-    the handlers that run `register()`, so an upgrade that moves it fails `pnpm test`; a listener
+    `start-server.js` through Next's package and fails when its listener no longer comes before the
+    handlers that run `register()`, so an upgrade that moves it fails `pnpm test`; a listener
     missing at run time all the same (`NEXT_MANUAL_SIG_HANDLE`, or another way to `register()`)
-    leaves the warning in the logs, and `pnpm docker:check` fails on it. Only the by-hand
-    `docker stop` below times a real stop.
+    leaves the warning in the logs, and `pnpm docker:check` fails on it. Only a real `docker stop`
+    times a stop: it took 0.6 to 2.9 s on the local image (Tests), and the server's rehearsal
+    repeats it.
   - **Left out.** The eight one-request `after()` tasks (such as the invitation, welcome, support
     and lead notices, the reset code and PostHog events): each finishes inside the stop and is lost
     only in a crash, and there is no email outbox. The subscription reminders in the daily run,
@@ -5766,8 +5770,12 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     minutes"), and a new request may go. At about 5 s a build, that takes around 180 requests queued
     at once.
   - **One file per export.** The upload uses `upsert: true` on `<restaurant_id>/<export_id>.zip`:
-    however many builds an export takes, it is one ZIP. How the self-hosted Storage treats
-    `created_at` on an upsert has not been checked.
+    however many builds an export takes, it is one ZIP. An upsert over a file already there keeps
+    one `storage.objects` row, with the first upload's `created_at` and a new `updated_at` and
+    `version` (checked on the local Storage, storage-api v1.72.1). The 25-hour sweep goes by
+    `created_at`, and a rebuild must finish within 15 minutes of the request, so the sweep still
+    comes after the 24-hour link. The server's own Storage is checked in the deploy stop's
+    rehearsal.
   - **Review finding A2 is closed in three layers.** The unique partial index
     `restaurant_exports_one_building` allows one `building` row on the whole platform, held by the
     table across processes and Vercel instances. The in-process gate (VPS-25) covers a live build
@@ -5800,11 +5808,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     is a streamed build or a worker container. During the deploy overlap, and on Vercel with Skew
     Protection, the previous build's own path builds rows directly and can build one that the new
     runner has claimed on another server: one export built twice, outside the one-at-a-time rule. At
-    the cap the CSV and JSON text blocks the event loop for seconds, so a heartbeat or a stop waits,
-    which suits a 90 s lease and a 25 s grace. A stop during the upload waits for it, and the
-    gateway's storage route needs the raised timeout of VPS-24, or the upload and the export fail.
-    The durations (2 to 6 s for a pilot restaurant, 20 to 40 s at the cap) are still estimates: the
-    new log lines give the first real figures.
+    the cap the CSV and JSON text blocks the event loop for seconds (6.0 s for `order_items.csv` in
+    the image under `--cpus 1.5`, as `csvDateTime` makes a new `Intl.DateTimeFormat` for every
+    cell), so a heartbeat or a stop waits, which suits a 90 s lease and a 25 s grace. A stop during
+    the upload waits for it and ends with the export `ready`, and the gateway's storage route needs
+    the raised timeout of VPS-24, or the upload and the export fail. The durations (2 to 6 s for a
+    pilot restaurant, 20 to 40 s at the cap) are still estimates: the one build timed, of
+    360,001 rows that the memory guard does not count, took 17.5 to 18.5 s (Tests), and the log
+    lines give the rest.
 - **VPS-27 · The Hindi fill leases names and settles each batch:** HN-8's claim stamped
   `name_hi_auto_tried_at` on every name before any call and the results were stored once, at the
   end, so a fill that was cut off hid its names for 12 hours. Now a fill leases the names it works
@@ -6180,10 +6191,64 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
   postgrest-js 2.116.0 with a fake `fetch` (an aborted GET or HEAD gives an error result after one
   fetch, with no retry, and an `rpc` with `AbortSignal.timeout` a `TimeoutError` result); a `queued`
   export left 12 s with no tick stayed queued and was ready 6 s after one.
-- **By hand, still to do** (under the server's limits, `pnpm docker:run`, in the deploy stop's
-  rehearsal): ask for an export, `docker kill` the container once the row says `building`, start it
-  again, set `lease_until` to the past with SQL and call the minute job: the row ends `ready` with
-  `attempts` 1. `docker stop` with a build in flight: exit 143 within seconds, the row `queued` with
-  `attempts` 0, and the next container's tick builds it (the stop has only been tried with a fake
-  emitter). The scheduler's job shell sees `$CRON_SECRET`. The Resend dashboard's rate limit. How
-  self-hosted Storage treats `created_at` on an upsert.
+- **On the real image, done** (the review's docker pass, on `fe94716`: `pnpm docker:build` with a
+  fresh `next build`, 34.6 s of the 47 s, and `docker:run` under the server's limits, healthy in
+  about 4 s): `pnpm docker:check` passed 11 of 11 checks, and 13 of 13 with `--internal-url`, where
+  exports were also built through `api-gw:8000`. The 12th check, which reads the logs for the
+  missing-listener warning of review finding R2, came after this pass; its log test was tried on two
+  throwaway containers of the image, one that printed the warning and one that did not. The test
+  restaurant held 360,001 rows that the memory guard does not count (300,000 add-ons and 60,000
+  tables), and its export took 17.5 to 18.5 s: about 15 s of reading, at 50 to 70 ms for a page of
+  1,000 rows, 2.5 s of building and compressing the files and 0.25 s of uploading and completing,
+  into a ZIP of 9,892,486 bytes, with the web process at about 546 MiB afterwards. The restaurant
+  was removed at the end: its 11 ZIPs through the Storage API, because storage's
+  `protect_objects_delete` trigger blocks a SQL delete, then its rows.
+  - **Kill.** `docker kill` 7 s after the claim (exit 137) left the row `building` with
+    `attempts` 0, its lease in the future and no file. A tick while the lease was live answered
+    `{"ok":true,"started":[]}` and left the row alone. The first tick after the lease lapsed queued
+    it again (`attempts` 1, "the build was cut off"), and it was `ready` 19 s later with
+    `last_error` cleared and exactly one file, `<restaurant>/<export>.zip`. A kill in the middle of
+    a throttled upload left no partial file and ended the same way. Kill, stop, kill, kill, with
+    `lease_until` set to the past by SQL to save waiting, took `attempts` through 0, 1, 1, 2 and 3
+    and then the export `failed` with "the build was cut off": the card read failed and nothing
+    waited.
+  - **Stop** (`docker stop -t 25`, exit 143 every time):
+
+    | When the stop landed           | Stop took      | The row afterwards                     |
+    | ------------------------------ | -------------- | -------------------------------------- |
+    | In the reads (6 s in)          | 679 ms         | `queued`, `attempts` 0                 |
+    | Building files in memory       | 2,565 ms       | `queued`, `attempts` 0                 |
+    | In a throttled 3 s upload      | 2,929 ms       | `ready`, one file                      |
+    | Right after a tick (the claim) | 713 and 635 ms | `queued`, `attempts` 0                 |
+    | Two idle keep-alive sockets    | 664 ms         | `queued` (sockets closed at `SIGTERM`) |
+
+    A row handed back keeps its claim id, has no lease and has no file; the next container's tick
+    built the first one to `ready` with one file.
+
+  - **Logs and ticks.** The logs held only `[closure] export ready <id> {rows, bytes, ms}` lines and
+    the expected `export claim lost` warning (from the give-up SQL below): no errors, and nothing is
+    logged for a release. An idle tick answered `{"ok":true,"started":[]}` in 10 to 15 ms on
+    127.0.0.1 (`localhost` adds about 200 ms in curl, from trying IPv6 first), and
+    `pg_stat_statements` showed one `jobs_waiting` call a tick (5 ticks, 5 calls); the minute job
+    wrote no `cron_runs` rows. The route answered in the image as VPS-29 says: 400 for an empty,
+    trailing or unknown kind, 401 for a wrong bearer and 405 for `POST`, every answer `no-store`.
+  - **Also.** The RUNBOOK's give-up SQL on a live build: the build noticed at its next heartbeat
+    (about 15 s), uploaded nothing, logged `export claim lost` and the runner went on to the next
+    export. Building `order_items.csv` at the memory cap blocks the event loop for 6.0 s in the
+    image under `--cpus 1.5` (`csvDateTime` makes a new `Intl.DateTimeFormat` for every cell), so a
+    stop that lands there would take 6 to 7 s (reasoned from that, not timed), inside the 25 s
+    grace.
+  - **Not tried.** Stops with Hindi names or emails in flight (the container has no menu reader or
+    Resend key, and a minute-job fill or send would also lease or email the load seed's rows), the
+    previous build's own export path (the container cannot log in), the scheduler's shell and
+    Resend's rate limit. A timing script run with `docker exec` in the web container was OOM-killed,
+    not the server, but Docker marks the container `OOMKilled` until it is recreated: time such
+    things in a separate container of the same image.
+- **By hand, still to do.** Locally, `pnpm docker:build`, `docker:run` and `docker:check` once more,
+  for the 12th check on a running container. In the deploy stop's rehearsal, on the server, which
+  has what the local image lacked: `docker stop` with Hindi names and with emails in flight, as the
+  export stop above (exit 143 within seconds; a batch's names written again within 5 minutes; no
+  email sent twice); the scheduler's job shell sees `$CRON_SECRET`; the Resend dashboard's rate
+  limit; and that an upsert keeps `created_at` on the server's own Storage. The export stop and kill
+  are repeated there once, under the server's limits, with a build of 10 s or more: a pilot
+  restaurant's 2 to 6 s is too short to land a stop in.
