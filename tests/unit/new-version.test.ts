@@ -320,6 +320,14 @@ describe('the tab’s notice', () => {
     window.fetch = () => answer();
   });
 
+  // What the page puts on the document and the window. jsdom keeps both between tests, so the
+  // listeners of a page that kept an answer come off again when its test is done.
+  const spyOnListeners = () => ({
+    document: vi.spyOn(document, 'addEventListener'),
+    window: vi.spyOn(window, 'addEventListener'),
+  });
+  let added: ReturnType<typeof spyOnListeners>;
+
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
@@ -329,8 +337,16 @@ describe('the tab’s notice', () => {
     toast.mockClear();
     toast.dismiss.mockClear();
     toast.success.mockClear();
+    added = spyOnListeners();
   });
   afterEach(() => {
+    for (const [type, listener, options] of added.document.mock.calls) {
+      document.removeEventListener(type, listener, options);
+    }
+    for (const [type, listener, options] of added.window.mock.calls) {
+      window.removeEventListener(type, listener, options);
+    }
+    document.body.innerHTML = '';
     vi.clearAllTimers();
     vi.useRealTimers();
   });
@@ -387,7 +403,7 @@ describe('the tab’s notice', () => {
       expect.objectContaining({
         description: 'Refresh the page to keep working. Copy anything you’ve typed first.',
         duration: Infinity,
-        // A closed toast could not come back: later taps and links wait behind the action.
+        // A closed toast could not come back: later taps wait behind the action.
         closeButton: false,
         dismissible: false,
         action: expect.objectContaining({ label: 'Refresh' }),
@@ -494,6 +510,190 @@ describe('the tab’s notice', () => {
           'If what you just did didn’t go through, please do it again. Your cart is saved.',
       }),
     );
+  });
+
+  it('reloads for the Refresh button through the call a test can replace', async () => {
+    const { pageExit, refreshNow } = await openPage('/admin/menu');
+    const reload = vi.spyOn(pageExit, 'reload').mockImplementation(() => {});
+    refreshNow();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  // Next.js's own navigations wait behind a caller in a transition whose action never ends, so a
+  // page with a kept answer loads links and history moves in full instead (VPS-8).
+  describe('behind a kept answer, links and history moves load the page in full', () => {
+    /** How many listeners of this type the page has added. Ask before the test clicks. */
+    const listening = (type: string) =>
+      [...added.document.mock.calls, ...added.window.mock.calls].filter(([t]) => t === type).length;
+
+    /** A page that is told the next call leaves it: jsdom has no navigation. */
+    async function openNotLeaving(path: string) {
+      const notice = await openPage(path);
+      return {
+        load: vi.spyOn(notice.pageExit, 'load').mockImplementation(() => {}),
+        reload: vi.spyOn(notice.pageExit, 'reload').mockImplementation(() => {}),
+      };
+    }
+
+    /** A page whose first server action met a newer build, so its answer is kept back. */
+    async function openKept(path = '/admin/menu') {
+      const exits = await openNotLeaving(path);
+      void window.fetch(path, { method: 'POST' });
+      await vi.advanceTimersByTimeAsync(0);
+      return exits;
+    }
+
+    /** A link; the label is what a finger lands on, and the link is its nearest ancestor. */
+    function labelOf(attributes: string) {
+      document.body.innerHTML = `<a ${attributes}><span>Tables &amp; QR</span></a>`;
+      return document.querySelector('span')!;
+    }
+
+    /**
+     * Clicks as a user does. Says whether the page had taken the click over by the time Next.js's
+     * Link, which handles it later while it bubbles, sees it. Nothing is left for jsdom to follow.
+     */
+    function click(target: Element, init: MouseEventInit = {}) {
+      let taken = false;
+      const last = (event: Event) => {
+        taken = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', last);
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+      document.removeEventListener('click', last);
+      return taken;
+    }
+
+    it('puts nothing on the page before an answer is kept, and leaves links and history alone', async () => {
+      const { load, reload } = await openNotLeaving('/admin/menu');
+      expect(listening('click')).toBe(0);
+      expect(listening('popstate')).toBe(0);
+      expect(click(labelOf('href="/admin/tables"'))).toBe(false);
+      history.replaceState(null, '', '/admin/tables');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      expect(load).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it.each<[string, string, () => void]>([
+      ['held while a live screen refreshes', '/staff', () => {}],
+      [
+        'passed on a live screen that is stuck',
+        '/t/AbC123/cart',
+        () => {
+          const refreshed = {
+            at: Date.now() - 60_000,
+            from: null,
+            cause: 'version',
+            noticed: true,
+          };
+          sessionStorage.setItem(REFRESH_KEY, JSON.stringify(refreshed));
+        },
+      ],
+      [
+        'passed offline',
+        '/admin/menu',
+        () => void vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false),
+      ],
+      [
+        'not an older build’s at all',
+        '/admin/menu',
+        () => {
+          answer = async () => new Response('{}', { status: 200 });
+        },
+      ],
+    ])('puts nothing on a page whose answer is %s', async (_, path, setUp) => {
+      setUp();
+      await openNotLeaving(path);
+      void window.fetch(path, { method: 'POST' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listening('click')).toBe(0);
+      expect(listening('popstate')).toBe(0);
+    });
+
+    it('is put there once, by the first answer that is kept', async () => {
+      await openNotLeaving('/admin/menu');
+      for (let kept = 0; kept < 2; kept++) {
+        void window.fetch('/admin/menu', { method: 'POST' });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(listening('click')).toBe(1);
+        expect(listening('popstate')).toBe(1);
+      }
+      // Before Next.js's Link, which listens while the click bubbles.
+      expect(added.document).toHaveBeenCalledWith('click', expect.any(Function), true);
+    });
+
+    it.each([
+      ['a link to another page', 'href="/admin/tables"', '/admin/tables'],
+      ['a relative link', 'href="tables"', '/admin/tables'],
+      [
+        'a link to this page with another query',
+        'href="/admin/menu?view=hidden"',
+        '/admin/menu?view=hidden',
+      ],
+      ['a link to a place on another page', 'href="/admin/tables#new"', '/admin/tables#new'],
+      ['a link that names this tab', 'href="/admin/tables" target="_self"', '/admin/tables'],
+    ])('loads %s in full', async (_, attributes, address) => {
+      const { load } = await openKept('/admin/menu');
+      expect(click(labelOf(attributes))).toBe(true);
+      expect(load).toHaveBeenCalledExactlyOnceWith(location.origin + address);
+    });
+
+    it.each<[string, string, MouseEventInit]>([
+      ['a click with the meta key', 'href="/admin/tables"', { metaKey: true }],
+      ['a click with the ctrl key', 'href="/admin/tables"', { ctrlKey: true }],
+      ['a click with the shift key', 'href="/admin/tables"', { shiftKey: true }],
+      ['a click with the alt key', 'href="/admin/tables"', { altKey: true }],
+      ['a click of the middle button', 'href="/admin/tables"', { button: 1 }],
+      ['a link that opens a new tab', 'href="/admin/tables" target="_blank"', {}],
+      ['a link that downloads', 'href="/admin/tables.csv" download', {}],
+      ['a link that downloads under a name', 'href="/tables.csv" download="tables.csv"', {}],
+      ['a link to another site', 'href="https://example.com/admin/tables"', {}],
+      ['a link that is no page', 'href="mailto:help@example.com"', {}],
+      ['a link to a place on this page', 'href="#prices"', {}],
+      ['a link to this page and a place on it', 'href="/admin/menu#prices"', {}],
+      ['a link to this page', 'href="/admin/menu"', {}],
+    ])('leaves %s alone', async (_, attributes, init) => {
+      const { load } = await openKept('/admin/menu');
+      expect(click(labelOf(attributes), init)).toBe(false);
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('leaves a click that something else has taken over alone', async () => {
+      // Added first, so it runs first.
+      document.addEventListener('click', (event) => event.preventDefault(), true);
+      const { load } = await openKept();
+      click(labelOf('href="/admin/tables"'));
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('leaves a click on anything but a link alone', async () => {
+      const { load } = await openKept();
+      document.body.innerHTML =
+        '<button><span>Save</span></button><a name="top"><span>Top</span></a>';
+      for (const target of document.querySelectorAll('button, span, a')) {
+        expect(click(target)).toBe(false);
+      }
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('reloads on back or forward, the address the browser has moved to', async () => {
+      const { reload } = await openKept('/admin/menu/import/7f0a');
+      // The URL is the new entry's by the time popstate fires.
+      history.replaceState(null, '', '/admin/menu/import');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it('leaves a move to another place on the same page alone', async () => {
+      const { reload } = await openKept('/admin/menu/import/7f0a');
+      for (const address of ['/admin/menu/import/7f0a#prices', '/admin/menu/import/7f0a']) {
+        history.replaceState(null, '', address);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      expect(reload).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -89,6 +89,31 @@ async function expectLeftAlone(page: Page) {
   await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0);
 }
 
+/**
+ * A new restaurant's owner on the review screen of a menu import (a CSV of two dishes). Returns
+ * the price field of the second dish, which reads 2.
+ */
+async function openImportReview(page: Page) {
+  const restaurant = await createTestRestaurant({ prefix: 'skew' });
+  await logInAsOwner(page, restaurant);
+  await page.goto('/admin/menu/import');
+  await page.getByLabel('Menu CSV file').setInputFiles({
+    name: 'menu.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      [
+        'category,name,description,food_type,price,variant_name,variant_price',
+        'Starters,Paneer Tikka,,veg,280,,',
+        'Tandoor,Water Bottle,,veg,2,,',
+      ].join('\n'),
+    ),
+  });
+  await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
+  const price = page.locator('li[data-row="Water Bottle"]').getByLabel('Price of Water Bottle');
+  await expect(price).toHaveValue('2');
+  return price;
+}
+
 test('a dish move from an older build refreshes the board and is sent from the new page', async ({
   browser,
   baseURL,
@@ -279,23 +304,7 @@ test('an older build’s answer in the admin panel keeps the dialog and what was
 test('an older build’s answer to a form action without a catch leaves the page and its typing alone', async ({
   page,
 }) => {
-  const restaurant = await createTestRestaurant({ prefix: 'skew' });
-  await logInAsOwner(page, restaurant);
-  await page.goto('/admin/menu/import');
-  await page.getByLabel('Menu CSV file').setInputFiles({
-    name: 'menu.csv',
-    mimeType: 'text/csv',
-    buffer: Buffer.from(
-      [
-        'category,name,description,food_type,price,variant_name,variant_price',
-        'Starters,Paneer Tikka,,veg,280,,',
-        'Tandoor,Water Bottle,,veg,2,,',
-      ].join('\n'),
-    ),
-  });
-  await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
-  const price = page.locator('li[data-row="Water Bottle"]').getByLabel('Price of Water Bottle');
-  await expect(price).toHaveValue('2');
+  const price = await openImportReview(page);
   await price.fill('20');
 
   const fresh = await staleActions(page, 1);
@@ -315,6 +324,58 @@ test('an older build’s answer to a form action without a catch leaves the page
     page.waitForEvent('load'),
     ready.getByRole('button', { name: 'Refresh' }).click(),
   ]);
+  await expect(price).toHaveValue('2');
+
+  // So is a link. Next.js's own navigation would wait for that action to end, so the page loads
+  // the link's address in full, and Back loads the review again.
+  await staleActions(page, 1);
+  await mark(page);
+  await price.fill('20');
+  await page.getByRole('button', { name: 'Save draft and finish later' }).click();
+  await expect(ready).toBeVisible();
+  await expectLeftAlone(page);
+  await Promise.all([
+    page.waitForEvent('load'),
+    page
+      .getByRole('navigation', { name: 'Admin sections' })
+      .getByRole('link', { name: 'Tables & QR' })
+      .click(),
+  ]);
+  await expect(page).toHaveURL(/\/admin\/tables$/);
+  await expect(page.getByRole('heading', { name: 'Tables & QR', level: 1 })).toBeVisible();
+  expect(await marked(page)).toBe(false);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId('review-counts')).toBeVisible();
+  await expect(price).toHaveValue('2');
+  expect(await marked(page)).toBe(false);
+});
+
+// Next.js's own Back and Forward wait behind that action as well: the address changes and the
+// page stays, so the page reloads the address the browser moved to (docs/DECISIONS.md VPS-8).
+test('Back after an older build’s answer to a form action loads the page the browser moved to', async ({
+  page,
+}) => {
+  const price = await openImportReview(page);
+  await price.fill('20');
+  await staleActions(page, 1);
+  await mark(page);
+  await page.getByRole('button', { name: 'Save draft and finish later' }).click();
+  await expect(toast(page, 'A new version is ready')).toBeVisible();
+  expect(await marked(page)).toBe(true);
+
+  // The import page the review was reached from: this page's own history, not a new load.
+  const loaded = page.waitForEvent('load');
+  await page.goBack();
+  await loaded;
+  await expect(page).toHaveURL(/\/admin\/menu\/import$/);
+  await expect(page.getByRole('heading', { name: 'Import menu', level: 1 })).toBeVisible();
+  expect(await marked(page)).toBe(false);
+
+  // And Forward is the review again, its draft never saved.
+  await page.goForward();
+  await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
   await expect(price).toHaveValue('2');
 });
 

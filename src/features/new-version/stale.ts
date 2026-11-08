@@ -189,8 +189,9 @@ export function takeRefreshNotice(
  * (handlingFor). A held answer waits up to HOLD_MS while the page reloads. A kept one is never
  * handed to Next.js: the action stays pending until the page is refreshed, and what comes after
  * waits with it. Next.js runs actions one at a time (dispatchAction in app-router-instance.js),
- * and a caller inside a transition holds the page's later transitions, links too, until its
- * action ends. It never catches: an aborted request stays a TypeError.
+ * and a caller inside a transition holds the page's later transitions, its navigations too, until
+ * its action ends: so the page loads links and history moves in full instead (notice.ts). It
+ * never catches: an aborted request stays a TypeError.
  */
 export function watchFetch(fetchImpl: typeof fetch, onStale: () => Handling): typeof fetch {
   return async (input, init) => {
