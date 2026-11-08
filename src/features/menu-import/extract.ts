@@ -51,6 +51,16 @@ export const UNREADABLE_PAGE =
 export const READER_UNAVAILABLE =
   'The menu reader is not answering right now. Try this page again in a few minutes.';
 
+/**
+ * A failed page's error as the review shows it. By then the reading went on without the page, so
+ * the reader's "try this page again" no longer applies (docs/DECISIONS.md VPS-30).
+ */
+export function reviewPageError(error: string | null | undefined): string {
+  return error === READER_UNAVAILABLE
+    ? 'The menu reader was not answering.'
+    : (error ?? 'Unknown error');
+}
+
 export type PageOutcome = {
   status: 'done' | 'failed';
   result: PageExtraction | null;

@@ -6,6 +6,7 @@ import { Money } from '@/components/shared/money';
 import { buttonVariants } from '@/components/ui/button';
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/config';
 
+import { reviewPageError } from '../extract';
 import { markExistingItems, menuIndex } from '../merge';
 import { isPhotoImportEnabled } from '../providers';
 import {
@@ -194,7 +195,7 @@ export async function ImportDetailView({
             pageUrls={pageUrls}
             failedPages={menuImport.pages
               .filter((page) => page.status === 'failed')
-              .map((page) => ({ index: page.index, error: page.error ?? 'Unknown error' }))}
+              .map((page) => ({ index: page.index, error: reviewPageError(page.error) }))}
             startHref={importBasePath}
           />
         </>

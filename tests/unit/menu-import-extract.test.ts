@@ -8,6 +8,7 @@ import {
   PAGE_TIMEOUT_MS,
   parseReplyJson,
   READER_UNAVAILABLE,
+  reviewPageError,
   UNREADABLE_PAGE,
 } from '@/features/menu-import/extract';
 import { EXTRACTION_SYSTEM_PROMPT } from '@/features/menu-import/prompt';
@@ -326,6 +327,14 @@ describe('parseReplyJson', () => {
     expect(parseReplyJson('```json\n{"a": 1}\n```')).toEqual({ a: 1 });
     expect(parseReplyJson('Sure! {"a": 1} Hope this helps.')).toEqual({ a: 1 });
     expect(parseReplyJson('no json here')).toBeUndefined();
+  });
+});
+
+describe('reviewPageError', () => {
+  it('drops the reader’s "try this page again" once the reading went on without the page', () => {
+    expect(reviewPageError(READER_UNAVAILABLE)).toBe('The menu reader was not answering.');
+    expect(reviewPageError(UNREADABLE_PAGE)).toBe(UNREADABLE_PAGE);
+    expect(reviewPageError(null)).toBe('Unknown error');
   });
 });
 
