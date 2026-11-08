@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * The web image (docs/DECISIONS.md VPS-13 to VPS-19, VPS-21) is built once per environment, and
@@ -279,30 +279,42 @@ describe('the web image at run time', () => {
 /**
  * Node's server.close() drops the idle keep-alive connections once, and a connection that is busy
  * then idles for KEEP_ALIVE_TIMEOUT after its answer, so a stop that found one busy (Caddy keeps
- * its pooled connections for 2 minutes) always ran out the grace period (VPS-16, VPS-22). The
- * preload is the one script in the image that is logic, so it runs here, in a process of its own
- * because it replaces a method of node:http: once as the Dockerfile has it, once without it.
+ * its pooled connections for 2 minutes) always ran out the grace period (VPS-16, VPS-22). An answer
+ * still in flight must end its connection too, or Caddy pools it and the sweep closes it under a
+ * request on its way, and an upgrade request that nothing answers holds the close for as long as
+ * the client waits (Cloudflare: 100 s). The preload is the one script in the image that is logic,
+ * so it runs here, in a process of its own because it replaces methods of node:http: once as the
+ * Dockerfile has it, once without it.
  */
 describe('the drain preload', () => {
   const dir = mkdtempSync(join(tmpdir(), 'menumesh-drain-'));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  // Two pooled connections are each in the middle of a request when the server is told to stop,
-  // and a third request waits for one of them. Only then are the answers sent. One answer was
-  // started before the stop, so it says keep-alive and leaves an idle connection behind; the
-  // waiting request is sent after it, on the other. The keep-alive timeout stands in for 130 s.
+  // Three pooled connections are each in the middle of a request when the server is told to stop:
+  // one whose answer has not begun (/slow) and two whose headers are already out (/early), and a
+  // fourth request waits for a free connection. Only then are the answers sent, the early ones
+  // first: the waiting request goes out on one of their connections, after the stop, and the other
+  // connection falls idle. The slow answer, which decides on its connection when it begins, is last.
+  // The keep-alive timeout stands in for 130 s.
   writeFileSync(
-    join(dir, 'harness.cjs'),
+    join(dir, 'busy.cjs'),
     `
 const http = require('node:http');
-const agent = new http.Agent({ keepAlive: true, maxSockets: 2 });
-const waiting = [];
+const agent = new http.Agent({ keepAlive: true, maxSockets: 3 });
+const early = [];
+let slow;
 let reached;
-const bothReached = new Promise((resolve) => (reached = resolve));
+const allReached = new Promise((resolve) => (reached = resolve));
 const server = http.createServer((req, res) => {
-  if (req.url !== '/slow') return res.end('ok');
-  waiting.push(res);
-  if (waiting.length === 2) reached();
+  if (req.url === '/slow') {
+    slow = res;
+  } else if (req.url === '/early') {
+    res.flushHeaders();
+    early.push(res);
+  } else {
+    return res.end('ok');
+  }
+  if (slow && early.length === 2) reached();
 });
 server.keepAliveTimeout = Number(process.env.KEEP_ALIVE);
 server.keepAliveTimeoutBuffer = 0;
@@ -316,42 +328,113 @@ server.listen(0, '127.0.0.1', async () => {
         })
         .on('error', reject);
     });
-  await Promise.all([get('/'), get('/')]);
-  const answers = [get('/slow'), get('/slow'), get('/')];
-  await bothReached;
+  await Promise.all([get('/'), get('/'), get('/')]);
+  const answers = [get('/slow'), get('/early'), get('/early')];
+  const waiting = get('/late');
+  await allReached;
   const stopped = Date.now();
   const closed = new Promise((resolve) => server.close(resolve));
-  for (const res of waiting) res.end('ok');
-  const [, , connection] = await Promise.all(answers);
+  for (const res of early) res.end('ok');
+  const late = await waiting;
+  slow.end('ok');
+  const [slowAnswer] = await Promise.all(answers);
   await closed;
-  console.log(JSON.stringify({ connection, closedAfter: Date.now() - stopped }));
+  console.log(JSON.stringify({ slow: slowAnswer, late, closedAfter: Date.now() - stopped }));
+  process.exit(0);
+});
+`,
+  );
+
+  // An upgrade request for a path Next.js has no route for is left unanswered, in case a custom
+  // WebSocket server listens, and the socket stays open outside the server's own list of
+  // connections. A second upgrade arrives after the stop began, as one on a busy connection can.
+  writeFileSync(
+    join(dir, 'upgrade.cjs'),
+    `
+const http = require('node:http');
+const net = require('node:net');
+let seen = 0;
+let arrived;
+const upgradeArrived = new Promise((resolve) => (arrived = resolve));
+const server = http.createServer((req, res) => res.end('ok'));
+server.on('upgrade', () => {
+  seen++;
+  arrived();
+});
+server.listen(0, '127.0.0.1', async () => {
+  const client = net.connect(server.address().port, '127.0.0.1');
+  client.on('error', () => {});
+  client.write('GET /x HTTP/1.1\\r\\nHost: x\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\n\\r\\n');
+  await upgradeArrived;
+  const stopped = Date.now();
+  const closed = new Promise((resolve) => server.close(resolve));
+  const closedAfter = await Promise.race([
+    closed.then(() => Date.now() - stopped),
+    new Promise((resolve) => setTimeout(resolve, 1500, null)),
+  ]);
+  const late = new net.Socket();
+  server.emit('upgrade', {}, late, Buffer.alloc(0));
+  console.log(JSON.stringify({ closedAfter, seen, late: late.destroyed }));
   process.exit(0);
 });
 `,
   );
   writeFileSync(join(dir, 'menumesh-drain.cjs'), heredoc('/usr/local/lib/menumesh-drain.cjs').body);
 
-  const stop = async (preload: boolean, keepAlive: number) => {
+  type Busy = { slow: string; late: string; closedAfter: number };
+  type Upgrade = { closedAfter: number | null; seen: number; late: boolean };
+  const run = async <T>(harness: string, preload: boolean, env: Record<string, string> = {}) => {
     const { stdout } = await promisify(execFile)(
       process.execPath,
-      [
-        ...(preload ? ['--require', join(dir, 'menumesh-drain.cjs')] : []),
-        join(dir, 'harness.cjs'),
-      ],
-      { env: { ...process.env, KEEP_ALIVE: String(keepAlive) }, timeout: 20_000 },
+      [...(preload ? ['--require', join(dir, 'menumesh-drain.cjs')] : []), join(dir, harness)],
+      { env: { ...process.env, ...env }, timeout: 20_000 },
     );
-    return JSON.parse(stdout) as { connection: string; closedAfter: number };
+    return JSON.parse(stdout) as T;
   };
 
-  // Two processes start here, and the slower one waits 2 s: the 5 s a test gets by default is too
+  // Four processes start here, and the slowest waits 2 s: the 5 s a test gets by default is too
   // little on a loaded runner.
-  it('ends a stopping server’s connections with their answers instead of waiting on them', async () => {
-    const [without, drained] = await Promise.all([stop(false, 2000), stop(true, 4000)]);
-    // Without it the answer after the stop invites another request, and the stop waits out the timeout.
-    expect(without.connection).toBe('keep-alive');
-    expect(without.closedAfter).toBeGreaterThanOrEqual(1500);
-    // With it that answer ends its connection, the idle one is dropped, and the stop is over in a moment.
-    expect(drained.connection).toBe('close');
-    expect(drained.closedAfter).toBeLessThan(2500);
-  }, 15_000);
+  let busy: { without: Busy; drained: Busy };
+  let upgrade: { without: Upgrade; drained: Upgrade };
+  beforeAll(async () => {
+    const [busyWithout, busyDrained, upgradeWithout, upgradeDrained] = await Promise.all([
+      run<Busy>('busy.cjs', false, { KEEP_ALIVE: '2000' }),
+      run<Busy>('busy.cjs', true, { KEEP_ALIVE: '4000' }),
+      run<Upgrade>('upgrade.cjs', false),
+      run<Upgrade>('upgrade.cjs', true),
+    ]);
+    busy = { without: busyWithout, drained: busyDrained };
+    upgrade = { without: upgradeWithout, drained: upgradeDrained };
+  }, 20_000);
+
+  it('ends an answer still in flight at the stop, its headers not out yet, with its connection', () => {
+    // Without it the answer invites another request: Caddy would pool the connection, and the
+    // sweep would close it under a request Caddy had already written.
+    expect(busy.without.slow).toBe('keep-alive');
+    expect(busy.drained.slow).toBe('close');
+  });
+
+  it('ends the answer to a request that starts after the stop with its connection', () => {
+    expect(busy.without.late).toBe('keep-alive');
+    expect(busy.drained.late).toBe('close');
+  });
+
+  it('drops the connections that fall idle after the stop instead of waiting on them', () => {
+    // Without it the idle connections stay until the keep-alive timeout, and the stop waits it out.
+    expect(busy.without.closedAfter).toBeGreaterThanOrEqual(1500);
+    // With it the one that was left idle is dropped in a moment.
+    expect(busy.drained.closedAfter).toBeLessThan(2500);
+  });
+
+  it('does not wait on an upgrade that nothing answers', () => {
+    // Without it the socket, which the server no longer counts among its connections, holds the
+    // close: here for the 1.5 s the harness waits, in the image for as long as the client does.
+    expect(upgrade.without.closedAfter).toBeNull();
+    expect(upgrade.drained.closedAfter).toBeLessThan(1000);
+  });
+
+  it('ends an upgrade that arrives once the server is closing, without a listener seeing it', () => {
+    expect(upgrade.without).toMatchObject({ seen: 2, late: false });
+    expect(upgrade.drained).toMatchObject({ seen: 1, late: true });
+  });
 });

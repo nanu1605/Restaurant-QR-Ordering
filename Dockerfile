@@ -199,15 +199,61 @@ EOF
 # after its answer, and Caddy keeps its pooled connections as long, so a stop that found one busy
 # always ran out the grace period and ended in Docker's kill (docs/DECISIONS.md VPS-16, VPS-22).
 # Once the server is closing, this ends every connection with its answer and drops the ones that
-# fall idle. CMD loads it rather than NODE_OPTIONS, which the deploy sets.
+# fall idle. An answer in flight whose headers are not out yet says Connection: close too, or Caddy
+# would pool its connection and the sweep would close it under a request Caddy had just written.
+# An upgrade request that Next.js leaves unanswered (the app serves no WebSockets) keeps its socket
+# open for as long as the client waits, up to Cloudflare's 100 s. The server counts that socket,
+# but neither close() nor the sweep can see it, so the stop would wait for it: those sockets are
+# ended too. CMD loads it rather than NODE_OPTIONS, which the deploy sets.
 COPY --chmod=644 <<'EOF' /usr/local/lib/menumesh-drain.cjs
 const http = require('node:http');
+const { subscribe } = require('node:diagnostics_channel');
+
+// Per server: the answers in flight, the sockets that left HTTP with an upgrade, and whether it is
+// closing.
+const servers = new WeakMap();
+function track(server) {
+  if (!servers.has(server)) {
+    servers.set(server, { answers: new Set(), upgraded: new Set(), closing: false });
+  }
+  return servers.get(server);
+}
+
+// Node publishes every request here, before the server's own listeners see it.
+subscribe('http.server.request.start', ({ response, server }) => {
+  const { answers, closing } = track(server);
+  if (closing) {
+    // Every answer from now on ends its connection.
+    response.shouldKeepAlive = false;
+  } else {
+    answers.add(response);
+    response.once('close', () => answers.delete(response));
+  }
+});
+
+// A socket handed over with an upgrade has left Node's own list of connections.
+const emit = http.Server.prototype.emit;
+http.Server.prototype.emit = function (event, req, socket) {
+  if (event !== 'upgrade') return emit.apply(this, arguments);
+  const { upgraded, closing } = track(this);
+  if (closing) {
+    socket.destroy();
+    return true;
+  }
+  upgraded.add(socket);
+  socket.once('close', () => upgraded.delete(socket));
+  return emit.apply(this, arguments);
+};
+
 const close = http.Server.prototype.close;
 http.Server.prototype.close = function (...args) {
-  // Every answer from now on ends its connection.
-  this.prependListener('request', (_req, res) => {
-    res.shouldKeepAlive = false;
-  });
+  const server = track(this);
+  server.closing = true;
+  // The answers in flight whose headers are not out yet can still end their connection.
+  for (const response of server.answers) {
+    if (!response.headersSent) response.shouldKeepAlive = false;
+  }
+  for (const socket of server.upgraded) socket.destroy();
   // The connections that are busy now fall idle later: close them as they do.
   const timer = setInterval(() => this.closeIdleConnections(), 250).unref();
   this.once('close', () => clearInterval(timer));
