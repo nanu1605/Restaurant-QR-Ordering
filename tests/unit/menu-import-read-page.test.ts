@@ -1,3 +1,4 @@
+import { createClient, StorageApiError } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readMenuPage } from '@/features/menu-import/actions';
@@ -9,9 +10,13 @@ import {
 } from '@/features/menu-import/extract';
 
 // Reading one page in its server action: its time counts from the action's start, and a photo
-// that is slow to arrive can be tried again (docs/DECISIONS.md P7-15, VPS-5).
+// that did not arrive stops the reading, so that Try again reads the page once more
+// (docs/DECISIONS.md P7-15, VPS-5).
 
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
+
+const NOT_FETCHED = 'The photo of this page could not be fetched. Try again.';
+const NOT_UPLOADED = 'The photo of this page did not upload. Start a new import with this page.';
 
 const db = vi.hoisted(() => ({ rpc: vi.fn(), download: vi.fn() }));
 vi.mock('next/cache', () => ({ refresh: vi.fn() }));
@@ -69,6 +74,9 @@ const recorded = () =>
     error: string;
   };
 
+/** What Storage's own API answers for a missing object: 400, with the 404 in its body. */
+const notThere = () => new StorageApiError('Object not found', 400, '404', 'storage', 'NoSuchKey');
+
 beforeEach(() => {
   db.rpc.mockImplementation(async (fn: string) => ({
     data: fn === 'menu_import_claim_page' ? true : { total: 1, done: 0, failed: 1 },
@@ -99,11 +107,15 @@ describe('readMenuPage', () => {
     }
   });
 
-  it('records a photo that timed out as one to read again, without calling the reader', async () => {
+  it('records a photo that timed out as one to read again, and stops the reading', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
     db.download.mockResolvedValue({ data: null, error: new Error('The operation was aborted') });
 
-    await readMenuPage(IMPORT_ID, 1);
+    // Not ok: the progress loop stops on it, and Try again reads the failed page once more.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED,
+    });
 
     expect(timeout).toHaveBeenCalledWith(15_000);
     expect(db.download).toHaveBeenCalledWith(
@@ -123,7 +135,10 @@ describe('readMenuPage', () => {
       new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
     );
 
-    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED,
+    });
 
     expect(extractPage).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
@@ -133,21 +148,120 @@ describe('readMenuPage', () => {
     // undici's error for a reset mid-body: the timer has not fired, and the photo is there.
     db.download.mockRejectedValue(new TypeError('terminated'));
 
-    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED,
+    });
+
+    expect(extractPage).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('does the same when Storage cannot answer before the headers, the timer not fired', async () => {
+    // The storage service restarting behind the gateway: storage-js returns the failure, and the
+    // photo is still in Storage.
+    db.download.mockResolvedValue({
+      data: null,
+      error: new StorageApiError('Service Unavailable', 503, '503'),
+    });
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED,
+    });
 
     expect(extractPage).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
   });
 
   it('tells the owner to start again when the photo is not there', async () => {
-    db.download.mockResolvedValue({ data: null, error: new Error('Object not found') });
+    db.download.mockResolvedValue({ data: null, error: notThere() });
 
-    await readMenuPage(IMPORT_ID, 1);
+    // Ok: reading it again would find nothing, so the reading goes on without the page.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
 
     expect(extractPage).not.toHaveBeenCalled();
-    expect(recorded()).toMatchObject({
-      status: 'failed',
-      error: 'The photo of this page did not upload. Start a new import with this page.',
-    });
+    expect(recorded()).toMatchObject({ status: 'failed', error: NOT_UPLOADED });
+  });
+
+  it('does not ask to try again when the import was closed while the photo was fetched', async () => {
+    db.download.mockRejectedValue(new TypeError('terminated'));
+    db.rpc.mockImplementation(async (fn: string) =>
+      fn === 'menu_import_record_page'
+        ? { data: null, error: { code: 'P0001', message: 'IMPORT_NOT_OPEN', details: null } }
+        : { data: true, error: null },
+    );
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe('readMenuPage with storage-js between it and Storage', () => {
+  // The real client over a canned network, so each failure is the one storage-js builds. A new
+  // version that shapes one differently shows up here, not as owners told to fetch a missing
+  // photo again for good, or to start over for one that was only out of reach (VPS-5).
+  it.each([
+    {
+      name: 'a missing object (400, with the 404 in its body) is lost for good',
+      answer: async () =>
+        Response.json(
+          { statusCode: '404', error: 'not_found', message: 'Object not found', code: 'NoSuchKey' },
+          { status: 400 },
+        ),
+      lost: true,
+    },
+    {
+      name: 'a 404 whose body names a code and no statusCode is lost for good',
+      answer: async () =>
+        Response.json({ code: 'NoSuchKey', message: 'Object not found' }, { status: 404 }),
+      lost: true,
+    },
+    {
+      name: 'a 404 from a proxy is lost for good',
+      answer: async () => new Response('<html>Not Found</html>', { status: 404 }),
+      lost: true,
+    },
+    {
+      name: 'a 503 from the gateway is worth another try',
+      answer: async () =>
+        new Response('upstream connect error or disconnect/reset before headers', { status: 503 }),
+      lost: false,
+    },
+    {
+      name: 'a refused connection is worth another try',
+      answer: async () => {
+        throw new TypeError('fetch failed');
+      },
+      lost: false,
+    },
+    {
+      name: 'a body cut off after the headers is worth another try',
+      answer: async () =>
+        new Response(
+          new ReadableStream({
+            pull: (controller) => controller.error(new TypeError('terminated')),
+          }),
+        ),
+      lost: false,
+    },
+  ])('$name', async ({ answer, lost }) => {
+    const bucket = createClient('http://storage.test', 'key', {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: answer },
+    }).storage.from('menu-imports');
+    db.download.mockImplementation((...args: Parameters<typeof bucket.download>) =>
+      bucket.download(...args),
+    );
+
+    const result = await readMenuPage(IMPORT_ID, 1);
+
+    expect(extractPage).not.toHaveBeenCalled();
+    if (lost) {
+      expect(result).toMatchObject({ ok: true });
+      expect(recorded()).toMatchObject({ status: 'failed', error: NOT_UPLOADED });
+    } else {
+      expect(result).toMatchObject({ ok: false, error: NOT_FETCHED });
+      expect(recorded()).toMatchObject({ status: 'failed', error: READER_UNAVAILABLE });
+    }
   });
 });

@@ -37,6 +37,7 @@ const uuid = z.uuid();
 const NOT_FOUND = 'That import no longer exists. Start a new one from the Menu page.';
 const NO_DISHES_FOUND =
   'No dishes could be read from these photos. Take a sharper photo, straight on and in good light, of one page at a time.';
+const PHOTO_NOT_FETCHED = 'The photo of this page could not be fetched. Try again.';
 
 function importError(error: DbErrorLike, context: string) {
   const detail = error.details ?? '';
@@ -169,6 +170,14 @@ function progressOf(pages: PageRow[]): ReadProgress {
 /** A page photo is a few hundred KB from Storage: a stall mustn't eat the reader's time. */
 const PHOTO_TIMEOUT_MS = 15_000;
 
+/**
+ * Whether Storage said the object is not there. It answers a missing one with status 400 and
+ * statusCode '404' in its body; a proxy in front of it may answer 404 itself.
+ */
+function isNotFound(error: { status?: number; statusCode?: string } | null) {
+  return error?.status === 404 || error?.statusCode === '404';
+}
+
 /** Reads one page (spec §20A.1 step 2: one page per request). */
 export async function readMenuPage(
   importId: string,
@@ -212,17 +221,18 @@ export async function readMenuPage(
 
   const photoTimer = AbortSignal.timeout(PHOTO_TIMEOUT_MS);
   let photo: Blob | null = null;
-  let cut = false;
+  let missing = false;
   try {
     const download = await admin.storage
       .from(IMPORT_BUCKET)
       .download(path, {}, { signal: photoTimer });
     photo = download.data;
+    missing = isNotFound(download.error);
   } catch {
-    // storage-js returns a failure that lands before the headers, but throws one that lands while
-    // the body is read: the timer, or a connection reset. The page is recorded either way, or it
-    // stays claimed for 3 minutes and Try again skips it (docs/DECISIONS.md VPS-5).
-    cut = true;
+    // storage-js returns a failure that lands before the headers (the gateway's 503, a refused
+    // connection, the timer), but throws one that lands while the body is read (the timer, or a
+    // connection reset). The photo may still be in Storage either way, and the page is recorded
+    // either way, or it stays claimed for 3 minutes and Try again skips it (docs/DECISIONS.md VPS-5).
   }
   const env = getServerEnv();
   const outcome = photo
@@ -252,11 +262,11 @@ export async function readMenuPage(
     : {
         index: page,
         status: 'failed',
-        // A photo slow to arrive, or cut off on the way, is worth another try; a missing one isn't.
-        error:
-          photoTimer.aborted || cut
-            ? READER_UNAVAILABLE
-            : 'The photo of this page did not upload. Start a new import with this page.',
+        // Only a photo Storage says is not there is lost for good. One that was slow, cut off or
+        // out of reach is worth another try.
+        error: missing
+          ? 'The photo of this page did not upload. Start a new import with this page.'
+          : READER_UNAVAILABLE,
       };
 
   const saved = await admin.rpc('menu_import_record_page', {
@@ -271,6 +281,10 @@ export async function readMenuPage(
     }
     return importError(saved.error, 'Record import page');
   }
+  // A photo that did not arrive stops the reading, so that Try again reads the page once more:
+  // going on would finish the import without it, and nothing could read it after that
+  // (docs/DECISIONS.md VPS-5).
+  if (!photo && !missing) return actionError(PHOTO_NOT_FETCHED);
   return actionOk(saved.data as ReadProgress);
 }
 
