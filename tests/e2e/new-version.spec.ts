@@ -78,6 +78,9 @@ const keptMoves = (page: Page, memberId: string) =>
 const toast = (page: Page, text: string) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text });
 
+/** What the toast adds where the answer is kept back (VPS-8). */
+const NOT_SAVED = 'What you just changed wasn’t saved, and nothing will be until you refresh.';
+
 // Longer than the 300 ms a page takes to refresh by itself.
 const QUIET_MS = 3000;
 
@@ -377,6 +380,136 @@ test('Back after an older build’s answer to a form action loads the page the b
   await page.goForward();
   await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
   await expect(price).toHaveValue('2');
+});
+
+// A switch goes on showing its change as made behind a kept answer (its optimistic value only
+// reverts when the action ends), and the taps after it queue and are never sent: the toast says
+// nothing was saved, and the stylesheet stops taps on the controls that would look applied
+// (docs/DECISIONS.md VPS-8).
+test('behind a kept answer the toast says nothing was saved, and other switches stop taking taps', async ({
+  page,
+}) => {
+  const table = await createOrderingTable({ approval: false });
+  await logInAsOwner(page, table.restaurant);
+  await page.goto('/admin/menu');
+  const paneer = page.getByRole('switch', { name: 'Paneer Tikka in stock' });
+  const chicken = page.getByRole('switch', { name: 'Chicken 65 in stock' });
+  const grip = page.getByRole('button', { name: 'Move Chicken 65' });
+  const search = page.getByLabel('Search dishes');
+  await expect(paneer).toBeChecked();
+  // Until an answer is kept back the page is as it always was.
+  await expect(page.locator('html')).not.toHaveAttribute('data-new-version', /./);
+  await expect(chicken).toHaveCSS('pointer-events', 'auto');
+  await expect(chicken).toHaveCSS('opacity', '1');
+
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    if (request.headers()['next-action']) sent.push(request.url());
+  });
+  const fresh = await staleActions(page);
+  await mark(page);
+  await paneer.click();
+  const ready = toast(page, 'A new version is ready');
+  await expect(ready).toBeVisible();
+  await expect(ready).toContainText(NOT_SAVED);
+  await expect(ready).toContainText('Copy anything you’ve typed first.');
+  await expect(page.locator('html')).toHaveAttribute('data-new-version', 'kept');
+  expect(sent).toHaveLength(1);
+
+  // The other switch and the drag handle are frozen and dimmed, so a tap on them does nothing:
+  // it used to flip the switch and wait behind the first action, never sent.
+  for (const control of [paneer, chicken, grip]) {
+    await expect(control).toHaveCSS('pointer-events', 'none');
+    await expect(control).toHaveCSS('opacity', '0.6');
+  }
+  const { x, y, width, height } = (await chicken.boundingBox())!;
+  await page.mouse.click(x + width / 2, y + height / 2);
+  await expectLeftAlone(page);
+  await expect(chicken).toBeChecked();
+  expect(sent).toHaveLength(1);
+
+  // A text field still takes the pointer and the keys, so typed text can be selected and copied.
+  await expect(search).toHaveCSS('pointer-events', 'auto');
+  await search.click();
+  await page.keyboard.type('Chicken');
+  await expect(search).toHaveValue('Chicken');
+  const stored = async () => {
+    const { data } = await adminClient()
+      .from('menu_items')
+      .select('name, is_available')
+      .eq('restaurant_id', table.restaurantId)
+      .in('name', ['Chicken 65', 'Paneer Tikka'])
+      .throwOnError();
+    return Object.fromEntries(data!.map((row) => [row.name, row.is_available]));
+  };
+  expect(await stored()).toEqual({ 'Chicken 65': true, 'Paneer Tikka': true });
+
+  // Refresh, in the toast, still works: the page shows what the server has.
+  await fresh();
+  await Promise.all([
+    page.waitForEvent('load'),
+    ready.getByRole('button', { name: 'Refresh' }).click(),
+  ]);
+  expect(await marked(page)).toBe(false);
+  await expect(page.locator('html')).not.toHaveAttribute('data-new-version', /./);
+  await expect(paneer).toBeChecked();
+  await expect(chicken).toHaveCSS('pointer-events', 'auto');
+});
+
+// The rule's reach, in the browser that matters: the controls that show a change at once are
+// frozen, and links, text fields, tabs and the toaster's own buttons are not.
+test('behind a kept answer taps stop on the controls that show a change, and on nothing else', async ({
+  page,
+}) => {
+  await page.goto('/login');
+  const reach = await page.evaluate(() => {
+    document.documentElement.dataset.newVersion = 'kept';
+    const probe = (html: string, find: string) => {
+      const box = document.createElement('div');
+      box.innerHTML = html;
+      document.body.append(box);
+      return getComputedStyle(box.querySelector(find)!).pointerEvents;
+    };
+    const frozen = {
+      'a button': '<button>Save</button>',
+      'a role button': '<div role="button">Save</div>',
+      'a switch': '<span role="switch"></span>',
+      'a role checkbox': '<span role="checkbox"></span>',
+      'a role radio': '<span role="radio"></span>',
+      'a menu item': '<div role="menuitem">Edit</div>',
+      'a menu checkbox item': '<div role="menuitemcheckbox">Sound</div>',
+      'a menu radio item': '<div role="menuitemradio">English</div>',
+      'an option': '<div role="option">Half</div>',
+      'a slider': '<div role="slider"></div>',
+      'a sortable handle': '<div aria-roledescription="sortable"></div>',
+      'a select': '<select><option>One</option></select>',
+      'a file input': '<input type="file">',
+      'a submit input': '<input type="submit">',
+      'a button input': '<input type="button">',
+      'a checkbox': '<input type="checkbox">',
+      'a radio': '<input type="radio">',
+      'a range': '<input type="range">',
+    };
+    const open = {
+      'a link': '<a href="/admin">Admin</a>',
+      'a link that is a menu item': '<a href="/super#activity" role="menuitem">All activity</a>',
+      'a text field': '<input type="text">',
+      'a search field': '<input type="search">',
+      'a text area': '<textarea></textarea>',
+      'a tab': '<button role="tab">Email</button>',
+      'a tab that is no button': '<div role="tab">Email</div>',
+      'a button in the toaster': '<ol data-sonner-toaster><li><button>Refresh</button></li></ol>',
+    };
+    const read = (kinds: Record<string, string>) =>
+      Object.entries(kinds).map(([name, html]) => [
+        name,
+        probe(html, html.startsWith('<ol') ? 'button' : ':scope > *'),
+      ]);
+    return { frozen: read(frozen), open: read(open) };
+  });
+  expect(reach.frozen.filter(([, events]) => events !== 'none')).toEqual([]);
+  expect(reach.open.filter(([, events]) => events !== 'auto')).toEqual([]);
+  expect(reach.frozen.length + reach.open.length).toBe(26);
 });
 
 test('a script missing after a deploy refreshes the page instead of breaking it', async ({

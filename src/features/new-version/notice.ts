@@ -139,11 +139,15 @@ export function newVersionFound(source: Source, cause: Cause = 'version'): Exclu
   if (source === 'boundary' || !online) return next;
   const t = NEW_VERSION_STRINGS[htmlLang()];
   const closable = refreshesByItself(location.pathname);
+  // Where the answer is kept back, the tap that met the newer build reached nothing, and a control
+  // that shows its change at once (dish availability, on duty, a reorder) looks as if it had.
+  const kept = closable ? '' : ` ${t.notSaved}`;
   if (next === 'ready') {
-    offerRefresh(t.ready.title, `${t.ready.description} ${t.ready.copyFirst}`, t.refresh, closable);
+    const description = `${t.ready.description}${kept} ${t.ready.copyFirst}`;
+    offerRefresh(t.ready.title, description, t.refresh, closable);
   } else {
     const cart = isCartPage(location.pathname) ? ` ${t.cartSaved}` : '';
-    offerRefresh(t.stuck.title, t.stuck.description + cart, t.refresh, closable);
+    offerRefresh(t.stuck.title, t.stuck.description + cart + kept, t.refresh, closable);
   }
   return next;
 }
@@ -204,12 +208,15 @@ let loadingInFull = false;
  * holds the page's later ones, Next.js's navigations too, until its action ends, which it never
  * does (VPS-8). So from then on a plain click on a link loads its address in full, and back or
  * forward reloads the address the browser moved to: the new build's page, as Next.js itself
- * loads it on a deployment id mismatch (VPS-7). Installed by the first kept answer and not
- * before, so a page that never meets a newer build is as it was.
+ * loads it on a deployment id mismatch (VPS-7). Nothing a tap does is sent either, so <html> is
+ * marked for the stylesheet, which stops taps on the controls that show their change at once
+ * (globals.css). Installed by the first kept answer and not before, so a page that never meets
+ * a newer build is as it was.
  */
 function loadInFullFromNow() {
   if (loadingInFull) return;
   loadingInFull = true;
+  document.documentElement.dataset.newVersion = 'kept';
   const page = withoutHash(location.href);
   document.addEventListener('click', loadLinkInFull, true);
   // The browser has moved the URL already; a #hash alone is the same page, scrolled.

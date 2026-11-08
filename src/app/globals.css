@@ -367,6 +367,39 @@ html:has(.site) {
   }
 }
 
+/* A page that keeps an older build's answer back (docs/DECISIONS.md VPS-8): notice.ts sets
+   <html data-new-version="kept"> at the first one. Nothing a tap does reaches the server from then
+   on, and a control that shows its change at once (dish availability, a waiter's on-duty switch,
+   the drag reorders: useOptimistic) would look as if it had, so taps on controls stop and the
+   controls dim. Left alone: links, which the page loads in full; text fields, so typed text can
+   still be selected and copied; tabs, which only change what is shown; and the toaster, whose
+   Refresh is the way on. A keyboard can still press a focused control. Unlayered, so it beats
+   the utilities. */
+html[data-new-version='kept']
+  :is(
+    button,
+    [role='button'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio'],
+    [role='option'],
+    [role='slider'],
+    [aria-roledescription='sortable'],
+    select,
+    input[type='file'],
+    input[type='submit'],
+    input[type='button'],
+    input[type='checkbox'],
+    input[type='radio'],
+    input[type='range']
+  ):not(a[href], [role='tab'], [data-sonner-toaster] *) {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
 /* Motion only in response to actions; honour the OS setting (spec §16.2). */
 @media (prefers-reduced-motion: reduce) {
   *,

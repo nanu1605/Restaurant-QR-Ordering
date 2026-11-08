@@ -19,6 +19,8 @@ const en = {
     title: 'The new version didn’t load',
     description: 'Refresh the page. If this keeps happening, close the page and open it again.',
   },
+  /** Said where the answer is kept back (VPS-8): a switch or a reorder shows its change as made. */
+  notSaved: 'What you just changed wasn’t saved, and nothing will be until you refresh.',
   updated: {
     title: 'Updated to the new version',
     description: 'If what you just did didn’t go through, please do it again.',
@@ -52,6 +54,7 @@ const hi: NewVersionStrings = {
     title: 'नया वर्ज़न नहीं खुल पाया',
     description: 'पेज रीफ़्रेश करें। ऐसा बार-बार हो, तो पेज बंद करके फिर से खोलें।',
   },
+  notSaved: 'आपने अभी जो बदलाव किया, वह सेव नहीं हुआ। रीफ़्रेश करने तक कुछ भी सेव नहीं होगा।',
   updated: {
     title: 'नया वर्ज़न आ गया है',
     description: 'अगर आपका पिछला काम पूरा नहीं हुआ, तो उसे फिर से करें।',

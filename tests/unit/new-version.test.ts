@@ -333,6 +333,7 @@ describe('the tab’s notice', () => {
     vi.useFakeTimers();
     sessionStorage.clear();
     document.documentElement.lang = 'en';
+    delete document.documentElement.dataset.newVersion;
     answer = async () => staleResponse();
     toast.mockClear();
     toast.dismiss.mockClear();
@@ -401,7 +402,8 @@ describe('the tab’s notice', () => {
     expect(toast).toHaveBeenCalledWith(
       'A new version is ready',
       expect.objectContaining({
-        description: 'Refresh the page to keep working. Copy anything you’ve typed first.',
+        description:
+          'Refresh the page to keep working. What you just changed wasn’t saved, and nothing will be until you refresh. Copy anything you’ve typed first.',
         duration: Infinity,
         // A closed toast could not come back: later taps wait behind the action.
         closeButton: false,
@@ -426,10 +428,62 @@ describe('the tab’s notice', () => {
       expect(await settledAfter(window.fetch(path, { method: 'POST' }), HOLD_MS * 3)).toBe(false);
       expect(toast).toHaveBeenCalledWith(
         'The new version didn’t load',
-        expect.objectContaining({ closeButton: false, dismissible: false }),
+        expect.objectContaining({
+          description: expect.stringContaining(NEW_VERSION_STRINGS.en.notSaved),
+          closeButton: false,
+          dismissible: false,
+        }),
       );
       // No second refresh.
       expect(sessionStorage.getItem(REFRESH_KEY)).toBe(record);
+    },
+  );
+
+  // A switch or a reorder shows its change as made while the answer is kept back, so the toast
+  // says it was not (VPS-8). Each test is a fresh page; the language is the page's.
+  describe.each(['en', 'hi'] as const)('where an answer is kept back, in %s', (lang) => {
+    const { ready, stuck, notSaved } = NEW_VERSION_STRINGS[lang];
+    beforeEach(() => {
+      document.documentElement.lang = lang;
+    });
+
+    it('the Refresh offer says that what was just changed was not saved', async () => {
+      await openPage('/admin/menu');
+      void window.fetch('/admin/menu', { method: 'POST' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(toast).toHaveBeenCalledExactlyOnceWith(
+        ready.title,
+        expect.objectContaining({
+          description: `${ready.description} ${notSaved} ${ready.copyFirst}`,
+        }),
+      );
+    });
+
+    it('so does the note that the new version didn’t load', async () => {
+      const refreshed = { at: Date.now() - 60_000, from: null, cause: 'version', noticed: true };
+      sessionStorage.setItem(REFRESH_KEY, JSON.stringify(refreshed));
+      await openPage('/super');
+      void window.fetch('/super', { method: 'POST' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(toast).toHaveBeenCalledExactlyOnceWith(
+        stuck.title,
+        expect.objectContaining({ description: `${stuck.description} ${notSaved}` }),
+      );
+    });
+  });
+
+  // The live screens' answers pass, so what was tapped goes on working there: nothing to add.
+  it.each(['/staff', '/admin/live', '/t/AbC123', '/t/AbC123/cart'])(
+    'does not say it on a live screen that is stuck, at %s',
+    async (path) => {
+      const refreshed = { at: Date.now() - 60_000, from: null, cause: 'version', noticed: true };
+      sessionStorage.setItem(REFRESH_KEY, JSON.stringify(refreshed));
+      await openPage(path);
+      expect((await window.fetch(path, { method: 'POST' })).status).toBe(409);
+      expect(toast).toHaveBeenCalledOnce();
+      const [, options] = toast.mock.calls[0]!;
+      expect(options.description).not.toContain(NEW_VERSION_STRINGS.en.notSaved);
+      expect(options).toMatchObject({ closeButton: true, dismissible: true });
     },
   );
 
@@ -565,10 +619,14 @@ describe('the tab’s notice', () => {
       return taken;
     }
 
+    /** The mark the stylesheet reads (globals.css): taps stop on the controls that show a change. */
+    const marker = () => document.documentElement.dataset.newVersion;
+
     it('puts nothing on the page before an answer is kept, and leaves links and history alone', async () => {
       const { load, reload } = await openNotLeaving('/admin/menu');
       expect(listening('click')).toBe(0);
       expect(listening('popstate')).toBe(0);
+      expect(marker()).toBeUndefined();
       expect(click(labelOf('href="/admin/tables"'))).toBe(false);
       history.replaceState(null, '', '/admin/tables');
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -610,18 +668,32 @@ describe('the tab’s notice', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(listening('click')).toBe(0);
       expect(listening('popstate')).toBe(0);
+      expect(marker()).toBeUndefined();
     });
 
     it('is put there once, by the first answer that is kept', async () => {
       await openNotLeaving('/admin/menu');
+      const written: MutationRecord[] = [];
+      const writes = new MutationObserver((records) => written.push(...records));
+      writes.observe(document.documentElement, { attributeFilter: ['data-new-version'] });
       for (let kept = 0; kept < 2; kept++) {
         void window.fetch('/admin/menu', { method: 'POST' });
         await vi.advanceTimersByTimeAsync(0);
         expect(listening('click')).toBe(1);
         expect(listening('popstate')).toBe(1);
+        expect(marker()).toBe('kept');
       }
+      // Written once, not again by the second answer.
+      written.push(...writes.takeRecords());
+      expect(written).toHaveLength(1);
+      writes.disconnect();
       // Before Next.js's Link, which listens while the click bubbles.
       expect(added.document).toHaveBeenCalledWith('click', expect.any(Function), true);
+    });
+
+    it('marks <html> with what the stylesheet looks for', () => {
+      const stylesheet = readFileSync('src/app/globals.css', 'utf8');
+      expect(stylesheet).toContain("html[data-new-version='kept']");
     });
 
     it.each([
