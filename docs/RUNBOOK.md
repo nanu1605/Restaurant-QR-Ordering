@@ -42,15 +42,16 @@ and the version check. Re-run the workflow instead.
   second order). Admin, super, the website and login show "A new version is ready" with a
   **Refresh** button that cannot be closed: the tap that met the newer build stays pending behind it
   and the page keeps what was typed, so copy anything typed first, then press Refresh. The toast
-  also says that what was just changed was not saved, and nothing will be until Refresh: from that
+  also says that anything just changed was not saved, and nothing will be until Refresh: from that
   first tap the page's buttons, switches, menu items, drag handles and selects stop taking taps and
-  dim, so that nothing looks saved that was not (links, typed text, tabs and the toast's Refresh
-  keep working; a keyboard can still press a focused control, which is never sent either). A link on
-  the page, or Back, loads the new build in full too, typed text lost as with Refresh, and a link to
-  a place on the same page scrolls there. A page that refreshes its own data on a timer (a download
-  being prepared on `/admin/settings`, a support board in `/super`) reloads by itself at its next
-  tick, whatever was typed. A tab refreshes itself at most once in 2 minutes, so a broken deploy
-  can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
+  dim, so that nothing looks saved that was not (links, typed text, tabs, the buttons that only
+  open a menu or a sheet, such as the panel's navigation on a phone, and the toast's Refresh keep
+  working; a keyboard or a screen reader can still press a control, which is never sent either). A
+  link on the page, or Back, loads the new build in full too, typed text lost as with Refresh, and a
+  link to a place on the same page scrolls there. A page that refreshes its own data on a timer (a
+  download being prepared on `/admin/settings`, a support board in `/super`) reloads by itself at
+  its next tick, whatever was typed. A tab refreshes itself at most once in 2 minutes, so a broken
+  deploy can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
 
 ### One-time setup per environment
 

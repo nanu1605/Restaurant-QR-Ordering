@@ -4422,19 +4422,22 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   skipped for lack of time is never recorded as the page's provider, and a photo that does not
   arrive (the timer, a reset while it downloads, Storage unreachable or answering an error) is
   recorded as failed with the "reader is not answering" text, after which the action answers "The
-  photo of this page could not be fetched. Try again.": the reading stops, and Try again reads the
-  page again. Only a photo that Storage says is not there keeps "did not upload" (reviews A1, R2-1
-  and R2-2). The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the limit for the
-  Hindi names the commit fills afterwards), and the progress copy says "up to a minute and a half".
+  photo of this page could not be fetched. Try again. If you leave this screen instead, the import
+  finishes without this page.": the reading stops, Try again reads the page again, and the card,
+  which says while reading that coming back carries on, no longer says so once stopped (R3-1).
+  Only a photo that Storage says is not there keeps "did not upload" (reviews A1, R2-1 and R2-2).
+  The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the limit for the Hindi names
+  the commit fills afterwards), and the progress copy says "up to a minute and a half".
   - **The trade-off.** A page whose reader call takes 40 to 60 s used to pass and now fails as "not
     answering right now", on Vercel too. That page is recorded as failed but the reading goes on
     and finishes without it: a one-page import fails with that message and offers only Start a new
     import, and a longer one is reviewed without the page, with no way to read it again. Try again
     follows only an error that stops the reading, which a reader that cannot answer does not (a
     photo that did not arrive does); whether it should is not decided. A reload instead of Try
-    again finishes an import without a failed page too. Durations aren't stored and production has
-    almost no imports, so nothing says how often; the warning now ends "(the call took X s, the
-    page Y s so far)", so the 40 s can be tuned from the logs.
+    again finishes an import without a failed page too, as the photo error now says (R3-1).
+    Durations aren't stored and production has almost no imports, so nothing says how often; the
+    warning now ends "(the call took X s, the page Y s so far)", so the 40 s can be tuned from the
+    logs.
 - **VPS-6 · A data export too big for memory fails before it starts:** the export (SA-93) builds the
   ZIP in memory, in the one web process every restaurant shares. Before reading a row, `buildExport`
   counts bills, order items, orders, bill payments and sessions (five HEAD requests, exact counts)
@@ -4501,13 +4504,13 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     catch (`useTransition`, `useActionState`, a form action) therefore cannot rethrow it into
     `app/error.tsx`, whose boundary rule refreshed the tab 300 ms later and lost what was typed.
     Nothing reloads by itself, so typed text can be copied first; a link, or Back, loads the new
-    build in full, the toast says that what was just changed was not saved, and the controls that
-    show a change at once stop taking taps (see What it costs). The toast has no close button and
-    cannot be swiped away: Next.js runs actions one at a time, so later taps queue behind the
-    pending one, and a closed toast could not come back. Offline no toast shows and the answer
-    passes, as before. Two callers there needed no guard of their own and keep their error toasts,
-    since the stale answer no longer reaches them: the snooze menu in `/super` and the autopay
-    panel's Subscribe in `/admin`.
+    build in full, the toast says that anything just changed was not saved, and buttons and the
+    other controls stop taking taps, though not those that only open a menu or a sheet (see What
+    it costs). The toast has no close button and cannot be swiped away: Next.js runs actions one
+    at a time, so later taps queue behind the pending one, and a closed toast could not come back.
+    Offline no toast shows and the answer passes, as before. Two callers there needed no guard of
+    their own and keep their error toasts, since the stale answer no longer reaches them: the
+    snooze menu in `/super` and the autopay panel's Subscribe in `/admin`.
   - **The one exception: Next.js's own full load.** Next.js compares `x-nextjs-deployment-id` on
     every RSC answer and loads the page in full when it is a newer build's (VPS-7), which nothing
     here stops: a link, or a page's own `router.refresh()`, that reaches the new build reloads the
@@ -4584,18 +4587,27 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
       the kept action and were never sent. An owner could mark three dishes sold out while guests
       went on ordering them; before B1 that first tap reloaded the page and showed the real state.
       Two measures. The two toasts that cannot be closed carry one more sentence (`notSaved` in
-      `strings.ts`): "What you just changed wasn’t saved, and nothing will be until you refresh." It
-      comes between "Refresh the page to keep working." and "Copy anything you’ve typed first." in
-      "A new version is ready", and last in "The new version didn’t load"; the live screens' toasts,
-      the "Updated" toast, the error cards and the Refreshing overlay are as they were. And the
-      first kept answer sets `<html data-new-version="kept">`, once (`loadInFullFromNow`). Under it
+      `strings.ts`): "If you just changed something, it wasn’t saved, and nothing will be until you
+      refresh.", worded for any action since many change nothing, such as a search, a sign-in or
+      the import's reading (review R3-3). It comes between "Refresh the page to keep working." and
+      "Copy anything you’ve typed first." in "A new version is ready", and last in "The new version
+      didn’t load"; the live screens' toasts, the "Updated" toast, the error cards and the
+      Refreshing overlay are as they were. And the first kept answer sets
+      `<html data-new-version="kept">`, once (`loadInFullFromNow`). Under it
       an unlayered rule at the end of `globals.css` gives `pointer-events: none` and `opacity: .6`
       to buttons, to what has the role button, switch, checkbox, radio, menuitem (with its checkbox
       and radio kinds), option or slider, to drag handles (`aria-roledescription="sortable"`), to
       selects, and to file, submit, button, checkbox, radio and range inputs. It leaves alone links
       (a link menu item such as the alerts bell's All activity too), tabs, text fields and text
       areas, so that typed text can still be selected and copied, and everything in the toaster,
-      whose Refresh is the way on. A page that never keeps an answer carries no mark.
+      whose Refresh is the way on. Since review R3-2 it also leaves alone the buttons that only
+      open a menu or a dialog (`aria-haspopup` `menu` or `dialog`, which Base UI's menu, dialog,
+      sheet and popover triggers carry): on a phone the panels' navigation is a sheet, and the
+      account menu holds Get help and the switch to the other panel, all links. What they open
+      stays frozen, and so does a select's trigger (`listbox`), which is there to change a value.
+      What carries `data-live-when-kept`, which sends nothing, is left alone too: the hero's Pause,
+      the website's control for its looping animation. A page that never keeps an answer carries
+      no mark.
     - **A link to a place on the page (review R1-3).** Next.js's own move to a `#hash` on the page
       it is on waits behind the kept action as well, and so does the scroll to it, which needs a
       commit: such a link did nothing, and the click listener had been leaving it to Next.js. The
@@ -4617,11 +4629,16 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
       website's other section links are plain `<a>` (`SiteLink`), which go through the same call and
       get what the browser would have done.
     - **Known limits.** The control tapped first, the one that met the newer build, still shows its
-      change until Refresh: the toast says it was not saved. A keyboard can still press a focused
-      control (a switch flips, a keyboard drag moves a row), Enter in a text field still submits its
-      form and a `<label>` that points at a checkbox or radio still toggles it; each queues behind
-      the kept action and is never sent, and an optimistic control shows it. None of today's
-      optimistic controls has a label. If an unrelated render error then puts the card of
+      change until Refresh: the toast says it was not saved. A keyboard or a screen reader can still
+      press a control (a switch flips, a keyboard drag moves a row): a key, or a screen reader's
+      double-tap, acts on the element itself, which `pointer-events` does not stop, and nothing
+      tells a screen reader that the control is frozen, though it reads out the toast (review R3-4,
+      reasoned from how browsers activate an element, not tried with one). Enter in a text field
+      still submits its form and a `<label>` that points at a checkbox or radio still toggles it;
+      each queues behind the kept action and is never sent, and an optimistic control shows it.
+      None of today's optimistic controls has a label. Opening the alerts bell clears its count on
+      the page while marking the alerts seen waits behind the kept action, so the count comes back
+      after Refresh. If an unrelated render error then puts the card of
       `app/error.tsx` in place of the page, its Try again and Refresh, which are outside the
       toaster, are frozen too, and the toast's Refresh is the way on; `global-error.tsx` is not
       affected, since React clears `<html>`'s attributes when it takes it over.
@@ -4684,9 +4701,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   language menu. A script that did not load gets neutral words ("Part of this page didn’t load.
   Refreshing…", "Check the connection, then refresh the page."), since it is usually the connection.
   Hindi writes nuktas as separate marks; the new words are वर्ज़न (version) and एरर कोड (error
-  code), and, for the sentence that what was just changed was not saved (आपने अभी जो बदलाव किया, वह
-  सेव नहीं हुआ। रीफ़्रेश करने तक कुछ भी सेव नहीं होगा।), सेव (save) and बदलाव (change), which the
-  app already uses. That sentence is the developer's Hindi and has not been read by a Hindi speaker.
+  code), and, for the sentence that anything just changed was not saved (अगर आपने अभी कुछ बदला है,
+  तो वह सेव नहीं हुआ। रीफ़्रेश करने तक कुछ भी सेव नहीं होगा।, review R3-3), सेव (save) and बदला
+  (changed), which the app already uses. That sentence is the developer's Hindi and has not been
+  read by a Hindi speaker.
   - **An exception to W-15:** the website keeps its words server-only so that one language reaches
     the browser, but this dictionary is imported by a client component in the root layout, so every
     page carries both: about 1 KiB of the 2.4 KiB (gzipped) that the notice, its words and the error
@@ -5075,13 +5093,14 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     503 with a non-JSON body, a refused connection and a body cut off after the headers are read
     again; seven of the 13 fail on the previous `actions.ts`); `menu-import-progress` (2, new,
     jsdom: the reading stops at a page whose action answered with an error and does not finish the
-    import, and Try again reads that page and the pending one, then finishes; a page recorded as
+    import, the card's "coming back later carries on" shows while it reads and not once it stops,
+    and Try again reads that page and the pending one, then finishes; a page recorded as
     failed that a reload finds is left alone until Try again is pressed); `close-account` (+5: the
     export guard, refused before a row is read, half the heap and the cap).
   - Reload prompt: `new-version` (99, jsdom: Next.js's real class and header pinned; what each kind
     of page does; what becomes of an older build's answer, passed, held or kept back, as a table and
     through the real notice module (on the admin pages it stays pending 30 s past the hold, with a
-    toast that has no close button and says, in English and in Hindi, that what was just changed was
+    toast that has no close button and says, in English and in Hindi, that anything just changed was
     not saved; a stuck live screen gets it at once, keeps its close button and does not say so;
     offline it passes); links and history behind a kept answer (no listener and no mark on `<html>`
     before one, nor where answers are only held or passed; one click and one popstate listener after
@@ -5147,9 +5166,11 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   toast with the sentence that nothing was saved, the switches and the drag handle go to
   `pointer-events: none` and `opacity: .6`, a click on another switch sends no further action (one
   action request in all), the search field still takes the pointer and the keys, the database is
-  unchanged and the toast's Refresh reloads to a page without the mark; the computed
-  `pointer-events` of 26 synthetic elements, 18 kinds frozen and 8 (a link menu item, tabs, text
-  fields and the toaster's button among them) left alone; the alerts bell's All activity on `/super`
+  unchanged, the account menu still opens with its Log out frozen, and the toast's Refresh reloads
+  to a page without the mark; the computed `pointer-events` of 30 synthetic elements, 19 kinds
+  frozen (a select's trigger among them) and 11 left alone (a link menu item, tabs, text fields, a
+  sheet trigger, a menu trigger, a button marked `data-live-when-kept` and the toaster's button
+  among them); the alerts bell's All activity on `/super`
   goes to `#activity`, the Activity heading comes into view, the page is not reloaded and Back
   returns to `/super` without a reload; a missing script refreshes through the guest error page (30
   of 30 with `--repeat-each=3`). `playwright.config.ts` runs the app with
@@ -5309,9 +5330,9 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   reloads by itself. A caller in a transition holds Next.js's navigations while its action is
   pending, so at first links and Back did nothing on such a page until Refresh. Now the first kept
   answer makes a plain click on a link load its address in full, and back or forward reload the
-  address the browser moved to. The page's other actions still wait behind the kept one, and the
-  controls that show a change at once stop taking taps (R1-1). VPS-8 has the rules and what it
-  costs.
+  address the browser moved to. The page's other actions still wait behind the kept one, and
+  buttons and the other controls stop taking taps, though not those that only open a menu or a
+  sheet (R1-1, R3-2). VPS-8 has the rules and what it costs.
 - **B2 · The refresh by itself could turn a retry into a second order (VPS-8, P3-10):** the page
   that reloads made a new idempotency key, so after a reply lost in the deploy, a stale retry and
   the refresh, the second Place order was a new order, though the toast said to place it again. The
@@ -5448,3 +5469,38 @@ A1, B1 and Tests; B4 and C1 point here), and so were the RUNBOOK's Deploying and
   links change had taken `new-version` from 55 to 84 tests, so a run counted 851. It now says 667 to
   884 tests in 49 to 60 files, counted at the end of the second review's fixes, with the per-file
   counts.
+
+**Third review.** A last review of the second review's fixes found four more, all small: one on
+the menu import's progress card (R3-1) and three on the reload prompt (R3-2 to R3-4). Three are
+fixed and one is recorded. The entries above that a fix changed were corrected in place (VPS-5,
+VPS-8, VPS-12, B1 and Tests), and so was the RUNBOOK's Deploying section.
+
+- **R3-1 · A stopped import said coming back carries on (VPS-5):** since R2-1 a photo that did not
+  arrive stops the reading, but the card still said "You can leave this page open; coming back
+  later carries on from here." A reload skips a page recorded as failed, so an owner who left as
+  the card suggested came back to an import finished without the page or, with one page, to a
+  failed import that offers only Start a new import. The sentence now shows only while the pages
+  are read, and the photo error says "Try again. If you leave this screen instead, the import
+  finishes without this page." A reload does not read such a page again by itself: today it is the
+  only way past a photo that keeps failing.
+- **R3-2 · The freeze stopped the buttons that only open a menu or a sheet (VPS-8):** R1-1's rule
+  matched every button, so behind a kept answer on a phone the panels' navigation (a sheet below
+  1024 px), the account menu with its Get help and panel links, the alerts bell and the website's
+  menu did not open, and the hero's Pause, the website's control for its looping animation, could
+  not be pressed, though the comments and VPS-8 said only the controls that show a change stop.
+  Buttons with `aria-haspopup` `menu` or `dialog` (Base UI's menu, dialog and popover triggers, a
+  sheet's too) and what is marked `data-live-when-kept` (the Pause) are now left alone; what they
+  open stays frozen, and so does a select's trigger (`listbox`). The e2e probe has 30 kinds, and on
+  `/admin/menu` the account menu opens behind a kept answer with its Log out frozen.
+- **R3-3 · The toast said a change was not saved when nothing was changed (VPS-8, VPS-12):** the
+  sentence goes on every kept answer, and many actions that meet the newer build change nothing:
+  the super search, opening the alerts bell, signing in, the menu import's reading. It now reads
+  "If you just changed something, it wasn’t saved, and nothing will be until you refresh." (Hindi:
+  अगर आपने अभी कुछ बदला है, तो वह सेव नहीं हुआ। रीफ़्रेश करने तक कुछ भी सेव नहीं होगा।, not yet
+  read by a Hindi speaker).
+- **R3-4 · A screen reader can still press a frozen control (VPS-8):** the freeze is CSS only. A
+  screen reader's double-tap, like a key, acts on the element itself, which `pointer-events` does
+  not stop, and the frozen controls stay enabled in the accessibility tree. Recorded in VPS-8's
+  known limits, the stylesheet's comment and the RUNBOOK; reasoned, not tried with a screen reader.
+  Stopping such clicks in the page's capture listener, and marking the controls `aria-disabled`, is
+  left for later: it changes how every click on a kept page is handled.
