@@ -4491,22 +4491,22 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     hands Next.js its answer, so the action neither fails nor ends (review B1). A caller without a
     catch (`useTransition`, `useActionState`, a form action) therefore cannot rethrow it into
     `app/error.tsx`, whose boundary rule refreshed the tab 300 ms later and lost what was typed.
-    Nothing reloads by itself, so typed text can be copied first. The toast has no close button and
-    cannot be swiped away: Next.js runs actions one at a time, so later taps queue behind the
-    pending one, and a closed toast could not come back. Offline no toast shows and the answer
-    passes, as before. Two callers there needed no guard of their own and keep their error toasts,
-    since the stale answer no longer reaches them: the snooze menu in `/super` and the autopay
-    panel's Subscribe in `/admin`.
+    Nothing reloads by itself, so typed text can be copied first; a link, or Back, loads the new
+    build in full (see What it costs). The toast has no close button and cannot be swiped away:
+    Next.js runs actions one at a time, so later taps queue behind the pending one, and a closed
+    toast could not come back. Offline no toast shows and the answer passes, as before. Two callers
+    there needed no guard of their own and keep their error toasts, since the stale answer no
+    longer reaches them: the snooze menu in `/super` and the autopay panel's Subscribe in `/admin`.
   - **The one exception: Next.js's own full load.** Next.js compares `x-nextjs-deployment-id` on
     every RSC answer and loads the page in full when it is a newer build's (VPS-7), which nothing
     here stops: a link, or a page's own `router.refresh()`, that reaches the new build reloads the
-    page, typed text or not (behind a caller in a transition, a link gets no further: see What it
-    costs). Pages that call `router.refresh()` on a timer do it by themselves at the next tick
-    after a deploy: the data export card while a build runs (every 4 s, and once more when its
-    download link runs out), on `/admin/settings` under the settings forms and on a restaurant's
-    Account tab in `/super`; and the board in a restaurant's support view in `/super` (every 15 s).
-    The guest's orders page also calls it, from its poll when a bill is new or voided, and is a
-    live screen anyway.
+    page, typed text or not (behind a kept answer the page loads a link in full itself, without
+    waiting for that: see What it costs). Pages that call `router.refresh()` on a timer do it by
+    themselves at the next tick after a deploy: the data export card while a build runs (every 4 s,
+    and once more when its download link runs out), on `/admin/settings` under the settings forms
+    and on a restaurant's Account tab in `/super`; and the board in a restaurant's support view in
+    `/super` (every 15 s). The guest's orders page also calls it, from its poll when a bill is new
+    or voided, and is a live screen anyway.
   - **The order key (review B2).** The cart sends each order with an idempotency key, and a page
     that reloads makes a new one, so after a reply lost in the deploy and the refresh by itself a
     second tap would place a second order: the database dedupes only on the restaurant and the key.
@@ -4540,18 +4540,28 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     next tap and shows the installed app's splash (P11-4), once per open page per deploy. A form
     posted before hydration gets Next.js's plain "Server Action unavailable." (nothing in the app
     can catch it). Where the answer is kept back, the form or button that met the newer build keeps
-    its pending state (a spinner, disabled) until Refresh, and keeps its input; the page's other
-    actions queue behind it. Where the caller runs the action inside a transition, links do not
-    respond either: measured on the menu import review's Save draft (`useTransition`), after the
-    stale tap one request had gone out, a second action added none in 1.5 s and a link click changed
-    nothing in 3 s. React holds the page's later transitions until that action ends
-    (`entangleAsyncAction` in `react-dom`), `useActionState` and form actions run in the same kind
-    of scope (not tested), and so there Refresh is the only way on, which is why the toast cannot be
-    closed. A caller that awaits from a plain handler (react-hook-form's submit, the dish dialog)
-    leaves links working. The theme switch's catch no longer reverts the colour on a stale tap
-    there: the colour stays changed, unsaved, until Refresh. On Vercel nothing visible changes:
-    Skew Protection pins open pages, and pages older than 7 days or past a Threshold now refresh
-    (live screens) or offer Refresh with their typing kept (the rest) instead of failing.
+    its pending state (a spinner, disabled) until Refresh, and keeps its input. The page's other
+    actions queue behind it, and their buttons may keep spinning until Refresh or a link. Where the
+    caller runs the action inside a transition, Next.js's own navigation waits behind it too:
+    measured on the menu import review's Save draft (`useTransition`), after the stale tap one
+    request had gone out, a second action added none in 1.5 s, a link click changed nothing in 3 s
+    and Back changed the address but not the page. React holds the page's later transitions until
+    that action ends (`entangleAsyncAction` in `react-dom`), and `useActionState` and form actions
+    run in the same kind of scope (not tested). So the first kept answer makes the page do its own
+    navigating (`loadInFullFromNow` in `notice.ts`): a plain click on a link to another page of
+    the site loads its address in full, the new build's page, as Next.js itself does on a
+    deployment id mismatch, and back or forward reloads the address the browser moved to. It leaves
+    alone a click with a modifier key or the middle button, a link that opens a new tab or
+    downloads, a link to another site, and a link or a history move that changes only the `#hash`.
+    The click listener runs before Next.js's `Link`, which does nothing for a click that is
+    prevented already (`onClick` in `app-dir/link.js`), and nothing is installed on a page that
+    never keeps an answer. It cannot tell a caller in a transition from one that awaits in a plain
+    handler (react-hook-form's submit, the dish dialog), so links load in full there too: typed
+    text is lost on the way, as after Refresh. The theme switch's catch no longer reverts the
+    colour on a stale tap there: the colour stays changed, unsaved, until Refresh. On Vercel
+    nothing visible changes: Skew Protection pins open pages, and pages older than 7 days or past a
+    Threshold now refresh (live screens) or offer Refresh with their typing kept (the rest) instead
+    of failing.
 - **VPS-9 · Error pages that recover from a new build, and still report to Sentry:**
   `global-error.tsx`, `app/error.tsx`, `staff/error.tsx` and `t/[qrToken]/error.tsx` render one
   `ErrorFallback` in the page's language. A page from an older build says "Refreshing…" and
@@ -4947,23 +4957,30 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     or by a reset while it downloads, recorded as one to read again without calling the reader, and
     a missing photo still told to start again); `close-account` (+5: the export guard, refused
     before a row is read, half the heap and the cap).
-  - Reload prompt: `new-version` (55, jsdom: Next.js's real class and header pinned; what each kind
+  - Reload prompt: `new-version` (84, jsdom: Next.js's real class and header pinned; what each kind
     of page does; what becomes of an older build's answer, passed, held or kept back, as a table
     and through the real notice module (on the admin pages it stays pending 30 s past the hold, with
     a toast that has no close button; a stuck live screen gets it at once and keeps its close
-    button; offline it passes); the loop guard on a fake storage; the fetch observer; the notice,
-    with no toast offline or for a background chunk error and Hindi on a stuck tab; the words in
-    both languages); `new-version-fallback` (16: the error page reports in production only,
-    refreshes unreported for an older build's action, claims no new version for a missing script,
-    keeps Hindi when it replaces the worker panel, resets `<html lang>` only when the path has left
-    `/staff` (six paths) and follows a language change inside the panel); `order-key` (14, new: the
-    stored key is reused for the same lines and note, also when the dish was renamed or repriced,
-    and not for another dish, a dish more, another quantity, another dish note or another order
-    note; it is kept to 10 minutes less a millisecond and gone at 10, so the same dishes 45 minutes
-    later get a new one; kept per table; forgotten after an answer; damaged records, keys the
-    server would refuse and blocked storage fall back to the page's key); `account-menu` (3, new,
-    with the real dropdown: no error toast for an older build's answer, the network toast for a
-    `TypeError`, the server's refusal in the panel's language).
+    button; offline it passes); links and history behind a kept answer (no listener before one, nor
+    where answers are only held or passed; one click and one popstate listener after the first
+    however many follow; a plain click on a link, or inside it, to another page (a relative
+    address, another query, a `#hash` on another page) loads the address and is prevented before
+    Next.js's `Link` sees it; left alone: a modifier key, the middle button, a new tab, a download,
+    another site, `mailto:`, the page's own `#hash` or address, a click already prevented and a
+    click off a link; popstate reloads, and ignores a move within the `#hash`; the Refresh button
+    reloads through the same replaceable call); the loop guard on a fake storage; the fetch
+    observer; the notice, with no toast offline or for a background chunk error and Hindi on a
+    stuck tab; the words in both languages); `new-version-fallback` (16: the error page reports in
+    production only, refreshes unreported for an older build's action, claims no new version for a
+    missing script, keeps Hindi when it replaces the worker panel, resets `<html lang>` only when
+    the path has left `/staff` (six paths) and follows a language change inside the panel);
+    `order-key` (14, new: the stored key is reused for the same lines and note, also when the dish
+    was renamed or repriced, and not for another dish, a dish more, another quantity, another dish
+    note or another order note; it is kept to 10 minutes less a millisecond and gone at 10, so the
+    same dishes 45 minutes later get a new one; kept per table; forgotten after an answer; damaged
+    records, keys the server would refuse and blocked storage fall back to the page's key);
+    `account-menu` (3, new, with the real dropdown: no error toast for an older build's answer, the
+    network toast for a `TypeError`, the server's refusal in the panel's language).
   - Image: `health-route` (5: the once-a-minute log; with the throttle at 0, three fail) and
     `docker-image` (20: the Dockerfile, `.dockerignore` and `next.config.ts` read as text, so a new
     `NEXT_PUBLIC_*` variable without an `ARG`, Sentry's token as an argument, a `.next/cache` mount
@@ -4977,7 +4994,7 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     on an `ARG` line, a cache mount that lists `target` before `type`).
 - **E2E:** `seo`: `x-forwarded-host: menumesh.in` gets no `X-Robots-Tag`. `auth`: `POST /logout`
   answers 303 with `Location: /login` and a signed-out `/staff` answers `/login?next=%2Fstaff`, both
-  relative. `new-version` (desktop only, 6 tests, about 21 s): a dish move from an older build
+  relative. `new-version` (desktop only, 7 tests, about 27 s): a dish move from an older build
   refreshes the board by itself and is sent from the new page, and a second stale tap within 2
   minutes shows "didn’t load", keeps the move in localStorage and serves it after Refresh; placing
   an order keeps the cart, refreshes once, never loops and shows no network error; an order whose
@@ -4986,15 +5003,22 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   in the admin panel the Add dish dialog (react-hook-form, with its own handling) keeps its text,
   saves nothing and shows the Refresh toast; the menu import review's Save draft (a `useTransition`
   without a catch) shows no error page, keeps the typed price, shows a toast with no close button,
-  does not reload within 3 s, and after Refresh the draft was never saved; a missing script
-  refreshes through the guest error page (18 of 18 with `--repeat-each=3`). `playwright.config.ts`
-  runs the app with `SUPABASE_FORWARD_CLIENT_IP=true`, so every e2e run goes through the visitor-IP
-  code (the local Auth ignores what it names). After the six self-hosting commits 113 passed
-  (desktop 72, mobile 32, smoke 9); after the reload commits 120 passed (desktop 73, mobile 47) and
-  21 passed with 3 skipped (the perf specs, without `PERF=1`); none failed. After the review fixes
+  does not reload within 3 s, and after Refresh the draft was never saved; after another stale tap
+  there a nav link loads Tables & QR in full (a mark set in the page's memory is gone) and Back
+  loads the review again, its draft unsaved; in another test Back from the review, after a stale
+  tap, reloads the import page it was reached from and Forward loads the review again (without the
+  listeners both wait for a load that never comes: a link changes nothing, and Back changes the
+  address but not the page); a missing script refreshes through the guest error page (21 of 21 with
+  `--repeat-each=3`). `playwright.config.ts` runs the app with `SUPABASE_FORWARD_CLIENT_IP=true`, so
+  every e2e run goes through the visitor-IP code (the local Auth ignores what it names). After the
+  six self-hosting commits 113 passed (desktop 72, mobile 32, smoke 9); after the reload commits
+  120 passed (desktop 73, mobile 47) and 21 passed with 3 skipped (the perf specs, without
+  `PERF=1`); none failed. After the review fixes
   `customer-ordering`, `customer-states`, `offline-queue`, `staff-board`, `staff-hindi`,
   `live-orders`, `admin-settings`, `menu-import`, `billing` and `auth` passed on desktop and mobile:
-  60 (desktop 39, mobile 21), none skipped.
+  60 (desktop 39, mobile 21), none skipped. After the links change `new-version` passed (7, and 21
+  of 21 with `--repeat-each=3`) and so did `admin-settings`, `menu-import` and `auth` on desktop
+  (17).
 - **Smoke (`tests/smoke`):** `/api/live` answers 200 with `no-store`, `status: ok` and, when
   `EXPECTED_VERSION` is set, the commit.
 - **Bundles (`pnpm budget`, gzipped):** all 82 routes within budget. Guest pages grew by 4.3 to
@@ -5004,9 +5028,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   328.6): above the 2 to 3 KiB planned, with no ceiling moved. Exporting `ErrorFallback` from the
   notice, which every page loads, saved about 2.5 KiB: Turbopack had copied the card into each error
   boundary's chunk. With `PERF=1` on mobile the menu's LCP was 1212 ms with 245 KiB of compressed
-  JS, and the website's 976 to 1,444 ms with CLS 0.000 to 0.086. After the review fixes all 82
-  routes are still within budget (`/t/[qrToken]` 248 of 275, `/cart` 245, `/orders` 246; `/login`
-  239 of 325; `/staff` 391 of 565; the menu import review, `/admin/menu/import/[importId]`, 382).
+  JS, and the website's 976 to 1,444 ms with CLS 0.000 to 0.086. After the review fixes and the
+  links change all 82 routes are still within budget (`/t/[qrToken]` 248 of 275, `/cart` 246,
+  `/orders` 247; `/login` 239 of 325; `/staff` 391 of 565; the menu import review,
+  `/admin/menu/import/[importId]`, 382).
 - **By hand, the self-hosting fixes** (local Supabase). On the old build `curl` showed both faults
   (VPS-2, VPS-3); with the fixes `seo` and `auth` passed on desktop and mobile (40). The internal
   address (VPS-20): the app run with `SUPABASE_INTERNAL_URL` pointing at a logging pass-through to
@@ -5029,8 +5054,9 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   order (1 to 1) and the retry placed one (2). Save dish in the admin dialog showed "A new version
   is ready … Refresh", left the dialog and its text alone and saved nothing. A link on a second old
   admin tab reloaded by itself. The server logged one "Failed to find Server Action" warning per
-  stale tap (3). Not repeated after the review fixes: the e2e cases for the kept-back answer and
-  the order key fake the 409 with `x-nextjs-action-not-found`, not a second build.
+  stale tap (3). Not repeated after the review fixes or the links change: the e2e cases for the
+  kept-back answer, the links and the order key fake the 409 with `x-nextjs-action-not-found`, not
+  a second build.
 - **By hand, the image** (VPS-13 to VPS-22, Docker Desktop on Windows):
   - `docker build --check .` prints no warnings; without arguments the build fails at the arguments
     step with "error: build argument NEXT_PUBLIC_APP_URL is required". `pnpm docker:build`: a
@@ -5111,8 +5137,11 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   import review, the photos picked for an import, the create forms of tables and tags and the
   login's username were lost. The observer now keeps the answer back on those pages (`handlingFor`:
   pass, hold or keep): the action stays pending behind a toast with no close button, and nothing
-  reloads by itself. VPS-8 has the rules and what it costs, which includes that links wait too
-  behind a caller in a transition.
+  reloads by itself. A caller in a transition holds Next.js's navigations while its action is
+  pending, so at first links and Back did nothing on such a page until Refresh. Now the first kept
+  answer makes a plain click on a link load its address in full, and back or forward reload the
+  address the browser moved to. The page's other actions still wait behind the kept one, and their
+  buttons may keep spinning until Refresh or a link. VPS-8 has the rules and what it costs.
 - **B2 · The refresh by itself could turn a retry into a second order (VPS-8, P3-10):** the page
   that reloads made a new idempotency key, so after a reply lost in the deploy, a stale retry and
   the refresh, the second Place order was a new order, though the toast said to place it again. The

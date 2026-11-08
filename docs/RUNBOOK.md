@@ -41,12 +41,12 @@ and the version check. Re-run the workflow instead.
   second Place order reuses the first order's key, so a reply lost in the deploy doesn't give a
   second order). Admin, super, the website and login show "A new version is ready" with a
   **Refresh** button that cannot be closed: the tap that met the newer build stays pending behind
-  it and the page keeps what was typed, so copy anything typed first, then press Refresh. Where
-  that button runs its action in a transition (the menu import review's Save draft is one), links
-  on the page don't respond until Refresh either. A page that refreshes its own data on a timer
-  (a download being prepared on `/admin/settings`, a support board in `/super`) reloads by itself
-  at its next tick, whatever was typed. A tab refreshes itself at most once in 2 minutes, so a
-  broken deploy can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
+  it and the page keeps what was typed, so copy anything typed first, then press Refresh. A link
+  on the page, or Back, loads the new build in full too, typed text lost as with Refresh; the
+  page's other buttons may keep spinning until Refresh or a link. A page that refreshes its own
+  data on a timer (a download being prepared on `/admin/settings`, a support board in `/super`)
+  reloads by itself at its next tick, whatever was typed. A tab refreshes itself at most once in 2
+  minutes, so a broken deploy can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
 
 ### One-time setup per environment
 
