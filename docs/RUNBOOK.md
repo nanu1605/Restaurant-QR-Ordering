@@ -40,13 +40,17 @@ and the version check. Re-run the workflow instead.
   guest's cart and the kitchen's dish moves are kept, and anything else is tapped again (a guest's
   second Place order reuses the first order's key, so a reply lost in the deploy doesn't give a
   second order). Admin, super, the website and login show "A new version is ready" with a
-  **Refresh** button that cannot be closed: the tap that met the newer build stays pending behind
-  it and the page keeps what was typed, so copy anything typed first, then press Refresh. A link
-  on the page, or Back, loads the new build in full too, typed text lost as with Refresh; the
-  page's other buttons may keep spinning until Refresh or a link. A page that refreshes its own
-  data on a timer (a download being prepared on `/admin/settings`, a support board in `/super`)
-  reloads by itself at its next tick, whatever was typed. A tab refreshes itself at most once in 2
-  minutes, so a broken deploy can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
+  **Refresh** button that cannot be closed: the tap that met the newer build stays pending behind it
+  and the page keeps what was typed, so copy anything typed first, then press Refresh. The toast
+  also says that what was just changed was not saved, and nothing will be until Refresh: from that
+  first tap the page's buttons, switches, menu items, drag handles and selects stop taking taps and
+  dim, so that nothing looks saved that was not (links, typed text, tabs and the toast's Refresh
+  keep working; a keyboard can still press a focused control, which is never sent either). A link on
+  the page, or Back, loads the new build in full too, typed text lost as with Refresh, and a link to
+  a place on the same page scrolls there. A page that refreshes its own data on a timer (a download
+  being prepared on `/admin/settings`, a support board in `/super`) reloads by itself at its next
+  tick, whatever was typed. A tab refreshes itself at most once in 2 minutes, so a broken deploy
+  can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
 
 ### One-time setup per environment
 
@@ -166,11 +170,12 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   - Stop with a 25 s grace period: node is process 1 and gets `SIGTERM`, requests and `after()` work
     finish, and what still runs at 25 s is killed, exit 137 (VPS-22). A stop that finds work in
     flight takes as long as the work, exit 143: with a pooled keep-alive client an idle stop
-    measured 0.57 s, and one with a 9 s request in flight 7.3 s (VPS-16). That holds only while the
-    container runs the image's own `CMD`, which loads a preload
-    (`/usr/local/lib/menumesh-drain.cjs`) that ends connections as the server closes: a compose
-    `command:` replaces it, and every stop under traffic then runs the full 25 s and ends in the
-    kill.
+    measured 0.6 s, one with a 9 s request in flight 7.8 s and one with an open upgrade request that
+    nothing answers 0.6 s (VPS-16). That holds only while the container runs the image's own `CMD`,
+    which loads a preload (`/usr/local/lib/menumesh-drain.cjs`) that ends connections as the server
+    closes: the answers still in flight, the idle ones and the sockets an upgrade request left. A
+    compose `command:` replaces it, and every stop under traffic then runs the full 25 s and ends in
+    the kill.
   - 1536m of memory for `web` and 768m for `web-staging`, with `NODE_OPTIONS=--max-old-space-size`
     at about 65% of it (1000 and 500). The data export's size limit follows the heap: Node's limit
     in the container is 1096 MiB on `web` and 548 MiB on `web-staging`, so `web` allows the 512 MiB
@@ -191,6 +196,10 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     address would answer 400 for every dish photo (VPS-18).
   - Caddy and Cloudflare must pass `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
     never cache HTML or RSC (VPS-7).
+  - The Caddy site file should refuse `Upgrade` requests to the web container (a header matcher and
+    a 400): the app serves no WebSockets, and an upgrade request that nothing answers keeps its
+    connection open for as long as the client waits, up to Cloudflare's 100 s. The image's preload
+    already ends such sockets when a stop begins, so this is defence in depth (VPS-16, VPS-24).
   - Docker's health check calls `/api/health`, which reaches the database: the deploy waits up to
     120 s for healthy, and a database outage turns the container unhealthy without restarting it
     (VPS-17).
@@ -248,8 +257,8 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   release is 14 days old; the pnpm image's tag and digest move whenever `packageManager` changes
   (`--pm-on-fail=error` makes a mismatch fail the build). The BuildKit frontend on the Dockerfile's
   first line (`# syntax=docker/dockerfile:1.27.1@sha256:…`) is pinned the same way: bump it by hand
-  together with the Node digest, to a release at least 14 days old (1.8 or later; VPS-14). The
-  floating `:1` is refused by the pin test.
+  together with the Node digest, to a release at least 14 days old (1.10 or later, for the secret
+  mount's `env=`; VPS-14). The floating `:1` is refused by the pin test.
 
 ## Database migrations
 

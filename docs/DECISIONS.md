@@ -950,11 +950,13 @@ filters)`; `staff_get_board()` and `admin_total_orders()` are now wrappers with 
   re-reads the pages that failed. Each page has 85 s from the start of its server action, each
   reader call 40 s, and no call starts with under 15 s left (a call cut off is still paid for), so
   the action answers before Cloudflare's 100 s cut (VPS-5). The photo download gets 15 s, and one
-  that times out can be tried again. The import pages keep `maxDuration = 180` for Vercel, since
-  the commit's Hindi names run after the answer; the 3-minute claim still outlives any read. The
-  server reads the photo with the service role only after the caller's own client could read the
-  import. When no page yields a dish, the import fails with a message saying so (and the reader's
-  note, e.g. "the photo is blank"); pages that failed are listed on the review.
+  that does not arrive (the timer, a reset, Storage out of reach) stops the reading with an error,
+  so that "Try again" reads that page again; only a photo Storage says is not there is lost for
+  good. The import pages keep `maxDuration = 180` for Vercel, since the commit's Hindi names run
+  after the answer; the 3-minute claim still outlives any read. The server reads the photo with the
+  service role only after the caller's own client could read the import. When no page yields a
+  dish, the import fails with a message saying so (and the reader's note, e.g. "the photo is
+  blank"); pages that failed are listed on the review.
 - **P7-16 · CSV import:** our own RFC 4180 reader (quotes, escaped quotes, line breaks in quotes,
   BOM, CRLF). Columns in any order and case: `category, name, description, food_type, price,
 variant_name, variant_price`. Rows in a row with the same category and name are one dish; a
@@ -4417,14 +4419,21 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   the page 85 s (was 150), counted from the start of its server action; no call starts with under
   15 s left (a call cut off is still paid for); the photo download gets 15 s; and the action answers
   in about 87 s or less. A corrective retry that cannot fit reports the page as unreadable, a reader
-  skipped for lack of time is never recorded as the page's provider, and a photo that times out, or
-  is cut off while it downloads, is retryable (Try again) while a missing one keeps "did not
-  upload" (review A1). The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the
-  limit for the Hindi names the commit fills afterwards), and the progress copy says "up to a
-  minute and a half".
+  skipped for lack of time is never recorded as the page's provider, and a photo that does not
+  arrive (the timer, a reset while it downloads, Storage unreachable or answering an error) is
+  recorded as failed with the "reader is not answering" text, after which the action answers "The
+  photo of this page could not be fetched. Try again.": the reading stops, and Try again reads the
+  page again. Only a photo that Storage says is not there keeps "did not upload" (reviews A1, R2-1
+  and R2-2). The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the limit for the
+  Hindi names the commit fills afterwards), and the progress copy says "up to a minute and a half".
   - **The trade-off.** A page whose reader call takes 40 to 60 s used to pass and now fails as "not
-    answering right now", on Vercel too (Try again works). Durations aren't stored and production
-    has almost no imports, so nothing says how often; the warning now ends "(the call took X s, the
+    answering right now", on Vercel too. That page is recorded as failed but the reading goes on
+    and finishes without it: a one-page import fails with that message and offers only Start a new
+    import, and a longer one is reviewed without the page, with no way to read it again. Try again
+    follows only an error that stops the reading, which a reader that cannot answer does not (a
+    photo that did not arrive does); whether it should is not decided. A reload instead of Try
+    again finishes an import without a failed page too. Durations aren't stored and production has
+    almost no imports, so nothing says how often; the warning now ends "(the call took X s, the
     page Y s so far)", so the 40 s can be tuned from the logs.
 - **VPS-6 · A data export too big for memory fails before it starts:** the export (SA-93) builds the
   ZIP in memory, in the one web process every restaurant shares. Before reading a row, `buildExport`
@@ -4492,11 +4501,13 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     catch (`useTransition`, `useActionState`, a form action) therefore cannot rethrow it into
     `app/error.tsx`, whose boundary rule refreshed the tab 300 ms later and lost what was typed.
     Nothing reloads by itself, so typed text can be copied first; a link, or Back, loads the new
-    build in full (see What it costs). The toast has no close button and cannot be swiped away:
-    Next.js runs actions one at a time, so later taps queue behind the pending one, and a closed
-    toast could not come back. Offline no toast shows and the answer passes, as before. Two callers
-    there needed no guard of their own and keep their error toasts, since the stale answer no
-    longer reaches them: the snooze menu in `/super` and the autopay panel's Subscribe in `/admin`.
+    build in full, the toast says that what was just changed was not saved, and the controls that
+    show a change at once stop taking taps (see What it costs). The toast has no close button and
+    cannot be swiped away: Next.js runs actions one at a time, so later taps queue behind the
+    pending one, and a closed toast could not come back. Offline no toast shows and the answer
+    passes, as before. Two callers there needed no guard of their own and keep their error toasts,
+    since the stale answer no longer reaches them: the snooze menu in `/super` and the autopay
+    panel's Subscribe in `/admin`.
   - **The one exception: Next.js's own full load.** Next.js compares `x-nextjs-deployment-id` on
     every RSC answer and loads the page in full when it is a newer build's (VPS-7), which nothing
     here stops: a link, or a page's own `router.refresh()`, that reaches the new build reloads the
@@ -4539,29 +4550,81 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     reasons), which no submission could have saved anyway, silences the new-order chime until the
     next tap and shows the installed app's splash (P11-4), once per open page per deploy. A form
     posted before hydration gets Next.js's plain "Server Action unavailable." (nothing in the app
-    can catch it). Where the answer is kept back, the form or button that met the newer build keeps
-    its pending state (a spinner, disabled) until Refresh, and keeps its input. The page's other
-    actions queue behind it, and their buttons may keep spinning until Refresh or a link. Where the
-    caller runs the action inside a transition, Next.js's own navigation waits behind it too:
-    measured on the menu import review's Save draft (`useTransition`), after the stale tap one
-    request had gone out, a second action added none in 1.5 s, a link click changed nothing in 3 s
-    and Back changed the address but not the page. React holds the page's later transitions until
-    that action ends (`entangleAsyncAction` in `react-dom`), and `useActionState` and form actions
-    run in the same kind of scope (not tested). So the first kept answer makes the page do its own
-    navigating (`loadInFullFromNow` in `notice.ts`): a plain click on a link to another page of
-    the site loads its address in full, the new build's page, as Next.js itself does on a
-    deployment id mismatch, and back or forward reloads the address the browser moved to. It leaves
-    alone a click with a modifier key or the middle button, a link that opens a new tab or
-    downloads, a link to another site, and a link or a history move that changes only the `#hash`.
-    The click listener runs before Next.js's `Link`, which does nothing for a click that is
-    prevented already (`onClick` in `app-dir/link.js`), and nothing is installed on a page that
-    never keeps an answer. It cannot tell a caller in a transition from one that awaits in a plain
-    handler (react-hook-form's submit, the dish dialog), so links load in full there too: typed
-    text is lost on the way, as after Refresh. The theme switch's catch no longer reverts the
-    colour on a stale tap there: the colour stays changed, unsaved, until Refresh. On Vercel
-    nothing visible changes: Skew Protection pins open pages, and pages older than 7 days or past a
-    Threshold now refresh (live screens) or offer Refresh with their typing kept (the rest) instead
-    of failing.
+    can catch it). Where the answer is kept back, a button that reads its transition's pending state
+    (Hide, the dialogs' submit buttons) and met the newer build keeps its spinner or its disabled
+    state until Refresh, and a form keeps its input; a control that shows its change at once does
+    not (review R1-1, below). The page's other actions queue behind the kept one. Where the caller
+    runs the action inside a transition, Next.js's own navigation waits behind it too: measured on
+    the menu import review's Save draft (`useTransition`), after the stale tap one request had gone
+    out, a second action added none in 1.5 s, a link click changed nothing in 3 s and Back changed
+    the address but not the page. React holds the page's later transitions until that action ends
+    (`entangleAsyncAction` in `react-dom`), and `useActionState` and form actions run in the same
+    kind of scope (not tested). So the first kept answer makes the page do its own navigating
+    (`loadInFullFromNow` in `notice.ts`): a plain click on a link to another page of the site loads
+    its address in full, the new build's page, as Next.js itself does on a deployment id mismatch,
+    and back or forward reloads the address the browser moved to. A link to a place on this page, a
+    `#hash`, is followed too (review R1-3, below). It leaves alone a click with a modifier key or
+    the middle button, a link that opens a new tab or downloads, a link to another site, a link to
+    this page without a `#hash` (`href="#"` too), a link that scrolls itself (`data-scrolls-itself`)
+    and a history move that changes only the `#hash`. The click listener runs before Next.js's
+    `Link`, which does nothing for a click that is prevented already (`onClick` in
+    `app-dir/link.js`), and nothing is installed on a page that never keeps an answer. It cannot
+    tell a caller in a transition from one that awaits in a plain handler (react-hook-form's submit,
+    the dish dialog), so links load in full there too: typed text is lost on the way, as after
+    Refresh. The theme switch's catch no longer reverts the colour on a stale tap there: the colour
+    stays changed, unsaved, until Refresh (its buttons freeze with the other controls after that
+    tap). On Vercel nothing visible changes: Skew Protection pins open pages, and pages older than 7
+    days or past a Threshold now refresh (live screens) or offer Refresh with their typing kept (the
+    rest) instead of failing.
+    - **Nothing may look saved that was not (review R1-1).** Behind a kept answer nothing a tap does
+      reaches the server, but a control that shows its change at once (`useOptimistic`) showed it as
+      made: dish availability, a waiter's on-duty switch and the drag reorders of dishes, categories
+      and tables. React keeps an optimistic value until its action ends, and the kept one never
+      does, so the control stayed changed, and later taps changed it again while they queued behind
+      the kept action and were never sent. An owner could mark three dishes sold out while guests
+      went on ordering them; before B1 that first tap reloaded the page and showed the real state.
+      Two measures. The two toasts that cannot be closed carry one more sentence (`notSaved` in
+      `strings.ts`): "What you just changed wasn’t saved, and nothing will be until you refresh." It
+      comes between "Refresh the page to keep working." and "Copy anything you’ve typed first." in
+      "A new version is ready", and last in "The new version didn’t load"; the live screens' toasts,
+      the "Updated" toast, the error cards and the Refreshing overlay are as they were. And the
+      first kept answer sets `<html data-new-version="kept">`, once (`loadInFullFromNow`). Under it
+      an unlayered rule at the end of `globals.css` gives `pointer-events: none` and `opacity: .6`
+      to buttons, to what has the role button, switch, checkbox, radio, menuitem (with its checkbox
+      and radio kinds), option or slider, to drag handles (`aria-roledescription="sortable"`), to
+      selects, and to file, submit, button, checkbox, radio and range inputs. It leaves alone links
+      (a link menu item such as the alerts bell's All activity too), tabs, text fields and text
+      areas, so that typed text can still be selected and copied, and everything in the toaster,
+      whose Refresh is the way on. A page that never keeps an answer carries no mark.
+    - **A link to a place on the page (review R1-3).** Next.js's own move to a `#hash` on the page
+      it is on waits behind the kept action as well, and so does the scroll to it, which needs a
+      commit: such a link did nothing, and the click listener had been leaving it to Next.js. The
+      alerts bell's All activity (`/super#activity`), the activity chips on `/super` and the Figure
+      links of `/super/money/revenue` ("Net new MRR", "Trial conversion") are such links. The
+      listener now returns the address of a same-page link that has a `#hash`, and `pageExit.load`,
+      which is `location.assign`, hands it to the browser, which takes it as a fragment navigation:
+      it scrolls there, adds a history entry and does not reload, and Back returns to the page the
+      same way (Next.js's `handlePopState` ignores the entry, whose state is null). Measured by a
+      new e2e on the bell's All activity in `/super`: before the change the address was still
+      `/super` 5 s after the click; after it the address is `/super#activity` at once, the Activity
+      heading is in view, the page is not reloaded (a mark set in its memory is still there) and
+      Back returns to `/super` without a reload. The website's menu sheet takes a click on a section
+      of its own page itself (`goTo` prevents the default, closes the sheet, then pushes a history
+      entry and scrolls), so a click of ours first would double the entry: its links carry
+      `data-scrolls-itself`, which `linkToLoad` honours only for a link to a place on its own page,
+      so the sheet's links to other pages still load in full. No e2e drives the sheet behind a kept
+      answer; it rests on unit cases and a pin that the attribute is on the link `goTo` handles. The
+      website's other section links are plain `<a>` (`SiteLink`), which go through the same call and
+      get what the browser would have done.
+    - **Known limits.** The control tapped first, the one that met the newer build, still shows its
+      change until Refresh: the toast says it was not saved. A keyboard can still press a focused
+      control (a switch flips, a keyboard drag moves a row), Enter in a text field still submits its
+      form and a `<label>` that points at a checkbox or radio still toggles it; each queues behind
+      the kept action and is never sent, and an optimistic control shows it. None of today's
+      optimistic controls has a label. If an unrelated render error then puts the card of
+      `app/error.tsx` in place of the page, its Try again and Refresh, which are outside the
+      toaster, are frozen too, and the toast's Refresh is the way on; `global-error.tsx` is not
+      affected, since React clears `<html>`'s attributes when it takes it over.
 - **VPS-9 · Error pages that recover from a new build, and still report to Sentry:**
   `global-error.tsx`, `app/error.tsx`, `staff/error.tsx` and `t/[qrToken]/error.tsx` render one
   `ErrorFallback` in the page's language. A page from an older build says "Refreshing…" and
@@ -4606,20 +4669,29 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
 - **VPS-12 · The words for an older build:** one English and Hindi dictionary
   (`src/features/new-version/strings.ts`). They never name the product, since guests only know the
   restaurant, and say "Refresh" as the app already says "Refresh the page". The language follows
-  `<html lang>`: Hindi on staff logins in Hindi, Hindi phones and `/hi`; admin and super stay
-  English. The worker panel sets it and puts English back only when the URL has left `/staff`
-  (review B4): Next.js moves the URL before React runs the panel's cleanup, so a move to `/admin`
-  still resets it, while an error page that replaces the panel (`app/error.tsx`, for an error in
-  the staff layout outside `staff/error.tsx`: the alerts, the live status, the offline banner, the
+  `<html lang>`: Hindi on staff logins in Hindi, Hindi phones and `/hi`; admin and super set English
+  themselves (review R1-2: `HtmlLang`, in `src/components/shared/html-lang.tsx`, mounted by the
+  admin panel, the admin print pages and the super panel). The worker panel sets it and puts English
+  back only when the URL has left `/staff` (review B4): Next.js moves the URL before React runs the
+  panel's cleanup, so a plain move to `/admin` resets it (twice over now, by the cleanup and by
+  `HtmlLang`), while an error page that replaces the panel (`app/error.tsx`, for an error in the
+  staff layout outside `staff/error.tsx`: the alerts, the live status, the offline banner, the
   header's account menu, a stuck announcement's Dismiss) keeps its Hindi; it used to turn English
-  there. A script that did not load gets neutral words ("Part of this page didn’t load.
+  there. Back from that error page restores `/admin` with no panel mounted, so no cleanup runs, and
+  B4 alone left the English admin panel at `lang="hi"`, its toasts and error card in Hindi: that is
+  what `HtmlLang` is for. Not covered: `/login` and `/super/mfa`, which mount none, after Back from
+  an errored `/staff`. The website keeps its own `HtmlLang`, typed for its two languages, beside its
+  language menu. A script that did not load gets neutral words ("Part of this page didn’t load.
   Refreshing…", "Check the connection, then refresh the page."), since it is usually the connection.
   Hindi writes nuktas as separate marks; the new words are वर्ज़न (version) and एरर कोड (error
-  code).
+  code), and, for the sentence that what was just changed was not saved (आपने अभी जो बदलाव किया, वह
+  सेव नहीं हुआ। रीफ़्रेश करने तक कुछ भी सेव नहीं होगा।), सेव (save) and बदलाव (change), which the
+  app already uses. That sentence is the developer's Hindi and has not been read by a Hindi speaker.
   - **An exception to W-15:** the website keeps its words server-only so that one language reaches
     the browser, but this dictionary is imported by a client component in the root layout, so every
     page carries both: about 1 KiB of the 2.4 KiB (gzipped) that the notice, its words and the error
-    card add. The budgets still hold (Tests).
+    card add; the sentence of the second review adds about 0.1 KiB to the words. The budgets still
+    hold (Tests).
 - **VPS-13 · One image per environment, standalone output on request, the Sentry token as a build
   secret:** Next.js defines every `NEXT_PUBLIC_*` value into the server and browser bundles at
   build, so each environment has its own image, built from build arguments (RUNBOOK, The web image):
@@ -4655,10 +4727,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     Sentry token. It is now `docker/dockerfile:1.27.1` by digest: pushed 2026-09-30, 39 days old on
     2026-11-08, and the image the `1` and `latest` tags named that day. 1.28.0 (2026-10-07, 32 days)
     passes the rule too but isn't what those tags name, and every build here used 1.27.1; only
-    1.29.0-rc1 is newer. It needs 1.8 or later (`# check=` and the heredocs). It is bumped by hand
-    together with the Node digest, and the pin test reads the raw first line, which instruction
-    parsing drops, so an unpinned or too old frontend fails CI. Whether the server team's rule
-    covers build frontends is theirs to say: worth one line to them.
+    1.29.0-rc1 is newer. It needs 1.10 or later: `# check=` needs 1.8 and the secret mount's
+    `env=`, which mounts the Sentry token, 1.10 (review R2-3: the first review's floor of 1.8 let a
+    1.8 or 1.9 pin pass CI and then fail the build). It is bumped by hand together with the Node
+    digest, and the pin test reads the raw first line, which instruction parsing drops, so an
+    unpinned or too old frontend fails CI (a 1.8.0 or 1.9.0 pin fails it, 1.10.0 and 1.27.1 pass).
+    Whether the server team's rule covers build frontends is theirs to say: worth one line to them.
 - **VPS-15 · Install without scripts, build without `pnpm run`:**
   `pnpm install --frozen-lockfile --ignore-scripts`. No locked package needs an install script: the
   supabase CLI (2.117.0) has none, its binary arrives in optional `@supabase/cli-<platform>`
@@ -4679,37 +4753,71 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   has closed (502s). Node is process 1: the start script ends in `exec`, with no init, because
   Next.js handles `SIGTERM` itself (stops accepting, finishes requests and `after()` work,
   exits 143) and nothing forks. A pooled socket survived 70 s idle.
-  - **The stop, and the drain preload (review C1).** Next.js closes the server first and waits for
-    the `after()` work only once `server.close()` has called back (`start-server.js`), and Node's
-    `server.close()` drops the idle keep-alive connections once, when it is called. One that is busy
-    then idles for the 130 s keep-alive after its answer, and Caddy keeps its pooled upstream
-    connections 2 minutes, so the server never closed: a stop that met a request in flight ran the
-    whole 25 s and ended in Docker's kill (exit 137), and the `after()` wait was never reached.
-    The first figures here (idle 0.58 s; a request of 9 s 7.97 s) came from curl, which closes its
-    socket. With a pooled keep-alive client, as Caddy is, the same 9 s request took 25.61 s and
-    exit 137, and the client's socket closed only at the kill. The fix is a preload,
+  - **The stop, and the drain preload (reviews C1, R2-4 and R2-5).** Next.js closes the server first
+    and waits for the `after()` work only once `server.close()` has called back (`start-server.js`),
+    and Node's `server.close()` drops the idle keep-alive connections once, when it is called. One
+    that is busy then idles for the 130 s keep-alive after its answer, and Caddy keeps its pooled
+    upstream connections 2 minutes, so the server never closed: a stop that met a request in flight
+    ran the whole 25 s and ended in Docker's kill (exit 137), and the `after()` wait was never
+    reached. The first figures here (idle 0.58 s; a request of 9 s 7.97 s) came from curl, which
+    closes its socket. With a pooled keep-alive client, as Caddy is, the same 9 s request took 25.61
+    s and exit 137, and the client's socket closed only at the kill. The fix is a preload,
     `/usr/local/lib/menumesh-drain.cjs` (root-owned, mode 644), which `CMD` loads
-    (`node --require … server.js`; not `NODE_OPTIONS`, which the deploy sets). When `close` is
-    called it makes every answer to a request that starts after that say `Connection: close`, and
-    calls `closeIdleConnections()` every 250 ms until the server has closed.
-    - **Measured** on the final image, with a pooled keep-alive client in a second container
-      sharing the web container's network, the web container under the server's limits and
-      `docker stop -t 25`: an idle pooled connection at the stop, 0.57 s and exit 143 (0.56 to 0.98
-      s over 5 runs); a request of 9 s in flight, with the stop about 2 s into it, 7.3 s and exit
-      143 (its own answer says `Connection: keep-alive`, which was decided before the stop, and the
-      server closes that socket 10 to 30 ms later; a request sent after the stop on the same
-      connection is answered `Connection: close`); a request of 40 s, killed at 25.6 s, exit 137,
-      and the client sees `ECONNRESET` (VPS-22).
-    - **Known limit.** Like Node's own `close()`, the sweep can end a socket whose answer has had
+    (`node --require … server.js`; not `NODE_OPTIONS`, which the deploy sets). Once `close` is
+    called it makes every answer whose headers are not out yet say `Connection: close` (those in
+    flight and those to requests that start after it), calls `closeIdleConnections()` every 250 ms
+    until the server has closed, and destroys the sockets that left HTTP with an upgrade request.
+    - **Answers in flight (review R2-5).** The first version made only the answers to requests that
+      start after `close()` say `Connection: close`. An answer already in flight said `keep-alive`,
+      so Caddy pooled its connection and the 250 ms sweep then closed it from the server side: a
+      request Caddy had written to it in between could be reset, and the visitor would see a 502
+      during the deploy (reasoned from Node's source, not measured). The window is the event loop's
+      lag before the tick, which grows while other requests render, not the fraction of a
+      millisecond first assumed. The preload now subscribes to Node's `http.server.request.start`
+      channel, which publishes the request, response, socket and server before the server's own
+      listeners run, keeps each response until it closes, and in `close()` sets `shouldKeepAlive` to
+      false on every live one whose headers are not out. The same subscriber does it for a request
+      that starts after the close, in place of the `request` listener of the first version.
+    - **Upgraded sockets (review R2-4).** Next.js leaves an upgrade request for a path with no route
+      unanswered, with its socket open, in case a custom WebSocket server listens, and the app
+      serves none. Node takes that socket out of the connections that `closeIdleConnections()`
+      walks, but the server still counts it, so `close()` never called back until the client gave
+      up, at Cloudflare's 100 s if it and the server's Caddy pass the request (Cloudflare's default;
+      neither was checked). A stop in that window ended in the kill, exit 137, with `after()` work
+      cut, and one request from any visitor could cause it. The preload wraps `emit` for
+      `upgrade`: it remembers each such socket until it closes, destroys them in `close()`, and
+      destroys, with no listener seeing it, an upgrade that arrives once the server is closing.
+    - **Measured** on the final image (rebuilt at `848de93` after the second review; `099a0db` gave
+      the same within 0.1 s), with a pooled keep-alive client in a second container sharing the web
+      container's network, the web container under the server's limits and `docker stop -t 25`: an
+      idle pooled connection at the stop, 0.62 s and exit 143 (0.56 to 0.98 s over 5 runs at the
+      first fix); a request of 9 s in flight, the database answering 9 s late, with the stop about 2
+      s into it, 7.78 s and exit 143, its answer saying `Connection: close` (the first fix measured
+      7.3 s; on the image before the second review the answer said `keep-alive`, the server closed
+      that socket 0.10 s after it, and the stop took 7.84 s); an open upgrade socket that nothing
+      answers (a raw `GET /api/x` with `Connection: Upgrade` and `Upgrade: websocket`, no byte back
+      in 3 s), 0.61 s and exit 143, the client's socket closed at the stop (on the image before the
+      second review 25.55 s and exit 137, the socket closed only at the kill); a request of 40 s,
+      killed at 25.6 s, exit 137, and the client sees `ECONNRESET` (VPS-22; not run again). On
+      Docker Desktop, not on the shared Linux server.
+    - **Known limits.** Like Node's own `close()`, the sweep can end a socket whose answer has had
       `end()` called but is still flushing: 64 MB to a reader that started 1.5 s late arrived as
       2,634,111 bytes and then a reset. At full reader speed, as Caddy reads, the window after
       `end()` is 0.04 to 0.34 ms up to 2 MB and 2.7 ms at 4 MB, against a 250 ms tick, so it is
       accepted. An alternative that cannot cut an answer, `server.keepAliveTimeout = 1` in the
       wrapped `close()` instead of the sweep (Node then arms a socket for about a second, once its
-      answer has flushed), was not built or measured.
+      answer has flushed), was not built or measured. Also left: an answer whose headers went out
+      before the stop (a streamed page) cannot be changed and still says `keep-alive`, so the next
+      sweep closes its socket; and Node's own one-time `closeIdleConnections()` inside `close()` can
+      still reset an idle pooled connection that Caddy wrote a request to at that instant. The
+      preload also relies on the message of the `http.server.request.start` channel (`request`,
+      `response`, `socket`, `server`), checked on Node 24.17.0 and on the image's 24.22.0: a release
+      that dropped `server` would make the subscriber throw on every request. The drain unit test
+      would fail first, on CI, and `pnpm docker:check` on the image; a Node digest bump should run
+      both.
     - **The preload runs only if the deploy keeps the image's `CMD`.** A compose `command:` replaces
-      it and silently brings back stops that run the full 25 s under traffic: on the deploy stop's
-      checklist (VPS-24).
+      it and silently brings back stops that run the full 25 s under traffic, or with an unanswered
+      upgrade request open: on the deploy stop's checklist (VPS-24).
 - **VPS-17 · The container's health is the database's; `/api/live` is for local checks:** the
   server's `app-deploy` turns a new container on only when Docker calls it healthy (it waits up to
   120 s and never probes a URL itself), so the `HEALTHCHECK` calls `/api/health`: healthy means
@@ -4819,15 +4927,17 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   accepted 2026-11-08, and a two-slot mode for `web` only is not asked for. So `stop_grace_period`
   is at most 25 s on `web` and `web-staging`, and work that must survive a deploy, an out-of-memory
   kill or a reboot cannot live in `after()` alone. On `SIGTERM` Next.js closes the server (the
-  image's drain preload ends each connection with its answer, so a connection busy at that moment
-  no longer keeps the close waiting: without it every such stop ended in the kill, VPS-16), waits
-  for every pending `after()` promise without a time limit and exits 143: work done within about
-  20 s survives; longer work is cut at 25 s with exit 137, as is a request that outlasts the grace,
-  and a crash or reboot cuts all of it, silently. Measured on a throwaway Next.js 16.4.3 route
-  with the final preload: 6 s of `after()` work, started before the stop, finished (a stop of
-  4.2 s, exit 143); 30 s of it was cut at 25.48 s, exit 137, with no finish line. `maxDuration` is
-  Vercel's: on the VPS nothing caps a request or `after()` task but each call's own timeout, the
-  stop and Cloudflare's 100 s, so SA-93's "under the page's 5-minute limit" no longer holds.
+  image's drain preload ends each connection with its answer, and any socket an upgrade request
+  left, so a connection busy at that moment no longer keeps the close waiting: without it every such
+  stop ended in the kill, VPS-16), waits for every pending `after()` promise without a time limit
+  and exits 143: work done within about 20 s survives; longer work is cut at 25 s with exit 137, as
+  is a request that outlasts the grace, and a crash or reboot cuts all of it, silently. Measured on
+  a throwaway Next.js 16.4.3 route with the first review's preload (the second review changed how
+  connections end, not what `after()` waits for, and these were not run again): 6 s of `after()`
+  work, started before the stop, finished (a stop of 4.2 s, exit 143); 30 s of it was cut at 25.48
+  s, exit 137, with no finish line. `maxDuration` is Vercel's: on the VPS nothing caps a request or
+  `after()` task but each call's own timeout, the stop and Cloudflare's 100 s, so SA-93's "under the
+  page's 5-minute limit" no longer holds.
   - **Three of the eleven `after()` calls can outlast the stop** (the other eight are one Resend or
     PostHog request, at most about 16 s, so they finish inside the drain; only a crash loses one,
     which costs a welcome email or an analytics event for good, while the rest have a fallback on
@@ -4936,93 +5046,129 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   - **For the deploy stop to check:** `NODE_OPTIONS` on `web` (VPS-6); the image's `CMD` kept, with
     no compose `command:` (VPS-16); `api.menumesh.in` public inside the web containers (VPS-18);
     Caddy and Cloudflare passing `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
-    caching no HTML or RSC (VPS-7); old static files in place before the swap, in a volume that
-    uid 1000 owns (VPS-21); whether v0.8.4's Auth signs user tokens asymmetrically, since with the
-    legacy HS256 secret every `getClaims()` (two or more a page) becomes a `GET /auth/v1/user`
-    through the gateway; and whether Auth accepts staff addresses on `<slug>.staff.<domain>`, which
-    have no mail records.
+    caching no HTML or RSC (VPS-7); the Caddy site file refusing `Upgrade` requests to the web
+    container, with a header matcher and a 400 (the app serves no WebSockets, and the preload
+    already ends the sockets of such requests at a stop, so this is defence in depth: VPS-16); old
+    static files in place before the swap, in a volume that uid 1000 owns (VPS-21); whether v0.8.4's
+    Auth signs user tokens asymmetrically, since with the legacy HS256 secret every `getClaims()`
+    (two or more a page) becomes a `GET /auth/v1/user` through the gateway; and whether Auth accepts
+    staff addresses on `<slug>.staff.<domain>`, which have no mail records.
 
 ### Tests (VPS Stop A)
 
-- **Unit (667 to 822 tests, 49 to 59 files):**
+- **Unit (667 to 884 tests, 49 to 60 files):**
   - Self-hosting: `request-host` (3: the first `X-Forwarded-Host`, `Host` without its port, IPv6
     brackets); `env` (+2); `supabase-url` (12: the cookie name equals supabase-js's own default for
     `https://x.supabase.co` and `http://127.0.0.1:54321` and is one name on all three clients; the
     internal address on the server, proxy and admin clients and never the browser's; signed links
     swapped however the internal address is written); `supabase-forwarding` (11: both headers on
     Auth calls only, so through real supabase-js a sign-in carries them and a table read does not;
-    the IP rules; one warning per process); `menu-import-extract` (+4 net) and
-    `menu-import-read-page` (5: 40 s a call, 85 s a page, no call that cannot finish, the photo
-    timeout, the reader's remaining time; and a photo cut off after Storage answered, by the timer
-    or by a reset while it downloads, recorded as one to read again without calling the reader, and
-    a missing photo still told to start again); `close-account` (+5: the export guard, refused
-    before a row is read, half the heap and the cap).
-  - Reload prompt: `new-version` (84, jsdom: Next.js's real class and header pinned; what each kind
-    of page does; what becomes of an older build's answer, passed, held or kept back, as a table
-    and through the real notice module (on the admin pages it stays pending 30 s past the hold, with
-    a toast that has no close button; a stuck live screen gets it at once and keeps its close
-    button; offline it passes); links and history behind a kept answer (no listener before one, nor
-    where answers are only held or passed; one click and one popstate listener after the first
-    however many follow; a plain click on a link, or inside it, to another page (a relative
-    address, another query, a `#hash` on another page) loads the address and is prevented before
-    Next.js's `Link` sees it; left alone: a modifier key, the middle button, a new tab, a download,
-    another site, `mailto:`, the page's own `#hash` or address, a click already prevented and a
-    click off a link; popstate reloads, and ignores a move within the `#hash`; the Refresh button
-    reloads through the same replaceable call); the loop guard on a fake storage; the fetch
-    observer; the notice, with no toast offline or for a background chunk error and Hindi on a
-    stuck tab; the words in both languages); `new-version-fallback` (16: the error page reports in
-    production only, refreshes unreported for an older build's action, claims no new version for a
-    missing script, keeps Hindi when it replaces the worker panel, resets `<html lang>` only when
-    the path has left `/staff` (six paths) and follows a language change inside the panel);
-    `order-key` (14, new: the stored key is reused for the same lines and note, also when the dish
-    was renamed or repriced, and not for another dish, a dish more, another quantity, another dish
-    note or another order note; it is kept to 10 minutes less a millisecond and gone at 10, so the
-    same dishes 45 minutes later get a new one; kept per table; forgotten after an answer; damaged
-    records, keys the server would refuse and blocked storage fall back to the page's key);
-    `account-menu` (3, new, with the real dropdown: no error toast for an older build's answer, the
-    network toast for a `TypeError`, the server's refusal in the panel's language).
+    the IP rules; one warning per process); `menu-import-extract` (+4 net: 40 s a call, 85 s a page,
+    no call that cannot finish) and `menu-import-read-page` (13: the reader's remaining time; a
+    photo that timed out, one cut off after Storage answered, one whose connection drops while it
+    downloads and one that Storage could not answer before the headers (a gateway 503) are each
+    recorded as one to read again and answered with an error, so that the reading stops, and the
+    reader is never called; a missing photo, in Storage's real shape (status 400, `statusCode`
+    '404'), is still told to start again and the reading goes on; an import closed meanwhile gets no
+    error; and six answers through the real storage-js over a canned network: a 400 with the 404 in
+    its body, a 404 whose body names only a code and a proxy's HTML 404 are a missing photo, and a
+    503 with a non-JSON body, a refused connection and a body cut off after the headers are read
+    again; seven of the 13 fail on the previous `actions.ts`); `menu-import-progress` (2, new,
+    jsdom: the reading stops at a page whose action answered with an error and does not finish the
+    import, and Try again reads that page and the pending one, then finishes; a page recorded as
+    failed that a reload finds is left alone until Try again is pressed); `close-account` (+5: the
+    export guard, refused before a row is read, half the heap and the cap).
+  - Reload prompt: `new-version` (99, jsdom: Next.js's real class and header pinned; what each kind
+    of page does; what becomes of an older build's answer, passed, held or kept back, as a table and
+    through the real notice module (on the admin pages it stays pending 30 s past the hold, with a
+    toast that has no close button and says, in English and in Hindi, that what was just changed was
+    not saved; a stuck live screen gets it at once, keeps its close button and does not say so;
+    offline it passes); links and history behind a kept answer (no listener and no mark on `<html>`
+    before one, nor where answers are only held or passed; one click and one popstate listener after
+    the first however many follow, and the mark written once; a plain click on a link, or inside it,
+    to another page (a relative address, another query, a `#hash` on another page) or to a place on
+    this one (a `#hash`, the page's address with one, or the place the page is at) loads the address
+    and is prevented before Next.js's `Link` sees it; left alone: a modifier key, the middle button,
+    a new tab, a download, another site, `mailto:`, the page's own address, `href="#"`, a link
+    marked `data-scrolls-itself` to a place on its own page (one to another page is loaded), a click
+    already prevented and a click off a link; popstate reloads, and ignores a move within the
+    `#hash`; the Refresh button reloads through the same replaceable call; `globals.css` carries the
+    mark's selector, and the website's menu sheet marks the link it handles itself); the loop guard
+    on a fake storage; the fetch observer; the notice, with no toast offline or for a background
+    chunk error and Hindi on a stuck tab; the words in both languages); `new-version-fallback` (20:
+    the error page reports in production only, refreshes unreported for an older build's action,
+    claims no new version for a missing script, keeps Hindi when it replaces the worker panel,
+    resets `<html lang>` only when the path has left `/staff` (six paths) and follows a language
+    change inside the panel; after Back from the error page that replaced a Hindi panel, the admin
+    panel's `HtmlLang` puts English back, and the admin, print and super layouts mount it (three
+    pins)); `order-key` (14, new: the stored key is reused for the same lines and note, also when
+    the dish was renamed or repriced, and not for another dish, a dish more, another quantity,
+    another dish note or another order note; it is kept to 10 minutes less a millisecond and gone at
+    10, so the same dishes 45 minutes later get a new one; kept per table; forgotten after an
+    answer; damaged records, keys the server would refuse and blocked storage fall back to the
+    page's key); `account-menu` (3, new, with the real dropdown: no error toast for an older build's
+    answer, the network toast for a `TypeError`, the server's refusal in the panel's language).
   - Image: `health-route` (5: the once-a-minute log; with the throttle at 0, three fail) and
-    `docker-image` (20: the Dockerfile, `.dockerignore` and `next.config.ts` read as text, so a new
+    `docker-image` (24: the Dockerfile, `.dockerignore` and `next.config.ts` read as text, so a new
     `NEXT_PUBLIC_*` variable without an `ARG`, Sentry's token as an argument, a `.next/cache` mount
-    or an encryption key (VPS-10), an unpinned base image or build frontend or a lost health check
-    fails CI. Added by the review: a deployment ID outside letters, digits, dashes and underscores,
-    checked against Next.js's own rule in `node_modules`; a start script that exits 1 when the copy
-    failed and files are missing; a root-owned preload on `CMD` and no `NODE_OPTIONS`; the preload
-    itself, run in child node processes against a pooled-connection server, with it and without it
-    (about 2.2 s); and the Sentry-token and `.next` cache-mount rules proved against their bad
-    forms, which the old checks missed: a token on a continuation line of an `ENV`, a second name
-    on an `ARG` line, a cache mount that lists `target` before `type`).
+    or an encryption key (VPS-10), an unpinned base image or build frontend, a frontend older than
+    1.10 (the secret mount's `env=`: a 1.8.0 or 1.9.0 pin fails, 1.10.0 and 1.27.1 pass) or a lost
+    health check fails CI. Added by the reviews: a deployment ID outside letters, digits, dashes and
+    underscores, checked against Next.js's own rule in `node_modules`; a start script that exits 1
+    when the copy failed and files are missing; a root-owned preload on `CMD` and no `NODE_OPTIONS`;
+    the preload itself, run in child node processes against a pooled-connection server, with it and
+    without it (five cases since the second review, about 2.5 s for the file): an answer in flight
+    at the stop, its headers not out, says `Connection: close` (`keep-alive` without the preload),
+    and so does the answer to a request that starts after the stop; the connection left idle after
+    the stop is dropped in about 250 ms (a keep-alive of 4 s stands in for 130 s, and without the
+    sweep the stop waits out 2 s); an upgrade request that nothing answers does not hold `close()`
+    (1 ms, where without the preload it is still open after the 1.5 s the harness waits); an upgrade
+    that arrives once the server is closing is destroyed with no listener seeing it; and the
+    Sentry-token and `.next` cache-mount rules proved against their bad forms, which the old checks
+    missed: a token on a continuation line of an `ENV`, a second name on an `ARG` line, a cache
+    mount that lists `target` before `type`).
 - **E2E:** `seo`: `x-forwarded-host: menumesh.in` gets no `X-Robots-Tag`. `auth`: `POST /logout`
   answers 303 with `Location: /login` and a signed-out `/staff` answers `/login?next=%2Fstaff`, both
-  relative. `new-version` (desktop only, 7 tests, about 27 s): a dish move from an older build
+  relative. `new-version` (desktop only, 10 tests, about 25 s): a dish move from an older build
   refreshes the board by itself and is sent from the new page, and a second stale tap within 2
   minutes shows "didn’t load", keeps the move in localStorage and serves it after Refresh; placing
   an order keeps the cart, refreshes once, never loops and shows no network error; an order whose
   first reply is dropped after the server handled it, then a stale answer, the refresh and a second
-  Place order: one order, with the cart and the stored key cleared (two without the order key);
-  in the admin panel the Add dish dialog (react-hook-form, with its own handling) keeps its text,
-  saves nothing and shows the Refresh toast; the menu import review's Save draft (a `useTransition`
+  Place order: one order, with the cart and the stored key cleared (two without the order key); in
+  the admin panel the Add dish dialog (react-hook-form, with its own handling) keeps its text, saves
+  nothing and shows the Refresh toast; the menu import review's Save draft (a `useTransition`
   without a catch) shows no error page, keeps the typed price, shows a toast with no close button,
   does not reload within 3 s, and after Refresh the draft was never saved; after another stale tap
   there a nav link loads Tables & QR in full (a mark set in the page's memory is gone) and Back
   loads the review again, its draft unsaved; in another test Back from the review, after a stale
   tap, reloads the import page it was reached from and Forward loads the review again (without the
   listeners both wait for a load that never comes: a link changes nothing, and Back changes the
-  address but not the page); a missing script refreshes through the guest error page (21 of 21 with
-  `--repeat-each=3`). `playwright.config.ts` runs the app with `SUPABASE_FORWARD_CLIENT_IP=true`, so
-  every e2e run goes through the visitor-IP code (the local Auth ignores what it names). After the
-  six self-hosting commits 113 passed (desktop 72, mobile 32, smoke 9); after the reload commits
-  120 passed (desktop 73, mobile 47) and 21 passed with 3 skipped (the perf specs, without
-  `PERF=1`); none failed. After the review fixes
-  `customer-ordering`, `customer-states`, `offline-queue`, `staff-board`, `staff-hindi`,
-  `live-orders`, `admin-settings`, `menu-import`, `billing` and `auth` passed on desktop and mobile:
-  60 (desktop 39, mobile 21), none skipped. After the links change `new-version` passed (7, and 21
-  of 21 with `--repeat-each=3`) and so did `admin-settings`, `menu-import` and `auth` on desktop
-  (17).
+  address but not the page); on `/admin/menu` a stale tap on a dish's availability switch shows the
+  toast with the sentence that nothing was saved, the switches and the drag handle go to
+  `pointer-events: none` and `opacity: .6`, a click on another switch sends no further action (one
+  action request in all), the search field still takes the pointer and the keys, the database is
+  unchanged and the toast's Refresh reloads to a page without the mark; the computed
+  `pointer-events` of 26 synthetic elements, 18 kinds frozen and 8 (a link menu item, tabs, text
+  fields and the toaster's button among them) left alone; the alerts bell's All activity on `/super`
+  goes to `#activity`, the Activity heading comes into view, the page is not reloaded and Back
+  returns to `/super` without a reload; a missing script refreshes through the guest error page (30
+  of 30 with `--repeat-each=3`). `playwright.config.ts` runs the app with
+  `SUPABASE_FORWARD_CLIENT_IP=true`, so every e2e run goes through the visitor-IP code (the local
+  Auth ignores what it names). After the six self-hosting commits 113 passed (desktop 72, mobile 32,
+  smoke 9); after the reload commits 120 passed (desktop 73, mobile 47) and 21 passed with 3 skipped
+  (the perf specs, without `PERF=1`); none failed. After the review fixes `customer-ordering`,
+  `customer-states`, `offline-queue`, `staff-board`, `staff-hindi`, `live-orders`, `admin-settings`,
+  `menu-import`, `billing` and `auth` passed on desktop and mobile: 60 (desktop 39, mobile 21), none
+  skipped. After the links change `new-version` passed (7, and 21 of 21 with `--repeat-each=3`) and
+  so did `admin-settings`, `menu-import` and `auth` on desktop (17). After the second review's fixes
+  `new-version` passed (10, and 30 of 30 with `--repeat-each=3`), and so did `admin-settings`,
+  `menu-import`, `super-home`, `site`, `site-hindi`, `staff-hindi` and `auth` on desktop and mobile:
+  63 tests, 62 passed and 1 skipped by its own condition (the phone-only sticky call-to-action bar,
+  on the desktop project).
 - **Smoke (`tests/smoke`):** `/api/live` answers 200 with `no-store`, `status: ok` and, when
   `EXPECTED_VERSION` is set, the commit.
-- **Bundles (`pnpm budget`, gzipped):** all 82 routes within budget. Guest pages grew by 4.3 to
-  4.4 KiB (`/t/[qrToken]` 243.5 to 247.9 of 275), the website and login by about 4.2 (`/demo`, the
+- **Bundles (`pnpm budget`, gzipped):** all 82 routes within budget. Guest pages grew by 4.3 to 4.4
+  KiB (`/t/[qrToken]` 243.5 to 247.9 of 275), the website and login by about 4.2 (`/demo`, the
   largest, 290.1 to 294.3 of 325; `/login` 234.2 to 238.4), the panels by 2.6 to 4.2
   (`/admin/reports`, the largest, 469.7 to 472.6 of 565; `/staff` 387.6 to 390.3; `/super` 324.5 to
   328.6): above the 2 to 3 KiB planned, with no ceiling moved. Exporting `ErrorFallback` from the
@@ -5031,7 +5177,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   JS, and the website's 976 to 1,444 ms with CLS 0.000 to 0.086. After the review fixes and the
   links change all 82 routes are still within budget (`/t/[qrToken]` 248 of 275, `/cart` 246,
   `/orders` 247; `/login` 239 of 325; `/staff` 391 of 565; the menu import review,
-  `/admin/menu/import/[importId]`, 382).
+  `/admin/menu/import/[importId]`, 382). After the second review's fixes all 82 are within budget
+  again (`/t/[qrToken]` 249 of 275, `/cart` 246, `/orders` 247; `/demo`, the website's largest, 295
+  of 325, and `/login` 239; `/admin/reports`, the panels' largest, 473 of 565, and `/staff` 391; the
+  menu import review 382).
 - **By hand, the self-hosting fixes** (local Supabase). On the old build `curl` showed both faults
   (VPS-2, VPS-3); with the fixes `seo` and `auth` passed on desktop and mobile (40). The internal
   address (VPS-20): the app run with `SUPABASE_INTERNAL_URL` pointing at a logging pass-through to
@@ -5054,9 +5203,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   order (1 to 1) and the retry placed one (2). Save dish in the admin dialog showed "A new version
   is ready … Refresh", left the dialog and its text alone and saved nothing. A link on a second old
   admin tab reloaded by itself. The server logged one "Failed to find Server Action" warning per
-  stale tap (3). Not repeated after the review fixes or the links change: the e2e cases for the
-  kept-back answer, the links and the order key fake the 409 with `x-nextjs-action-not-found`, not
-  a second build.
+  stale tap (3). Not repeated with `next start` after the review fixes, the links change or the
+  second review's fixes (the two-image skew under By hand, the image, was repeated at `046f951`):
+  the e2e cases for the kept-back answer, the links and the order key fake the 409 with
+  `x-nextjs-action-not-found`, not a second build.
 - **By hand, the image** (VPS-13 to VPS-22, Docker Desktop on Windows):
   - `docker build --check .` prints no warnings; without arguments the build fails at the arguments
     step with "error: build argument NEXT_PUBLIC_APP_URL is required". `pnpm docker:build`: a
@@ -5081,7 +5231,15 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     static files only in each; each page's `data-dpl-id` equals its label. A real two-image skew (A
     on :3100 with a staff drawer, a guest cart, an admin dialog and a link tab open; B started on
     the same port and volume; taps) passed in 10 s with the outcomes of the `next start` run above,
-    and a script only A has answered 200 from the volume after the swap.
+    and a script only A has answered 200 from the volume after the swap. The second review's
+    verifier repeated it from two images built at `046f951`, after the review fixes and the links
+    change, in three runs with the same outcomes: Mark served refreshed the board by itself and the
+    move was replayed with the new action id; a guest's Place order whose first reply was dropped
+    after the server handled it, then a stale tap and the refresh, placed one order, the same row,
+    with the key kept; the admin dialog's Save dish and the import review's Save draft showed the
+    Refresh toast with no close button, kept their typing, did not reload within 3 s and saved
+    nothing; a link in the review loaded the new build in full and Back loaded the review again with
+    its draft unsaved; the server logged one "Failed to find Server Action" warning per stale tap.
   - Without the database (the bridge stopped): `/api/health` answered 503 within 6 s and `/api/live`
     200 throughout; the container turned unhealthy at 94 s, kept running with no restart and logged
     three "[health] health_check failed" lines in 130 s (about 62 s apart, though the watcher called
@@ -5097,8 +5255,17 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     10 of 10 and, with `--internal-url`, 12 of 12; `pnpm smoke` against it 10 passed. The stops and
     the `after()` work are in VPS-16 and VPS-22, the static volume cases in VPS-21, the heap limits
     in VPS-6. A `DEPLOYMENT_ID` of `v1.2` or `a b` stops at the guard in 0.3 s (exit 1) and
-    `ok-ID_9` builds (C3). The preload test was seen to fail with the sweep removed, with the
-    request listener removed and with the sweep at 60 s.
+    `ok-ID_9` builds (C3). At that commit the preload test was seen to fail with the sweep removed,
+    with the request listener removed and with the sweep at 60 s.
+  - After the second review's fixes, the image rebuilt from an export of `848de93`, so that the
+    working tree's other edits could not get in (31.9 s with warm caches, 14 layers, 451,743,838
+    bytes, its revision label that commit): `docker build --check .` clean with the pinned frontend;
+    healthy about 5 s after `docker run`; `pnpm docker:check` 10 of 10 and, with `--internal-url`,
+    12 of 12; `pnpm smoke` against it 10 passed (6.9 s). The stops are in VPS-16. Each part of the
+    preload was removed in turn and only its own case failed (the flip of the answers in flight, the
+    closing branch of the request subscriber, the sweep or a 60 s one, the destroying of the tracked
+    upgrade sockets, the closing branch of the `emit` wrapper), and the previous preload fails three
+    of the five. A leak check of 1,600 requests, aborted ones included, left both sets empty.
   - None of `SUPABASE_SECRET_KEY`, `CUSTOMER_COOKIE_SECRET`, `RAZORPAY_KEY_SECRET`,
     `RAZORPAY_WEBHOOK_SECRET` or `MENU_IMPORT_API_KEY` from `.env.local` appears in a file under
     `/app`, `/opt` or `/usr/local/bin`, in `docker history` or in `docker inspect`; as uid 1000,
@@ -5119,8 +5286,10 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   a reset while the body downloads. `readMenuPage` did not catch the throw, so the page was never
   recorded and stayed claimed for its 3-minute lease: Try again skipped it and Finish said "Some
   pages have not been read yet." It now catches the throw and records the page as failed with the
-  retryable "reader is not answering" text, as for a photo that timed out; a missing photo still
-  says "did not upload".
+  "reader is not answering" text, as for a photo that timed out, and then answers with an error, so
+  that the reading stops and Try again reads the page again (the first version recorded the page
+  and went on, so nothing read it again: R2-1); a missing photo still says "did not upload" (R2-2
+  says when).
 - **A2 · Not fixed, deferred: two large exports at once (VPS-6, VPS-22):** the size guard weighs one
   build on its own against half the heap, and builds for different restaurants can run at the same
   time in the one process (`start_export` locks per restaurant, and the build runs in `after()`).
@@ -5140,8 +5309,9 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   reloads by itself. A caller in a transition holds Next.js's navigations while its action is
   pending, so at first links and Back did nothing on such a page until Refresh. Now the first kept
   answer makes a plain click on a link load its address in full, and back or forward reload the
-  address the browser moved to. The page's other actions still wait behind the kept one, and their
-  buttons may keep spinning until Refresh or a link. VPS-8 has the rules and what it costs.
+  address the browser moved to. The page's other actions still wait behind the kept one, and the
+  controls that show a change at once stop taking taps (R1-1). VPS-8 has the rules and what it
+  costs.
 - **B2 · The refresh by itself could turn a retry into a second order (VPS-8, P3-10):** the page
   that reloads made a new idempotency key, so after a reply lost in the deploy, a stale retry and
   the refresh, the second Place order was a new order, though the toast said to place it again. The
@@ -5156,7 +5326,7 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
 - **B4 · A Hindi worker's error page turned English (VPS-12):** when the staff layout itself failed
   in the browser, the panel's cleanup reset `<html lang>` to English as the error page replaced it,
   and the error page follows `<html lang>`. The cleanup now resets only when the URL has left
-  `/staff`.
+  `/staff`. It left Back from that error page open (R1-2, below).
 - **C1 · A stop that met a busy connection ended in the kill (VPS-16, VPS-22):** Node's
   `server.close()` drops the idle keep-alive connections once, a connection that was busy then
   idled for 130 s, and Caddy keeps its pooled ones as long, so the server never closed, Next.js
@@ -5164,7 +5334,8 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   from curl, which closes its socket. A preload loaded by `CMD` ends each answer's connection once
   the server is closing and sweeps the idle ones every 250 ms. With a pooled client an idle stop
   takes 0.57 s and a stop with a 9 s request in flight 7.3 s, both exit 143; that second one took
-  25.6 s and exit 137 before. The deploy must keep the image's `CMD` (VPS-24, RUNBOOK).
+  25.6 s and exit 137 before. The deploy must keep the image's `CMD` (VPS-24, RUNBOOK). R2-4 and
+  R2-5 (below) extended the preload, and VPS-16 has the figures now.
 - **C2 · The image started without its own static files (VPS-21):** when the copy into the static
   volume failed (a volume uid 1000 cannot write, a read-only mount, a full disk), the start script
   warned and started: the container turned healthy and answered 404 for every script of its build,
@@ -5200,3 +5371,80 @@ VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
   512 MiB cap, about 37,800 bills. The code reads the live limit, so it always enforced the right
   figure; only the documented numbers and a comment in `export.ts` were wrong. If staging should
   keep more, `--max-semi-space-size` in its `NODE_OPTIONS` is an untested way.
+
+**Second review.** A second review of the fixes above found nine more: three on the reload prompt
+(R1) and six on the image and its documents (R2). All nine are fixed. The entries above that a fix
+changed were corrected in place again (P7-15, VPS-5, VPS-8, VPS-12, VPS-14, VPS-16, VPS-22, VPS-24,
+A1, B1 and Tests; B4 and C1 point here), and so were the RUNBOOK's Deploying and web image sections.
+
+- **R1-1 · Switches and reorders looked saved behind a kept answer (VPS-8):** where an answer is
+  kept back nothing reaches the server, but dish availability, a waiter's on-duty switch and the
+  drag reorders of dishes, categories and tables (`useOptimistic`) showed the change as made, and
+  later taps queued behind the kept action and were never sent. VPS-8 had said such controls keep a
+  spinner; before B1 the tap reloaded the page and showed the real state. The Refresh toasts now say
+  that what was just changed was not saved, and from the first kept answer the stylesheet stops taps
+  on the controls and dims them (`html[data-new-version='kept']`), leaving links, text fields, tabs
+  and the toaster alone. The control tapped first still shows its change, and a keyboard can still
+  press a focused control (VPS-8 has the limits).
+- **R1-2 · The admin panel stayed `lang="hi"` after Back from an error page (VPS-12):** B4 (7ea09bd)
+  stopped the worker panel's cleanup from putting English back while an error page replaces it, and
+  counted on a move to `/admin` to do it. A plain move does, but Back from the error page restores
+  `/admin` with no panel mounted: no cleanup runs, and the English admin panel, its toasts and its
+  error card stayed in Hindi, read as Hindi by screen readers. The admin panel, its print pages and
+  the super panel now mount `HtmlLang lang="en"` (new, `src/components/shared/html-lang.tsx`; the
+  website keeps its own). `/login` and `/super/mfa` mount none and still keep Hindi after that Back.
+- **R1-3 · A link to a place on the same page did nothing behind a kept answer (VPS-8):** the click
+  listener left a link that differs from the page only by its `#hash` to Next.js, whose move and
+  hash scroll wait behind the kept action: the alerts bell's All activity, the activity chips on
+  `/super` and the Figure links of `/super/money/revenue` did nothing, though the docs said hash
+  links were left alone. The listener now follows such a link with `location.assign`, which the
+  browser takes as a fragment navigation (it scrolls, adds a history entry and does not reload); a
+  link to this page without a `#hash`, and a link marked `data-scrolls-itself` (the website's menu
+  sheet, which scrolls itself), are still left alone. A new e2e on `/super`: before the change the
+  address was still `/super` 5 s after the click; after it the address is `/super#activity` at once
+  and Back returns without a reload.
+- **R2-1 · A photo that did not arrive was not retryable (VPS-5, P7-15, A1, Tests):** the page was
+  recorded as failed with the retryable text, but the action answered ok, the progress loop went on
+  and `finishReading` closed the import without it: a one-page import failed as "not answering" and
+  offered only Start a new import, a longer one was reviewed without the page, and a reset mid-body,
+  which used to stop the loop for Try again, lost that. `readMenuPage` now answers "The photo of
+  this page could not be fetched. Try again." once the page is recorded, so the loop stops and Try
+  again reads the page again, which the claim allows while the import is open; a new jsdom test of
+  `ImportProgress` drives it. A reload instead of Try again still finishes the import without the
+  page, which the review then lists with the reader's text although the cause was the photo; and a
+  reader that cannot answer still does not stop the reading (VPS-5's trade-off now says so).
+- **R2-2 · A Storage outage before the headers told owners to start again (VPS-5):** A1 decided by
+  whether storage-js threw, not by what failed. A gateway 503, a refused connection or a reset
+  before the headers is returned, not thrown, and was recorded as "did not upload. Start a new
+  import with this page.", which in a one-page import ended as "take a sharper photo" although the
+  photo was in Storage. "Did not upload" is now only for a not-found answer (status 404, or
+  `statusCode` '404': the local Storage answers a missing object with status 400 and that
+  `statusCode` in its body); every other failure, returned or thrown, is the retryable one. Six
+  answers run through the real storage-js in the tests.
+- **R2-3 · The pin test let a frontend through that cannot mount the Sentry secret (VPS-14):** the
+  Dockerfile mounts the token with `env=`, which needs frontend 1.10, while the test, the
+  Dockerfile's comment, VPS-14 and the RUNBOOK said 1.8: a 1.8 or 1.9 pin passed CI and failed the
+  image build. The test now requires 1.10 or later (1.8.0 and 1.9.0 fail it, 1.10.0 and 1.27.1
+  pass), and the comment, VPS-14 and the RUNBOOK say so.
+- **R2-4 · An unanswered upgrade request held the stop to the kill (VPS-16, VPS-22, VPS-24):**
+  Next.js leaves an upgrade request for a path with no route unanswered and open, and Node takes its
+  socket out of the connections that `close()` and the sweep walk but still counts it, so `close()`
+  waited for the client, up to Cloudflare's 100 s, and a stop in that window ended in the kill
+  (exit 137) with `after()` work cut: C1's failure again, from one request by any visitor. The
+  preload now destroys the sockets that left with an upgrade when the server closes, and any upgrade
+  that arrives once it is closing, with no listener seeing it. On the image an open upgrade socket
+  stopped in 25.55 s, exit 137, before and takes 0.6 s, exit 143, now. The Caddy site file refusing
+  `Upgrade` requests to the web container joins the deploy stop's checklist as defence in depth.
+- **R2-5 · Answers in flight at the stop still said keep-alive (VPS-16):** only requests that
+  started after `close()` got `Connection: close`, so Caddy pooled the connection of an answer that
+  was in flight and the 250 ms sweep then closed it from the server side: a request Caddy had
+  written to it in between could be reset, a 502 during a deploy (reasoned from Node's source, not
+  measured). The first fix's "sub-millisecond" window held only while the event loop was idle. The
+  preload now keeps every live response (`http.server.request.start`) and, in `close()`, makes those
+  whose headers are not out say `Connection: close`. A request of 9 s in flight now answers `close`
+  and the stop takes 7.8 s, exit 143. Answers already streaming when the stop began, and Node's own
+  one-time close of the idle connections, remain (VPS-16).
+- **R2-6 · The Tests section's unit total was stale (Tests):** it said 667 to 822 tests, but the
+  links change had taken `new-version` from 55 to 84 tests, so a run counted 851. It now says 667 to
+  884 tests in 49 to 60 files, counted at the end of the second review's fixes, with the per-file
+  counts.
