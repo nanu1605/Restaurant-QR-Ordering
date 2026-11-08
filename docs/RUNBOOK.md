@@ -1,6 +1,7 @@
 # Runbook
 
-How MenuMesh is deployed and kept running. Decisions behind it: `docs/DECISIONS.md` (Phase 10).
+How MenuMesh is deployed and kept running. Decisions behind it: `docs/DECISIONS.md` (Phase 10, and
+Self-hosting on the VPS for the web image).
 
 ## Environments
 
@@ -33,6 +34,13 @@ and the version check. Re-run the workflow instead.
   the guest orders poll on the deployment that served them, for up to 7 days (Skew Protection);
   they move to the new one on their next reload. So an old deployment keeps running for a week:
   see the migration, rollback and secret rules below.
+- A page that does reach a newer build (open for more than 7 days, or past a Skew Protection
+  Threshold) is refused its next server action and refreshes onto the new build. The worker panel,
+  the live board (`/admin/live`) and guests' phones do it by themselves on their next tap: the
+  guest's cart and the kitchen's dish moves are kept, and anything else is tapped again. Admin,
+  super, the website and login show "A new version is ready" with a **Refresh** button and keep
+  what was typed. A tab refreshes itself at most once in 2 minutes, so a broken deploy can't loop
+  it; it then asks instead (docs/DECISIONS.md VPS-8).
 
 ### One-time setup per environment
 
@@ -40,7 +48,8 @@ and the version check. Re-run the workflow instead.
    Pro organization bills every extra project's compute). Note the project ref and the database
    password. In Authentication: sign-ups and anonymous sign-ins off, minimum password length 8,
    TOTP on, Site URL = the app URL, and the sign-up and sign-in rate limit raised to 1000 per 5
-   minutes (every staff login comes from the app's servers, so they share IPs).
+   minutes (every staff login comes from the app's servers, so they share IPs; the VPS's own Auth
+   gets the visitor's address instead, docs/DECISIONS.md VPS-4).
 2. **Vercel:** a project (`menumesh-staging` or `menumesh`) on the Pro team, imported from
    GitHub (that first deploy may fail) and then disconnected from it: Settings → Git →
    **Disconnect** (the pipeline deploys with the CLI; a connected project once deployed a push to
@@ -96,6 +105,125 @@ and the version check. Re-run the workflow instead.
 Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
 `NEXT_PUBLIC_*` values are built into the app: change them, then deploy again.
 
+Two server-only variables are for the VPS and stay empty on Vercel: `SUPABASE_INTERNAL_URL` and
+`SUPABASE_FORWARD_CLIENT_IP` (docs/DECISIONS.md VPS-20 and VPS-4; see The web image below).
+
+### The web image (Docker, not live yet)
+
+The web app also builds as a Docker image, for the planned move to a shared VPS (docs/DECISIONS.md,
+Self-hosting on the VPS). **Nothing deploys it yet: Vercel stays the live host, for staging and
+production, until the deploy stop**, which adds the compose project, the gateway, the Caddy site
+file, the scheduler, backups, and the image build and deploys in GitHub Actions. Until then this
+section is how to build the image and check it on this machine.
+
+`Dockerfile` builds the Next.js standalone server on Node 24 (Debian 13), run as the non-root `node`
+user on port 3000. It makes one image per environment, because `NEXT_PUBLIC_*` values are built in
+(VPS-13): staging and production are separate builds of one commit, an image can't be promoted from
+one to the other, and a rollback needs the previous production image kept. Build arguments (a
+missing required one fails the build with `error: build argument NAME is required`):
+
+| Argument                               | Needed   | Value                                                              |
+| -------------------------------------- | -------- | ------------------------------------------------------------------ |
+| `NEXT_PUBLIC_APP_URL`                  | required | the environment's address, no trailing slash                       |
+| `NEXT_PUBLIC_SUPABASE_URL`             | required | staging: the hosted project; production: `https://api.menumesh.in` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | required | the project's publishable key                                      |
+| `NEXT_PUBLIC_BUILD_SHA`                | required | the commit; `/api/health` and `/api/live` report it                |
+| `DEPLOYMENT_ID`                        | required | one per build, not per commit                                      |
+| `NEXT_PUBLIC_SENTRY_DSN`               | optional | the project's DSN                                                  |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT`       | optional | `staging` or `production`; required with a DSN                     |
+| `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`     | optional | as on Vercel                                                       |
+| `SENTRY_ORG`, `SENTRY_PROJECT`         | optional | for the source map upload                                          |
+| `SENTRY_RELEASE`                       | optional | defaults to the commit                                             |
+
+`NEXT_PUBLIC_SUPABASE_URL` is never the internal address (VPS-20). `DEPLOYMENT_ID` takes letters,
+digits, `.`, `-` and `_`, and is made as `<commit 12>-<run id>-<attempt>`, as `deploy.yml` does for
+Vercel. The Dockerfile sets `NEXT_OUTPUT=standalone` itself. The one secret is `sentry_auth_token`,
+a BuildKit secret (`--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN`) and never an argument,
+because arguments show in `docker history`; without it no source maps are made or uploaded. Env
+files cannot reach the build (`.dockerignore` is an allowlist, and the build stops if one gets in).
+The build log shows two `[site] plans not loaded for the home page` traces: the build has no
+`SUPABASE_SECRET_KEY` by design, so they are harmless.
+
+- **Runtime variables:** the container takes the server-only variables of the table above, listed in
+  `src/lib/env.server.ts` and explained in `.env.example`. Two are for the VPS:
+  `SUPABASE_INTERNAL_URL` (the address the server calls Supabase on, `http://api-gw:8000`, on
+  production's web only; VPS-20) and `SUPABASE_FORWARD_CLIENT_IP` (`true` only where Auth is the
+  VPS's own, with the Auth settings of VPS-4). `NEXT_PUBLIC_*` set at run time do nothing. The image
+  sets `PORT=3000`, `HOSTNAME=0.0.0.0` (do not override it) and `KEEP_ALIVE_TIMEOUT=130000`: keep
+  the proxy's idle upstream time under 130 s (Caddy's is 2 minutes). Leave
+  `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` unset (VPS-10): each build gets new action ids, and open
+  pages refresh onto it.
+- **What the deploy stop owes the image** (VPS-24):
+  - Stop with a 25 s grace period: node is process 1 and gets `SIGTERM`, requests and `after()` work
+    finish, and what still runs at 25 s is killed (VPS-22).
+  - 1536m of memory for `web` and 768m for `web-staging`, with `NODE_OPTIONS=--max-old-space-size`
+    at about 65% of it (1000 and 500). The data export's size limit follows the heap: about 37,000
+    bills on `web`, about 25,500 on `web-staging` (VPS-6), so a container without that setting, or
+    with less memory, lowers it.
+  - Named volumes on `/app/.next/static` (earlier builds' scripts and styles, VPS-21) and
+    `/app/.next/cache` (the image optimiser's cache, capped at 500 MB, VPS-18). The image needs no
+    capability or privilege: `cap_drop: ALL` and `no-new-privileges`.
+  - `api.menumesh.in` must resolve to a public address inside the web containers: `next/image`
+    fetches photos from it and refuses private addresses, so an alias to a Docker or loopback
+    address would answer 400 for every dish photo (VPS-18).
+  - Caddy and Cloudflare must pass `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
+    never cache HTML or RSC (VPS-7).
+  - Docker's health check calls `/api/health`, which reaches the database: the deploy waits up to
+    120 s for healthy, and a database outage turns the container unhealthy without restarting it
+    (VPS-17).
+  - The daily cron and digest routes (`maxDuration` 300 and 60 on Vercel, ignored elsewhere) can
+    outlast Cloudflare's 100 s, so the scheduler calls the web container directly, not through
+    Cloudflare (VPS-22).
+- **After the move:** until the deploy stop rewrites them, the Vercel rules in this runbook describe
+  the live deploy path (Deploying, One-time setup, the variables, the 7-day migration rule, Rolling
+  back, Rotating secrets, Restore from an export and the Razorpay live switch). After the move a
+  deploy replaces the container, so every open page refreshes on its next tap (VPS-8), and until
+  then its polls and the board's direct Supabase reads run the old browser code against the new
+  build: keep their JSON and the tables the board reads additive, like migrations (VPS-11).
+  Production deploys are run by the owner on the server,
+  `sudo app-deploy menumesh production <prod-ref> <migrate-ref>`; staging deploys from GitHub after
+  a merge to `main` (VPS-23).
+- **When to deploy, from the move:** no deploys, and no merges to `main` (every merge deploys
+  staging), from 02:55 to 03:30 or from 08:40 to 08:50 IST: those are the daily cron and the digest.
+  Releases also avoid 12:00 to 15:30 and 19:00 to 23:30 IST, and maintenance runs 01:00 to 07:00 IST
+  (VPS-24).
+- **Checking an image here** (Docker Desktop, `pnpm db:start`, and `.env.local` pointing at the
+  local stack):
+  - `pnpm docker:build [--tag menumesh-web:local] [--deployment-id <id>]` builds it with the local
+    Supabase address and key and the commit; a local build's deployment ID is unique to the build,
+    so two builds can be swapped like a deploy.
+  - `pnpm docker:run [--tag menumesh-web:local] [--internal-url]` starts `menumesh-web` on
+    `http://localhost:3100` (this machine only) under the shared server's limits, with the volumes
+    `menumesh-web-static` and `menumesh-web-cache`, and waits up to 90 s for healthy. Of
+    `.env.local`, only `SUPABASE_SECRET_KEY`, `CUSTOMER_COOKIE_SECRET` and `STAFF_EMAIL_DOMAIN`
+    reach it, by name through Docker's environment: the other keys stay out, so it cannot send
+    email, charge Razorpay or report to Sentry. A second container, `menumesh-web-bridge`, forwards
+    the Supabase port to the host's Supabase. Run it again with another `--tag` to swap images as a
+    deploy does: the earlier build's scripts stay served from the volume. With `--internal-url` the
+    server calls Supabase on `http://api-gw:8000`, as on the VPS, and the public address is out of
+    its reach.
+  - `pnpm docker:check` ticks each of 10 checks (12 with `--internal-url`) and exits 1 on any
+    failure: healthy; `/` answers 200; `/api/live` names this build and `/api/health` reaches the
+    database; pages carry this build's deployment ID; only `menumesh.in` is indexable; log out
+    redirects to a relative address; the prerendered files and `sw.js` are in the image; sharp
+    resizes an image and its disk cache works; this build's scripts are served for a year; the app
+    runs as `node` with only `.next/cache` and `.next/static` writable. If the build's last step
+    (loading sharp) fails, libvips is missing from the standalone output (VPS-18).
+  - Then a Playwright subset, which reuses the container on port 3100 instead of building:
+    `SMOKE_URL=http://localhost:3100 EXPECTED_VERSION=$(git rev-parse HEAD) pnpm smoke`;
+    `pnpm e2e --project=desktop --no-deps` on `tests/e2e/smoke.spec.ts`, `auth.spec.ts`,
+    `seo.spec.ts`, `fonts.spec.ts`, `theme.spec.ts` and `admin-tables.spec.ts`; and
+    `pnpm e2e --project=mobile --no-deps tests/e2e/customer-ordering.spec.ts`. Specs that need the
+    mock APIs are left out: the mock server binds 127.0.0.1 on the host. With `--internal-url`,
+    `auth.spec.ts`, `staff-board.spec.ts` and the export download test of
+    `super-close-account.spec.ts` (`-g 'an owner downloads a ZIP'`) prove sign-in, the board and the
+    export link.
+  - `pnpm docker:stop` removes both containers and both volumes.
+- **Updating the pins:** the base image's tag and digest move together
+  (`docker buildx imagetools inspect <tag>` shows the digest), monthly and on advisories, once a
+  release is 14 days old; the pnpm image's tag and digest move whenever `packageManager` changes
+  (`--pm-on-fail=error` makes a mismatch fail the build).
+
 ## Database migrations
 
 - Every schema change is a new file in `supabase/migrations`, tested locally and in CI first.
@@ -132,7 +260,8 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   bad deployment (Deployments → ⋯ → Delete) and ask staff to reload their tablets; release the fix
   with `vercel promote <fix URL>` (Undo Rollback would bring back the deleted one). Otherwise,
   once the fix is live, open its deployment → ⋯ → **Skew Protection Threshold** → **Set**: older
-  deployments stop answering, and open pages reload onto the fix.
+  deployments stop answering, and open pages refresh onto the fix on their next tap (the live
+  screens by themselves, other pages through a Refresh button; docs/DECISIONS.md VPS-8).
 - **Database:** a forward-fix migration through the normal pipeline. Restoring a backup is for
   lost data, not bad code (see Backups).
 
@@ -169,6 +298,10 @@ Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).t
   Subscriptions** in the Razorpay dashboard once, in the same mode as the keys, and try again.
   `Authentication failed` instead means the key id and secret aren't one pair: regenerate the
   key and set both.
+- **A page says "Something went wrong" with an error code** (the app's own error page, VPS-9): the
+  code is the error's digest and matches the server's log line for it. **Try again** fetches the
+  page again and **Refresh** reloads it. A page that says "A new version is ready" is not an
+  error: see Deploying.
 - **Errors:** Sentry (errors only, no personal data). The server's `console.error` lines for
   unexpected database errors arrive there too.
 - **System health** (`/super` → **Health**, Admin and Support; SA-86 to SA-92): scheduled jobs
@@ -200,7 +333,11 @@ restaurant → **Account**; SA-93 to SA-100).
 
 1. **A copy first, if they want one.** Prepare a download on the Account tab and copy its link for
    them (24 hours, and anyone with the link can open it). It works during the hold too, but they
-   can't log in once it closes, so they can't do it themselves after that.
+   can't log in once it closes, so they can't do it themselves after that. If the download fails
+   every time, look for `[closure] export failed … too big to build in memory` in Sentry or the
+   logs: the restaurant is past what one in-memory build allows (docs/DECISIONS.md SA-93 and
+   VPS-6, about 37,000 bills on the VPS, where the limit follows the web container's heap). Tell
+   the owner the copy needs a developer.
 2. **Close account:** a reason and the typed restaurant code. Anything that could still charge is
    cancelled first: if Razorpay refuses, nothing closes and it says so; try again in a minute. If
    it says autopay changed while closing, the owner set it up just then: close again. A refund for

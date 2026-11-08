@@ -311,7 +311,9 @@ GitHub Actions migrates, then deploys, then runs the read-only smoke tests
 (`tests/smoke`): staging after every green CI run on `main`, production through the
 **Release** workflow, which only the repository owner can run. `docs/RUNBOOK.md` covers the setup, the
 environment variables, rollbacks, incidents, backups, secret rotation and the Razorpay live
-switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site.
+switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site. The web app also builds as a Docker
+image (`Dockerfile`; `docs/RUNBOOK.md`, The web image) for the planned move to a VPS; Vercel stays
+the live host until then.
 
 Errors go to Sentry (errors only, no cookies, headers or request bodies; the browser SDK loads
 once the page is idle); staff and admin usage goes to PostHog, never from diners' phones. Both
@@ -331,6 +333,10 @@ placeholders to replace before launch.
 | `pnpm format`             | Prettier (write)                              |
 | `pnpm test`               | Unit tests (Vitest)                           |
 | `pnpm e2e`                | End-to-end tests (Playwright)                 |
+| `pnpm docker:build`       | Build the web image from `.env.local`         |
+| `pnpm docker:run`         | Run it against local Supabase on :3100        |
+| `pnpm docker:check`       | Check the running image                       |
+| `pnpm docker:stop`        | Stop and remove its containers                |
 | `pnpm db:start`           | Start local Supabase                          |
 | `pnpm db:stop`            | Stop local Supabase                           |
 | `pnpm db:reset`           | Recreate local DB from migrations + seed      |
