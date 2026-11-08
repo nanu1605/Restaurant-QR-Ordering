@@ -5676,14 +5676,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     the work goes on in `after()`; the bounds are the stop and how many units a run starts.
   - **Logging and health.** An idle tick writes nothing: `jobs_waiting()` is one read of nearly
     empty indexes and the small announcements table, and while an email announcement is due, also
-    of its sent pairs (VPS-29). A unit of work logs one `console.info` line (an export ready, with its rows,
-    bytes and ms: the first real timings; a Hindi call, with its seconds; an email run's counts).
-    `console.error`, which reaches Sentry, is only for real failures, and trouble that the next run
-    retries is a `console.warn`. The minute job writes no `cron_runs` rows: `private.cron_status`
-    would flag a kind quiet for 12 hours as not finished, and the job after 26 hours, and 1,440 rows
-    a day are noise. Its liveness is the scheduler's heartbeat ping after each 200 (VPS-29), and a
-    dead minute job falls back to the behaviour before Stop A2, because the `after()` paths and the
-    daily steps stay.
+    of its sent pairs (VPS-29). A unit of work logs one `console.info` line (an export ready, with
+    its rows, bytes and ms: the first real timings; a Hindi call, with its seconds; an email run's
+    counts). `console.error`, which reaches Sentry, is only for real failures, and trouble that the
+    next run retries is a `console.warn`. The minute job writes no `cron_runs` rows:
+    `private.cron_status` would flag a kind quiet for 12 hours as not finished, and the job after 26
+    hours, and 1,440 rows a day are noise. Its liveness is the scheduler's heartbeat ping after each
+    200 (VPS-29), and a dead minute job falls back to the behaviour before Stop A2, because the
+    `after()` paths and the daily steps stay.
   - **Vercel is unchanged.** Migrations run first (`deploy.yml`), `vercel.json` has no minute cron,
     and the new code runs through `after()` and the daily run, inside the `maxDuration` of 300 s
     that they already have. A cut is recovered at the next trigger of its kind: any export request
@@ -5908,9 +5908,9 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     never sent: `in_audience` costs about 4 µs a call, so 30 to 45 ms at 6,500 restaurants. A
     "scanned at" marker, or the audience written out in the query, is the answer past a few
     thousand restaurants. The second needs care: tried for review finding D2, its estimates led the
-    planner to a 1-second plan for an announcement to everyone. On Vercel, which has no minute job, the daily run's
-    email step now starts no send after 150 s and leaves the rest to the next daily run or save,
-    where it used to run until the 300 s kill.
+    planner to a 1-second plan for an announcement to everyone. On Vercel, which has no minute job,
+    the daily run's email step now starts no send after 150 s and leaves the rest to the next daily
+    run or save, where it used to run until the 300 s kill.
 - **VPS-29 · The every-minute jobs route:** `GET /api/cron/jobs` (`src/app/api/cron/jobs/route.ts`).
   - **The contract.** `Authorization: Bearer <CRON_SECRET>`, else 401 `{"error":"Unauthorized"}`
     (with no secret set nobody gets in). `?kinds=a,b` keeps it to those of `data_exports`,
@@ -5993,24 +5993,24 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
 - **pgTAP (71 to 75 files, 3,311 to 3,554 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
   - `690_export_jobs` (129): a request gives a `queued` row with no claim or lease, the card says it
-    is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued,
-    says the slot is busy while a build is live and another export waits (leaving that one as it
-    was), and is null again once the waiting one has failed for its age; a claim takes the exports
-    in the order they were asked for across two restaurants,
-    leases 90 s (30 s at least, 10 minutes at most) and is no cut; the table refuses a second
-    `building` row, a building row without a lease or claim, and a lease on any other; the heartbeat
-    renews the holder's lease and answers false for an old claim or a row not building; `complete`
-    with the wrong claim changes nothing, with the right one makes the export ready for 24 hours
-    with no lease, once, and refuses a null or negative size; a late `complete` counts while the row
-    is `queued` and no claim has taken it since; a lapsed lease is claimed again with a new claim id
-    and `attempts` 1, the old build can no longer complete it, and the third cut ends `failed` with
-    "the build was cut off"; `fail` cuts the error to 500 characters; `release` queues it again
-    without counting; a row queued or building for 16 minutes reads failed, a claim fails it instead
-    of building it, `start_export` lets a new request in, and a building row with a live lease is
-    left alone by an idle claim and failed for its age (not as a cut) once the lease lapses; the
-    previous build's `restaurant_export_finish` completes an unclaimed export and not a claimed one;
-    anon, authenticated and signed-out callers get 42501 on all five functions; the removal after a
-    closed account's hold deletes the rows and frees the slot.
+    is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is
+    queued, says the slot is busy while a build is live and another export waits (leaving that one
+    as it was), and is null again once the waiting one has failed for its age; a claim takes the
+    exports in the order they were asked for across two restaurants, leases 90 s (30 s at least, 10
+    minutes at most) and is no cut; the table refuses a second `building` row, a building row
+    without a lease or claim, and a lease on any other; the heartbeat renews the holder's lease and
+    answers false for an old claim or a row not building; `complete` with the wrong claim changes
+    nothing, with the right one makes the export ready for 24 hours with no lease, once, and refuses
+    a null or negative size; a late `complete` counts while the row is `queued` and no claim has
+    taken it since; a lapsed lease is claimed again with a new claim id and `attempts` 1, the old
+    build can no longer complete it, and the third cut ends `failed` with "the build was cut off";
+    `fail` cuts the error to 500 characters; `release` queues it again without counting; a row
+    queued or building for 16 minutes reads failed, a claim fails it instead of building it,
+    `start_export` lets a new request in, and a building row with a live lease is left alone by an
+    idle claim and failed for its age (not as a cut) once the lease lapses; the previous build's
+    `restaurant_export_finish` completes an unclaimed export and not a claimed one; anon,
+    authenticated and signed-out callers get 42501 on all five functions; the removal after a closed
+    account's hold deletes the rows and frees the slot.
   - `691_hindi_names_lease` (66): the lease and the settle as in VPS-27: who may call, one
     restaurant at a time (the one asked for, else the first waiting, never-tried first, and a
     restaurant with nothing waiting gets nothing, not another's), categories before dishes, the
