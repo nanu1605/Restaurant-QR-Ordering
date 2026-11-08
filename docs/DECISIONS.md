@@ -5102,7 +5102,8 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     - **Backups.** The backup job reads the newest `config-*.tar.age` from
       `/srv/menumesh/backup-out` (0755, archives 0644, so any uid may) and fails when it is missing
       or more than 2 hours old. The archive timer runs at 20:20 UTC for MenuMesh, ten minutes
-      before the backup (asked of the server team).
+      before the backup: the server's admin adds that drop-in when MenuMesh is set up, and nothing
+      for it goes in this repo. `CONFIG_ARCHIVE_FILES` goes with the conf values.
     - **Pre-deploy dump.** `PREDEPLOY_DB="db supabase_admin postgres"`: `app-deploy` runs
       `pg_dump -Fc -U supabase_admin postgres` inside `db` over its local socket, so `db` keeps
       upstream's `PGPASSWORD`. The image sets `supabase_admin`'s password from it, and the
@@ -5112,8 +5113,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
       this project's own bridges. Authenticated origin pulls must be on for `menumesh.in` before
       any MenuMesh container runs on the server.
     - **Other domains.** The site file may serve only `menumesh.in` and one label under it, so after
-      the move `menumesh.app` and `menumesh.co` redirect through Cloudflare rules instead of Vercel
-      (asked of the server team whether those zones need anything from the server).
+      the move `menumesh.app` and `menumesh.co` redirect at Cloudflare instead of Vercel. They need
+      nothing from the server: no certificate, origin pulls, conf, site file or firewall change.
+      Each zone is active on Cloudflare, with proxied apex and `www` records pointing at the
+      placeholder `192.0.2.1` (never the server's address), one Single Redirect (308 to
+      `https://menumesh.in`, keeping the path and the query string) and Always Use HTTPS on. The
+      `www.menumesh.in` redirect stays in the site file.
 
 ### Tests (VPS Stop A)
 
