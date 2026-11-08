@@ -6,11 +6,13 @@ import {
   extractPage,
   PAGE_DEADLINE_MS,
   READER_UNAVAILABLE,
+  UNREADABLE_PAGE,
   type PageOutcome,
 } from '@/features/menu-import/extract';
 
 // Reading one page in its server action: its time counts from the action's start, and a photo
-// that did not arrive stops the reading, so that Try again reads the page once more
+// that did not arrive, or a reader that does not answer, stops the reading, so that Try again
+// reads the page once more. A page that had already failed goes on, so each page gets two tries
 // (docs/DECISIONS.md P7-15, VPS-5).
 
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
@@ -21,6 +23,10 @@ const NOT_FETCHED =
 const NOT_FETCHED_ONLY_PAGE =
   'The photo of this page could not be fetched. Try again. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 const NOT_UPLOADED = 'The photo of this page did not upload. Start a new import with this page.';
+const READER_STOPPED =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import goes on without this page when you open it again.';
+const READER_STOPPED_ONLY_PAGE =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 
 const db = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -211,6 +217,20 @@ describe('readMenuPage', () => {
     });
   });
 
+  it('goes on when the photo of a page that had already failed is not fetched either', async () => {
+    db.pages = [
+      { index: 1, status: 'failed' },
+      { index: 2, status: 'pending' },
+    ];
+    db.download.mockResolvedValue({ data: null, error: new Error('Gateway Timeout') });
+
+    // Ok: that was the page's second try, so the reading goes on and the import ends without it.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(extractPage).not.toHaveBeenCalled();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
   it('tells the owner to start again when the photo is not there', async () => {
     db.download.mockResolvedValue({ data: null, error: notThere() });
 
@@ -223,6 +243,136 @@ describe('readMenuPage', () => {
 
   it('does not ask to try again when the import was closed while the photo was fetched', async () => {
     db.download.mockRejectedValue(new TypeError('terminated'));
+    db.rpc.mockImplementation(async (fn: string) =>
+      fn === 'menu_import_record_page'
+        ? { data: null, error: { code: 'P0001', message: 'IMPORT_NOT_OPEN', details: null } }
+        : { data: true, error: null },
+    );
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe('readMenuPage when the reader does not answer', () => {
+  // Every case here starts from the beforeEach's reader, which fails with READER_UNAVAILABLE.
+  it('stops the reading, and says the import goes on without the page', async () => {
+    // Another page can still give dishes.
+    db.pages = [
+      { index: 1, status: 'pending' },
+      { index: 2, status: 'pending' },
+    ];
+
+    // Not ok: the progress loop stops on it, and Try again reads the failed page once more.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: READER_STOPPED,
+    });
+
+    expect(extractPage).toHaveBeenCalledOnce();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('says the import fails when the page is the only one', async () => {
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: READER_STOPPED_ONLY_PAGE,
+    });
+
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('says the import fails when every other page has failed', async () => {
+    // Opening the import again would finish it with no page to give dishes.
+    db.pages = [
+      { index: 1, status: 'pending' },
+      { index: 2, status: 'failed' },
+    ];
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: READER_STOPPED_ONLY_PAGE,
+    });
+  });
+
+  it('counts a page whose read a deploy cut off as one that has not failed yet', async () => {
+    // Its claim lapsed, so the page was read again: still 'reading' in the database, not failed.
+    db.pages = [
+      { index: 1, status: 'reading' },
+      { index: 2, status: 'pending' },
+    ];
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: READER_STOPPED,
+    });
+  });
+
+  it('records the page before it answers, so that Try again finds it failed', async () => {
+    let finishRecording!: () => void;
+    const recording = new Promise<void>((resolve) => {
+      finishRecording = resolve;
+    });
+    db.rpc.mockImplementation(async (fn: string) => {
+      if (fn === 'menu_import_record_page') await recording;
+      return {
+        data: fn === 'menu_import_claim_page' ? true : { total: 1, done: 0, failed: 1 },
+        error: null,
+      };
+    });
+
+    let answered = false;
+    const answer = readMenuPage(IMPORT_ID, 1).then((result) => {
+      answered = true;
+      return result;
+    });
+    await vi.waitFor(() =>
+      expect(db.rpc).toHaveBeenCalledWith('menu_import_record_page', expect.anything()),
+    );
+    // The record is not finished: the stop must not be answered yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(answered).toBe(false);
+
+    finishRecording();
+    await expect(answer).resolves.toMatchObject({ ok: false, error: READER_STOPPED_ONLY_PAGE });
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('goes on when the page had already failed, and records it again', async () => {
+    db.pages = [
+      { index: 1, status: 'failed' },
+      { index: 2, status: 'pending' },
+    ];
+
+    // Ok: that was the page's second try, so the reading goes on and the import ends without it.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(extractPage).toHaveBeenCalledOnce();
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('does not stop for a page the reader answered but could not make sense of', async () => {
+    vi.mocked(extractPage).mockResolvedValue({ ...unavailable, error: UNREADABLE_PAGE });
+
+    // Ok: waiting would not help, only a sharper photo would.
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: UNREADABLE_PAGE });
+  });
+
+  it('goes on after a page the reader read', async () => {
+    vi.mocked(extractPage).mockResolvedValue({
+      ...unavailable,
+      status: 'done',
+      error: null,
+      result: { categories: [], page_notes: null },
+    });
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({ ok: true });
+
+    expect(recorded()).toMatchObject({ index: 1, status: 'done' });
+  });
+
+  it('does not ask to try again when the import was closed while the reader worked', async () => {
     db.rpc.mockImplementation(async (fn: string) =>
       fn === 'menu_import_record_page'
         ? { data: null, error: { code: 'P0001', message: 'IMPORT_NOT_OPEN', details: null } }

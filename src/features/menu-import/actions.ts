@@ -43,6 +43,11 @@ const PHOTO_NOT_FETCHED =
   'The photo of this page could not be fetched. Try again. If you leave instead, the import goes on without this page when you open it again.';
 const PHOTO_NOT_FETCHED_ONLY_PAGE =
   'The photo of this page could not be fetched. Try again. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
+// The same two endings for a reader that does not answer.
+const READER_STOPPED =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import goes on without this page when you open it again.';
+const READER_STOPPED_ONLY_PAGE =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 
 function importError(error: DbErrorLike, context: string) {
   const detail = error.details ?? '';
@@ -286,12 +291,19 @@ export async function readMenuPage(
     }
     return importError(saved.error, 'Record import page');
   }
-  // A photo that did not arrive stops the reading, so that Try again reads the page once more:
-  // going on would finish the import without it, and nothing could read it after that
-  // (docs/DECISIONS.md VPS-5).
-  if (!photo && !missing) {
+  // A photo that did not arrive, or a reader that did not answer, stops the reading, so that Try
+  // again reads the page once more: going on would finish the import without it, and nothing could
+  // read it after that. A page that had already failed when this call began goes on, so each page
+  // gets two tries (docs/DECISIONS.md VPS-5). A page the reader answered for but could not read
+  // does not stop: waiting does not help, a sharper photo does.
+  if (entry.status !== 'failed') {
     const othersLeft = pages.some((other) => other.index !== page && other.status !== 'failed');
-    return actionError(othersLeft ? PHOTO_NOT_FETCHED : PHOTO_NOT_FETCHED_ONLY_PAGE);
+    if (!photo && !missing) {
+      return actionError(othersLeft ? PHOTO_NOT_FETCHED : PHOTO_NOT_FETCHED_ONLY_PAGE);
+    }
+    if (outcome?.error === READER_UNAVAILABLE) {
+      return actionError(othersLeft ? READER_STOPPED : READER_STOPPED_ONLY_PAGE);
+    }
   }
   return actionOk(saved.data as ReadProgress);
 }
@@ -335,8 +347,12 @@ export async function finishReading(
     notes?: string | null;
     result?: unknown;
   }>;
+  // A page is held while another tab reads it, or after a deploy cut its read off, for up to 3
+  // minutes from the claim.
   if (pages.some((page) => page.status === 'pending' || page.status === 'reading')) {
-    return actionError('Some pages have not been read yet.');
+    return actionError(
+      'A page is still being read, or its reading was cut off. Try again in a minute or two.',
+    );
   }
 
   const read = pages.flatMap((page) => {
