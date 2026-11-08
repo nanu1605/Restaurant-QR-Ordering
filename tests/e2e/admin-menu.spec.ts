@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { createOrderingTable } from './customer-fixtures';
-import { adminClient, createTestRestaurant, logInAsOwner, makePng } from './helpers';
+import { adminClient, createTestRestaurant, logInAsOwner, makePng, runJobs } from './helpers';
 
 // Spec §19 Phase 2 acceptance: a new restaurant already has sensible
 // categories; the owner renames one, hides one, adds "Jain Special" and builds
@@ -274,4 +274,98 @@ test('a dish saved without a Hindi name gets one automatically', async ({ page }
   await page.getByRole('button', { name: 'हिन्दी' }).click();
   await expect(page.getByRole('heading', { name: 'मसाला चाय कड़क' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Chicken 65 जोड़ें' })).toBeVisible();
+});
+
+// The minute job writes the Hindi names that still wait (docs/DECISIONS.md VPS-27, VPS-29). The
+// dishes are made with the service role, so no menu save has run a fill for them.
+test('the minute job writes waiting Hindi names, but not leased or recently tried ones', async ({
+  page,
+  request,
+}) => {
+  test.slow();
+  const restaurant = await createTestRestaurant({ prefix: 'hitick' });
+  await logInAsOwner(page, restaurant);
+  // The names come from the menu reader stand-in, like the photo import's.
+  await page.goto('/admin/menu/import');
+  test.skip(
+    !(await page.getByRole('region', { name: 'From photos or a PDF' }).isVisible()),
+    'The running server has no menu reader configured (reuse of a dev server without the E2E env).',
+  );
+
+  const db = adminClient();
+  const { data: category } = await db
+    .from('menu_categories')
+    .select('id')
+    .eq('restaurant_id', restaurant.restaurantId)
+    .eq('name', 'Beverages')
+    .single()
+    .throwOnError();
+  const addDish = async (
+    name: string,
+    extra: {
+      created_at?: string;
+      name_hi_auto_lease_until?: string;
+      name_hi_auto_tried_at?: string;
+    },
+  ) =>
+    (
+      await db
+        .from('menu_items')
+        .insert({
+          restaurant_id: restaurant.restaurantId,
+          category_id: category.id,
+          name,
+          food_type: 'veg',
+          price_paise: 4000,
+          ...extra,
+        })
+        .select('id')
+        .single()
+        .throwOnError()
+    ).data.id;
+  const leaseEnd = Date.now() + 10 * 60_000;
+  const triedAt = Date.now() - 60 * 60_000;
+  // Names are leased oldest first, so the dish that has waited longest goes at the first tick,
+  // whatever else waits: the local database holds tens of thousands of names from the load seed.
+  const waiting = await addDish('Masala Chai', { created_at: '2000-01-01T00:00:00Z' });
+  // Not due: one leased for ten minutes more, one tried an hour ago. The mock reader knows their
+  // words too, so a dish taken by mistake would get a Hindi name.
+  const leased = await addDish('Kadak Chai', {
+    name_hi_auto_lease_until: new Date(leaseEnd).toISOString(),
+  });
+  const tried = await addDish('Masala Kadak Chai', {
+    name_hi_auto_tried_at: new Date(triedAt).toISOString(),
+  });
+  const hindi = async (id: string) =>
+    (
+      await db
+        .from('menu_items')
+        .select('name_hi_auto, name_hi_auto_lease_until, name_hi_auto_tried_at')
+        .eq('id', id)
+        .single()
+        .throwOnError()
+    ).data;
+
+  const tick = await runJobs(request, 'hindi_names');
+  test.skip(
+    tick.status() === 401,
+    'The running server has no CRON_SECRET for E2E (reuse of a dev server without the E2E env).',
+  );
+  expect(tick.status()).toBe(200);
+  await expect
+    .poll(async () => (await hindi(waiting)).name_hi_auto, { timeout: 60_000 })
+    .toBe('मसाला चाय');
+  // Settled: no longer leased, and counted as tried.
+  expect(await hindi(waiting)).toMatchObject({
+    name_hi_auto_lease_until: null,
+    name_hi_auto_tried_at: expect.any(String),
+  });
+
+  // Names of one restaurant go together, so a name that was due would have gone with that one.
+  const stillLeased = await hindi(leased);
+  expect(stillLeased.name_hi_auto).toBeNull();
+  expect(new Date(stillLeased.name_hi_auto_lease_until!).getTime()).toBe(leaseEnd);
+  const stillTried = await hindi(tried);
+  expect(stillTried.name_hi_auto).toBeNull();
+  expect(new Date(stillTried.name_hi_auto_tried_at!).getTime()).toBe(triedAt);
 });

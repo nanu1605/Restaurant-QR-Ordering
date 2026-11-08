@@ -1,8 +1,17 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 import { readZip } from '../read-zip';
 
-import { adminClient, logInAsOwner, logInWithCode, logInWithEmail, TEST_PASSWORD } from './helpers';
+import {
+  adminClient,
+  CRON_HEADERS,
+  createTestRestaurant,
+  logInAsOwner,
+  logInWithCode,
+  logInWithEmail,
+  runJobs,
+  TEST_PASSWORD,
+} from './helpers';
 import { createLiveRestaurant, type LiveRestaurant } from './live-fixtures';
 import {
   createPlatformAdmin,
@@ -19,12 +28,8 @@ const MOCK = 'http://127.0.0.1:3190';
 const RAZORPAY_AUTH = `Basic ${Buffer.from('rzp_test_e2e:e2e-razorpay-secret').toString('base64')}`;
 const unique = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-async function downloadExport(page: Page, request: APIRequestContext, region: string) {
-  const card = page.getByRole('region', { name: region });
-  await card.getByRole('button', { name: 'Prepare a download' }).click();
-  await expect(card.getByRole('status')).toContainText('Preparing the download');
-  // The button is gone: focus stays in the card.
-  await expect(card.getByRole('heading')).toBeFocused();
+/** Waits for the card's link, then downloads the ZIP behind it. */
+async function downloadReadyExport(card: Locator, request: APIRequestContext) {
   const link = card.getByRole('link', { name: /Download ZIP/ });
   await expect(link).toBeVisible({ timeout: 60_000 });
   await expect(card.getByRole('status')).toHaveText('The download is ready.');
@@ -32,6 +37,15 @@ async function downloadExport(page: Page, request: APIRequestContext, region: st
   const download = await request.get(url);
   expect(download.status()).toBe(200);
   return { url, download, files: readZip(await download.body()) };
+}
+
+async function downloadExport(page: Page, request: APIRequestContext, region: string) {
+  const card = page.getByRole('region', { name: region });
+  await card.getByRole('button', { name: 'Prepare a download' }).click();
+  await expect(card.getByRole('status')).toContainText('Preparing the download');
+  // The button is gone: focus stays in the card.
+  await expect(card.getByRole('heading')).toBeFocused();
+  return downloadReadyExport(card, request);
 }
 
 async function closeFromAccountTab(page: Page, restaurant: LiveRestaurant) {
@@ -100,6 +114,84 @@ test('an owner downloads a ZIP of their data, without secrets', async ({ page, r
     .eq('action', 'restaurant.data_exported')
     .throwOnError();
   expect(audit).toEqual([{ actor_label: 'Test Owner' }]);
+});
+
+// The exports wait in one queue that builds one at a time, and the minute job builds what a run
+// left (docs/DECISIONS.md VPS-25, VPS-26, VPS-29). A tick works the whole platform, so each one
+// is kept to its kind.
+
+test('the minute job answers only with the secret, and only to kinds it has', async ({
+  request,
+}) => {
+  expect((await request.get('/api/cron/jobs')).status()).toBe(401);
+  expect(
+    (await request.get('/api/cron/jobs', { headers: { Authorization: 'Bearer wrong' } })).status(),
+  ).toBe(401);
+  const unknown = await request.get('/api/cron/jobs?kinds=nope', { headers: CRON_HEADERS });
+  test.skip(
+    unknown.status() === 401,
+    'The running server has no CRON_SECRET for E2E (reuse of a dev server without the E2E env).',
+  );
+  expect(unknown.status()).toBe(400);
+});
+
+test('the minute job builds an export that waits in the queue', async ({ page, request }) => {
+  test.slow();
+  const restaurant = await createTestRestaurant({ prefix: 'queued' });
+  // As a request leaves it, but with no run started for it: only a tick builds this one.
+  await adminClient()
+    .from('restaurant_exports')
+    .insert({ restaurant_id: restaurant.restaurantId })
+    .throwOnError();
+
+  // The page is open while it waits, and shows the link once the tick has built it.
+  await logInAsOwner(page, restaurant);
+  await page.goto('/admin/settings');
+  const card = page.getByRole('region', { name: 'Download my data' });
+
+  const tick = await runJobs(request, 'data_exports');
+  test.skip(
+    tick.status() === 401,
+    'The running server has no CRON_SECRET for E2E (reuse of a dev server without the E2E env).',
+  );
+  expect(tick.status()).toBe(200);
+  const { download, files } = await downloadReadyExport(card, request);
+  expect(download.headers()['content-type']).toContain('zip');
+  expect(JSON.parse(files['profile.json']!).name).toBe(restaurant.name);
+});
+
+test('an owner and the team asking at once for two restaurants both get a link', async ({
+  page,
+  browser,
+  request,
+  baseURL,
+}) => {
+  test.slow();
+  const owned = await createTestRestaurant({ prefix: 'both-owner' });
+  const asked = await createTestRestaurant({ prefix: 'both-team' });
+
+  const ownerContext = await browser.newContext({ baseURL });
+  const ownerPage = await ownerContext.newPage();
+  await logInAsOwner(ownerPage, owned);
+  await ownerPage.goto('/admin/settings');
+  await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-export-both'));
+  await page.goto(`/super/restaurants/${asked.restaurantId}/account`);
+
+  // No tick: each request starts a run, one build goes at a time on the platform, and the one
+  // that comes second is built by the run that is going or by one it goes on to.
+  const ownerCard = ownerPage.getByRole('region', { name: 'Download my data' });
+  const teamCard = page.getByRole('region', { name: 'Data export' });
+  await Promise.all([
+    ownerCard.getByRole('button', { name: 'Prepare a download' }).click(),
+    teamCard.getByRole('button', { name: 'Prepare a download' }).click(),
+  ]);
+  const [ownerCopy, teamCopy] = await Promise.all([
+    downloadReadyExport(ownerCard, request),
+    downloadReadyExport(teamCard, request),
+  ]);
+  expect(JSON.parse(ownerCopy.files['profile.json']!).name).toBe(owned.name);
+  expect(JSON.parse(teamCopy.files['profile.json']!).name).toBe(asked.name);
+  await ownerContext.close();
 });
 
 test('closing stops logins, autopay and QR codes; reopening brings logins and QR codes back', async ({
