@@ -1,7 +1,10 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 /**
  * The web image (docs/DECISIONS.md VPS-13 to VPS-19, VPS-21) is built once per environment, and
@@ -20,6 +23,19 @@ const rules = readFileSync('.dockerignore', 'utf8')
   .split('\n')
   .map((line) => line.trim())
   .filter((line) => line && !line.startsWith('#'));
+
+/** A file the Dockerfile writes with `COPY <<'EOF' <path>`: that instruction, and the text. */
+function heredoc(path: string) {
+  const lines = dockerfile.split('\n');
+  const start = lines.findIndex(
+    (line) => /^COPY .*<<'EOF' /.test(line) && line.endsWith(` ${path}`),
+  );
+  expect(start, `no COPY heredoc writes ${path}`).toBeGreaterThanOrEqual(0);
+  return {
+    copy: lines[start],
+    body: lines.slice(start + 1, lines.indexOf('EOF', start)).join('\n'),
+  };
+}
 
 /** The only files and folders the build may see (the allowlist in .dockerignore). */
 const ALLOWED = [
@@ -137,7 +153,9 @@ describe('the web image at run time', () => {
   it('runs the standalone server as the node user, reachable from the proxy', () => {
     expect(instructions).toMatch(/\bHOSTNAME=0\.0\.0\.0\b/);
     expect(instructions).toMatch(/^USER node$/m);
-    expect(instructions).toMatch(/^CMD \["node", "server\.js"\]$/m);
+    expect(instructions).toMatch(
+      /^CMD \["node", "--require", "\/usr\/local\/lib\/menumesh-drain\.cjs", "server\.js"\]$/m,
+    );
   });
 
   it('keeps connections open longer than the proxy keeps its upstream ones (Caddy: 2 minutes)', () => {
@@ -171,5 +189,93 @@ describe('the web image at run time', () => {
     // The server replaces the script, so node is the process Docker sends SIGTERM to.
     expect(instructions).toMatch(/^exec "\$@"$/m);
     expect(instructions).toMatch(/^ENTRYPOINT \["\/usr\/local\/bin\/menumesh-web-start"\]$/m);
+  });
+
+  it('loads a root-owned preload on CMD, so a stop does not wait on idle connections (VPS-22)', () => {
+    // Root-owned: no --chown, so the app can read it but not change it. On CMD and not in
+    // NODE_OPTIONS, because the deploy sets NODE_OPTIONS and an ENV here would be lost.
+    const { copy, body } = heredoc('/usr/local/lib/menumesh-drain.cjs');
+    expect(copy).toMatch(/^COPY --chmod=644 </);
+    expect(copy).not.toContain('--chown');
+    expect(body).toContain('http.Server.prototype.close');
+    expect(instructions).not.toMatch(/NODE_OPTIONS/);
+  });
+});
+
+/**
+ * Node's server.close() drops the idle keep-alive connections once, and a connection that is busy
+ * then idles for KEEP_ALIVE_TIMEOUT after its answer, so a stop that found one busy (Caddy keeps
+ * its pooled connections for 2 minutes) always ran out the grace period (VPS-16, VPS-22). The
+ * preload is the one script in the image that is logic, so it runs here, in a process of its own
+ * because it replaces a method of node:http: once as the Dockerfile has it, once without it.
+ */
+describe('the drain preload', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'menumesh-drain-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  // Two pooled connections are each in the middle of a request when the server is told to stop,
+  // and a third request waits for one of them. Only then are the answers sent. One answer was
+  // started before the stop, so it says keep-alive and leaves an idle connection behind; the
+  // waiting request is sent after it, on the other. The keep-alive timeout stands in for 130 s.
+  writeFileSync(
+    join(dir, 'harness.cjs'),
+    `
+const http = require('node:http');
+const agent = new http.Agent({ keepAlive: true, maxSockets: 2 });
+const waiting = [];
+let reached;
+const bothReached = new Promise((resolve) => (reached = resolve));
+const server = http.createServer((req, res) => {
+  if (req.url !== '/slow') return res.end('ok');
+  waiting.push(res);
+  if (waiting.length === 2) reached();
+});
+server.keepAliveTimeout = Number(process.env.KEEP_ALIVE);
+server.keepAliveTimeoutBuffer = 0;
+server.listen(0, '127.0.0.1', async () => {
+  const get = (path) =>
+    new Promise((resolve, reject) => {
+      http
+        .get({ host: '127.0.0.1', port: server.address().port, path, agent }, (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.headers.connection));
+        })
+        .on('error', reject);
+    });
+  await Promise.all([get('/'), get('/')]);
+  const answers = [get('/slow'), get('/slow'), get('/')];
+  await bothReached;
+  const stopped = Date.now();
+  const closed = new Promise((resolve) => server.close(resolve));
+  for (const res of waiting) res.end('ok');
+  const [, , connection] = await Promise.all(answers);
+  await closed;
+  console.log(JSON.stringify({ connection, closedAfter: Date.now() - stopped }));
+  process.exit(0);
+});
+`,
+  );
+  writeFileSync(join(dir, 'menumesh-drain.cjs'), heredoc('/usr/local/lib/menumesh-drain.cjs').body);
+
+  const stop = async (preload: boolean, keepAlive: number) => {
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        ...(preload ? ['--require', join(dir, 'menumesh-drain.cjs')] : []),
+        join(dir, 'harness.cjs'),
+      ],
+      { env: { ...process.env, KEEP_ALIVE: String(keepAlive) }, timeout: 20_000 },
+    );
+    return JSON.parse(stdout) as { connection: string; closedAfter: number };
+  };
+
+  it('ends a stopping server’s connections with their answers instead of waiting on them', async () => {
+    const [without, drained] = await Promise.all([stop(false, 2000), stop(true, 5000)]);
+    // Without it the answer after the stop invites another request, and the stop waits out the timeout.
+    expect(without.connection).toBe('keep-alive');
+    expect(without.closedAfter).toBeGreaterThanOrEqual(1500);
+    // With it that answer ends its connection, the idle one is dropped, and the stop is over in a moment.
+    expect(drained.connection).toBe('close');
+    expect(drained.closedAfter).toBeLessThan(1000);
   });
 });

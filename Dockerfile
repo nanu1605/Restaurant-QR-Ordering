@@ -181,6 +181,27 @@ fi
 exec "$@"
 EOF
 
+# Next.js stops on SIGTERM by closing the server first, and Node's server.close() drops the idle
+# keep-alive connections only once. One that is busy at that moment idles for KEEP_ALIVE_TIMEOUT
+# after its answer, and Caddy keeps its pooled connections as long, so a stop that found one busy
+# always ran out the grace period and ended in Docker's kill (docs/DECISIONS.md VPS-16, VPS-22).
+# Once the server is closing, this ends every connection with its answer and drops the ones that
+# fall idle. CMD loads it rather than NODE_OPTIONS, which the deploy sets.
+COPY --chmod=644 <<'EOF' /usr/local/lib/menumesh-drain.cjs
+const http = require('node:http');
+const close = http.Server.prototype.close;
+http.Server.prototype.close = function (...args) {
+  // Every answer from now on ends its connection.
+  this.prependListener('request', (_req, res) => {
+    res.shouldKeepAlive = false;
+  });
+  // The connections that are busy now fall idle later: close them as they do.
+  const timer = setInterval(() => this.closeIdleConnections(), 250).unref();
+  this.once('close', () => clearInterval(timer));
+  return close.apply(this, args);
+};
+EOF
+
 USER node
 
 # Proves that sharp's addon and its libvips load for the user the app runs as, so a broken image
@@ -212,6 +233,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=2s -
   CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT}/api/health`, { signal: AbortSignal.timeout(4000) }).then((res) => process.exit(res.ok ? 0 : 1), () => process.exit(1))"]
 # Next.js handles SIGTERM itself: it stops accepting, lets requests and after() work finish, and
 # exits 143. Deploys stop the container with a 25 s grace period, and what still runs then is
-# killed (docs/DECISIONS.md VPS-22).
+# killed (docs/DECISIONS.md VPS-22). The preload above lets that stop finish.
 ENTRYPOINT ["/usr/local/bin/menumesh-web-start"]
-CMD ["node", "server.js"]
+CMD ["node", "--require", "/usr/local/lib/menumesh-drain.cjs", "server.js"]
