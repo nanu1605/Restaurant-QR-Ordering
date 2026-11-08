@@ -16,10 +16,18 @@ import {
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
 
 const NOT_FETCHED =
-  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import goes on without this page when you open it again.';
+/** The same where no other page can still give dishes, as in this file's one-page import. */
+const NOT_FETCHED_ONLY_PAGE =
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 const NOT_UPLOADED = 'The photo of this page did not upload. Start a new import with this page.';
 
-const db = vi.hoisted(() => ({ rpc: vi.fn(), download: vi.fn() }));
+const db = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  download: vi.fn(),
+  // The import's pages as the caller reads them: one, unless a case sets more.
+  pages: [] as { index: number; status: string }[],
+}));
 vi.mock('next/cache', () => ({ refresh: vi.fn() }));
 vi.mock('@/lib/auth/guards', () => ({ requireUser: async () => ({}) }));
 vi.mock('@/lib/env.server', () => ({ getServerEnv: () => ({ MENU_IMPORT_USD_INR: 96 }) }));
@@ -38,8 +46,8 @@ vi.mock('@/lib/supabase/server', () => ({
             data: {
               status: 'uploaded',
               source: 'photo',
-              file_paths: ['r1/i1/1.jpg'],
-              pages: [{ index: 1, status: 'pending' }],
+              file_paths: db.pages.map((page) => `r1/i1/${page.index}.jpg`),
+              pages: db.pages,
             },
             error: null,
           }),
@@ -79,6 +87,7 @@ const recorded = () =>
 const notThere = () => new StorageApiError('Object not found', 400, '404', 'storage', 'NoSuchKey');
 
 beforeEach(() => {
+  db.pages = [{ index: 1, status: 'pending' }];
   db.rpc.mockImplementation(async (fn: string) => ({
     data: fn === 'menu_import_claim_page' ? true : { total: 1, done: 0, failed: 1 },
     error: null,
@@ -115,7 +124,7 @@ describe('readMenuPage', () => {
     // Not ok: the progress loop stops on it, and Try again reads the failed page once more.
     await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
       ok: false,
-      error: NOT_FETCHED,
+      error: NOT_FETCHED_ONLY_PAGE,
     });
 
     expect(timeout).toHaveBeenCalledWith(15_000);
@@ -138,7 +147,7 @@ describe('readMenuPage', () => {
 
     await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
       ok: false,
-      error: NOT_FETCHED,
+      error: NOT_FETCHED_ONLY_PAGE,
     });
 
     expect(extractPage).not.toHaveBeenCalled();
@@ -151,7 +160,7 @@ describe('readMenuPage', () => {
 
     await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
       ok: false,
-      error: NOT_FETCHED,
+      error: NOT_FETCHED_ONLY_PAGE,
     });
 
     expect(extractPage).not.toHaveBeenCalled();
@@ -168,11 +177,38 @@ describe('readMenuPage', () => {
 
     await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
       ok: false,
-      error: NOT_FETCHED,
+      error: NOT_FETCHED_ONLY_PAGE,
     });
 
     expect(extractPage).not.toHaveBeenCalled();
     expect(recorded()).toMatchObject({ index: 1, status: 'failed', error: READER_UNAVAILABLE });
+  });
+
+  it('says the import goes on without the page when another page can still give dishes', async () => {
+    db.pages = [
+      { index: 1, status: 'pending' },
+      { index: 2, status: 'pending' },
+    ];
+    db.download.mockResolvedValue({ data: null, error: new Error('Gateway Timeout') });
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED,
+    });
+  });
+
+  it('says the import fails when every other page has failed', async () => {
+    // Opening the import again would finish it with no page to give dishes.
+    db.pages = [
+      { index: 1, status: 'pending' },
+      { index: 2, status: 'failed' },
+    ];
+    db.download.mockResolvedValue({ data: null, error: new Error('Gateway Timeout') });
+
+    await expect(readMenuPage(IMPORT_ID, 1)).resolves.toMatchObject({
+      ok: false,
+      error: NOT_FETCHED_ONLY_PAGE,
+    });
   });
 
   it('tells the owner to start again when the photo is not there', async () => {
@@ -261,7 +297,7 @@ describe('readMenuPage with storage-js between it and Storage', () => {
       expect(result).toMatchObject({ ok: true });
       expect(recorded()).toMatchObject({ status: 'failed', error: NOT_UPLOADED });
     } else {
-      expect(result).toMatchObject({ ok: false, error: NOT_FETCHED });
+      expect(result).toMatchObject({ ok: false, error: NOT_FETCHED_ONLY_PAGE });
       expect(recorded()).toMatchObject({ status: 'failed', error: READER_UNAVAILABLE });
     }
   });

@@ -10,7 +10,7 @@ import { ImportProgress } from '@/features/menu-import/components/import-progres
 
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
 const NOT_FETCHED =
-  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import goes on without this page when you open it again.';
 const CARRIES_ON = /coming back later carries on from here/;
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));

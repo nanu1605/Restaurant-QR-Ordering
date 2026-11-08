@@ -37,9 +37,12 @@ const uuid = z.uuid();
 const NOT_FOUND = 'That import no longer exists. Start a new one from the Menu page.';
 const NO_DISHES_FOUND =
   'No dishes could be read from these photos. Take a sharper photo, straight on and in good light, of one page at a time.';
-// A reload skips a page recorded as failed, so leaving finishes the import without it (VPS-5).
+// Opening the import again skips a page recorded as failed and finishes the reading without it
+// (VPS-5): with no other page that can still give dishes, that fails the import.
 const PHOTO_NOT_FETCHED =
-  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import goes on without this page when you open it again.';
+const PHOTO_NOT_FETCHED_ONLY_PAGE =
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 
 function importError(error: DbErrorLike, context: string) {
   const detail = error.details ?? '';
@@ -286,7 +289,10 @@ export async function readMenuPage(
   // A photo that did not arrive stops the reading, so that Try again reads the page once more:
   // going on would finish the import without it, and nothing could read it after that
   // (docs/DECISIONS.md VPS-5).
-  if (!photo && !missing) return actionError(PHOTO_NOT_FETCHED);
+  if (!photo && !missing) {
+    const othersLeft = pages.some((other) => other.index !== page && other.status !== 'failed');
+    return actionError(othersLeft ? PHOTO_NOT_FETCHED : PHOTO_NOT_FETCHED_ONLY_PAGE);
+  }
   return actionOk(saved.data as ReadProgress);
 }
 
