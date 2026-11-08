@@ -8,6 +8,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import {
   ACTION_NOT_FOUND_HEADER,
   decide,
+  type Handling,
+  handlingFor,
   HOLD_MS,
   isStaleActionResponse,
   isUnrecognizedAction,
@@ -153,6 +155,32 @@ describe('what a page from an older build does', () => {
   });
 });
 
+describe('what becomes of an older build’s answer', () => {
+  it.each<[string, Parameters<typeof handlingFor>, Handling]>([
+    ['held while a live screen refreshes', ['refreshing', '/staff', true], 'hold'],
+    ['held while any other page refreshes too', ['refreshing', '/admin/menu', true], 'hold'],
+    ['passed on a live screen that is stuck', ['stuck', '/t/AbC123/cart', true], 'pass'],
+    ['kept back where Refresh is offered', ['ready', '/admin/menu', true], 'keep'],
+    ['kept back there when stuck too', ['stuck', '/super/restaurants', true], 'keep'],
+    ['kept back on the website', ['ready', '/hi/signup', true], 'keep'],
+    ['kept back on login', ['stuck', '/login', true], 'keep'],
+    ['passed offline, where no toast is shown', ['ready', '/admin/menu', false], 'pass'],
+  ])('%s', (_, args, expected) => {
+    expect(handlingFor(...args)).toBe(expected);
+  });
+
+  it('keeps it back on every page that doesn’t refresh by itself, and only there', () => {
+    for (const path of ['/staff', '/staff/kitchen', '/admin/live', '/t/AbC123', '/t/AbC123/cart']) {
+      expect(handlingFor('stuck', path, true), path).toBe('pass');
+    }
+    for (const path of ['/admin', '/admin/menu/import/7f0a', '/super', '/', '/hi', '/login']) {
+      for (const notice of ['ready', 'stuck'] as const) {
+        expect(handlingFor(notice, path, true), `${notice} ${path}`).toBe('keep');
+      }
+    }
+  });
+});
+
 /** sessionStorage as a Map; `broken` throws, as blocked site data does. */
 function fakeStore({ broken = false } = {}) {
   const map = new Map<string, string>();
@@ -229,7 +257,7 @@ describe('the fetch observer', () => {
 
   it('passes other answers through untouched', async () => {
     const response = new Response('{}');
-    const onStale = vi.fn((): Notice => 'refreshing');
+    const onStale = vi.fn((): Handling => 'keep');
     const watched = watchFetch(async () => response, onStale);
     expect(await watched('/t/AbC123/session')).toBe(response);
     expect(onStale).not.toHaveBeenCalled();
@@ -239,7 +267,7 @@ describe('the fetch observer', () => {
     const response = staleResponse();
     const watched = watchFetch(
       async () => response,
-      () => 'refreshing',
+      () => 'hold',
     );
     let settled: Response | undefined;
     void watched('/staff', { method: 'POST' }).then((value) => (settled = value));
@@ -249,13 +277,28 @@ describe('the fetch observer', () => {
     expect(settled).toBe(response);
   });
 
-  it('lets it through at once when the page doesn’t refresh', async () => {
+  it('lets it through at once when told to', async () => {
     const response = staleResponse();
     const watched = watchFetch(
       async () => response,
-      () => 'ready',
+      () => 'pass',
     );
-    expect(await watched('/admin/menu', { method: 'POST' })).toBe(response);
+    expect(await watched('/staff', { method: 'POST' })).toBe(response);
+  });
+
+  // The action then neither fails nor ends, so no caller can rethrow it into the error page.
+  it('keeps it back for good when the page offers Refresh', async () => {
+    const watched = watchFetch(
+      async () => staleResponse(),
+      () => 'keep',
+    );
+    let settled = false;
+    void watched('/admin/menu', { method: 'POST' }).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(HOLD_MS * 10);
+    expect(settled).toBe(false);
   });
 
   it('never catches: a failed request stays a TypeError', async () => {
@@ -264,7 +307,7 @@ describe('the fetch observer', () => {
       async () => {
         throw error;
       },
-      () => 'refreshing',
+      () => 'hold',
     );
     await expect(watched('/staff')).rejects.toBe(error);
   });
@@ -300,6 +343,17 @@ describe('the tab’s notice', () => {
     return notice;
   }
 
+  /** Whether a call to the server has answered, or failed, `ms` later. */
+  async function settledAfter(call: Promise<unknown>, ms: number) {
+    let settled = false;
+    void call.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(ms);
+    return settled;
+  }
+
   it('claims nothing for a script that fails in the background', async () => {
     await openPage('/t/AbC123');
     const error = chunkError();
@@ -323,17 +377,63 @@ describe('the tab’s notice', () => {
     expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull();
   });
 
-  it('offers Refresh in the admin panel and leaves the page as it is', async () => {
+  it('offers Refresh in the admin panel and leaves the page as it is, its action pending', async () => {
     await openPage('/admin/menu');
-    expect((await window.fetch('/admin/menu', { method: 'POST' })).status).toBe(409);
+    const call = window.fetch('/admin/menu', { method: 'POST' });
+    // Never answered nor failed, so no caller can throw it at the error page (VPS-8).
+    expect(await settledAfter(call, HOLD_MS * 3)).toBe(false);
     expect(toast).toHaveBeenCalledWith(
       'A new version is ready',
       expect.objectContaining({
         description: 'Refresh the page to keep working. Copy anything you’ve typed first.',
         duration: Infinity,
+        // A closed toast could not come back: later taps and links wait behind the action.
+        closeButton: false,
+        dismissible: false,
         action: expect.objectContaining({ label: 'Refresh' }),
       }),
     );
+    expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull();
+  });
+
+  it.each(['/admin', '/hi/signup', '/login'])(
+    'keeps the action pending within two minutes of a refresh too, at %s',
+    async (path) => {
+      const record = JSON.stringify({
+        at: Date.now() - 60_000,
+        from: null,
+        cause: 'version',
+        noticed: true,
+      });
+      sessionStorage.setItem(REFRESH_KEY, record);
+      await openPage(path);
+      expect(await settledAfter(window.fetch(path, { method: 'POST' }), HOLD_MS * 3)).toBe(false);
+      expect(toast).toHaveBeenCalledWith(
+        'The new version didn’t load',
+        expect.objectContaining({ closeButton: false, dismissible: false }),
+      );
+      // No second refresh.
+      expect(sessionStorage.getItem(REFRESH_KEY)).toBe(record);
+    },
+  );
+
+  it.each(['/admin/menu', '/super', '/login', '/staff', '/t/AbC123/cart'])(
+    'passes every other answer through, at %s',
+    async (path) => {
+      answer = async () => new Response('{}', { status: 200 });
+      await openPage(path);
+      expect((await window.fetch(path, { method: 'POST' })).status).toBe(200);
+      expect(toast).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull();
+    },
+  );
+
+  // No toast is shown offline, so nothing would tell the owner why the action hangs.
+  it('offline, the admin panel gets the answer, and nothing is claimed', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await openPage('/admin/menu');
+    expect((await window.fetch('/admin/menu', { method: 'POST' })).status).toBe(409);
+    expect(toast).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(REFRESH_KEY)).toBeNull();
   });
 
@@ -367,7 +467,12 @@ describe('the tab’s notice', () => {
     const { stuck, cartSaved } = NEW_VERSION_STRINGS.hi;
     expect(toast).toHaveBeenCalledWith(
       stuck.title,
-      expect.objectContaining({ description: `${stuck.description} ${cartSaved}` }),
+      expect.objectContaining({
+        description: `${stuck.description} ${cartSaved}`,
+        // The answer passed, so the page goes on working and the toast can be closed.
+        closeButton: true,
+        dismissible: true,
+      }),
     );
     // No second refresh.
     expect(sessionStorage.getItem(REFRESH_KEY)).toBe(record);

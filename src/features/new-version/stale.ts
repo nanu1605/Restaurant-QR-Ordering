@@ -101,6 +101,30 @@ export function decide({
   return online && canRemember && !recent && current !== 'stuck' ? 'refreshing' : 'stuck';
 }
 
+/**
+ * What watchFetch does with an older build's answer: hand it to Next.js at once, hold it while the
+ * page reloads, or keep it back for good.
+ */
+export type Handling = 'pass' | 'hold' | 'keep';
+
+/**
+ * What becomes of an older build's answer once the page has its notice (docs/DECISIONS.md VPS-8).
+ * While the page refreshes by itself it is held, so no error flashes and a queued dish move stays
+ * queued. A live screen that is stuck gets it at once: its callers' guards, and the board's queued
+ * dish move, rely on the error. On any other page the toast offers Refresh and the answer is kept
+ * back: the action never fails, so a caller without a catch (a useTransition or useActionState)
+ * can't rethrow it into app/error.tsx, which would refresh the page and lose what was typed.
+ * Offline there is no toast to wait on, so the answer passes.
+ */
+export function handlingFor(
+  notice: Exclude<Notice, 'none'>,
+  pathname: string,
+  online: boolean,
+): Handling {
+  if (notice === 'refreshing') return 'hold';
+  return refreshesByItself(pathname) || !online ? 'pass' : 'keep';
+}
+
 type SessionStore = Pick<Storage, 'getItem' | 'setItem'>;
 /** A refresh the tab made by itself. */
 type Refresh = { at: number; from: string | null; cause: Cause; noticed: boolean };
@@ -161,14 +185,21 @@ export function takeRefreshNotice(
 }
 
 /**
- * window.fetch that notices an older build's answer. While the page refreshes onto the new
- * build it holds that answer (up to HOLD_MS), so the caller shows no error and a queued dish
- * move stays queued. It never catches: an aborted request stays a TypeError.
+ * window.fetch that notices an older build's answer and does with it what onStale says
+ * (handlingFor). A held answer waits up to HOLD_MS while the page reloads. A kept one is never
+ * handed to Next.js: the action stays pending until the page is refreshed, and what comes after
+ * waits with it. Next.js runs actions one at a time (dispatchAction in app-router-instance.js),
+ * and a caller inside a transition holds the page's later transitions, links too, until its
+ * action ends. It never catches: an aborted request stays a TypeError.
  */
-export function watchFetch(fetchImpl: typeof fetch, onStale: () => Notice): typeof fetch {
+export function watchFetch(fetchImpl: typeof fetch, onStale: () => Handling): typeof fetch {
   return async (input, init) => {
     const response = await fetchImpl(input, init);
-    if (!isStaleActionResponse(response) || onStale() !== 'refreshing') return response;
-    return new Promise<Response>((resolve) => setTimeout(() => resolve(response), HOLD_MS));
+    if (!isStaleActionResponse(response)) return response;
+    const handling = onStale();
+    if (handling === 'pass') return response;
+    return new Promise<Response>((resolve) => {
+      if (handling === 'hold') setTimeout(() => resolve(response), HOLD_MS);
+    });
   };
 }

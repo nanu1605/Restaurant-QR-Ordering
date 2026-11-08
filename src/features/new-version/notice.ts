@@ -9,9 +9,12 @@ import {
   type Cause,
   currentDeploymentId,
   decide,
+  type Handling,
+  handlingFor,
   lastRefresh,
   type Notice,
   REFRESH_DELAY_MS,
+  refreshesByItself,
   rememberRefresh,
   type Source,
   takeRefreshNotice,
@@ -83,12 +86,16 @@ export function refreshNow() {
   location.reload();
 }
 
-function offerRefresh(title: string, description: string, label: string) {
+function offerRefresh(title: string, description: string, label: string, closable = true) {
   toast(title, {
     id: TOAST_ID,
     description,
     // Until refreshed or closed; the next tap that meets the newer build brings it back.
     duration: Infinity,
+    // Not where the answer is kept back (handlingFor): there the action stays pending, and later
+    // taps and links wait behind it, so a closed toast could not come back.
+    closeButton: closable,
+    dismissible: closable,
     action: { label, onClick: refreshNow },
   });
 }
@@ -98,7 +105,7 @@ function offerRefresh(title: string, description: string, label: string) {
  * or a toast offers Refresh: a boundary's card is its own message, and offline nothing is
  * claimed. Returns what the page now does.
  */
-export function newVersionFound(source: Source, cause: Cause = 'version'): Notice {
+export function newVersionFound(source: Source, cause: Cause = 'version'): Exclude<Notice, 'none'> {
   const store = sessionStore();
   const now = Date.now();
   const online = navigator.onLine;
@@ -125,11 +132,12 @@ export function newVersionFound(source: Source, cause: Cause = 'version'): Notic
   set({ notice: next, cause });
   if (source === 'boundary' || !online) return next;
   const t = NEW_VERSION_STRINGS[htmlLang()];
+  const closable = refreshesByItself(location.pathname);
   if (next === 'ready') {
-    offerRefresh(t.ready.title, `${t.ready.description} ${t.ready.copyFirst}`, t.refresh);
+    offerRefresh(t.ready.title, `${t.ready.description} ${t.ready.copyFirst}`, t.refresh, closable);
   } else {
     const cart = isCartPage(location.pathname) ? ` ${t.cartSaved}` : '';
-    offerRefresh(t.stuck.title, t.stuck.description + cart, t.refresh);
+    offerRefresh(t.stuck.title, t.stuck.description + cart, t.refresh, closable);
   }
   return next;
 }
@@ -158,9 +166,10 @@ export function showRefreshedNotice() {
  * once per tab; a dev hot reload only swaps the callback.
  */
 export function watchForNewVersion() {
-  const holder = window as Window & { __tableorderNewVersion?: () => Notice };
+  const holder = window as Window & { __tableorderNewVersion?: () => Handling };
   const wrapped = holder.__tableorderNewVersion !== undefined;
-  holder.__tableorderNewVersion = () => newVersionFound('action');
+  holder.__tableorderNewVersion = () =>
+    handlingFor(newVersionFound('action'), location.pathname, navigator.onLine);
   if (!wrapped) {
     window.fetch = watchFetch(window.fetch.bind(window), () => holder.__tableorderNewVersion!());
   }

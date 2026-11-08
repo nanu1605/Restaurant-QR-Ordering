@@ -1,7 +1,7 @@
 import { devices, expect, type Page, type Route, test } from '@playwright/test';
 
 import { addDish, createOrderingTable, tableState } from './customer-fixtures';
-import { adminClient } from './helpers';
+import { adminClient, createTestRestaurant, logInAsOwner } from './helpers';
 import {
   createLiveRestaurant,
   openLiveScreen,
@@ -11,8 +11,9 @@ import {
 
 // A page from an older build after a deploy (docs/DECISIONS.md VPS-7, VPS-8): the live screens
 // refresh by themselves at the first tap that meets the new build, keep the guest's cart and the
-// kitchen's dish moves, and never refresh in a loop. The newer build is faked: server actions
-// get Next.js's "action not found" answer.
+// kitchen's dish moves, and never refresh in a loop; the other pages offer Refresh and keep
+// what was typed. The newer build is faked: server actions get Next.js's "action not found"
+// answer.
 
 /** Answers the next `times` server actions as a newer build would; returns the undo. */
 async function staleActions(page: Page, times = Infinity) {
@@ -60,6 +61,17 @@ const keptMoves = (page: Page, memberId: string) =>
 
 const toast = (page: Page, text: string) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text });
+
+// Longer than the 300 ms a page takes to refresh by itself.
+const QUIET_MS = 3000;
+
+/** A few seconds on, the page is as it was: not reloaded, not replaced by the error page. */
+async function expectLeftAlone(page: Page) {
+  await page.waitForTimeout(QUIET_MS);
+  expect(await marked(page)).toBe(true);
+  await expect(page.getByText('Refreshing…')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Something went wrong' })).toHaveCount(0);
+}
 
 test('a dish move from an older build refreshes the board and is sent from the new page', async ({
   browser,
@@ -158,6 +170,94 @@ test('placing an order from an older build keeps the cart, refreshes once and ne
   expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
 
   await context.close();
+});
+
+test('an older build’s answer in the admin panel keeps the dialog and what was typed in it', async ({
+  page,
+}) => {
+  const restaurant = await createTestRestaurant({ prefix: 'skew' });
+  await logInAsOwner(page, restaurant);
+  await page.goto('/admin/menu');
+  await page
+    .getByRole('region')
+    .filter({ has: page.locator('#items-heading') })
+    .getByRole('button', { name: 'Add dish' })
+    .first()
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Add a dish' });
+  await dialog.getByLabel('Dish name').fill('Jain Pav Bhaji');
+  await dialog.getByLabel('Price', { exact: true }).fill('150');
+
+  const fresh = await staleActions(page);
+  await mark(page);
+  await dialog.getByRole('button', { name: 'Add dish' }).click();
+  // Nothing reloads by itself: the toast offers Refresh and the owner can copy the text first.
+  const ready = toast(page, 'A new version is ready');
+  await expect(ready).toBeVisible();
+  await expect(ready).toContainText('Copy anything you’ve typed first.');
+  await expectLeftAlone(page);
+  await expect(dialog.getByLabel('Dish name')).toHaveValue('Jain Pav Bhaji');
+  await expect(dialog.getByLabel('Price', { exact: true })).toHaveValue('150');
+  const saved = () =>
+    adminClient()
+      .from('menu_items')
+      .select('name')
+      .eq('restaurant_id', restaurant.restaurantId)
+      .eq('name', 'Jain Pav Bhaji')
+      .throwOnError();
+  expect((await saved()).data).toEqual([]);
+
+  await fresh();
+  await Promise.all([
+    page.waitForEvent('load'),
+    ready.getByRole('button', { name: 'Refresh' }).click(),
+  ]);
+  expect(await marked(page)).toBe(false);
+  expect((await saved()).data).toEqual([]);
+});
+
+// A useTransition without a catch rethrows what its action throws into the nearest error page,
+// which would have refreshed the tab and lost the review (docs/DECISIONS.md VPS-8).
+test('an older build’s answer to a form action without a catch leaves the page and its typing alone', async ({
+  page,
+}) => {
+  const restaurant = await createTestRestaurant({ prefix: 'skew' });
+  await logInAsOwner(page, restaurant);
+  await page.goto('/admin/menu/import');
+  await page.getByLabel('Menu CSV file').setInputFiles({
+    name: 'menu.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      [
+        'category,name,description,food_type,price,variant_name,variant_price',
+        'Starters,Paneer Tikka,,veg,280,,',
+        'Tandoor,Water Bottle,,veg,2,,',
+      ].join('\n'),
+    ),
+  });
+  await expect(page).toHaveURL(/\/admin\/menu\/import\/[0-9a-f-]{36}$/);
+  const price = page.locator('li[data-row="Water Bottle"]').getByLabel('Price of Water Bottle');
+  await expect(price).toHaveValue('2');
+  await price.fill('20');
+
+  const fresh = await staleActions(page, 1);
+  await mark(page);
+  await page.getByRole('button', { name: 'Save draft and finish later' }).click();
+  const ready = toast(page, 'A new version is ready');
+  await expect(ready).toBeVisible();
+  // Not closable: the action stays pending, so a closed toast could not come back.
+  await expect(ready.getByRole('button', { name: 'Close toast' })).toHaveCount(0);
+  await expectLeftAlone(page);
+  await expect(page.getByTestId('review-counts')).toBeVisible();
+  await expect(price).toHaveValue('20');
+
+  // Refresh is the way on; the draft was never saved.
+  await fresh();
+  await Promise.all([
+    page.waitForEvent('load'),
+    ready.getByRole('button', { name: 'Refresh' }).click(),
+  ]);
+  await expect(price).toHaveValue('2');
 });
 
 test('a script missing after a deploy refreshes the page instead of breaking it', async ({
