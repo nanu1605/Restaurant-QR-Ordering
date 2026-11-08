@@ -80,7 +80,8 @@ const toast = (page: Page, text: string) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text });
 
 /** What the toast adds where the answer is kept back (VPS-8). */
-const NOT_SAVED = 'What you just changed wasn’t saved, and nothing will be until you refresh.';
+const NOT_SAVED =
+  'If you just changed something, it wasn’t saved, and nothing will be until you refresh.';
 
 // Longer than the 300 ms a page takes to refresh by itself.
 const QUIET_MS = 3000;

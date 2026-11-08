@@ -403,7 +403,7 @@ describe('the tab’s notice', () => {
       'A new version is ready',
       expect.objectContaining({
         description:
-          'Refresh the page to keep working. What you just changed wasn’t saved, and nothing will be until you refresh. Copy anything you’ve typed first.',
+          'Refresh the page to keep working. If you just changed something, it wasn’t saved, and nothing will be until you refresh. Copy anything you’ve typed first.',
         duration: Infinity,
         // A closed toast could not come back: later taps wait behind the action.
         closeButton: false,
