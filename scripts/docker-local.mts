@@ -48,6 +48,11 @@ const LIMITS = [
 ];
 const NODE_OPTIONS = '--max-old-space-size=1000';
 
+// The local container's own cron secret, not the one .env.local holds: it is bound to this machine
+// only, and with it the check and a by-hand test can call the minute job (docs/DECISIONS.md
+// VPS-29).
+const LOCAL_CRON_SECRET = 'local-only-cron-secret';
+
 // With --internal-url the server calls Supabase on the gateway's own address, as on the VPS, and
 // the public one is out of its reach (docs/DECISIONS.md VPS-20). Its first label is not the
 // public address's, which the auth cookie's name is made from, so the pinned name is tested too.
@@ -171,6 +176,7 @@ async function run() {
     CUSTOMER_COOKIE_SECRET:
       env.CUSTOMER_COOKIE_SECRET ?? fail('.env.local needs CUSTOMER_COOKIE_SECRET.'),
     STAFF_EMAIL_DOMAIN: env.STAFF_EMAIL_DOMAIN || 'tableorder.test',
+    CRON_SECRET: LOCAL_CRON_SECRET,
   };
   removeContainers();
   docker(
@@ -321,6 +327,18 @@ async function check() {
         assert(
           String(elsewhere).includes('noindex'),
           `another host answers X-Robots-Tag: ${elsewhere}`,
+        );
+      },
+    ],
+    [
+      'the minute job answers its secret only, at once',
+      async () => {
+        const path = '/api/cron/jobs?kinds=data_exports';
+        assert((await get(path)).status === 401, `${path} answers without the secret`);
+        const reply = await get(path, { Authorization: `Bearer ${LOCAL_CRON_SECRET}` });
+        assert(
+          reply.status === 200 && JSON.parse(reply.body).ok === true,
+          `${path} answers ${reply.status} ${reply.body}`,
         );
       },
     ],
