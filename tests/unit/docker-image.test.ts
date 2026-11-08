@@ -108,6 +108,13 @@ describe('the web image build', () => {
   });
 
   it('pins its base images by digest, and pnpm to the version packageManager names', () => {
+    // The syntax line is a comment, so the raw text is read: BuildKit pulls that frontend to read
+    // this file, and only its first line counts. `# check=` and heredocs need 1.8 or later.
+    const frontend = /^# syntax=docker\/dockerfile:1\.(\d+)\.\d+@sha256:[0-9a-f]{64}$/.exec(
+      dockerfile.split('\n')[0],
+    );
+    expect(frontend, 'the first line must pin the frontend by version and digest').toBeTruthy();
+    expect(Number(frontend?.[1])).toBeGreaterThanOrEqual(8);
     expect(instructions).toMatch(
       /^ARG NODE_IMAGE=node:24\.\d+\.\d+-trixie-slim@sha256:[0-9a-f]{64}$/m,
     );
