@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { LANG_NAMES, type Lang } from '@/features/ordering/strings';
 import { useStaffLangChoice, useStaffStrings } from '@/features/orders/staff-lang';
 import { setMyLanguage } from '@/features/staff/actions';
@@ -106,7 +107,14 @@ function LanguageRadioGroup({ lang }: { lang: Lang }) {
           if (next === shown) return;
           startTransition(async () => {
             setShown(next);
-            const result = await setMyLanguage(next).catch(() => null);
+            let result;
+            try {
+              result = await setMyLanguage(next);
+            } catch (error) {
+              // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+              if (isUnrecognizedAction(error)) return;
+              result = null;
+            }
             if (!result?.ok) toast.error(result ? t.refusal(result) : t.network);
           });
         }}
