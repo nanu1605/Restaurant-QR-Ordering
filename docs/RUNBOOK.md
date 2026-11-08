@@ -37,10 +37,16 @@ and the version check. Re-run the workflow instead.
 - A page that does reach a newer build (open for more than 7 days, or past a Skew Protection
   Threshold) is refused its next server action and refreshes onto the new build. The worker panel,
   the live board (`/admin/live`) and guests' phones do it by themselves on their next tap: the
-  guest's cart and the kitchen's dish moves are kept, and anything else is tapped again. Admin,
-  super, the website and login show "A new version is ready" with a **Refresh** button and keep
-  what was typed. A tab refreshes itself at most once in 2 minutes, so a broken deploy can't loop
-  it; it then asks instead (docs/DECISIONS.md VPS-8).
+  guest's cart and the kitchen's dish moves are kept, and anything else is tapped again (a guest's
+  second Place order reuses the first order's key, so a reply lost in the deploy doesn't give a
+  second order). Admin, super, the website and login show "A new version is ready" with a
+  **Refresh** button that cannot be closed: the tap that met the newer build stays pending behind
+  it and the page keeps what was typed, so copy anything typed first, then press Refresh. Where
+  that button runs its action in a transition (the menu import review's Save draft is one), links
+  on the page don't respond until Refresh either. A page that refreshes its own data on a timer
+  (a download being prepared on `/admin/settings`, a support board in `/super`) reloads by itself
+  at its next tick, whatever was typed. A tab refreshes itself at most once in 2 minutes, so a
+  broken deploy can't loop it; it then asks instead (docs/DECISIONS.md VPS-8).
 
 ### One-time setup per environment
 
@@ -132,37 +138,54 @@ missing required one fails the build with `error: build argument NAME is require
 | `NEXT_PUBLIC_SENTRY_DSN`               | optional | the project's DSN                                                  |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT`       | optional | `staging` or `production`; required with a DSN                     |
 | `NEXT_PUBLIC_POSTHOG_KEY`, `_HOST`     | optional | as on Vercel                                                       |
-| `SENTRY_ORG`, `SENTRY_PROJECT`         | optional | for the source map upload                                          |
+| `SENTRY_ORG`, `SENTRY_PROJECT`         | optional | for the source map upload, and at run time for System health       |
 | `SENTRY_RELEASE`                       | optional | defaults to the commit                                             |
 
 `NEXT_PUBLIC_SUPABASE_URL` is never the internal address (VPS-20). `DEPLOYMENT_ID` takes letters,
-digits, `.`, `-` and `_`, and is made as `<commit 12>-<run id>-<attempt>`, as `deploy.yml` does for
-Vercel. The Dockerfile sets `NEXT_OUTPUT=standalone` itself. The one secret is `sentry_auth_token`,
-a BuildKit secret (`--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN`) and never an argument,
-because arguments show in `docker history`; without it no source maps are made or uploaded. Env
-files cannot reach the build (`.dockerignore` is an allowlist, and the build stops if one gets in).
-The build log shows two `[site] plans not loaded for the home page` traces: the build has no
+digits, `-` and `_` only (`next build` refuses a dot, so the Dockerfile stops the build first), and
+is made as `<commit 12>-<run id>-<attempt>`, as `deploy.yml` does for Vercel. The Dockerfile sets
+`NEXT_OUTPUT=standalone` itself. The one secret is `sentry_auth_token`, a BuildKit secret
+(`--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN`) and never an argument, because arguments
+show in `docker history`; without it no source maps are made or uploaded. Env files cannot reach
+the build (`.dockerignore` is an allowlist, and the build stops if one gets in). The build log
+shows two `[site] plans not loaded for the home page` traces: the build has no
 `SUPABASE_SECRET_KEY` by design, so they are harmless.
 
-- **Runtime variables:** the container takes the server-only variables of the table above, listed in
-  `src/lib/env.server.ts` and explained in `.env.example`. Two are for the VPS:
-  `SUPABASE_INTERNAL_URL` (the address the server calls Supabase on, `http://api-gw:8000`, on
-  production's web only; VPS-20) and `SUPABASE_FORWARD_CLIENT_IP` (`true` only where Auth is the
-  VPS's own, with the Auth settings of VPS-4). `NEXT_PUBLIC_*` set at run time do nothing. The image
-  sets `PORT=3000`, `HOSTNAME=0.0.0.0` (do not override it) and `KEEP_ALIVE_TIMEOUT=130000`: keep
-  the proxy's idle upstream time under 130 s (Caddy's is 2 minutes). Leave
-  `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` unset (VPS-10): each build gets new action ids, and open
-  pages refresh onto it.
+- **Runtime variables:** the container takes the server-only variables of Environment variables
+  (Vercel), as listed in `src/lib/env.server.ts` and explained in `.env.example`. Of the build
+  arguments, `SENTRY_ORG` and `SENTRY_PROJECT` are runtime variables too: with `SENTRY_READ_TOKEN`
+  they are what System health reads for Sentry's issues, and without them its Sentry card says
+  "Not set up". Two are for the VPS: `SUPABASE_INTERNAL_URL` (the address the server calls Supabase
+  on, `http://api-gw:8000`, on production's web only; VPS-20) and `SUPABASE_FORWARD_CLIENT_IP`
+  (`true` only where Auth is the VPS's own, with the Auth settings of VPS-4). `NEXT_PUBLIC_*` set at
+  run time do nothing. The image sets `PORT=3000`, `HOSTNAME=0.0.0.0` (do not override it) and
+  `KEEP_ALIVE_TIMEOUT=130000`: keep the proxy's idle upstream time under 130 s (Caddy's is 2
+  minutes). Leave `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` unset (VPS-10): each build gets new action
+  ids, and open pages move onto it by a refresh (VPS-8).
 - **What the deploy stop owes the image** (VPS-24):
   - Stop with a 25 s grace period: node is process 1 and gets `SIGTERM`, requests and `after()` work
-    finish, and what still runs at 25 s is killed (VPS-22).
+    finish, and what still runs at 25 s is killed, exit 137 (VPS-22). A stop that finds work in
+    flight takes as long as the work, exit 143: with a pooled keep-alive client an idle stop
+    measured 0.57 s, and one with a 9 s request in flight 7.3 s (VPS-16). That holds only while the
+    container runs the image's own `CMD`, which loads a preload
+    (`/usr/local/lib/menumesh-drain.cjs`) that ends connections as the server closes: a compose
+    `command:` replaces it, and every stop under traffic then runs the full 25 s and ends in the
+    kill.
   - 1536m of memory for `web` and 768m for `web-staging`, with `NODE_OPTIONS=--max-old-space-size`
-    at about 65% of it (1000 and 500). The data export's size limit follows the heap: about 37,000
-    bills on `web`, about 25,500 on `web-staging` (VPS-6), so a container without that setting, or
-    with less memory, lowers it.
+    at about 65% of it (1000 and 500). The data export's size limit follows the heap: Node's limit
+    in the container is 1096 MiB on `web` and 548 MiB on `web-staging`, so `web` allows the 512 MiB
+    cap, about 37,800 bills, and `web-staging` 274 MiB, about 20,200 (VPS-6). A container without
+    that setting, or with less memory, lowers it.
   - Named volumes on `/app/.next/static` (earlier builds' scripts and styles, VPS-21) and
     `/app/.next/cache` (the image optimiser's cache, capped at 500 MB, VPS-18). The image needs no
-    capability or privilege: `cap_drop: ALL` and `no-new-privileges`.
+    capability or privilege: `cap_drop: ALL` and `no-new-privileges`. The container refuses to start
+    without this build's static files: if it cannot add them to the volume it exits 1 with an
+    `error: … static files are missing or cut short` line (a read-only volume that already holds
+    them unchanged is fine). So a static volume created or seeded before the first start must be
+    owned by uid 1000: seed it with `docker run --user 1000:1000`, or `chown -R 1000:1000` it. A
+    volume seeded as root, or a full disk, makes the new container exit, which `app-deploy` sees as
+    one that never turns healthy. A fresh named volume copies the image folder's owner and needs
+    nothing.
   - `api.menumesh.in` must resolve to a public address inside the web containers: `next/image`
     fetches photos from it and refuses private addresses, so an alias to a Docker or loopback
     address would answer 400 for every dish photo (VPS-18).
@@ -177,9 +200,10 @@ The build log shows two `[site] plans not loaded for the home page` traces: the 
 - **After the move:** until the deploy stop rewrites them, the Vercel rules in this runbook describe
   the live deploy path (Deploying, One-time setup, the variables, the 7-day migration rule, Rolling
   back, Rotating secrets, Restore from an export and the Razorpay live switch). After the move a
-  deploy replaces the container, so every open page refreshes on its next tap (VPS-8), and until
-  then its polls and the board's direct Supabase reads run the old browser code against the new
-  build: keep their JSON and the tables the board reads additive, like migrations (VPS-11).
+  deploy replaces the container, so the live screens refresh on their next tap and the other pages
+  offer Refresh (VPS-8), and until then their polls and the board's direct Supabase reads run the
+  old browser code against the new build: keep their JSON and the tables the board reads additive,
+  like migrations (VPS-11).
   Production deploys are run by the owner on the server,
   `sudo app-deploy menumesh production <prod-ref> <migrate-ref>`; staging deploys from GitHub after
   a merge to `main` (VPS-23).
@@ -222,7 +246,10 @@ The build log shows two `[site] plans not loaded for the home page` traces: the 
 - **Updating the pins:** the base image's tag and digest move together
   (`docker buildx imagetools inspect <tag>` shows the digest), monthly and on advisories, once a
   release is 14 days old; the pnpm image's tag and digest move whenever `packageManager` changes
-  (`--pm-on-fail=error` makes a mismatch fail the build).
+  (`--pm-on-fail=error` makes a mismatch fail the build). The BuildKit frontend on the Dockerfile's
+  first line (`# syntax=docker/dockerfile:1.27.1@sha256:…`) is pinned the same way: bump it by hand
+  together with the Node digest, to a release at least 14 days old (1.8 or later; VPS-14). The
+  floating `:1` is refused by the pin test.
 
 ## Database migrations
 
@@ -336,8 +363,8 @@ restaurant → **Account**; SA-93 to SA-100).
    can't log in once it closes, so they can't do it themselves after that. If the download fails
    every time, look for `[closure] export failed … too big to build in memory` in Sentry or the
    logs: the restaurant is past what one in-memory build allows (docs/DECISIONS.md SA-93 and
-   VPS-6, about 37,000 bills on the VPS, where the limit follows the web container's heap). Tell
-   the owner the copy needs a developer.
+   VPS-6, about 37,800 bills on the VPS's `web` and about 20,200 on staging, where the limit follows
+   the web container's heap). Tell the owner the copy needs a developer.
 2. **Close account:** a reason and the typed restaurant code. Anything that could still charge is
    cancelled first: if Razorpay refuses, nothing closes and it says so; try again in a minute. If
    it says autopay changed while closing, the owner set it up just then: close again. A refund for

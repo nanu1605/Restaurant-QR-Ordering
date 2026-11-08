@@ -24,6 +24,7 @@ bottom of each section.
 | Playwright                   | 1.63.0 (Chromium only)                           |
 | Docker Desktop engine        | 29.7.2                                           |
 | Node.js in the web image     | 24.22.0-trixie-slim (by digest; VPS-14)          |
+| Dockerfile syntax frontend   | 1.27.1 (by digest; VPS-14)                       |
 
 ## Environment and tooling
 
@@ -383,7 +384,8 @@ bottom of each section.
   dish and option, a note per line, 1–20 each, at most 30 lines; checked against the menu on every
   page load. The idempotency key is made when the cart page loads with `crypto.getRandomValues`
   (`randomUUID` needs a secure context, and LAN testing is plain http), kept across retries and
-  renewed after a successful order.
+  renewed after a successful order. A resend after the page reloaded (the refresh onto a new build)
+  takes the key stored with the order instead, for 10 minutes (VPS-8).
 - **P3-12 · Accent colour:** the layout writes the accent variables to `:root` (so portalled sheets
   and dialogs get them) with a foreground of white or ink, whichever reaches 4.5:1, falling back to
   the default brand colour. The accent is never used as text on white; focus is a 2 px outline in a
@@ -4255,7 +4257,7 @@ stay at 13g, since nobody else gets `/super` before then.
   after 25 hours and rows after 2 days. The build is in memory, in the one process every restaurant
   shares on the VPS: before reading a row it counts bills, order items, orders, bill payments and
   sessions (HEAD, exact count) and fails like any other build when the estimate (`EXPORT_ROW_BYTES`)
-  passes the limit, half the heap or 512 MiB, whichever is less (about 37,000 bills on the VPS's
+  passes the limit, half the heap or 512 MiB, whichever is less (about 37,800 bills on the VPS's
   web, a year at 100 a day, whose ZIP would be about 15 MiB, inside the bucket's 50 MiB). The log
   names the counts, and past that the export needs streaming (VPS-6). On the VPS nothing enforces
   the 5 minutes, and a restart cuts a build until it becomes a restartable job (VPS-22).
@@ -4415,10 +4417,11 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   the page 85 s (was 150), counted from the start of its server action; no call starts with under
   15 s left (a call cut off is still paid for); the photo download gets 15 s; and the action answers
   in about 87 s or less. A corrective retry that cannot fit reports the page as unreadable, a reader
-  skipped for lack of time is never recorded as the page's provider, and a photo that times out is
-  retryable (Try again) while a missing one keeps "did not upload". The 3-minute claim and
-  `maxDuration = 180` stay (Vercel still needs the limit for the Hindi names the commit fills
-  afterwards), and the progress copy says "up to a minute and a half".
+  skipped for lack of time is never recorded as the page's provider, and a photo that times out, or
+  is cut off while it downloads, is retryable (Try again) while a missing one keeps "did not
+  upload" (review A1). The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the
+  limit for the Hindi names the commit fills afterwards), and the progress copy says "up to a
+  minute and a half".
   - **The trade-off.** A page whose reader call takes 40 to 60 s used to pass and now fails as "not
     answering right now", on Vercel too (Try again works). Durations aren't stored and production
     has almost no imports, so nothing says how often; the warning now ends "(the call took X s, the
@@ -4432,14 +4435,18 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   `[closure] export failed … too big to build in memory`, with the estimate, the counts and the
   limit (Sentry gets it), nothing is uploaded and the card says "The last download couldn’t be
   prepared. Try again." At a usual mix (a bill with 1.5 orders, 5 dishes, a payment and a session is
-  14,200 bytes) the cap is about 37,000 bills, a year at 100 a day, with a ZIP of about 15 MiB,
+  14,200 bytes) the cap is about 37,800 bills, a year at 100 a day, with a ZIP of about 15 MiB,
   inside the bucket's 50 MiB.
   - **The memory it assumes.** The deploy sets `--max-old-space-size` to about 65% of a web
-    container's memory (VPS-24), and Node's heap limit sits about 190 MiB above it (measured on Node
-    24.17.0: 500 gives 692 MiB, 1000 gives 1192 MiB). So `web` (1536m, about 1000) allows the full
-    512 MiB and `web-staging` (768m, about 500) about 346 MiB, some 25,500 bills. Without that
-    setting Node sizes the heap itself and the limit follows it: it is on the deploy stop's
-    checklist.
+    container's memory (VPS-24). Node's heap limit is that old space plus a young generation of
+    three semi-spaces, which Node sizes from the container's memory. Measured in the image under the
+    server's limits (Node 24.22.0): `web` (1536m, about 1000) 1096 MiB, with semi-spaces of 32 MiB,
+    and `web-staging` (768m, about 500) 548 MiB, with 16 MiB. Half of `web`'s is 548 MiB, so the
+    512 MiB cap applies. `web-staging` allows 274 MiB, about 20,200 bills. Without the setting Node
+    sizes the heap itself and the limit follows it: it is on the deploy stop's checklist. The first
+    figures here (a limit 190 MiB above the flag, so 346 MiB and some 25,500 bills for
+    `web-staging`) were measured on the host, which has 64 MiB semi-spaces (500 gives 692 MiB, 1000
+    gives 1192 MiB): too high for a container (review C8).
   - **Accepted for now** (owner, 2026-11-07): a restaurant past the limit cannot get its self-serve
     ZIP (the RUNBOOK says where to look), and none is near it. Past it the build needs streaming.
     The weights come from synthetic rows; Devanagari text in `bills.json` weighs up to a third more.
@@ -4454,9 +4461,10 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   commit, since two builds of one commit have different action ids), and an error boundary's
   `retry()` does the same.
   - **Two places:** a `window.fetch` wrapper installed before the page hydrates, which reads only
-    that header and returns the same response; and every error boundary (`UnrecognizedActionError`
-    by name, `ChunkLoadError` by name or message). Not a wrapper per call: about 35 call sites catch
-    an action's error themselves (the board's `useBoardAction`, the cart, billing, settings), so a
+    that header and then passes the answer on, holds it or keeps it back (`handlingFor` in
+    `stale.ts`, VPS-8); and every error boundary (`UnrecognizedActionError` by name,
+    `ChunkLoadError` by name or message). Not a wrapper per call: about 35 call sites catch an
+    action's error themselves (the board's `useBoardAction`, the cart, billing, settings), so a
     boundary alone would miss them, and wrapping means editing about 110 calls. A background
     `unhandledrejection` listener was dropped: a failed analytics chunk would claim a new version.
   - **Only `UnrecognizedActionError` means a newer build.** A script that did not load gets neutral
@@ -4473,11 +4481,53 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     journal. The observer holds Next.js's answer up to 10 s while the page reloads (after 300 ms),
     so no "couldn’t reach" error flashes and a queued dish move stays queued, for the refreshed
     page's offline banner to send with the new build's action ids. A guest's order is never resent:
-    the cart returns reconciled against the new menu and the guest taps Place order again. An
-    overlay says "A new version is ready. Refreshing…" meanwhile ("Your cart is saved." on the
-    cart).
+    the cart returns reconciled against the new menu and the guest taps Place order again, with the
+    key the order was first sent with (the order key, below). An overlay says "A new version is
+    ready. Refreshing…" meanwhile ("Your cart is saved." on the cart). A live screen that cannot
+    refresh (the loop guard, below) gets the answer at once: its callers' guards, and the board's
+    queued dish move, rely on the error.
   - **Elsewhere** (admin, super, the website, login) a persistent toast says "A new version is
-    ready" with Refresh, and nothing reloads by itself, so typed text can be copied first.
+    ready" with Refresh, and the action that met the newer build is kept back: the observer never
+    hands Next.js its answer, so the action neither fails nor ends (review B1). A caller without a
+    catch (`useTransition`, `useActionState`, a form action) therefore cannot rethrow it into
+    `app/error.tsx`, whose boundary rule refreshed the tab 300 ms later and lost what was typed.
+    Nothing reloads by itself, so typed text can be copied first. The toast has no close button and
+    cannot be swiped away: Next.js runs actions one at a time, so later taps queue behind the
+    pending one, and a closed toast could not come back. Offline no toast shows and the answer
+    passes, as before. Two callers there needed no guard of their own and keep their error toasts,
+    since the stale answer no longer reaches them: the snooze menu in `/super` and the autopay
+    panel's Subscribe in `/admin`.
+  - **The one exception: Next.js's own full load.** Next.js compares `x-nextjs-deployment-id` on
+    every RSC answer and loads the page in full when it is a newer build's (VPS-7), which nothing
+    here stops: a link, or a page's own `router.refresh()`, that reaches the new build reloads the
+    page, typed text or not (behind a caller in a transition, a link gets no further: see What it
+    costs). Pages that call `router.refresh()` on a timer do it by themselves at the next tick
+    after a deploy: the data export card while a build runs (every 4 s, and once more when its
+    download link runs out), on `/admin/settings` under the settings forms and on a restaurant's
+    Account tab in `/super`; and the board in a restaurant's support view in `/super` (every 15 s).
+    The guest's orders page also calls it, from its poll when a bill is new or voided, and is a
+    live screen anyway.
+  - **The order key (review B2).** The cart sends each order with an idempotency key, and a page
+    that reloads makes a new one, so after a reply lost in the deploy and the refresh by itself a
+    second tap would place a second order: the database dedupes only on the restaurant and the key.
+    `orderKeyToSend` (`src/features/ordering/cart.ts`) stores `{ key, sent, at }` under
+    `localStorage` `tableorder:order-key:<qrToken>` just before `placeOrder`. `sent` is the lines
+    the server gets (dish, option, quantity, trimmed note, add-ons: no names or prices, so a
+    repriced or renamed menu doesn't matter) and the order note. The next submit reuses the key when
+    `sent` is the cart's and the last send was under 10 minutes ago (`ORDER_KEY_TTL_MS`): long
+    enough for a deploy and a retry, short enough that a second round of the same dishes later in
+    the meal is not swallowed by `customer_place_order`'s dedupe, which answers a key it has seen
+    with the first order (`replayed: true`, P3-4). Any other cart gets the page's own key. The
+    record is cleared when the server answers, ok or refusal, and kept when the call throws (the
+    network, an older build); blocked storage, or a damaged or foreign record, means the page's own
+    key, as before. The e2e test drops the first reply after the server handled it, then meets a
+    stale answer, the refresh and a second Place order: one order, with the cart and the record
+    cleared; without the change it placed two.
+    - **Known limits.** A cart edited after a lost reply, in the same page load, still goes out with
+      the page's own key (as before), so the server hands back the first order. Any answer clears
+      the record, an unknown database error included, and `placeOrder` does not tell that apart from
+      a refusal: a transport failure between the action and Supabase after the commit, then a
+      refresh, could still place a second order. Fixing it needs `placeOrder` to return a flag.
   - **Loop guard.** A tab refreshes by itself at most once in 2 minutes (`sessionStorage` key
     `tableorder:new-version`: when, from which deployment, why), so a broken deploy cannot loop it.
     With storage blocked, the device offline or a refresh less than 2 minutes old, it shows "The new
@@ -4489,9 +4539,19 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     reasons), which no submission could have saved anyway, silences the new-order chime until the
     next tap and shows the installed app's splash (P11-4), once per open page per deploy. A form
     posted before hydration gets Next.js's plain "Server Action unavailable." (nothing in the app
-    can catch it), and a website `useActionState` form loses its input, as before, then refreshes.
-    On Vercel nothing visible changes: Skew Protection pins open pages, and pages older than 7 days
-    or past a Threshold now refresh instead of failing.
+    can catch it). Where the answer is kept back, the form or button that met the newer build keeps
+    its pending state (a spinner, disabled) until Refresh, and keeps its input; the page's other
+    actions queue behind it. Where the caller runs the action inside a transition, links do not
+    respond either: measured on the menu import review's Save draft (`useTransition`), after the
+    stale tap one request had gone out, a second action added none in 1.5 s and a link click changed
+    nothing in 3 s. React holds the page's later transitions until that action ends
+    (`entangleAsyncAction` in `react-dom`), `useActionState` and form actions run in the same kind
+    of scope (not tested), and so there Refresh is the only way on, which is why the toast cannot be
+    closed. A caller that awaits from a plain handler (react-hook-form's submit, the dish dialog)
+    leaves links working. The theme switch's catch no longer reverts the colour on a stale tap
+    there: the colour stays changed, unsaved, until Refresh. On Vercel nothing visible changes:
+    Skew Protection pins open pages, and pages older than 7 days or past a Threshold now refresh
+    (live screens) or offer Refresh with their typing kept (the rest) instead of failing.
 - **VPS-9 · Error pages that recover from a new build, and still report to Sentry:**
   `global-error.tsx`, `app/error.tsx`, `staff/error.tsx` and `t/[qrToken]/error.tsx` render one
   `ErrorFallback` in the page's language. A page from an older build says "Refreshing…" and
@@ -4509,6 +4569,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     still is. The per-deploy signal is the server's "Failed to find Server Action" warning, one per
     stale tap, which Sentry's console capture (errors only) does not send. Check on staging that a
     browser error still arrives (P10-3).
+  - **Which errors get there.** The boundary's rule is unchanged: it refreshes a page on any path.
+    What changed is what reaches it (VPS-8). On a page that only offers Refresh, an
+    `UnrecognizedActionError` now arrives only when the answer passes: offline, where the card says
+    "The new version didn’t load" with its own Refresh, or after the 10 s hold of a refresh already
+    under way. So there the boundary refreshes by itself only for a script that didn't load; any
+    other error says "Something went wrong" and never refreshes.
 - **VPS-10 · Server action ids change with every build:** `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` stays
   unset and image builds never reuse `.next/cache`. Next.js keeps the key that salts the ids in
   `.next/cache/.rscinfo` for 14 days, and a key set by hand is used as it is: either would keep the
@@ -4531,7 +4597,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   (`src/features/new-version/strings.ts`). They never name the product, since guests only know the
   restaurant, and say "Refresh" as the app already says "Refresh the page". The language follows
   `<html lang>`: Hindi on staff logins in Hindi, Hindi phones and `/hi`; admin and super stay
-  English. A script that did not load gets neutral words ("Part of this page didn’t load.
+  English. The worker panel sets it and puts English back only when the URL has left `/staff`
+  (review B4): Next.js moves the URL before React runs the panel's cleanup, so a move to `/admin`
+  still resets it, while an error page that replaces the panel (`app/error.tsx`, for an error in
+  the staff layout outside `staff/error.tsx`: the alerts, the live status, the offline banner, the
+  header's account menu, a stuck announcement's Dismiss) keeps its Hindi; it used to turn English
+  there. A script that did not load gets neutral words ("Part of this page didn’t load.
   Refreshing…", "Check the connection, then refresh the page."), since it is usually the connection.
   Hindi writes nuktas as separate marks; the new words are वर्ज़न (version) and एरर कोड (error
   code).
@@ -4544,9 +4615,11 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   build, so each environment has its own image, built from build arguments (RUNBOOK, The web image):
   staging and production are separate builds of one commit, an image cannot be promoted, and a
   rollback needs the previous production image kept. A missing required argument fails the build
-  with "error: build argument NAME is required". `next.config.ts` sets `output: 'standalone'` only
-  when `NEXT_OUTPUT=standalone`, which the Dockerfile sets, so Vercel, CI, e2e, smoke and Windows
-  builds (whose standalone output makes symlinks) are unchanged.
+  with "error: build argument NAME is required", and so does a `DEPLOYMENT_ID` with anything but
+  letters, digits, dashes and underscores: `next build` refuses a dot, and the guard used to allow
+  one (review C3). `next.config.ts` sets `output: 'standalone'` only when `NEXT_OUTPUT=standalone`,
+  which the Dockerfile sets, so Vercel, CI, e2e, smoke and Windows builds (whose standalone output
+  makes symlinks) are unchanged.
   - **Secrets and env files.** Nothing server-only is needed at build (`getServerEnv()` runs per
     request, and only metadata routes are prerendered), so the one secret is Sentry's token, a
     BuildKit secret (`--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN`) and never an `ARG`,
@@ -4565,13 +4638,28 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   rather than Alpine: Node's tier-1 platform and sharp's glibc prebuilt. The install runs with
   `--pm-on-fail=error`, so another pnpm fails the build instead of being downloaded (proved with a
   deliberate mismatch: `ERR_PNPM_BAD_PM_VERSION`); `pnpm --version` works without `libatomic1`. The
-  image is 452 MB in 13 layers and idles at about 87 MiB (Tests).
+  image is 452 MB in 14 layers and idles at about 87 MiB (Tests).
+  - **The BuildKit frontend (review C5).** The Dockerfile's first line,
+    `# syntax=docker/dockerfile:1`, pulled whatever 1.x was newest on every build: outside the
+    14-day rule, and it is the frontend that writes the build graph with the step that mounts the
+    Sentry token. It is now `docker/dockerfile:1.27.1` by digest: pushed 2026-09-30, 39 days old on
+    2026-11-08, and the image the `1` and `latest` tags named that day. 1.28.0 (2026-10-07, 32 days)
+    passes the rule too but isn't what those tags name, and every build here used 1.27.1; only
+    1.29.0-rc1 is newer. It needs 1.8 or later (`# check=` and the heredocs). It is bumped by hand
+    together with the Node digest, and the pin test reads the raw first line, which instruction
+    parsing drops, so an unpinned or too old frontend fails CI. Whether the server team's rule
+    covers build frontends is theirs to say: worth one line to them.
 - **VPS-15 · Install without scripts, build without `pnpm run`:**
-  `pnpm install --frozen-lockfile --ignore-scripts`: the supabase CLI's binary download is the only
-  install script `allowBuilds` leaves, and the image never uses the CLI; sharp's addon ships as
-  optional `@img/*` packages with no install script. `next build` is called directly, because pnpm
-  11 and later verify dependencies before `pnpm run` and could run an install, with scripts, again
-  in the build stage. Sentry 11's CLI is plain JavaScript, so no binary download is lost.
+  `pnpm install --frozen-lockfile --ignore-scripts`. No locked package needs an install script: the
+  supabase CLI (2.117.0) has none, its binary arrives in optional `@supabase/cli-<platform>`
+  packages, and sharp's addon in optional `@img/*` packages, and the only two with one, core-js and
+  unrs-resolver (both `postinstall`), are denied in `allowBuilds`. So the flag skips nothing today:
+  it is defence in depth, so that a package that gains an install script later cannot run code in
+  the build. The first reason given here, that it stops the supabase CLI's binary download, was
+  wrong (review C6), and `supabase: true` in `allowBuilds` does nothing. `next build` is called
+  directly, because pnpm 11 and later verify dependencies before `pnpm run` and could run an
+  install, with scripts, again in the build stage. Sentry 11's CLI is plain JavaScript, so no
+  binary download is lost.
 - **VPS-16 · Runtime: non-root, bound to 0.0.0.0, a long keep-alive, SIGTERM to node:** the app runs
   as `node` with its code root-owned, so read-only to it; it writes only in `.next/cache` (resized
   images) and `.next/static`, both owned by node so that a fresh named volume starts writable
@@ -4580,9 +4668,38 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   minutes Caddy keeps idle upstream connections; a shorter one makes Caddy reuse connections Node
   has closed (502s). Node is process 1: the start script ends in `exec`, with no init, because
   Next.js handles `SIGTERM` itself (stops accepting, finishes requests and `after()` work,
-  exits 143) and nothing forks. Measured: an idle stop took 0.58 s (exit 143); a request that needed
-  9 s finished (the stop took 7.97 s); one that needed 40 s was killed at 25.63 s (exit 137,
-  VPS-22); a pooled socket survived 70 s idle.
+  exits 143) and nothing forks. A pooled socket survived 70 s idle.
+  - **The stop, and the drain preload (review C1).** Next.js closes the server first and waits for
+    the `after()` work only once `server.close()` has called back (`start-server.js`), and Node's
+    `server.close()` drops the idle keep-alive connections once, when it is called. One that is busy
+    then idles for the 130 s keep-alive after its answer, and Caddy keeps its pooled upstream
+    connections 2 minutes, so the server never closed: a stop that met a request in flight ran the
+    whole 25 s and ended in Docker's kill (exit 137), and the `after()` wait was never reached.
+    The first figures here (idle 0.58 s; a request of 9 s 7.97 s) came from curl, which closes its
+    socket. With a pooled keep-alive client, as Caddy is, the same 9 s request took 25.61 s and
+    exit 137, and the client's socket closed only at the kill. The fix is a preload,
+    `/usr/local/lib/menumesh-drain.cjs` (root-owned, mode 644), which `CMD` loads
+    (`node --require … server.js`; not `NODE_OPTIONS`, which the deploy sets). When `close` is
+    called it makes every answer to a request that starts after that say `Connection: close`, and
+    calls `closeIdleConnections()` every 250 ms until the server has closed.
+    - **Measured** on the final image, with a pooled keep-alive client in a second container
+      sharing the web container's network, the web container under the server's limits and
+      `docker stop -t 25`: an idle pooled connection at the stop, 0.57 s and exit 143 (0.56 to 0.98
+      s over 5 runs); a request of 9 s in flight, with the stop about 2 s into it, 7.3 s and exit
+      143 (its own answer says `Connection: keep-alive`, which was decided before the stop, and the
+      server closes that socket 10 to 30 ms later; a request sent after the stop on the same
+      connection is answered `Connection: close`); a request of 40 s, killed at 25.6 s, exit 137,
+      and the client sees `ECONNRESET` (VPS-22).
+    - **Known limit.** Like Node's own `close()`, the sweep can end a socket whose answer has had
+      `end()` called but is still flushing: 64 MB to a reader that started 1.5 s late arrived as
+      2,634,111 bytes and then a reset. At full reader speed, as Caddy reads, the window after
+      `end()` is 0.04 to 0.34 ms up to 2 MB and 2.7 ms at 4 MB, against a 250 ms tick, so it is
+      accepted. An alternative that cannot cut an answer, `server.keepAliveTimeout = 1` in the
+      wrapped `close()` instead of the sweep (Node then arms a socket for about a second, once its
+      answer has flushed), was not built or measured.
+    - **The preload runs only if the deploy keeps the image's `CMD`.** A compose `command:` replaces
+      it and silently brings back stops that run the full 25 s under traffic: on the deploy stop's
+      checklist (VPS-24).
 - **VPS-17 · The container's health is the database's; `/api/live` is for local checks:** the
   server's `app-deploy` turns a new container on only when Docker calls it healthy (it waits up to
   120 s and never probes a URL itself), so the `HEALTHCHECK` calls `/api/health`: healthy means
@@ -4651,28 +4768,56 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   app's files (Vercel's Skew Protection used to keep them). The Dockerfile keeps a root-owned copy
   of the build's `.next/static` in `/opt/menumesh/static`, where no volume hides it, and starts
   through a script that copies those files into `/app/.next/static` (where the deploy mounts a named
-  volume), deletes files no build has added again for 14 days and empty folders, and `exec`s
-  `node server.js`. Without a volume it only refreshes the image's own folder; if the folder is not
-  writable it warns and starts. Measured: swapping image A for B on one volume served a script only
-  A has and one only B has (214 files = 160 + 160 - 106 shared); a file 20 days old and one 14 days
-  and 1 hour old were pruned, one 13 days and 23 hours old stayed.
+  volume), deletes files no build has added again for 14 days and empty folders, and `exec`s the
+  `CMD` (`node server.js` with the drain preload, VPS-16). Without a volume it only refreshes the
+  image's own folder. If the copy fails (a folder uid 1000 cannot write, a read-only mount, a full
+  disk) the script compares every file of its copy with the folder: with all of them there and
+  unchanged it warns and starts (a read-only volume that holds them, or a read-only root with no
+  volume); otherwise it prints an `error:` line (N of this build's static files are missing or cut
+  short; the volume must be writable by uid 1000 and the disk not full) and exits 1. Measured:
+  swapping image A for B on one volume served a script only A has and one only B has (214 files =
+  160 + 160 - 106 shared); a file 20 days old and one 14 days and 1 hour old were pruned, one 13
+  days and 23 hours old stayed.
+  - **Why it refuses (review C2).** It used to warn and start. The volume hides the image's own
+    copy and Next.js lists `.next/static` once at start, so the container turned healthy, which is
+    all `app-deploy` waits for, and answered 404 for every script and style of its own build, while
+    the warning blamed the pages of earlier builds. It compares files rather than looking for them
+    because a full disk leaves files that exist but are cut short (`cp` creates a file before it
+    fails with "No space left on device"): on a 1 MiB tmpfs 138 of 160 were flagged, and an
+    existence check let the container start. Measured: a volume seeded as root (root-owned folders,
+    an older build's 160 files, 62 files only in the new build) kept the old script's container
+    running, `/api/live` 200 and this build's script 404, and made the new script exit 1 with
+    `error: 62 of this build's static files …`; a `:ro` volume holding this build's 160 files starts
+    with the warning and serves the script; `--read-only` with no volume does the same; a fresh
+    named volume starts with no warning.
+  - **Owners.** A static volume created or filled before the first start (seeded as root, say)
+    belongs to root and makes the container exit: seed it with `docker run --user 1000:1000`, or
+    `chown -R 1000:1000` it. A fresh named volume copies its owner, node, from the image's folder
+    and needs nothing.
   - **Known limits.** The standalone server lists `.next/static` once at start (a file added later
     answers 404, one deleted while it runs 500), so nothing may prune the volume while `web` runs. A
     deployment ID makes Next.js use one build id for every build, so the per-build manifests in
     `static/<build id>/` share a folder and the newest copy wins; they hold nothing per build except
-    the proxy matcher, and a changed matcher against an old page is untested.
+    the proxy matcher, and a changed matcher against an old page is untested. Their names are the
+    same in every build, so a volume that is not writable and holds only an older build's manifests
+    fails the comparison though every script is there; a changed build lacks chunks too, so it
+    matters only for a rebuild of identical code onto a read-only volume.
 - **VPS-22 · Single-slot deploys with a 25 s stop; the long `after()` work becomes restartable jobs
   later:** the server deploys one container in place (`compose up -d --no-deps`) and Caddy retries
   an upstream for up to 30 s, so a stop of 25 s or less does not show. A 330 s grace would take the
   site down for minutes on every deploy, and a two-slot switch adds a lot of root-script surface;
   accepted 2026-11-08, and a two-slot mode for `web` only is not asked for. So `stop_grace_period`
   is at most 25 s on `web` and `web-staging`, and work that must survive a deploy, an out-of-memory
-  kill or a reboot cannot live in `after()` alone. On `SIGTERM` Next.js closes the server, waits for
-  every pending `after()` promise without a time limit and exits 143: work done within about 20 s
-  survives; longer work is cut at 25 s, and a crash or reboot cuts all of it, silently.
-  `maxDuration` is Vercel's: on the VPS nothing caps a request or `after()` task but each call's own
-  timeout, the stop and Cloudflare's 100 s, so SA-93's "under the page's 5-minute limit" no longer
-  holds.
+  kill or a reboot cannot live in `after()` alone. On `SIGTERM` Next.js closes the server (the
+  image's drain preload ends each connection with its answer, so a connection busy at that moment
+  no longer keeps the close waiting: without it every such stop ended in the kill, VPS-16), waits
+  for every pending `after()` promise without a time limit and exits 143: work done within about
+  20 s survives; longer work is cut at 25 s with exit 137, as is a request that outlasts the grace,
+  and a crash or reboot cuts all of it, silently. Measured on a throwaway Next.js 16.4.3 route
+  with the final preload: 6 s of `after()` work, started before the stop, finished (a stop of
+  4.2 s, exit 143); 30 s of it was cut at 25.48 s, exit 137, with no finish line. `maxDuration` is
+  Vercel's: on the VPS nothing caps a request or `after()` task but each call's own timeout, the
+  stop and Cloudflare's 100 s, so SA-93's "under the page's 5-minute limit" no longer holds.
   - **Three of the eleven `after()` calls can outlast the stop** (the other eight are one Resend or
     PostHog request, at most about 16 s, so they finish inside the drain; only a crash loses one,
     which costs a welcome email or an analytics event for good, while the rest have a fallback on
@@ -4695,12 +4840,13 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     advisory locks: each PostgREST call is its own transaction). One bearer-protected route,
     `GET /api/cron/jobs`, ticked every minute by the scheduler (VPS-24), each tick capped at about
     20 s and guarded by cheap exists checks so idle ticks cost nothing. The export gets a heartbeat
-    or lease, attempts, `upsert: true` on the upload and a one-at-a-time re-run of `buildExport`;
-    the Hindi fill stores after each parallel round and takes a short claim lease apart from the
-    12-hour stamp; the sweep sends announcement emails in batches of about 15 and stops between
-    sends on `SIGTERM`. The daily cron (20 to 120 s typical) is idempotent step by step: the
-    scheduler tries it again about 30 minutes later, and deploys stay out of 02:55 to 03:30 IST
-    (VPS-24).
+    or lease, attempts, `upsert: true` on the upload and builds that run one at a time, a re-run of
+    `buildExport` after a kill included, so that two exports for different restaurants cannot
+    overlap in the process (review A2); the Hindi fill stores after each parallel round and takes a
+    short claim lease apart from the 12-hour stamp; the sweep sends announcement emails in batches
+    of about 15 and stops between sends on `SIGTERM`. The daily cron (20 to 120 s typical) is
+    idempotent step by step: the scheduler tries it again about 30 minutes later, and deploys stay
+    out of 02:55 to 03:30 IST (VPS-24).
 - **VPS-23 · Production deploys run by the owner on the server:** decided 2026-11-08, as the server
   team proposed. GitHub cannot require reviewers on a private repository below Enterprise
   (environments with secrets need Pro, and this repository is private on the free plan, P10-1), so a
@@ -4777,17 +4923,18 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     07:00 IST; releases avoid 12:00 to 15:30 and 19:00 to 23:30 IST. **No deploys, and no merges to
     `main` (every merge deploys staging), from 02:55 to 03:30 or 08:40 to 08:50 IST**, the daily and
     digest cron times (RUNBOOK).
-  - **For the deploy stop to check:** `NODE_OPTIONS` on `web` (VPS-6); `api.menumesh.in` public
-    inside the web containers (VPS-18); Caddy and Cloudflare passing `x-nextjs-action-not-found` and
-    `x-nextjs-deployment-id` and caching no HTML or RSC (VPS-7); old static files in place before
-    the swap (VPS-21); whether v0.8.4's Auth signs user tokens asymmetrically, since with the legacy
-    HS256 secret every `getClaims()` (two or more a page) becomes a `GET /auth/v1/user` through the
-    gateway; and whether Auth accepts staff addresses on `<slug>.staff.<domain>`, which have no mail
-    records.
+  - **For the deploy stop to check:** `NODE_OPTIONS` on `web` (VPS-6); the image's `CMD` kept, with
+    no compose `command:` (VPS-16); `api.menumesh.in` public inside the web containers (VPS-18);
+    Caddy and Cloudflare passing `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
+    caching no HTML or RSC (VPS-7); old static files in place before the swap, in a volume that
+    uid 1000 owns (VPS-21); whether v0.8.4's Auth signs user tokens asymmetrically, since with the
+    legacy HS256 secret every `getClaims()` (two or more a page) becomes a `GET /auth/v1/user`
+    through the gateway; and whether Auth accepts staff addresses on `<slug>.staff.<domain>`, which
+    have no mail records.
 
 ### Tests (VPS Stop A)
 
-- **Unit (667 to 771 tests, 49 to 57 files):**
+- **Unit (667 to 822 tests, 49 to 59 files):**
   - Self-hosting: `request-host` (3: the first `X-Forwarded-Host`, `Host` without its port, IPv6
     brackets); `env` (+2); `supabase-url` (12: the cookie name equals supabase-js's own default for
     `https://x.supabase.co` and `http://127.0.0.1:54321` and is one name on all three clients; the
@@ -4795,29 +4942,59 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     swapped however the internal address is written); `supabase-forwarding` (11: both headers on
     Auth calls only, so through real supabase-js a sign-in carries them and a table read does not;
     the IP rules; one warning per process); `menu-import-extract` (+4 net) and
-    `menu-import-read-page` (3: 40 s a call, 85 s a page, no call that cannot finish, the photo
-    timeout, the reader's remaining time); `close-account` (+5: the export guard, refused before a
-    row is read, half the heap and the cap).
-  - Reload prompt: `new-version` (36, jsdom: Next.js's real class and header pinned; what each kind
-    of page does; the loop guard on a fake storage; the fetch observer; the notice, with no toast
-    offline or for a background chunk error and Hindi on a stuck tab; the words in both languages)
-    and `new-version-fallback` (8: the error page reports in production only, refreshes unreported
-    for an older build's action, claims no new version for a missing script).
+    `menu-import-read-page` (5: 40 s a call, 85 s a page, no call that cannot finish, the photo
+    timeout, the reader's remaining time; and a photo cut off after Storage answered, by the timer
+    or by a reset while it downloads, recorded as one to read again without calling the reader, and
+    a missing photo still told to start again); `close-account` (+5: the export guard, refused
+    before a row is read, half the heap and the cap).
+  - Reload prompt: `new-version` (55, jsdom: Next.js's real class and header pinned; what each kind
+    of page does; what becomes of an older build's answer, passed, held or kept back, as a table
+    and through the real notice module (on the admin pages it stays pending 30 s past the hold, with
+    a toast that has no close button; a stuck live screen gets it at once and keeps its close
+    button; offline it passes); the loop guard on a fake storage; the fetch observer; the notice,
+    with no toast offline or for a background chunk error and Hindi on a stuck tab; the words in
+    both languages); `new-version-fallback` (16: the error page reports in production only,
+    refreshes unreported for an older build's action, claims no new version for a missing script,
+    keeps Hindi when it replaces the worker panel, resets `<html lang>` only when the path has left
+    `/staff` (six paths) and follows a language change inside the panel); `order-key` (14, new: the
+    stored key is reused for the same lines and note, also when the dish was renamed or repriced,
+    and not for another dish, a dish more, another quantity, another dish note or another order
+    note; it is kept to 10 minutes less a millisecond and gone at 10, so the same dishes 45 minutes
+    later get a new one; kept per table; forgotten after an answer; damaged records, keys the
+    server would refuse and blocked storage fall back to the page's key); `account-menu` (3, new,
+    with the real dropdown: no error toast for an older build's answer, the network toast for a
+    `TypeError`, the server's refusal in the panel's language).
   - Image: `health-route` (5: the once-a-minute log; with the throttle at 0, three fail) and
-    `docker-image` (15: the Dockerfile, `.dockerignore` and `next.config.ts` read as text, so a new
+    `docker-image` (20: the Dockerfile, `.dockerignore` and `next.config.ts` read as text, so a new
     `NEXT_PUBLIC_*` variable without an `ARG`, Sentry's token as an argument, a `.next/cache` mount
-    or an encryption key (VPS-10), an unpinned base image or a lost health check fails CI).
+    or an encryption key (VPS-10), an unpinned base image or build frontend or a lost health check
+    fails CI. Added by the review: a deployment ID outside letters, digits, dashes and underscores,
+    checked against Next.js's own rule in `node_modules`; a start script that exits 1 when the copy
+    failed and files are missing; a root-owned preload on `CMD` and no `NODE_OPTIONS`; the preload
+    itself, run in child node processes against a pooled-connection server, with it and without it
+    (about 2.2 s); and the Sentry-token and `.next` cache-mount rules proved against their bad
+    forms, which the old checks missed: a token on a continuation line of an `ENV`, a second name
+    on an `ARG` line, a cache mount that lists `target` before `type`).
 - **E2E:** `seo`: `x-forwarded-host: menumesh.in` gets no `X-Robots-Tag`. `auth`: `POST /logout`
   answers 303 with `Location: /login` and a signed-out `/staff` answers `/login?next=%2Fstaff`, both
-  relative. `new-version` (desktop only, 3 tests, about 5 s): a dish move from an older build
+  relative. `new-version` (desktop only, 6 tests, about 21 s): a dish move from an older build
   refreshes the board by itself and is sent from the new page, and a second stale tap within 2
   minutes shows "didn’t load", keeps the move in localStorage and serves it after Refresh; placing
-  an order keeps the cart, refreshes once, never loops and shows no network error; a missing script
-  refreshes through the guest error page (15 of 15 with `--repeat-each=5`). `playwright.config.ts`
+  an order keeps the cart, refreshes once, never loops and shows no network error; an order whose
+  first reply is dropped after the server handled it, then a stale answer, the refresh and a second
+  Place order: one order, with the cart and the stored key cleared (two without the order key);
+  in the admin panel the Add dish dialog (react-hook-form, with its own handling) keeps its text,
+  saves nothing and shows the Refresh toast; the menu import review's Save draft (a `useTransition`
+  without a catch) shows no error page, keeps the typed price, shows a toast with no close button,
+  does not reload within 3 s, and after Refresh the draft was never saved; a missing script
+  refreshes through the guest error page (18 of 18 with `--repeat-each=3`). `playwright.config.ts`
   runs the app with `SUPABASE_FORWARD_CLIENT_IP=true`, so every e2e run goes through the visitor-IP
   code (the local Auth ignores what it names). After the six self-hosting commits 113 passed
   (desktop 72, mobile 32, smoke 9); after the reload commits 120 passed (desktop 73, mobile 47) and
-  21 passed with 3 skipped (the perf specs, without `PERF=1`); none failed.
+  21 passed with 3 skipped (the perf specs, without `PERF=1`); none failed. After the review fixes
+  `customer-ordering`, `customer-states`, `offline-queue`, `staff-board`, `staff-hindi`,
+  `live-orders`, `admin-settings`, `menu-import`, `billing` and `auth` passed on desktop and mobile:
+  60 (desktop 39, mobile 21), none skipped.
 - **Smoke (`tests/smoke`):** `/api/live` answers 200 with `no-store`, `status: ok` and, when
   `EXPECTED_VERSION` is set, the commit.
 - **Bundles (`pnpm budget`, gzipped):** all 82 routes within budget. Guest pages grew by 4.3 to
@@ -4827,7 +5004,9 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   328.6): above the 2 to 3 KiB planned, with no ceiling moved. Exporting `ErrorFallback` from the
   notice, which every page loads, saved about 2.5 KiB: Turbopack had copied the card into each error
   boundary's chunk. With `PERF=1` on mobile the menu's LCP was 1212 ms with 245 KiB of compressed
-  JS, and the website's 976 to 1,444 ms with CLS 0.000 to 0.086.
+  JS, and the website's 976 to 1,444 ms with CLS 0.000 to 0.086. After the review fixes all 82
+  routes are still within budget (`/t/[qrToken]` 248 of 275, `/cart` 245, `/orders` 246; `/login`
+  239 of 325; `/staff` 391 of 565; the menu import review, `/admin/menu/import/[importId]`, 382).
 - **By hand, the self-hosting fixes** (local Supabase). On the old build `curl` showed both faults
   (VPS-2, VPS-3); with the fixes `seo` and `auth` passed on desktop and mobile (40). The internal
   address (VPS-20): the app run with `SUPABASE_INTERNAL_URL` pointing at a logging pass-through to
@@ -4850,14 +5029,15 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   order (1 to 1) and the retry placed one (2). Save dish in the admin dialog showed "A new version
   is ready … Refresh", left the dialog and its text alone and saved nothing. A link on a second old
   admin tab reloaded by itself. The server logged one "Failed to find Server Action" warning per
-  stale tap (3).
+  stale tap (3). Not repeated after the review fixes: the e2e cases for the kept-back answer and
+  the order key fake the 409 with `x-nextjs-action-not-found`, not a second build.
 - **By hand, the image** (VPS-13 to VPS-22, Docker Desktop on Windows):
   - `docker build --check .` prints no warnings; without arguments the build fails at the arguments
     step with "error: build argument NEXT_PUBLIC_APP_URL is required". `pnpm docker:build`: a
     4.27 MB context (later ones 45 kB), 33 to 48 s with warm caches, no supabase CLI download or
     ignored-scripts warning, `pnpm --version` 12.4.1, the sharp step passing as `node`. The image is
-    452 MB (451,510,295 bytes, 13 layers; the standalone layer 73.2 MB, the static files 9.5 MB
-    twice).
+    452 MB (451,536,391 bytes in 14 layers, one of them the drain preload; the standalone layer
+    73.2 MB, the static files 9.5 MB twice).
   - Healthy about 3.6 s after `docker run`; `pnpm docker:check` 10 of 10 (healthy; `/` 200;
     `/api/live` names the revision label and `/api/health` reaches the database; `data-dpl-id`
     equals the deployment label; `noindex` absent for `Host: menumesh.in` and present for localhost;
@@ -4885,7 +5065,14 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     `--memory 1536m --memory-swap 1792m --cpus 1.5`, `--max-old-space-size=1000`): idle 86.8 MiB;
     40 s of 24 parallel workers (28,812 requests, image resizes at many widths included, 913 MB
     served, no failures) peaked at 468.5 MiB and settled at 349 MiB, with no OOM kill or restart and
-    a V8 heap limit of 1096 MB; the image cache held 3.0 MB afterwards. Stops are in VPS-16.
+    a V8 heap limit of 1096 MiB; the image cache held 3.0 MB afterwards. Stops are in VPS-16.
+  - After the review fixes, the image rebuilt at `77e6ec6` (32 s with warm caches, its revision
+    label that commit): `docker build --check .` clean with the pinned frontend; `pnpm docker:check`
+    10 of 10 and, with `--internal-url`, 12 of 12; `pnpm smoke` against it 10 passed. The stops and
+    the `after()` work are in VPS-16 and VPS-22, the static volume cases in VPS-21, the heap limits
+    in VPS-6. A `DEPLOYMENT_ID` of `v1.2` or `a b` stops at the guard in 0.3 s (exit 1) and
+    `ok-ID_9` builds (C3). The preload test was seen to fail with the sweep removed, with the
+    request listener removed and with the sweep at 60 s.
   - None of `SUPABASE_SECRET_KEY`, `CUSTOMER_COOKIE_SECRET`, `RAZORPAY_KEY_SECRET`,
     `RAZORPAY_WEBHOOK_SECRET` or `MENU_IMPORT_API_KEY` from `.env.local` appears in a file under
     `/app`, `/opt` or `/usr/local/bin`, in `docker history` or in `docker inspect`; as uid 1000,
@@ -4893,3 +5080,94 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     Without any volume the container starts and serves a script from its 160 static files. Not run:
     the optional Sentry build with a fake token (it contacts sentry.io); the first real token build
     belongs to the deploy stop.
+
+### Review fixes (VPS Stop A)
+
+A review of the Stop A branch gave 14 findings: A on the self-hosting changes, B on the reload
+prompt, C on the image and its documents. Thirteen are fixed and one, A2, is deferred. The entries
+above that a fix changed were corrected in place (the Versions table, P3-10, SA-93, VPS-5 to VPS-9,
+VPS-12 to VPS-16, VPS-21, VPS-22, VPS-24 and Tests).
+
+- **A1 · A photo cut off while it downloads is retryable (VPS-5):** storage-js returns a failure
+  that lands before the response headers, but throws one that lands after them: the 15 s timer, or
+  a reset while the body downloads. `readMenuPage` did not catch the throw, so the page was never
+  recorded and stayed claimed for its 3-minute lease: Try again skipped it and Finish said "Some
+  pages have not been read yet." It now catches the throw and records the page as failed with the
+  retryable "reader is not answering" text, as for a photo that timed out; a missing photo still
+  says "did not upload".
+- **A2 · Not fixed, deferred: two large exports at once (VPS-6, VPS-22):** the size guard weighs one
+  build on its own against half the heap, and builds for different restaurants can run at the same
+  time in the one process (`start_export` locks per restaurant, and the build runs in `after()`).
+  Two large exports that each pass could together fill the heap: Node would run out of memory, the
+  container restart, every request in flight fail, and both exports stay "building" until SQL
+  counts them failed after 15 minutes. No restaurant is near the limit (VPS-6, accepted), so it
+  cannot happen with today's data, and the restartable-jobs stop runs builds one at a time
+  (VPS-22), which closes it. If it is wanted sooner: a module-level count of the bytes of the
+  builds in flight, and a refusal for a build that would pass the limit with them.
+- **B1 · A stale tap on a page that offers Refresh reloaded it (VPS-8, VPS-9):** an action run in
+  `useTransition` or `useActionState` without a catch rethrew the older build's error into
+  `app/error.tsx` (there is no error page under `/admin`), whose boundary rule refreshed the tab
+  300 ms later, just after the toast said to copy what was typed. A 20-minute draft in the menu
+  import review, the photos picked for an import, the create forms of tables and tags and the
+  login's username were lost. The observer now keeps the answer back on those pages (`handlingFor`:
+  pass, hold or keep): the action stays pending behind a toast with no close button, and nothing
+  reloads by itself. VPS-8 has the rules and what it costs, which includes that links wait too
+  behind a caller in a transition.
+- **B2 · The refresh by itself could turn a retry into a second order (VPS-8, P3-10):** the page
+  that reloads made a new idempotency key, so after a reply lost in the deploy, a stale retry and
+  the refresh, the second Place order was a new order, though the toast said to place it again. The
+  key is now stored with the order it was sent with, reused for the same lines and note within 10
+  minutes and forgotten when the server answers.
+- **B3 · The worker panel's language switch showed a connection error next to the notice (VPS-8):**
+  commit 40f1824 missed it. On a live screen that cannot refresh (within 2 minutes of a refresh, or
+  with storage blocked) the stale answer passes through, and the account menu's catch added
+  "Couldn’t reach the server." to the new-version toast. It now returns quietly for an older
+  build's error, like the other guarded callers. The snooze menu in `/super` and the autopay
+  Subscribe in `/admin` needed no change: after B1 the answer never reaches them.
+- **B4 · A Hindi worker's error page turned English (VPS-12):** when the staff layout itself failed
+  in the browser, the panel's cleanup reset `<html lang>` to English as the error page replaced it,
+  and the error page follows `<html lang>`. The cleanup now resets only when the URL has left
+  `/staff`.
+- **C1 · A stop that met a busy connection ended in the kill (VPS-16, VPS-22):** Node's
+  `server.close()` drops the idle keep-alive connections once, a connection that was busy then
+  idled for 130 s, and Caddy keeps its pooled ones as long, so the server never closed, Next.js
+  never reached its `after()` wait and Docker killed node at 25 s (exit 137). The old figures came
+  from curl, which closes its socket. A preload loaded by `CMD` ends each answer's connection once
+  the server is closing and sweeps the idle ones every 250 ms. With a pooled client an idle stop
+  takes 0.57 s and a stop with a 9 s request in flight 7.3 s, both exit 143; that second one took
+  25.6 s and exit 137 before. The deploy must keep the image's `CMD` (VPS-24, RUNBOOK).
+- **C2 · The image started without its own static files (VPS-21):** when the copy into the static
+  volume failed (a volume uid 1000 cannot write, a read-only mount, a full disk), the start script
+  warned and started: the container turned healthy and answered 404 for every script of its build,
+  and the warning blamed the wrong pages. It now exits 1 unless the folder already holds every file
+  of the build unchanged. RUNBOOK: a volume created or seeded before the first start must be owned
+  by uid 1000.
+- **C3 · The deployment ID guard allowed dots (VPS-13):** `next build` refuses them ("contains
+  invalid characters") after the guard and the RUNBOOK had said they were fine. The guard, its
+  message and the RUNBOOK now allow letters, digits, dashes and underscores, and a test pins
+  Next.js's own rule.
+- **C4 · Three RUNBOOK sentences were wrong:** the runtime variables pointed at the build-argument
+  table (they are the server-only variables of Environment variables (Vercel), as `env.server.ts`
+  lists them); `SENTRY_ORG` and `SENTRY_PROJECT` were given as build-only, but System health reads
+  them at run time with `SENTRY_READ_TOKEN`, so a deploy that followed the table showed the Sentry
+  card as "Not set up"; and "every open page refreshes on its next tap" contradicted VPS-8.
+- **C5 · The Dockerfile frontend floated (VPS-14):** `# syntax=docker/dockerfile:1` pulled the
+  newest 1.x on every build, outside the rule that base images are pinned and 14 days old. It is
+  pinned to 1.27.1 by digest, bumped by hand with the Node digest, and the pin test reads it. Open:
+  whether the server team's rule covers build frontends.
+- **C6 · The reason for `--ignore-scripts` was wrong (VPS-15):** no locked package needs an install
+  script (the supabase CLI's binary arrives in optional packages), so the flag is defence in depth,
+  not a way to skip a download. The Dockerfile comment and VPS-15 now say so.
+- **C7 · Two image tests were weaker than their names (Tests):** the Sentry-token check missed a
+  token on a continuation line of an `ENV` and a second name on an `ARG` line, and the cache-mount
+  check missed a mount that lists `target` before `type`. Docker's own check of those names is
+  skipped (line 2 of the Dockerfile), so these tests are the only guard. They now join continuation
+  lines, refuse the token as any variable of an `ARG` or `ENV`, and refuse any cache mount on
+  `.next`, and each is run against bad forms.
+- **C8 · The `web-staging` export limit was too high (VPS-6, RUNBOOK):** the heap limits came from
+  the host (a limit 190 MiB above the flag). In the memory-limited container Node's young
+  generation is smaller, so the limits are 548 MiB for `web-staging` and 1096 MiB for `web`:
+  `web-staging` allows 274 MiB, about 20,200 bills (it said 346 MiB and 25,500), and `web` keeps the
+  512 MiB cap, about 37,800 bills. The code reads the live limit, so it always enforced the right
+  figure; only the documented numbers and a comment in `export.ts` were wrong. If staging should
+  keep more, `--max-semi-space-size` in its `NODE_OPTIONS` is an untested way.
