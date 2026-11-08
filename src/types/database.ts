@@ -1757,30 +1757,42 @@ export type Database = {
       }
       restaurant_exports: {
         Row: {
+          attempts: number
+          claim_id: string | null
           created_at: string
           expires_at: string | null
           finished_at: string | null
           id: string
+          last_error: string | null
+          lease_until: string | null
           requested_by: string | null
           restaurant_id: string
           size_bytes: number | null
           status: string
         }
         Insert: {
+          attempts?: number
+          claim_id?: string | null
           created_at?: string
           expires_at?: string | null
           finished_at?: string | null
           id?: string
+          last_error?: string | null
+          lease_until?: string | null
           requested_by?: string | null
           restaurant_id: string
           size_bytes?: number | null
           status?: string
         }
         Update: {
+          attempts?: number
+          claim_id?: string | null
           created_at?: string
           expires_at?: string | null
           finished_at?: string | null
           id?: string
+          last_error?: string | null
+          lease_until?: string | null
           requested_by?: string | null
           restaurant_id?: string
           size_bytes?: number | null
@@ -3758,9 +3770,33 @@ export type Database = {
           warning: string
         }[]
       }
+      restaurant_export_claim: {
+        Args: { p_lease_seconds?: number }
+        Returns: Json
+      }
+      restaurant_export_complete: {
+        Args: { p_claim_id: string; p_export_id: string; p_size_bytes: number }
+        Returns: boolean
+      }
+      restaurant_export_fail: {
+        Args: { p_claim_id: string; p_error: string; p_export_id: string }
+        Returns: boolean
+      }
       restaurant_export_finish: {
         Args: { p_export_id: string; p_size_bytes?: number }
         Returns: undefined
+      }
+      restaurant_export_heartbeat: {
+        Args: {
+          p_claim_id: string
+          p_export_id: string
+          p_lease_seconds?: number
+        }
+        Returns: boolean
+      }
+      restaurant_export_release: {
+        Args: { p_claim_id: string; p_export_id: string }
+        Returns: boolean
       }
       restaurant_exports_to_remove: {
         Args: { p_limit?: number }
