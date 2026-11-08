@@ -5698,9 +5698,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     names), the next announcement save or the daily run (emails). An export asked for while another
     instance holds the one build is built by its own request's run, which claims again every 5 s
     (VPS-26). An export shows as failed on its card 15 minutes after its request. That is never
-    worse than before. Old deployments (Skew
-    Protection, 7 days) keep working: the functions they call keep their signatures and leave the
-    new rows alone (`restaurant_export_finish` finishes only a row no claim has taken,
+    worse than before: two places where it was, review findings R1 (an email run that ended at the
+    first Resend trouble) and R3 (an export whose request lost its run), are fixed. Old deployments
+    (Skew Protection, 7 days) keep working: the functions they call keep their signatures and leave
+    the new rows alone (`restaurant_export_finish` finishes only a row no claim has taken,
     `menu_hindi_names_claim` passes over leased names). The next release's migration drops them,
     with `menu_set_hindi_names` and `announcement_emails_due`, which no code calls any more (the
     pgTAP files 440, 660 and 680 use them and change with it).
@@ -5744,11 +5745,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     told busy waits 5 s (`EXPORT_BUSY_WAIT_MS`; a stop ends the wait at once) and claims again until
     it stops starting work. It used to end there, so on Vercel, which has no minute job, an export
     asked for while another instance built near the end of its run's budget waited for some other
-    request, and its card said it had failed after 15 minutes (review finding R3). It picks the row
-    with
-    `select … for update skip locked` and then updates it by id: one `update` with a subquery could
-    set a row back to `building` that a late `complete` had just made `ready`, which the
-    ready-needs-expiry check refuses. The claims are serialised by a transaction advisory lock
+    request, and its card said it had failed after 15 minutes (review finding R3). The claim picks
+    the row with `select … for update skip locked` and then updates it by id: one `update` with a
+    subquery could set a row back to `building` that a late `complete` had just made `ready`, which
+    the ready-needs-expiry check refuses. The claims are serialised by a transaction advisory lock
     inside the one call, which is fine through PostgREST (no session locks), and `start_export`
     takes the same lock after the restaurant's, so it never changes rows while a claim does.
   - **The fence.** Only the claim that holds a row can finish it. `restaurant_export_heartbeat`
@@ -6105,12 +6105,11 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     that throws; while another server holds the build, a claim every 5 s and the build once the slot
     is free, with no listener left on the stop's signal, the run ended at once by a stop during the
     wait, and no claim past the budget; the heartbeat every 15 s and once before the upload; a claim
-    that is gone uploads
-    nothing and calls neither `complete` nor `fail`; a stop between files releases it, and one
-    during the upload lets the upload finish and completes; an error or a failed upload fails the
-    export; a table error stops the other readers and `buildExport` ends only once they have, with
-    no read after it; no timer is left on any path; `startExportJobs` runs one queue at a time;
-    `parseExportClaim`, busy included.
+    that is gone uploads nothing and calls neither `complete` nor `fail`; a stop between files
+    releases it, and one during the upload lets the upload finish and completes; an error or a
+    failed upload fails the export; a table error stops the other readers and `buildExport` ends
+    only once they have, with no read after it; no timer is left on any path; `startExportJobs` runs
+    one queue at a time; `parseExportClaim`, busy included.
   - `menu-hindi-names` (10 to 39): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short

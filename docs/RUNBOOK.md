@@ -380,11 +380,14 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   the minute job.
 - **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a
   minute, so look at why it stopped. The `[announcements]` lines in the logs say: Resend unavailable
-  (it tries again each minute), a pair refused, or "three emails refused in a row, so none goes for
-  30 minutes: check EMAIL_FROM". A refused pair is in `announcement_email_failures` (with Resend's
-  answer and `tries`) and is left alone for 20 hours, and `email_log` (`/super` → Health) shows
-  every send. After fixing `EMAIL_FROM` or the sending domain, clear the refusals with
-  `delete from public.announcement_email_failures;` and run the minute job.
+  (the minute job's run ends and the next minute tries again; a save's or the daily run goes on past
+  one such answer and ends at the third since an email last went, and where no minute job runs, as
+  on Vercel, the rest waits for the next save or the 03:00 run), a pair refused, or "three emails
+  refused in a row, so none goes for 30 minutes: check EMAIL_FROM". A refused pair is in
+  `announcement_email_failures` (with Resend's answer and `tries`) and is left alone for 20 hours,
+  and `email_log` (`/super` → Health) shows every send. After fixing `EMAIL_FROM` or the sending
+  domain, clear the refusals with `delete from public.announcement_email_failures;` and run the
+  minute job.
 - **Run the minute job by hand** (VPS-29), for exports, Hindi names or announcement emails that
   wait: `curl -H "Authorization: Bearer <CRON_SECRET>" "https://<domain>/api/cron/jobs"`. It answers
   at once, `{"ok":true,"started":[…]}`, with the kinds it started (an empty list means nothing
