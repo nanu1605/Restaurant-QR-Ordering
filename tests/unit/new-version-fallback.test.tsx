@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+
 import { fireEvent, render, screen } from '@testing-library/react';
 import { UnrecognizedActionError } from 'next/dist/client/components/unrecognized-action-error';
 import { Component, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AppError from '@/app/error';
+import { HtmlLang } from '@/components/shared/html-lang';
 import { ErrorFallback } from '@/features/new-version/components/error-fallback';
 import { newVersionFound, refreshNow, useNewVersionNotice } from '@/features/new-version/notice';
 import { NEW_VERSION_STRINGS } from '@/features/new-version/strings';
@@ -186,6 +189,38 @@ describe('the worker panel’s language', () => {
       screen.getByRole('heading', { level: 1, name: NEW_VERSION_STRINGS.hi.error.title }),
     ).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('hi');
+  });
+
+  // Back from the error page restores /admin softly: nothing unmounts at /staff after the error
+  // page took the panel's place, so the admin panel puts English back itself (VPS-12).
+  it('is put back to English by the admin panel after Back from that error page', () => {
+    const panel = () => (
+      <RootBoundary>
+        <StaffLangProvider lang="hi">
+          <Layout />
+        </StaffLangProvider>
+      </RootBoundary>
+    );
+    const { rerender } = render(panel());
+    broken = true;
+    rerender(panel());
+    expect(
+      screen.getByRole('heading', { level: 1, name: NEW_VERSION_STRINGS.hi.error.title }),
+    ).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('hi');
+
+    // Next.js resets the error boundary on the new path, and the admin layout mounts.
+    at('/admin');
+    rerender(<HtmlLang lang="en" />);
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it.each([
+    'src/app/admin/(panel)/layout.tsx',
+    'src/app/admin/(print)/layout.tsx',
+    'src/app/super/(panel)/layout.tsx',
+  ])('is mounted in English by %s', (layout) => {
+    expect(readFileSync(layout, 'utf8')).toContain('<HtmlLang lang="en" />');
   });
 
   it.each([

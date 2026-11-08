@@ -1,3 +1,4 @@
+import { HtmlLang } from '@/components/shared/html-lang';
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { AlertsBell } from '@/features/platform/components/alerts-bell';
@@ -15,6 +16,7 @@ export default async function SuperPanelLayout({ children }: LayoutProps<'/super
 
   return (
     <div className="flex flex-1 flex-col">
+      <HtmlLang lang="en" />
       <PanelAnalytics userId={user.id} role="platform_admin" restaurantId={null} />
       <PanelHeader
         panel="Platform admin"
