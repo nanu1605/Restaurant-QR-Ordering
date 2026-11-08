@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { UnrecognizedActionError } from 'next/dist/client/components/unrecognized-action-error';
+import { Component, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import AppError from '@/app/error';
 import { ErrorFallback } from '@/features/new-version/components/error-fallback';
 import { newVersionFound, refreshNow, useNewVersionNotice } from '@/features/new-version/notice';
+import { NEW_VERSION_STRINGS } from '@/features/new-version/strings';
+import { StaffLangProvider } from '@/features/orders/staff-lang';
 
-vi.mock('@/features/new-version/notice', () => ({
+// Only the notice's state is faked: usePageLang stays, and reads <html lang>.
+vi.mock('@/features/new-version/notice', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/new-version/notice')>()),
   useNewVersionNotice: vi.fn(),
   newVersionFound: vi.fn(),
   refreshNow: vi.fn(),
@@ -132,5 +138,93 @@ describe('an error page', () => {
     expect(screen.queryByRole('heading')).toBeNull();
     expect(screen.queryByRole('main')).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+  });
+});
+
+/** What app/error.tsx is for the root layout: an error boundary around the whole page. */
+class RootBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    const { error } = this.state;
+    return error ? <AppError error={error} reset={vi.fn()} retry={vi.fn()} /> : this.props.children;
+  }
+}
+
+describe('the worker panel’s language', () => {
+  const at = (path: string) => history.replaceState(null, '', path);
+  let broken = false;
+  function Layout() {
+    if (broken) throw new Error('A render error in the layout, outside the panel’s own boundary');
+    return <p>The panel</p>;
+  }
+
+  beforeEach(() => {
+    broken = false;
+    document.documentElement.lang = 'en';
+    at('/staff');
+    // React logs an error a boundary catches.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('keeps its language on the error page that replaces the panel (VPS-12)', () => {
+    const panel = () => (
+      <RootBoundary>
+        <StaffLangProvider lang="hi">
+          <Layout />
+        </StaffLangProvider>
+      </RootBoundary>
+    );
+    const { rerender } = render(panel());
+    expect(document.documentElement.lang).toBe('hi');
+
+    broken = true;
+    rerender(panel());
+    expect(
+      screen.getByRole('heading', { level: 1, name: NEW_VERSION_STRINGS.hi.error.title }),
+    ).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('hi');
+  });
+
+  it.each([
+    ['/admin', 'en'],
+    ['/admin/live', 'en'],
+    ['/login', 'en'],
+    ['/staffroom', 'en'],
+    ['/staff', 'hi'],
+    ['/staff/kitchen', 'hi'],
+  ])('unmounting at %s leaves <html lang> "%s"', (path, lang) => {
+    const { unmount } = render(
+      <StaffLangProvider lang="hi">
+        <p>The panel</p>
+      </StaffLangProvider>,
+    );
+    expect(document.documentElement.lang).toBe('hi');
+    // Next.js has moved the URL before the panel's effects are cleaned up.
+    at(path);
+    unmount();
+    expect(document.documentElement.lang).toBe(lang);
+  });
+
+  it('follows the login’s language when it changes inside the panel', () => {
+    const { rerender } = render(
+      <StaffLangProvider lang="hi">
+        <p>The panel</p>
+      </StaffLangProvider>,
+    );
+    rerender(
+      <StaffLangProvider lang="en">
+        <p>The panel</p>
+      </StaffLangProvider>,
+    );
+    expect(document.documentElement.lang).toBe('en');
+    rerender(
+      <StaffLangProvider lang="hi">
+        <p>The panel</p>
+      </StaffLangProvider>,
+    );
+    expect(document.documentElement.lang).toBe('hi');
   });
 });

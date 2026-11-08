@@ -18,9 +18,11 @@ const StaffLangContext = createContext<Lang | null>(null);
 export function StaffLangProvider({ lang, children }: { lang: Lang; children: ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = lang;
-    // The admin panel, the only one reached from here in the browser, is English.
     return () => {
-      document.documentElement.lang = 'en';
+      // Leaving for the admin panel (English, the only one reached from here in the browser):
+      // Next.js has moved the URL by then. An error page replacing the panel keeps its language
+      // (docs/DECISIONS.md VPS-12).
+      if (!/^\/staff(?:\/|$)/.test(location.pathname)) document.documentElement.lang = 'en';
     };
   }, [lang]);
   return (
