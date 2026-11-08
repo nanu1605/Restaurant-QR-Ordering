@@ -37,6 +37,19 @@ function heredoc(path: string) {
   };
 }
 
+/** Instructions with their backslash continuations joined: a rule is about a whole instruction. */
+const joined = (text: string) => text.replace(/\\[ \t]*\r?\n\s*/g, ' ');
+
+/** Whether an ARG or ENV instruction names the Sentry token, as any one of its variables. */
+const hasSentryTokenVariable = (text: string) =>
+  /^\s*(ARG|ENV)\b[^\n]*\bSENTRY_AUTH_TOKEN\b/im.test(joined(text));
+
+/** Whether a RUN mounts a cache on .next, whatever order the mount lists its attributes in. */
+const hasNextCacheMount = (text: string) =>
+  (joined(text).match(/--mount=\S+/g) ?? []).some(
+    (mount) => /\btype=cache\b/.test(mount) && /\.next\b/.test(mount),
+  );
+
 /** The only files and folders the build may see (the allowlist in .dockerignore). */
 const ALLOWED = [
   'src',
@@ -96,7 +109,7 @@ describe('the web image build', () => {
   });
 
   it('takes the Sentry token only as a build secret, never as an argument or variable', () => {
-    expect(instructions).not.toMatch(/^\s*(ARG|ENV)\s+SENTRY_AUTH_TOKEN/m);
+    expect(hasSentryTokenVariable(instructions)).toBe(false);
     expect(instructions).toMatch(/--mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN/);
   });
 
@@ -104,7 +117,35 @@ describe('the web image build', () => {
     // A key set by hand, or .next/cache kept between builds (its .rscinfo holds the key for 14
     // days), would keep the ids the same, and a page from an older build would run new code.
     expect(instructions).not.toMatch(/NEXT_SERVER_ACTIONS_ENCRYPTION_KEY/);
-    expect(instructions).not.toMatch(/type=cache[^\n]*\.next/);
+    expect(hasNextCacheMount(instructions)).toBe(false);
+  });
+
+  it('catches the ways the Sentry token or a .next cache could get into the image', () => {
+    // Docker's own check of ARG and ENV names is skipped (the second line of the Dockerfile), so
+    // these two rules are the only guard, and each has to see the forms that are easy to write by
+    // accident: one name among several, a continuation line, a mount that lists its type last.
+    for (const bad of [
+      'ARG SENTRY_AUTH_TOKEN',
+      'ARG SENTRY_ORG= SENTRY_AUTH_TOKEN',
+      'ENV NODE_ENV=production \\\n    SENTRY_AUTH_TOKEN=secret',
+    ]) {
+      expect(hasSentryTokenVariable(bad), bad).toBe(true);
+    }
+    expect(
+      hasSentryTokenVariable(
+        'RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \\\n    next build',
+      ),
+    ).toBe(false);
+    for (const bad of [
+      'RUN --mount=type=cache,target=/app/.next/cache next build',
+      'RUN --mount=target=/app/.next/cache,type=cache next build',
+      'RUN --mount=id=next,sharing=locked,dst=.next,type=cache next build',
+    ]) {
+      expect(hasNextCacheMount(bad), bad).toBe(true);
+    }
+    expect(
+      hasNextCacheMount('RUN --mount=type=cache,id=menumesh-pnpm,target=/var/cache/pnpm pnpm i'),
+    ).toBe(false);
   });
 
   it('pins its base images by digest, and pnpm to the version packageManager names', () => {
