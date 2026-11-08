@@ -108,6 +108,53 @@ describe('runExclusive', () => {
     await expect(runExclusive('hindi_names', 60_000, async () => 'ok')).resolves.toBe('ok');
   });
 
+  it('runs once more for a caller it turned away when the first run throws, then throws', async () => {
+    const first = deferred();
+    const work = vi
+      .fn(async () => 'more')
+      .mockImplementationOnce(async () => {
+        await first.promise;
+        throw new Error('database down');
+      });
+    const turnedAway = vi.fn(async () => 'never');
+
+    const running = runExclusive('data_exports', 60_000, work);
+    await expect(runExclusive('data_exports', 60_000, turnedAway)).resolves.toEqual({
+      skipped: 'busy',
+    });
+    first.resolve();
+
+    // On Vercel no minute job comes: the turned-away request's export still gets its run.
+    await expect(running).rejects.toThrow('database down');
+    expect(work).toHaveBeenCalledTimes(2);
+    expect(turnedAway).not.toHaveBeenCalled();
+    await expect(runExclusive('data_exports', 60_000, async () => 'free')).resolves.toBe('free');
+  });
+
+  it('logs the extra run’s error and throws the first’s when both throw', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const first = deferred();
+    const work = vi
+      .fn(async (): Promise<string> => {
+        throw new Error('still down');
+      })
+      .mockImplementationOnce(async () => {
+        await first.promise;
+        throw new Error('database down');
+      });
+
+    const running = runExclusive('data_exports', 60_000, work);
+    await runExclusive('data_exports', 60_000, work);
+    first.resolve();
+
+    await expect(running).rejects.toThrow('database down');
+    expect(work).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledWith(
+      '[jobs] data_exports failed',
+      expect.objectContaining({ message: 'still down' }),
+    );
+  });
+
   it('logs a second run that throws, and keeps the first run’s result', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const first = deferred();

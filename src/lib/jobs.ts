@@ -58,7 +58,8 @@ export type JobSkipped = { skipped: 'busy' | 'stopping' };
  * - 'skip', the default, returns at once without touching the database, and the run going on
  *   goes once more when it ends, so what this caller asked for still happens;
  * - 'wait' waits for it to end, then runs.
- * Nothing starts once the server is stopping. Returns the first run's result.
+ * Nothing starts once the server is stopping. Returns the first run's result, or throws its error,
+ * once the run asked for meanwhile has gone too.
  */
 export async function runExclusive<T>(
   kind: JobKind,
@@ -82,7 +83,14 @@ export async function runExclusive<T>(
   current.running = running;
   current.again = false;
   try {
-    const result = await work(jobRun(budgetMs));
+    // A caller turned away meanwhile has no run of its own (on Vercel no minute job comes either),
+    // so the run once more goes even when this one throws.
+    let first: { result: T } | { error: unknown };
+    try {
+      first = { result: await work(jobRun(budgetMs)) };
+    } catch (error) {
+      first = { error };
+    }
     while (current.again && !isDraining()) {
       current.again = false;
       try {
@@ -92,7 +100,8 @@ export async function runExclusive<T>(
         break;
       }
     }
-    return result;
+    if ('error' in first) throw first.error;
+    return first.result;
   } finally {
     if (current.running === running) current.running = null;
     release();
