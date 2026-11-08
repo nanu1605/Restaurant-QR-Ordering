@@ -166,8 +166,11 @@ RUN mkdir -p .next/cache && chown node:node .next/cache
 # Pages from earlier builds ask for their own scripts and styles. The deploy mounts a named volume
 # on /app/.next/static, and each start adds this build's files from the copy kept above, which no
 # volume hides, then drops files that no build has added again for 14 days (docs/DECISIONS.md
-# VPS-21). Without a volume it only refreshes the image's own folder. The server then replaces
-# this script, so node is the process Docker sends SIGTERM to.
+# VPS-21). Without a volume it only refreshes the image's own folder. When the files cannot be
+# added (a volume that uid 1000 cannot write, or a full disk, which leaves cut-short files) it
+# starts only if the folder already holds every one of them unchanged: the volume hides the
+# image's own copy, so a server without this build's scripts would turn healthy and answer 404 to
+# every page. The server then replaces this script, so node is the process Docker sends SIGTERM to.
 COPY --chmod=755 <<'EOF' /usr/local/bin/menumesh-web-start
 #!/bin/sh
 set -u
@@ -176,7 +179,12 @@ if cp -Rf /opt/menumesh/static/. "$archive"/; then
   find "$archive" -type f -mmin +20160 -delete
   find "$archive" -mindepth 1 -type d -empty -delete
 else
-  echo "warning: this build's static files could not be added to $archive; pages from earlier builds may miss theirs" >&2
+  missing="$(cd /opt/menumesh/static && find . -type f | while IFS= read -r file; do cmp -s "$file" "$archive/$file" || echo "$file"; done)"
+  if [ -n "$missing" ]; then
+    echo "error: $(echo "$missing" | wc -l) of this build's static files are missing or cut short in $archive and could not be added: the volume must be writable by uid 1000 and the disk not full" >&2
+    exit 1
+  fi
+  echo "warning: $archive could not be updated, but it already holds this build's static files" >&2
 fi
 exec "$@"
 EOF

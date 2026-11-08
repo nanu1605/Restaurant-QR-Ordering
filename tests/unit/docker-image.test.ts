@@ -191,6 +191,22 @@ describe('the web image at run time', () => {
     expect(instructions).toMatch(/^ENTRYPOINT \["\/usr\/local\/bin\/menumesh-web-start"\]$/m);
   });
 
+  it('exits instead of starting without this build’s static files when it cannot add them (VPS-21)', () => {
+    // The volume hides the image's own copy, so a server that starts without them turns healthy
+    // and answers 404 for every script and style of the build. A failed copy is fine only when
+    // the folder already holds every file as it is here (a read-only volume that has them, or no
+    // volume at all), and a full disk leaves files that exist but are cut short, so they are
+    // compared, not just looked for.
+    const script = heredoc('/usr/local/bin/menumesh-web-start').body;
+    const failed = script.slice(script.indexOf('else'));
+    expect(failed).toContain('cmp -s "$file" "$archive/$file" || echo "$file"');
+    const refused = /if \[ -n "\$missing" \]; then\n([\s\S]*?)\n {2}fi/.exec(failed)?.[1] ?? '';
+    expect(refused).toContain('writable by uid 1000');
+    expect(refused).toMatch(/^\s*exit 1$/m);
+    // After that comes the server, never in its place.
+    expect(script.indexOf('exit 1')).toBeLessThan(script.lastIndexOf('exec "$@"'));
+  });
+
   it('loads a root-owned preload on CMD, so a stop does not wait on idle connections (VPS-22)', () => {
     // Root-owned: no --chown, so the app can read it but not change it. On CMD and not in
     // NODE_OPTIONS, because the deploy sets NODE_OPTIONS and an ENV here would be lost.
