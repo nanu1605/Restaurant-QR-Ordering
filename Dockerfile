@@ -232,7 +232,7 @@ subscribe('http.server.request.start', ({ response, server }) => {
   }
 });
 
-// A socket handed over with an upgrade has left Node's own list of connections.
+// A socket handed over with an upgrade has left the connections that closeIdleConnections() walks.
 const emit = http.Server.prototype.emit;
 http.Server.prototype.emit = function (event, req, socket) {
   if (event !== 'upgrade') return emit.apply(this, arguments);

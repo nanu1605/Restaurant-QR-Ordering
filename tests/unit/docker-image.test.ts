@@ -347,8 +347,9 @@ server.listen(0, '127.0.0.1', async () => {
   );
 
   // An upgrade request for a path Next.js has no route for is left unanswered, in case a custom
-  // WebSocket server listens, and the socket stays open outside the server's own list of
-  // connections. A second upgrade arrives after the stop began, as one on a busy connection can.
+  // WebSocket server listens. The socket stays open, and close() cannot finish while it does, but
+  // the sweep no longer sees it. A second upgrade arrives after the stop began, as one on a busy
+  // connection can.
   writeFileSync(
     join(dir, 'upgrade.cjs'),
     `
@@ -428,8 +429,8 @@ server.listen(0, '127.0.0.1', async () => {
   });
 
   it('does not wait on an upgrade that nothing answers', () => {
-    // Without it the socket, which the server no longer counts among its connections, holds the
-    // close: here for the 1.5 s the harness waits, in the image for as long as the client does.
+    // Without it the socket, which the sweep cannot see, holds the close: here for the 1.5 s the
+    // harness waits, in the image for as long as the client does.
     expect(upgrade.without.closedAfter).toBeNull();
     expect(upgrade.drained.closedAfter).toBeLessThan(1000);
   });
