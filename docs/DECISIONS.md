@@ -4422,9 +4422,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
   skipped for lack of time is never recorded as the page's provider, and a photo that does not
   arrive (the timer, a reset while it downloads, Storage unreachable or answering an error) is
   recorded as failed with the "reader is not answering" text, after which the action answers "The
-  photo of this page could not be fetched. Try again. If you leave this screen instead, the import
-  finishes without this page.": the reading stops, Try again reads the page again, and the card,
-  which says while reading that coming back carries on, no longer says so once stopped (R3-1).
+  photo of this page could not be fetched. Try again." and what leaving does. Opening the import
+  again skips the page and finishes the reading, so it says "If you leave instead, the import goes
+  on without this page when you open it again.", or, when no other page can still give dishes, "If
+  you leave instead, the import fails when you open it again, and you will need to start a new
+  one." The reading stops, Try again reads the page again, and the card, which says while reading
+  that coming back carries on, no longer says so once stopped (R3-1).
   Only a photo that Storage says is not there keeps "did not upload" (reviews A1, R2-1 and R2-2).
   The 3-minute claim and `maxDuration = 180` stay (Vercel still needs the limit for the Hindi names
   the commit fills afterwards), and the progress copy says "up to a minute and a half".
@@ -4637,11 +4640,12 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
       still submits its form and a `<label>` that points at a checkbox or radio still toggles it;
       each queues behind the kept action and is never sent, and an optimistic control shows it.
       None of today's optimistic controls has a label. Opening the alerts bell clears its count on
-      the page while marking the alerts seen waits behind the kept action, so the count comes back
-      after Refresh. If an unrelated render error then puts the card of
-      `app/error.tsx` in place of the page, its Try again and Refresh, which are outside the
-      toaster, are frozen too, and the toast's Refresh is the way on; `global-error.tsx` is not
-      affected, since React clears `<html>`'s attributes when it takes it over.
+      the page, but marking the alerts seen waits behind the kept action and is never sent, so the
+      bell's next look, within a minute, brings the count back. If an unrelated render error then
+      puts the card of `app/error.tsx` in place of the page, its Try again and Refresh, which are
+      outside the toaster, are frozen too, and the toast's Refresh is the way on;
+      `global-error.tsx` is not affected, since React clears `<html>`'s attributes when it takes
+      it over.
 - **VPS-9 · Error pages that recover from a new build, and still report to Sentry:**
   `global-error.tsx`, `app/error.tsx`, `staff/error.tsx` and `t/[qrToken]/error.tsx` render one
   `ErrorFallback` in the page's language. A page from an older build says "Refreshing…" and
@@ -5074,7 +5078,7 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
 
 ### Tests (VPS Stop A)
 
-- **Unit (667 to 884 tests, 49 to 60 files):**
+- **Unit (667 to 886 tests, 49 to 60 files):**
   - Self-hosting: `request-host` (3: the first `X-Forwarded-Host`, `Host` without its port, IPv6
     brackets); `env` (+2); `supabase-url` (12: the cookie name equals supabase-js's own default for
     `https://x.supabase.co` and `http://127.0.0.1:54321` and is one name on all three clients; the
@@ -5082,16 +5086,18 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     swapped however the internal address is written); `supabase-forwarding` (11: both headers on
     Auth calls only, so through real supabase-js a sign-in carries them and a table read does not;
     the IP rules; one warning per process); `menu-import-extract` (+4 net: 40 s a call, 85 s a page,
-    no call that cannot finish) and `menu-import-read-page` (13: the reader's remaining time; a
+    no call that cannot finish) and `menu-import-read-page` (15: the reader's remaining time; a
     photo that timed out, one cut off after Storage answered, one whose connection drops while it
     downloads and one that Storage could not answer before the headers (a gateway 503) are each
     recorded as one to read again and answered with an error, so that the reading stops, and the
-    reader is never called; a missing photo, in Storage's real shape (status 400, `statusCode`
-    '404'), is still told to start again and the reading goes on; an import closed meanwhile gets no
-    error; and six answers through the real storage-js over a canned network: a 400 with the 404 in
+    reader is never called; the error says the import goes on without the page when another page
+    can still give dishes, and that it fails when every other page has failed or there is none;
+    a missing photo, in Storage's real shape (status 400, `statusCode` '404'), is still told to
+    start again and the reading goes on; an import closed meanwhile gets no error; and six answers
+    through the real storage-js over a canned network: a 400 with the 404 in
     its body, a 404 whose body names only a code and a proxy's HTML 404 are a missing photo, and a
     503 with a non-JSON body, a refused connection and a body cut off after the headers are read
-    again; seven of the 13 fail on the previous `actions.ts`); `menu-import-progress` (2, new,
+    again; seven of the first 13 fail on the pre-R2-1 `actions.ts`); `menu-import-progress` (2, new,
     jsdom: the reading stops at a page whose action answered with an error and does not finish the
     import, the card's "coming back later carries on" shows while it reads and not once it stops,
     and Try again reads that page and the pending one, then finishes; a page recorded as
@@ -5473,16 +5479,21 @@ A1, B1 and Tests; B4 and C1 point here), and so were the RUNBOOK's Deploying and
 **Third review.** A last review of the second review's fixes found four more, all small: one on
 the menu import's progress card (R3-1) and three on the reload prompt (R3-2 to R3-4). Three are
 fixed and one is recorded. The entries above that a fix changed were corrected in place (VPS-5,
-VPS-8, VPS-12, B1 and Tests), and so was the RUNBOOK's Deploying section.
+VPS-8, VPS-12, B1 and Tests), and so was the RUNBOOK's Deploying section. A check of these fixes
+then corrected two of them: R3-1's photo error, and a line on the alerts bell in VPS-8's known
+limits, which had said its count comes back only after Refresh.
 
 - **R3-1 · A stopped import said coming back carries on (VPS-5):** since R2-1 a photo that did not
   arrive stops the reading, but the card still said "You can leave this page open; coming back
   later carries on from here." A reload skips a page recorded as failed, so an owner who left as
   the card suggested came back to an import finished without the page or, with one page, to a
   failed import that offers only Start a new import. The sentence now shows only while the pages
-  are read, and the photo error says "Try again. If you leave this screen instead, the import
-  finishes without this page." A reload does not read such a page again by itself: today it is the
-  only way past a photo that keeps failing.
+  are read, and the photo error says what leaving does: "Try again. If you leave instead, the
+  import goes on without this page when you open it again.", or, when no other page can still give
+  dishes, "… the import fails when you open it again, and you will need to start a new one." (A
+  first wording said leaving finishes the import, but nothing does until it is opened again, and
+  it did not say that a one-page import then fails.) A reload does not read such a page again by
+  itself: today it is the only way past a photo that keeps failing.
 - **R3-2 · The freeze stopped the buttons that only open a menu or a sheet (VPS-8):** R1-1's rule
   matched every button, so behind a kept answer on a phone the panels' navigation (a sheet below
   1024 px), the account menu with its Get help and panel links, the alerts bell and the website's
