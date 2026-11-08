@@ -19,8 +19,10 @@ import { placeOrder } from '../actions';
 import {
   cartTotalPaise,
   EMPTY_CART,
+  forgetOrderKey,
   lineKey,
   lineLabel,
+  orderKeyToSend,
   randomUuid,
   refusedKeys,
   removeLines,
@@ -52,7 +54,8 @@ export function CartView({ qrToken, table }: CartViewProps) {
   const hydrated = useHydrated();
   const [cart, update] = useReconciledCart(qrToken, table.menu);
   // Made when the page loads and kept across retries, so a resend after a
-  // network error can never create a second order (spec §9.3).
+  // network error can never create a second order (spec §9.3). A resend after the page
+  // reloaded takes the key stored with the order (orderKeyToSend).
   const [idempotencyKey, setIdempotencyKey] = useState(randomUuid);
   // With the words it was written in: switching language hides it.
   const [error, setError] = useState<{ text: string; in: Strings } | null>(null);
@@ -72,10 +75,13 @@ export function CartView({ qrToken, table }: CartViewProps) {
     startTransition(async () => {
       try {
         const result = await placeOrder(qrToken, {
-          idempotencyKey,
+          idempotencyKey: orderKeyToSend(qrToken, cart, idempotencyKey),
           lines: toOrderLines(cart),
           note: cart.note,
         });
+        // Answered, so the key has done its work: the order is placed (a resend of one that
+        // was gets it back), or the server refused it and nothing was.
+        forgetOrderKey(qrToken);
         if (result.ok) {
           // Show "Order placed" (not an empty cart) while the orders page loads.
           setPlaced(true);

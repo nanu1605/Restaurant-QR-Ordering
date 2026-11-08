@@ -32,6 +32,22 @@ async function staleActions(page: Page, times = Infinity) {
   return () => page.unroute('**/*', olderBuild);
 }
 
+/**
+ * Lets the next server action reach the server, then drops its answer, as a lost connection
+ * would; returns the undo.
+ */
+async function loseNextAnswer(page: Page) {
+  let lost = false;
+  const lose = async (route: Route) => {
+    if (lost || !route.request().headers()['next-action']) return route.continue();
+    lost = true;
+    await route.fetch();
+    return route.abort();
+  };
+  await page.route('**/*', lose);
+  return () => page.unroute('**/*', lose);
+}
+
 /** Marks the page in memory, so a refresh shows as the mark being gone. */
 async function mark(page: Page) {
   await page.evaluate(() => {
@@ -168,6 +184,48 @@ test('placing an order from an older build keeps the cart, refreshes once and ne
   await page.getByRole('button', { name: 'Place order' }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${table.token}/orders$`));
   expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
+
+  await context.close();
+});
+
+// The refresh onto a new build must not make the guest's second tap a second order (spec §9.3,
+// docs/DECISIONS.md VPS-8): the cart keeps the key its order was sent with.
+test('an order whose answer was lost is placed once, though the page refreshes before the retry', async ({
+  browser,
+  baseURL,
+}) => {
+  const table = await createOrderingTable({ approval: false });
+  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL });
+  const page = await context.newPage();
+  await page.goto(table.url);
+  await addDish(page, 'Paneer Tikka');
+  await page.getByRole('link', { name: /View cart/ }).click();
+  await expect(page.getByRole('heading', { name: 'Your order' })).toBeVisible();
+
+  // The order reaches the restaurant, but its answer never gets back to the phone.
+  const answered = await loseNextAnswer(page);
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByText('We couldn’t reach the restaurant')).toBeVisible();
+  await answered();
+  expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
+
+  // A new build is live by the retry: the page refreshes by itself, and its cart is back.
+  const fresh = await staleActions(page, 1);
+  await mark(page);
+  await page.getByRole('button', { name: 'Place order' }).click();
+  const updated = toast(page, 'Updated to the new version');
+  await expect(updated).toBeVisible();
+  expect(await marked(page)).toBe(false);
+  await expect(page.getByRole('listitem').filter({ hasText: 'Paneer Tikka' })).toBeVisible();
+  await fresh();
+
+  // The toast says to place it again: the server hands back the order it has.
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${table.token}/orders$`));
+  expect((await tableState(table.restaurantId)).orders).toHaveLength(1);
+  const stored = (key: string) => page.evaluate((k) => localStorage.getItem(k), key);
+  expect(await stored(`tableorder:cart:${table.token}`)).toBeNull();
+  expect(await stored(`tableorder:order-key:${table.token}`)).toBeNull();
 
   await context.close();
 });
