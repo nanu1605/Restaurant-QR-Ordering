@@ -5646,7 +5646,8 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     stop never changes how the process exits (and calling it twice adds no second listener). The
     listener only aborts the signal and never exits or holds the process, so it does no harm
     wherever it lands; it was not run on Vercel.
-  - **At a stop.** No run starts and no claim is made; the reads and model calls in flight abort
+  - **At a stop.** No run starts and no claim is made, and a run waiting for the export slot ends
+    its wait (VPS-26); the reads and model calls in flight abort
     (the reason is an `AbortError`, which the Supabase client gives up on instead of retrying); an
     export hands its claim back to the queue without counting a try; and an email being sent is
     finished (15 s at most) and recorded. A stop with job work in flight takes about a second, 15 s
@@ -5687,8 +5688,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     and the new code runs through `after()` and the daily run, inside the `maxDuration` of 300 s
     that they already have. A cut is recovered at the next trigger of its kind: any export request
     (an export), the same restaurant's next menu edit after 5 minutes or the daily run (Hindi
-    names), the next announcement save or the daily run (emails). An export shows as failed on its
-    card 15 minutes after its request. That is never worse than before. Old deployments (Skew
+    names), the next announcement save or the daily run (emails). An export asked for while another
+    instance holds the one build is built by its own request's run, which claims again every 5 s
+    (VPS-26). An export shows as failed on its card 15 minutes after its request. That is never
+    worse than before. Old deployments (Skew
     Protection, 7 days) keep working: the functions they call keep their signatures and leave the
     new rows alone (`restaurant_export_finish` finishes only a row no claim has taken,
     `menu_hindi_names_claim` passes over leased names). The next release's migration drops them,
@@ -5724,8 +5727,13 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
   - **States and the claim.** `queued`, then `building`, then `ready` or `failed`.
     `restaurant_export_claim` (service role) takes the oldest queued export (`created_at`, `id`),
     sets it `building` under a new `claim_id` and a lease of 90 s (30 to 600), and returns
-    `{export_id, restaurant_id, claim_id}`, or null when nothing waits or a build is going; an idle
-    call takes no lock (`private.export_jobs_waiting()`). It picks the row with
+    `{export_id, restaurant_id, claim_id}`; `{"busy": true}` when exports wait but a build is going;
+    or null when nothing waits. An idle call takes no lock (`private.export_jobs_waiting()`). A run
+    told busy waits 5 s (`EXPORT_BUSY_WAIT_MS`; a stop ends the wait at once) and claims again until
+    it stops starting work. It used to end there, so on Vercel, which has no minute job, an export
+    asked for while another instance built near the end of its run's budget waited for some other
+    request, and its card said it had failed after 15 minutes (review finding R3). It picks the row
+    with
     `select … for update skip locked` and then updates it by id: one `update` with a subquery could
     set a row back to `building` that a late `complete` had just made `ready`, which the
     ready-needs-expiry check refuses. The claims are serialised by a transaction advisory lock
@@ -5982,11 +5990,13 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
 
 ### Tests (VPS Stop A2)
 
-- **pgTAP (71 to 75 files, 3,311 to 3,547 tests):** four new files; `010_schema_guards` gains a
+- **pgTAP (71 to 75 files, 3,311 to 3,554 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
-  - `690_export_jobs` (122): a request gives a `queued` row with no claim or lease, the card says it
-    is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued
-    or a build is live, takes the exports in the order they were asked for across two restaurants,
+  - `690_export_jobs` (129): a request gives a `queued` row with no claim or lease, the card says it
+    is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued,
+    says the slot is busy while a build is live and another export waits (leaving that one as it
+    was), and is null again once the waiting one has failed for its age; a claim takes the exports
+    in the order they were asked for across two restaurants,
     leases 90 s (30 s at least, 10 minutes at most) and is no cut; the table refuses a second
     `building` row, a building row without a lease or claim, and a lease on any other; the heartbeat
     renews the holder's lease and answers false for an old claim or a row not building; `complete`
@@ -6034,7 +6044,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 979 tests, 60 to 65 files):**
+- **Unit (886 to 982 tests, 60 to 65 files):**
   - `jobs` (12, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; an extra run that throws is logged and the first result kept; nothing starts
@@ -6047,15 +6057,18 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     run per waiting kind after the answer, exports first, within `?kinds=`; no emails without Resend
     and no Hindi names without a reader; a run that fails is logged and the others still run; 500
     when `jobs_waiting` fails, answers badly or throws, logged once a minute.
-  - `export-jobs` (17, new, with a fake client and fake timers): one claim when nothing waits; each
+  - `export-jobs` (20, new, with a fake client and fake timers): one claim when nothing waits; each
     export built into its own file and completed under its claim; no build once the budget is spent
     or the server is stopping; a stop during a build hands the export back and ends the run; a claim
-    that throws; the heartbeat every 15 s and once before the upload; a claim that is gone uploads
+    that throws; while another server holds the build, a claim every 5 s and the build once the slot
+    is free, with no listener left on the stop's signal, the run ended at once by a stop during the
+    wait, and no claim past the budget; the heartbeat every 15 s and once before the upload; a claim
+    that is gone uploads
     nothing and calls neither `complete` nor `fail`; a stop between files releases it, and one
     during the upload lets the upload finish and completes; an error or a failed upload fails the
     export; a table error stops the other readers and `buildExport` ends only once they have, with
     no read after it; no timer is left on any path; `startExportJobs` runs one queue at a time;
-    `parseExportClaim`.
+    `parseExportClaim`, busy included.
   - `menu-hindi-names` (10 to 25): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short

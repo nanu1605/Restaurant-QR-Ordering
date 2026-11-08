@@ -1,7 +1,7 @@
 -- Restartable data exports (docs/DECISIONS.md VPS-26): a request queues its export; a claim
 -- builds the oldest one under a lease that a heartbeat renews, one build at a time on the whole
--- platform; only the claim that holds an export finishes it, and a cut-off build goes back to the
--- queue until its third cut.
+-- platform, and says when another build holds the slot; only the claim that holds an export
+-- finishes it, and a cut-off build goes back to the queue until its third cut.
 begin;
 select no_plan();
 
@@ -69,7 +69,8 @@ select tests.as_service_role();
 select public.restaurant_export_claim() as claim \gset
 select is(:'claim'::jsonb ->> 'export_id', :'first_export', 'the first asked is built first');
 select is(:'claim'::jsonb ->> 'restaurant_id', :'first_shop', 'with its restaurant');
-select is(public.restaurant_export_claim(), null, 'one build at a time: no claim while it runs');
+select is(public.restaurant_export_claim(), '{"busy": true}'::jsonb,
+  'one build at a time: while it runs, a claim says the slot is taken');
 select :'claim'::jsonb ->> 'claim_id' as first_claim \gset
 select is((pg_temp.export(:'first_export')).status, 'building', 'it builds');
 select is((pg_temp.export(:'first_export')).claim_id::text, :'first_claim', 'under its claim');
@@ -264,6 +265,28 @@ select public.restaurant_export_claim() as claim \gset
 select ok(public.restaurant_export_complete((:'claim'::jsonb ->> 'export_id')::uuid,
   (:'claim'::jsonb ->> 'claim_id')::uuid, 10), 'and is built');
 
+-- ─── A slot another build holds ─────────────────────────────────────────────
+-- A claim says the slot is taken while an export waits for it, and only then: the caller waits
+-- and claims again.
+select tests.clear_auth();
+select pg_temp.queue(:'later_shop', '2 minutes') as holding \gset
+select pg_temp.queue(:'third_shop', '1 minute') as waiting \gset
+select tests.as_service_role();
+select public.restaurant_export_claim() as claim \gset
+select is(:'claim'::jsonb ->> 'export_id', :'holding', 'one export builds');
+select is(public.restaurant_export_claim(), '{"busy": true}'::jsonb,
+  'a claim while it builds says the slot is taken');
+select is((pg_temp.export(:'waiting')).status, 'queued', 'and leaves the other waiting');
+select is((pg_temp.export(:'waiting')).attempts, 0, 'untouched');
+select tests.clear_auth();
+update public.restaurant_exports set created_at = now() - interval '16 minutes' where id = :'waiting';
+select tests.as_service_role();
+select is(public.restaurant_export_claim(), null,
+  'once the other has waited too long, a claim answers null: nothing waits but the build');
+select is((pg_temp.export(:'waiting')).status, 'failed', 'that one has failed');
+select ok(public.restaurant_export_complete(:'holding', (:'claim'::jsonb ->> 'claim_id')::uuid, 10),
+  'and the build finishes');
+
 -- ─── The previous build's finish ────────────────────────────────────────────
 -- It builds the export it asked for itself, unclaimed (dropped next release).
 select tests.clear_auth();
@@ -318,7 +341,7 @@ select public.restaurant_export_claim() ->> 'claim_id' as gone_claim \gset
 select tests.clear_auth();
 select pg_temp.queue(:'first_shop') as next_export \gset
 select tests.as_service_role();
-select is(public.restaurant_export_claim(), null, 'the slot is taken');
+select is(public.restaurant_export_claim(), '{"busy": true}'::jsonb, 'the slot is taken');
 select tests.clear_auth();
 update public.restaurants set status = 'closed', suspended_reason = 'Account closed' where id = :'gone_shop';
 insert into public.restaurant_closures (restaurant_id, removal_due_at, prior_status, member_ids)

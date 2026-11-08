@@ -129,8 +129,9 @@ as $$
 $$;
 
 -- ─── Building (the server: src/features/closure/export-jobs.ts) ─────────────
--- The oldest queued export, now building under a new claim and a lease of p_lease_seconds, or
--- null: nothing waits, or another build holds the one slot. A lease that ran out is handled here
+-- The oldest queued export, now building under a new claim and a lease of p_lease_seconds;
+-- {"busy": true} when exports wait but another build holds the one slot, so that the caller can
+-- wait for it and claim again; or null when nothing waits. A lease that ran out is handled here
 -- and only here: its build was cut off, so the row is queued again, or failed at the third cut.
 create function public.restaurant_export_claim(p_lease_seconds int default 90)
 returns jsonb
@@ -162,6 +163,9 @@ begin
     where e.status = 'building' and e.lease_until < now();
 
   if exists (select 1 from public.restaurant_exports e where e.status = 'building') then
+    if exists (select 1 from public.restaurant_exports e where e.status = 'queued') then
+      return jsonb_build_object('busy', true);
+    end if;
     return null;
   end if;
   select * into v_row

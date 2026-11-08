@@ -1,12 +1,16 @@
-import { EventEmitter } from 'node:events';
+import { EventEmitter, getEventListeners } from 'node:events';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseExportClaim } from '@/features/closure/closure';
 import { buildExport, EXPORT_BUCKET } from '@/features/closure/export';
-import { runExportJobs, startExportJobs } from '@/features/closure/export-jobs';
+import {
+  EXPORT_BUSY_WAIT_MS,
+  runExportJobs,
+  startExportJobs,
+} from '@/features/closure/export-jobs';
 import { jobRun } from '@/lib/jobs';
-import { stopJobsOnSigterm } from '@/lib/shutdown';
+import { drainSignal, stopJobsOnSigterm } from '@/lib/shutdown';
 
 import { readZip } from '../read-zip';
 
@@ -281,6 +285,59 @@ describe('runExportJobs', () => {
       'Could not claim an export: connection refused',
     );
   });
+
+  describe('while another server holds the one build', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+      });
+    });
+
+    it('claims again every 5 seconds, and builds once the slot is free', async () => {
+      const { admin, calls } = fakeAdmin({ claims: [{ busy: true }, { busy: true }, claimed()] });
+
+      const running = runExportJobs(admin, jobRun(60_000));
+      await vi.advanceTimersByTimeAsync(EXPORT_BUSY_WAIT_MS - 1);
+      expect(calls('restaurant_export_claim')).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(calls('restaurant_export_claim')).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(EXPORT_BUSY_WAIT_MS);
+
+      await expect(running).resolves.toEqual({ ready: 1, failed: 0, released: 0, lost: 0 });
+      expect(calls('restaurant_export_complete')).toHaveLength(1);
+      // Then the queue is empty.
+      expect(calls('restaurant_export_claim')).toHaveLength(4);
+      // The waits left nothing on the stop's signal.
+      expect(getEventListeners(drainSignal(), 'abort')).toHaveLength(0);
+    });
+
+    it('ends the run at once when the server stops during the wait', async () => {
+      const { admin, calls } = fakeAdmin({ claims: [{ busy: true }, claimed()] });
+      let ended = false;
+      const running = runExportJobs(admin, jobRun(60_000)).finally(() => {
+        ended = true;
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(calls('restaurant_export_claim')).toHaveLength(1);
+
+      stopTheServer();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ended).toBe(true);
+      await expect(running).resolves.toEqual({ ready: 0, failed: 0, released: 0, lost: 0 });
+      expect(calls('restaurant_export_claim')).toHaveLength(1);
+    });
+
+    it('stops waiting once its budget is spent', async () => {
+      const { admin, calls } = fakeAdmin({ claims: [{ busy: true }, { busy: true }, claimed()] });
+
+      const running = runExportJobs(admin, jobRun(8_000));
+      await vi.advanceTimersByTimeAsync(2 * EXPORT_BUSY_WAIT_MS);
+
+      await expect(running).resolves.toEqual({ ready: 0, failed: 0, released: 0, lost: 0 });
+      // At 0 and 5 s; at 10 s the budget is spent.
+      expect(calls('restaurant_export_claim')).toHaveLength(2);
+    });
+  });
 });
 
 describe('buildExport', () => {
@@ -467,9 +524,11 @@ describe('startExportJobs', () => {
 });
 
 describe('parseExportClaim', () => {
-  it('reads a claim, or none', () => {
+  it('reads a claim, a slot another build holds, or none', () => {
     expect(parseExportClaim(null)).toBeNull();
     expect(parseExportClaim(claimed())).toEqual(claim);
+    expect(parseExportClaim({ busy: true })).toBe('busy');
+    expect(() => parseExportClaim({ busy: false })).toThrow();
     expect(() => parseExportClaim({ export_id: FIRST, restaurant_id: RESTAURANT })).toThrow();
     expect(() => parseExportClaim({ ...claimed(), claim_id: 'c1' })).toThrow();
   });

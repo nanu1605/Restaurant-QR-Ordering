@@ -16,11 +16,29 @@ type Admin = ReturnType<typeof createAdminClient>;
  * allow on Vercel.
  */
 export const EXPORT_RUN_MS = 180_000;
+/** How long a run waits to claim again while another server holds the platform's one build. */
+export const EXPORT_BUSY_WAIT_MS = 5_000;
+
+/** Resolves after ms, or at once when the signal aborts, and leaves no timer or listener. */
+function wait(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    if (signal.aborted) done();
+    else signal.addEventListener('abort', done);
+  });
+}
 
 /**
- * Builds queued exports, oldest first, one at a time, until none waits, another server holds the
- * platform's one build, or the run stops. Each claim also queues again an export whose build was
- * cut off. Says how many builds ended each way; throws when the claim does.
+ * Builds queued exports, oldest first, one at a time, until none waits or the run stops. While
+ * another server holds the platform's one build, it claims again every 5 s: on Vercel no minute
+ * job comes, so this run is what builds the export its request asked for. Each claim also queues
+ * again an export whose build was cut off. Says how many builds ended each way; throws when the
+ * claim does.
  */
 export async function runExportJobs(admin: Admin, run: JobRun) {
   const ended: Record<ExportOutcome, number> = { ready: 0, failed: 0, released: 0, lost: 0 };
@@ -30,6 +48,11 @@ export async function runExportJobs(admin: Admin, run: JobRun) {
     });
     if (error) throw new Error(`Could not claim an export: ${error.message}`);
     const claim = parseExportClaim(data);
+    if (claim === 'busy') {
+      // A stop ends the wait at once, and with it the run.
+      await wait(EXPORT_BUSY_WAIT_MS, run.signal);
+      continue;
+    }
     if (!claim) break;
     const outcome = await buildExport(admin, claim, run);
     ended[outcome] += 1;

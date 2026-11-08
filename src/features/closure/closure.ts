@@ -45,10 +45,16 @@ const exportClaimSchema = z
     exportId: claim.export_id,
     restaurantId: claim.restaurant_id,
     claimId: claim.claim_id,
-  }))
+  }));
+export type ExportClaim = z.infer<typeof exportClaimSchema>;
+/**
+ * What restaurant_export_claim answers: a claim; 'busy' when exports wait but another server
+ * holds the platform's one build; or null when nothing waits.
+ */
+const exportClaimAnswerSchema = z
+  .union([exportClaimSchema, z.object({ busy: z.literal(true) }).transform(() => 'busy' as const)])
   .nullable();
-export type ExportClaim = NonNullable<z.infer<typeof exportClaimSchema>>;
-export const parseExportClaim = (json: unknown) => exportClaimSchema.parse(json);
+export const parseExportClaim = (json: unknown) => exportClaimAnswerSchema.parse(json);
 
 /** What a page shows of the latest export; its file's path stays on the server. */
 export type DataExport =
