@@ -37,7 +37,9 @@ const uuid = z.uuid();
 const NOT_FOUND = 'That import no longer exists. Start a new one from the Menu page.';
 const NO_DISHES_FOUND =
   'No dishes could be read from these photos. Take a sharper photo, straight on and in good light, of one page at a time.';
-const PHOTO_NOT_FETCHED = 'The photo of this page could not be fetched. Try again.';
+// A reload skips a page recorded as failed, so leaving finishes the import without it (VPS-5).
+const PHOTO_NOT_FETCHED =
+  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
 
 function importError(error: DbErrorLike, context: string) {
   const detail = error.details ?? '';

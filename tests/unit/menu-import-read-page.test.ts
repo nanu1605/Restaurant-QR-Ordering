@@ -15,7 +15,8 @@ import {
 
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
 
-const NOT_FETCHED = 'The photo of this page could not be fetched. Try again.';
+const NOT_FETCHED =
+  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
 const NOT_UPLOADED = 'The photo of this page did not upload. Start a new import with this page.';
 
 const db = vi.hoisted(() => ({ rpc: vi.fn(), download: vi.fn() }));

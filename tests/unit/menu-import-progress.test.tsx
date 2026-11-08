@@ -9,7 +9,9 @@ import { ImportProgress } from '@/features/menu-import/components/import-progres
 // stops on it, and Try again reads that page once more (docs/DECISIONS.md VPS-5).
 
 const IMPORT_ID = '123e4567-e89b-42d3-a456-426614174000';
-const NOT_FETCHED = 'The photo of this page could not be fetched. Try again.';
+const NOT_FETCHED =
+  'The photo of this page could not be fetched. Try again. If you leave this screen instead, the import finishes without this page.';
+const CARRIES_ON = /coming back later carries on from here/;
 
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
@@ -37,8 +39,12 @@ describe('ImportProgress', () => {
       />,
     );
 
+    // While it reads, leaving and coming back carries on.
+    expect(screen.getByText(CARRIES_ON)).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent(NOT_FETCHED);
     expect(screen.getByRole('status')).toHaveTextContent('Reading stopped.');
+    // Stopped, it no longer says so: coming back would skip the failed page.
+    expect(screen.queryByText(CARRIES_ON)).toBeNull();
     // Neither the page after it nor the end of the reading: the import is still open.
     expect(pagesRead()).toEqual([1, 2]);
     expect(finishReading).not.toHaveBeenCalled();

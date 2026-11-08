@@ -105,10 +105,14 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
           style={{ width: `${total ? (done / total) * 100 : 0}%` }}
         />
       </div>
-      <p className="text-sm text-ink-muted">
-        Each page takes up to a minute and a half. You can leave this page open; coming back later
-        carries on from here.
-      </p>
+      {/* Stopped, the reading waits for Try again, and coming back may skip a failed page: the
+          error says what leaving does (docs/DECISIONS.md VPS-5). */}
+      {!error && (
+        <p className="text-sm text-ink-muted">
+          Each page takes up to a minute and a half. You can leave this page open; coming back later
+          carries on from here.
+        </p>
+      )}
       {error && (
         <div className="flex flex-wrap items-center gap-3">
           <p role="alert" className="text-sm font-medium text-destructive">
