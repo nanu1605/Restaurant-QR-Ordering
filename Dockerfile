@@ -30,9 +30,10 @@ RUN ln -s /opt/pnpm/pnpm /usr/local/bin/pnpm
 ENV CI=true
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# --ignore-scripts skips the only install script that runs today: the supabase CLI's binary
-# download (the image never uses the CLI). sharp, core-js and unrs-resolver are denied in
-# pnpm-workspace.yaml already, and package.json has no install scripts of its own.
+# No locked package needs an install script: native code ships as prebuilt optional packages (the
+# supabase CLI's binary, sharp's addon), and the two that have one, core-js and unrs-resolver, are
+# denied in pnpm-workspace.yaml. --ignore-scripts is defence in depth, so a package that gains one
+# later cannot run code in the build (docs/DECISIONS.md VPS-15).
 # --pm-on-fail=error: a pnpm that is not the one packageManager names fails the build instead of
 # downloading another (docs/DECISIONS.md VPS-14, VPS-15).
 RUN --mount=type=cache,id=menumesh-pnpm,target=/var/cache/pnpm \

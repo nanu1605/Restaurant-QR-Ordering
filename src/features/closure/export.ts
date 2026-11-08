@@ -132,8 +132,10 @@ async function readExportData(admin: Admin, restaurantId: string): Promise<Expor
  * EXPORT_MEMORY_CAP. The process is shared by every restaurant and by the app's own work, and a
  * build holds about the estimate at its peak (docs/DECISIONS.md SA-93, VPS-6). The VPS sets
  * --max-old-space-size to about 65% of a web container's memory (VPS-24): about 1000 MB for web
- * (1536m), 500 MB for web-staging (768m). Node's heap_size_limit runs about 190 MB above that,
- * so the limit is the cap on web and about 350 MiB on web-staging.
+ * (1536m), 500 MB for web-staging (768m). Node's heap_size_limit is that old space plus a young
+ * generation of three semi-spaces, which Node sizes from the container's memory. Measured in the
+ * image under those limits: 1096 MiB for web (semi-spaces of 32 MiB) and 548 MiB for web-staging
+ * (16 MiB), so the limit is the cap on web and 274 MiB on web-staging.
  */
 export const exportMemoryLimit = (heapLimit = getHeapStatistics().heap_size_limit) =>
   Math.min(EXPORT_MEMORY_CAP, Math.floor(heapLimit / 2));
