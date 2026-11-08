@@ -447,7 +447,7 @@ describe('the tab’s notice', () => {
       document.documentElement.lang = lang;
     });
 
-    it('the Refresh offer says that what was just changed was not saved', async () => {
+    it('the Refresh offer says that anything just changed was not saved', async () => {
       await openPage('/admin/menu');
       void window.fetch('/admin/menu', { method: 'POST' });
       await vi.advanceTimersByTimeAsync(0);
