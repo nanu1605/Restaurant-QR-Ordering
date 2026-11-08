@@ -5075,6 +5075,45 @@ with a 25 s stop (VPS-22); production deploys run by the owner on the server (VP
     Auth signs user tokens asymmetrically, since with the legacy HS256 secret every `getClaims()`
     (two or more a page) becomes a `GET /auth/v1/user` through the gateway; and whether Auth accepts
     staff addresses on `<slug>.staff.<domain>`, which have no mail records.
+  - **The server team's tightening (2026-11-08, later that day).** A review of their kit changed
+    what this repo's files must do (their `docs/runbooks/edge.md` §5 and
+    `docker/host/apps/app.conf.example`):
+    - **Images.** CI labels the web, migrate and backup images
+      `org.opencontainers.image.version=<the exact tag>`, set in build-push-action's `labels:`, not
+      left to metadata-action. `app-deploy` refuses a digest labelled otherwise, so production is
+      always its own build and a staging digest is never retagged.
+    - **Compose.** Values from the env files may appear only in `image`, `environment`, `command`,
+      `entrypoint`, `healthcheck` and `x-*` keys; volumes, networks, limits and the rest are
+      literal. Every call passes `-p menumesh` (through `app-compose`), no env file holds a line
+      starting `COMPOSE_`, and `ulimits` may set only `nofile` and `nproc`.
+    - **Conf and edge.env.** The tag patterns carry no `^` or `$` (`app-deploy` anchors them):
+      `staging-[0-9a-f]{40}`, `prod-v[0-9]+\.[0-9]+\.[0-9]+`, `migrate-[0-9a-f]{40}` and
+      `backup-[0-9a-f]{40}`. The conf also sets `LOG_LINE_BUDGET=45000` and `LOG_REDACT=1`. Every
+      `edge.env` name starts with `MENUMESH_` (the staging basic auth's user and hash), and those
+      lines go in only after `/etc/apps/menumesh.conf` exists.
+    - **Log redaction.** A server-only file, installed with
+      `sudo app-apply edge redact menumesh <file>`, holds one line:
+      `request>uri regexp ^/t/[A-Za-z0-9]+ /t/_`. QR tokens are exactly 16 of those characters (a
+      database check), and the edge's shared rule already drops query strings, where this app's
+      other URL secrets travel (auth link tokens, signed storage links). Caddy 2.11 merges repeated
+      `regexp` filters on one field into one `multi_regexp`, applied in order (2.10.0 had no such
+      merge), so the shared rule still runs first. This file and the site file live in this repo:
+      the edge keeps no copy after a server loss.
+    - **Backups.** The backup job reads the newest `config-*.tar.age` from
+      `/srv/menumesh/backup-out` (0755, archives 0644, so any uid may) and fails when it is missing
+      or more than 2 hours old. The archive timer runs at 20:20 UTC for MenuMesh, ten minutes
+      before the backup (asked of the server team).
+    - **Pre-deploy dump.** `PREDEPLOY_DB="db supabase_admin postgres"`: `app-deploy` runs
+      `pg_dump -Fc -U supabase_admin postgres` inside `db` over its local socket, so `db` keeps
+      upstream's `PGPASSWORD`. The image sets `supabase_admin`'s password from it, and the
+      rehearsal runs that command.
+    - **Edge.** The edge also fixes `X-Forwarded-Proto: https` and `X-Forwarded-Port: 443`, and
+      creates both edge networks itself, as internal ones; the web services keep egress through
+      this project's own bridges. Authenticated origin pulls must be on for `menumesh.in` before
+      any MenuMesh container runs on the server.
+    - **Other domains.** The site file may serve only `menumesh.in` and one label under it, so after
+      the move `menumesh.app` and `menumesh.co` redirect through Cloudflare rules instead of Vercel
+      (asked of the server team whether those zones need anything from the server).
 
 ### Tests (VPS Stop A)
 
