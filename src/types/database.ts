@@ -676,6 +676,7 @@ export type Database = {
           name: string
           name_hi: string | null
           name_hi_auto: string | null
+          name_hi_auto_lease_until: string | null
           name_hi_auto_tried_at: string | null
           restaurant_id: string
           sort_order: number
@@ -689,6 +690,7 @@ export type Database = {
           name: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           restaurant_id: string
           sort_order?: number
@@ -702,6 +704,7 @@ export type Database = {
           name?: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           restaurant_id?: string
           sort_order?: number
@@ -899,6 +902,7 @@ export type Database = {
           name: string
           name_hi: string | null
           name_hi_auto: string | null
+          name_hi_auto_lease_until: string | null
           name_hi_auto_tried_at: string | null
           price_paise: number
           restaurant_id: string
@@ -917,6 +921,7 @@ export type Database = {
           name: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id: string
@@ -935,6 +940,7 @@ export type Database = {
           name?: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id?: string
@@ -3435,6 +3441,20 @@ export type Database = {
           restaurant_id: string
         }[]
       }
+      menu_hindi_names_lease: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_restaurant_id?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          name: string
+          restaurant_id: string
+        }[]
+      }
+      menu_hindi_names_settle: { Args: { p_names: Json }; Returns: number }
       menu_import_claim_page: {
         Args: { p_import_id: string; p_index: number }
         Returns: boolean
