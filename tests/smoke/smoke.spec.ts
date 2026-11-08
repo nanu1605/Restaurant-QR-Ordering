@@ -123,6 +123,7 @@ test('the website answers in Hindi under /hi', async ({ page, context }) => {
 
 test('the cron and the payment webhook refuse strangers', async ({ request }) => {
   expect((await request.get('/api/cron/daily')).status()).toBe(401);
+  expect((await request.get('/api/cron/jobs')).status()).toBe(401);
   const webhook = await request.post('/api/webhooks/razorpay', {
     headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': 'wrong' },
     data: '{}',

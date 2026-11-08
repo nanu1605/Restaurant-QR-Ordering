@@ -3472,6 +3472,7 @@ export type Database = {
       }
       health_check: { Args: never; Returns: string }
       is_platform_admin: { Args: never; Returns: boolean }
+      jobs_waiting: { Args: never; Returns: Json }
       member_announcements: {
         Args: { p_panel: string; p_restaurant_id: string }
         Returns: Json
