@@ -1,8 +1,8 @@
 -- Restartable jobs: the minute job's first question (docs/DECISIONS.md VPS-25, VPS-29).
 --
 -- /api/cron/jobs asks which kinds of job have work waiting before it starts any, so an idle
--- minute is this one read, of nearly empty indexes and the small announcements table, and writes
--- nothing.
+-- minute is this one read, and writes nothing: of nearly empty indexes and the small announcements
+-- table, and while an email announcement is due, of the active restaurants against its sent pairs.
 
 -- Each kind by its own test: the data exports (VPS-26), the Hindi names (VPS-27) and the
 -- announcement emails (VPS-28).

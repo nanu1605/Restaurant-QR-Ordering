@@ -1,7 +1,7 @@
 -- Announcement emails in runs (docs/DECISIONS.md VPS-28): the next emails due, in the due list's
 -- order; a pair Resend refused, set aside for 20 hours; and what the minute job takes (the
 -- owner's answer, 2026-11-08): an announcement once it has started, or once one of its emails
--- went.
+-- went. And what the minute job's check reads to find that nothing waits (VPS-29).
 begin;
 select no_plan();
 
@@ -54,6 +54,14 @@ language sql as $$
   from public.announcement_emails_due(p_at)
     with ordinality as x(announcement_id, restaurant_id, title, body, recipients, n)
   join public.restaurants r on r.id = x.restaurant_id;
+$$;
+-- How often this transaction has read these tables: the scans begun, by sequence or by index.
+create function pg_temp.reads(p_tables regclass[])
+returns bigint
+language sql as $$
+  select coalesce(sum(t.seq_scan + coalesce(t.idx_scan, 0)), 0)::bigint
+  from pg_stat_xact_user_tables t
+  where t.relid = any (p_tables);
 $$;
 
 -- At 10:00 India today: one started at 09:00, one starts at 18:00, and one has run for two days,
@@ -169,8 +177,12 @@ select is(
 
 -- ─── What waits ─────────────────────────────────────────────────────────────
 update public.announcements set ended_at = now() where ended_at is null;
+select pg_temp.reads(array['public.restaurants', 'public.restaurant_members', 'auth.users'])
+  as reads \gset
 select ok(not private.announcement_emails_waiting(),
   'nothing waits without a running email announcement');
+select is(pg_temp.reads(array['public.restaurants', 'public.restaurant_members', 'auth.users']),
+  :reads::bigint, 'found without reading a restaurant or a login');
 select ((now() at time zone 'Asia/Kolkata')::date + 1)::timestamp at time zone 'Asia/Kolkata'
   as day_end \gset
 -- Later today, whatever the time now.
@@ -182,11 +194,31 @@ select public.announcement_email_sent(:'soon', :'amber');
 select ok(private.announcement_emails_waiting(), 'until one of them went');
 select public.announcement_email_sent(:'soon', :'basil');
 select ok(not private.announcement_emails_waiting(), 'and none once they all went');
+-- Finding that looks up no restaurant's owners: what it reads of the logins (the planner's own
+-- look at them, each time) stays the same with more restaurants left out of the audience.
+select pg_temp.reads(array['public.restaurant_members', 'auth.users']) as reads \gset
+select private.announcement_emails_waiting() as waiting \gset
+select pg_temp.reads(array['public.restaurant_members', 'auth.users']) - :reads as one_check \gset
+select count(tests.add_member(tests.create_restaurant('vps692-more' || n), 'owner',
+  'vps692more' || n)) as more from generate_series(1, 5) as n \gset
+select pg_temp.reads(array['public.restaurant_members', 'auth.users']) as reads \gset
+select private.announcement_emails_waiting() as waiting \gset
+select is(pg_temp.reads(array['public.restaurant_members', 'auth.users']) - :reads,
+  :one_check::bigint, 'nor reads more of the logins with five more restaurants left out');
 select pg_temp.announce('Now', now() - interval '1 minute', array[:'cumin']::uuid[])
   as started_now \gset
 select ok(private.announcement_emails_waiting(), 'one that has started waits');
 select public.announcement_email_failed(:'started_now', :'cumin', 'Resend answered 422: x');
 select ok(not private.announcement_emails_waiting(), 'but not with its one pair just refused');
+
+-- First of all in order, a restaurant with no address of any kind: the limit counts emails only.
+select tests.create_restaurant('vps692-aaa') as bare \gset
+select pg_temp.announce('Bare', now() - interval '2 minutes', array[:'bare', :'cumin']::uuid[])
+  as bare_news \gset
+select is(pg_temp.next(now(), 1), array['Bare vps692-cumin'],
+  'a restaurant with no address is passed over, and the limit counts the emails');
+select is(pg_temp.next(now(), 1, true), array['Bare vps692-cumin'], 'by the minute job too');
+select ok(private.announcement_emails_waiting(), 'which waits for it');
 
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 select ok(

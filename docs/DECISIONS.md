@@ -5011,7 +5011,8 @@ that joins a running announcement is emailed within a minute (VPS-28).
     moves): `after()` stays the fast path and row leases are the guarantee, with atomic claims and
     transaction locks inside one call (no session advisory locks: each PostgREST call is its own
     transaction). One bearer-protected route, `GET /api/cron/jobs`, is ticked every minute by the
-    scheduler (VPS-24) and guarded by one cheap question, so idle ticks cost nothing. It differs
+    scheduler (VPS-24) and guarded by one cheap question, so idle ticks write nothing and, while no
+    email announcement is due, cost about a millisecond (VPS-29). It differs
     from this plan in three places. A tick is not capped at about 20 s: a build at the cap (20 to
     40 s) or a model call (up to 45 s) cannot fit one, and a cap would cut calls that are paid for,
     so the route answers at once, the work goes on in `after()`, and the bounds are the stop and how
@@ -5673,7 +5674,8 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     a tick of 20 s, and a cap would cut calls that are paid for. So the route answers at once and
     the work goes on in `after()`; the bounds are the stop and how many units a run starts.
   - **Logging and health.** An idle tick writes nothing: `jobs_waiting()` is one read of nearly
-    empty indexes. A unit of work logs one `console.info` line (an export ready, with its rows,
+    empty indexes and the small announcements table, and while an email announcement is due, also
+    of its sent pairs (VPS-29). A unit of work logs one `console.info` line (an export ready, with its rows,
     bytes and ms: the first real timings; a Hindi call, with its seconds; an email run's counts).
     `console.error`, which reaches Sentry, is only for real failures, and trouble that the next run
     retries is a `console.warn`. The minute job writes no `cron_runs` rows: `private.cron_status`
@@ -5891,9 +5893,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     comments assume 2: the pacing stays 600 ms, and the account's real limit is worth a look in the
     dashboard. At 03:00 the daily run's reminders and a minute run can overlap, up to about 3.3
     requests a second; a 429 ends the minute run until the next minute, while one in the reminders
-    is still not retried until the next day. A standing email announcement makes the minute job scan
-    the active restaurants every minute: milliseconds at today's size, and a "scanned at" marker is
-    the answer past a few thousand restaurants. On Vercel, which has no minute job, the daily run's
+    is still not retried until the next day. A running email announcement makes the minute job
+    read the active restaurants against its sent pairs every minute (VPS-29): about 4 ms at 6,500
+    restaurants once every email went to an announcement for everyone. One for part of the platform
+    also tests each restaurant left out of it against its audience, every minute, because those are
+    never sent: `in_audience` costs about 4 µs a call, so 30 to 45 ms at 6,500 restaurants. A
+    "scanned at" marker, or the audience written out in the query, is the answer past a few
+    thousand restaurants. The second needs care: tried for review finding D2, its estimates led the
+    planner to a 1-second plan for an announcement to everyone. On Vercel, which has no minute job, the daily run's
     email step now starts no send after 150 s and leaves the rest to the next daily run or save,
     where it used to run until the 300 s kill.
 - **VPS-29 · The every-minute jobs route:** `GET /api/cron/jobs` (`src/app/api/cron/jobs/route.ts`).
@@ -5915,7 +5922,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     indexes and the small announcements table: `private.export_jobs_waiting()` (a queued export, or
     a building one whose lease ran out), `private.hindi_names_waiting()` and
     `private.announcement_emails_waiting()` (`announcement_emails_next(now(), 1, true)` gives a
-    row). An idle tick is that one statement.
+    row, asked only once an email announcement is due, so that until then nothing but the
+    announcements is read). An idle tick is that one statement. `announcement_emails_next` finds
+    the pairs not sent and not set aside first, in a materialized CTE, and only then tests the
+    audience and looks up the owners' addresses. Before, it looked up every active restaurant's
+    owners on every call, even with no email announcement running (review finding D2): measured on
+    the local load seed of 6,483 active restaurants, the check went from 23 to 26 ms and 47,335
+    buffers to 0.2 ms and 3 buffers with no email announcement due, and from 26 to 30 ms and
+    53,747 buffers to 4 ms and about 6,900 buffers with one for everyone whose emails all went.
   - **The scheduler.** The deploy stop's crontab has it called every minute, from the `scheduler`
     container to the web container directly and never through Cloudflare (VPS-22): the line is
     `* * * * * wget -q -O /dev/null -T 25 --header "Authorization: Bearer $CRON_SECRET"` followed,
@@ -5968,7 +5982,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
 
 ### Tests (VPS Stop A2)
 
-- **pgTAP (71 to 75 files, 3,311 to 3,542 tests):** four new files; `010_schema_guards` gains a
+- **pgTAP (71 to 75 files, 3,311 to 3,547 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
   - `690_export_jobs` (122): a request gives a `queued` row with no claim or lease, the card says it
     is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued
@@ -5998,13 +6012,19 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     its lease, and a fill working on the old name stores nothing; an owner's name typed after the
     lease stays the owner's; the old claim skips leased names and still stamps;
     `hindi_names_waiting` is true and false as the rules say.
-  - `692_announcement_email_jobs` (33): `announcement_emails_next` gives a save or the daily run
+  - `692_announcement_email_jobs` (38): `announcement_emails_next` gives a save or the daily run
     every email due today, in the due list's order, to its addresses, `p_limit` at a time (at least
     one, 50 when none is given); the minute job takes an announcement that has started, not one that
     starts later today until one of its emails went, and a restaurant that joins a running one's
     audience days later; a refusal is recorded with its answer cut to 300 characters and hides the
     pair for 20 hours from either mode, a second one counts up, and sending it clears it;
-    `announcement_emails_waiting` follows the same rules; the app's roles can do none of it.
+    `announcement_emails_waiting` follows the same rules; a restaurant with no address that comes
+    first is passed over and the limit counts only emails, in either mode; the app's roles can do
+    none of it. What the check reads is counted in `pg_stat_xact_user_tables`: with no email
+    announcement running it reads no restaurant and no login, and once an announcement's emails all
+    went, five more restaurants left out of its audience add no read of a login (the planner's own
+    look at the logins' keys, each call, is the same both times). Both fail on the shape before
+    review finding D2, which looked up every restaurant's owners on each call.
   - `693_jobs_waiting` (9): nothing waits; each of a queued export, a name without Hindi and an
     announcement email to send makes its own key true, and none is left once each is done; two calls
     write nothing, counted in the rows the transaction has written (`pg_stat_xact_user_tables`), so
