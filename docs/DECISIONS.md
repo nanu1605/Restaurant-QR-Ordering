@@ -6228,8 +6228,8 @@ review's fixes are listed after Tests.
     | Right after a tick (the claim) | 713 and 635 ms | `queued`, `attempts` 0                 |
     | Two idle keep-alive sockets    | 664 ms         | `queued` (sockets closed at `SIGTERM`) |
 
-    A row handed back keeps its claim id, has no lease and has no file; the next container's tick
-    built the first one to `ready` with one file.
+    A row handed back keeps its claim id, has no lease and no file; after the stop in the reads, the
+    next container's tick built it to `ready` with one file.
 
   - **Logs and ticks.** The logs held only `[closure] export ready <id> {rows, bytes, ms}` lines and
     the expected `export claim lost` warning (from the give-up SQL below): no errors, and nothing is
@@ -6238,12 +6238,15 @@ review's fixes are listed after Tests.
     `pg_stat_statements` showed one `jobs_waiting` call a tick (5 ticks, 5 calls); the minute job
     wrote no `cron_runs` rows. The route answered in the image as VPS-29 says: 400 for an empty,
     trailing or unknown kind, 401 for a wrong bearer and 405 for `POST`, every answer `no-store`.
-  - **Also.** The RUNBOOK's give-up SQL on a live build: the build noticed at its next heartbeat
-    (about 15 s), uploaded nothing, logged `export claim lost` and the runner went on to the next
-    export. Building `order_items.csv` at the memory cap blocks the event loop for 6.0 s in the
-    image under `--cpus 1.5` (`csvDateTime` makes a new `Intl.DateTimeFormat` for every cell), so a
-    stop that lands there would take 6 to 7 s (reasoned from that, not timed), inside the 25 s
-    grace.
+  - **Also.** An upsert over a ZIP already there leaves one `storage.objects` row: `created_at`
+    stays at the first upload and `updated_at` and `version` change (storage-api v1.72.1), so the
+    25-hour sweep, which goes by `created_at`, still outlives the 24-hour link, as a rebuild must
+    finish within 15 minutes of its request (VPS-26). The RUNBOOK's give-up SQL on a live build: the
+    build noticed at its next heartbeat (about 15 s), uploaded nothing, logged `export claim lost`
+    and the runner went on to the next export. Building `order_items.csv` at the memory cap blocks
+    the event loop for 6.0 s in the image under `--cpus 1.5` (`csvDateTime` makes a new
+    `Intl.DateTimeFormat` for every cell), so a stop that lands there would take 6 to 7 s (reasoned
+    from that, not timed), inside the 25 s grace.
   - **Not tried.** Stops with Hindi names or emails in flight (the container has no menu reader or
     Resend key, and a minute-job fill or send would also lease or email the load seed's rows), the
     previous build's own export path (the container cannot log in), the scheduler's shell and
