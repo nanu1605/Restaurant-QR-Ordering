@@ -214,14 +214,15 @@ describe('the export size guard (SA-93, VPS-6)', () => {
   });
 
   it('allows half the heap, and no more than the cap', () => {
-    // heap_size_limit runs about 190 MB over the --max-old-space-size the VPS sets.
+    // Measured in the image: heap_size_limit is the --max-old-space-size the VPS sets plus a young
+    // generation that Node sizes from the container's memory (VPS-6).
     expect(exportMemoryLimit(4288 * MIB)).toBe(EXPORT_MEMORY_CAP); // Node's own on a big machine
-    expect(exportMemoryLimit(1192 * MIB)).toBe(EXPORT_MEMORY_CAP); // web: about 1000 MB
+    expect(exportMemoryLimit(1096 * MIB)).toBe(EXPORT_MEMORY_CAP); // web: 1000 in 1536m
     expect(exportMemoryLimit(1024 * MIB)).toBe(512 * MIB);
-    expect(exportMemoryLimit(692 * MIB)).toBe(346 * MIB); // web-staging: about 500 MB
+    expect(exportMemoryLimit(548 * MIB)).toBe(274 * MIB); // web-staging: 500 in 768m
     expect(exportMemoryLimit(100 * MIB)).toBe(50 * MIB);
-    heap.limit = 692 * MIB;
-    expect(exportMemoryLimit()).toBe(346 * MIB);
+    heap.limit = 548 * MIB;
+    expect(exportMemoryLimit()).toBe(274 * MIB);
   });
 
   /** An admin whose tables hold these counts, and that fails the moment a row is read. */
