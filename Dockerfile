@@ -97,7 +97,7 @@ case "$NEXT_PUBLIC_APP_URL" in
   */) echo 'error: NEXT_PUBLIC_APP_URL must not end with a slash' >&2; exit 1 ;;
 esac
 case "$DEPLOYMENT_ID" in
-  *[!A-Za-z0-9._-]*) echo 'error: DEPLOYMENT_ID may only hold letters, digits, dots, dashes and underscores' >&2; exit 1 ;;
+  *[!A-Za-z0-9_-]*) echo 'error: DEPLOYMENT_ID may only hold letters, digits, dashes and underscores' >&2; exit 1 ;;
 esac
 if [ -n "${NEXT_PUBLIC_SENTRY_DSN:-}" ] && [ -z "${NEXT_PUBLIC_SENTRY_ENVIRONMENT:-}" ]; then
   echo 'error: NEXT_PUBLIC_SENTRY_ENVIRONMENT is required when NEXT_PUBLIC_SENTRY_DSN is set' >&2

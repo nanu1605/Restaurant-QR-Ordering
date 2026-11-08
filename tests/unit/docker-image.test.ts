@@ -76,6 +76,16 @@ describe('the web image build', () => {
     expect(required.filter((name) => !checked.includes(name))).toEqual([]);
   });
 
+  it('lets only what next build accepts into the deployment ID', () => {
+    // A dot passed the guard once and then failed inside next build, with Next.js's words.
+    expect(readFileSync('node_modules/next/dist/build/index.js', 'utf8')).toContain(
+      '!/^[a-zA-Z0-9_-]*$/.test(config.deploymentId)',
+    );
+    expect(instructions).toContain(
+      "*[!A-Za-z0-9_-]*) echo 'error: DEPLOYMENT_ID may only hold letters, digits, dashes and underscores' >&2; exit 1 ;;",
+    );
+  });
+
   it('gives the image the commit and the build ID it was made from', () => {
     expect(instructions).toMatch(/^ARG NEXT_PUBLIC_BUILD_SHA$/m);
     expect(instructions).toMatch(/^ARG DEPLOYMENT_ID$/m);
