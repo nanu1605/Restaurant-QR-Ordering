@@ -1,15 +1,36 @@
-import { describe, expect, it, vi } from 'vitest';
+import { getEventListeners } from 'node:events';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acceptableHindi,
   fillHindiNames,
   HINDI_NAMES_SYSTEM_PROMPT,
+  queueHindiNames,
   transliterateNames,
   type HindiNameRow,
 } from '@/features/menu/hindi-names';
+import type { JobRun } from '@/lib/jobs';
 import type { VisionProvider } from '@/lib/vision/openai-compatible';
 
-// Automatic Hindi names (docs/DECISIONS.md HN-5 to HN-8), against a fake fetch.
+// Automatic Hindi names (docs/DECISIONS.md HN-5 to HN-8, VPS-27), against a fake fetch and a fake
+// Supabase client: the names are leased, written and settled batch by batch.
+
+const next = vi.hoisted(() => ({ tasks: [] as (() => Promise<unknown>)[] }));
+vi.mock('next/server', () => ({
+  after: (task: () => Promise<unknown>) => next.tasks.push(task),
+}));
+const config = vi.hoisted(() => ({ providers: [] as unknown[] }));
+vi.mock('@/features/menu-import/providers', () => ({
+  menuImportProviders: () => config.providers,
+}));
+const db = vi.hoisted(() => ({ admin: null as unknown }));
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => db.admin }));
+
+beforeEach(() => {
+  next.tasks.length = 0;
+  config.providers = [];
+});
 
 const primary: VisionProvider = {
   name: 'commandcode',
@@ -55,6 +76,71 @@ function fakeFetch(...replies: Array<Response | ((body: Record<string, unknown>)
   });
   return { fetchImpl: fetchImpl as unknown as typeof fetch, bodies };
 }
+
+/** A fetch that never answers, until its call is aborted: then it rejects, as fetch does. */
+function hangingFetch() {
+  const hang = vi.fn(
+    (_url: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init?.signal?.reason));
+      }),
+  );
+  return { fetchImpl: hang as unknown as typeof fetch, hang };
+}
+
+/** A run that goes on until the test stops it, as the server stopping does. */
+function stoppableRun() {
+  const server = new AbortController();
+  const run: JobRun = { signal: server.signal, stopping: () => server.signal.aborted };
+  return { run, stop: (reason?: unknown) => server.abort(reason) };
+}
+
+type Leased = { restaurant_id: string; kind: string; id: string; name: string };
+
+const leasedRow = ({ restaurantId, ...row }: HindiNameRow): Leased => ({
+  restaurant_id: restaurantId,
+  ...row,
+});
+
+/** One dish of rest-1 to be written. */
+const dish = (id: string): Leased =>
+  leasedRow({ restaurantId: 'rest-1', kind: 'item', id, name: `Dish ${id}` });
+
+type Reply = { data: unknown; error: { message: string } | null };
+
+/**
+ * A Supabase client whose lease hands out these batches in turn, then nothing (or asks a function
+ * for as many names as were asked for), and whose settle counts the names it was given. `answer`
+ * can answer a call itself.
+ */
+function fakeAdmin(
+  batches: Leased[][] | ((limit: number) => Leased[]),
+  answer: (fn: string, args: Record<string, unknown>) => Reply | undefined = () => undefined,
+) {
+  const queue = typeof batches === 'function' ? [] : [...batches];
+  const lease = typeof batches === 'function' ? batches : () => queue.shift() ?? [];
+  const rpc = vi.fn(async (fn: string, args: Record<string, unknown>): Promise<Reply> => {
+    const own = answer(fn, args);
+    if (own) return own;
+    if (fn === 'menu_hindi_names_lease') {
+      return { data: lease(Number(args.p_limit)), error: null };
+    }
+    const names = args.p_names as Array<{ name_hi?: string }>;
+    return { data: names.filter((entry) => entry.name_hi).length, error: null };
+  });
+  const admin = { rpc } as unknown as Parameters<typeof fillHindiNames>[0];
+  const calls = (fn: string) =>
+    rpc.mock.calls.filter(([name]) => name === fn).map(([, args]) => args);
+  return { admin, rpc, calls, order: () => rpc.mock.calls.map(([fn]) => fn) };
+}
+
+/** Writes every name it is sent, as नाम and its number. */
+const writeAll = (body: Record<string, unknown>) => {
+  const sent = JSON.parse((body.messages as Array<{ content: string }>)[1]!.content) as Array<{
+    n: number;
+  }>;
+  return completion(sent.map(({ n }) => ({ n, hindi: `नाम ${n}` })));
+};
 
 describe('acceptableHindi', () => {
   it('keeps one line of Devanagari, tidied, within the limit', () => {
@@ -183,42 +269,277 @@ describe('transliterateNames', () => {
     ).toEqual([['Paneer Tikka', 'Starters'], ['Dal Makhani']]);
     expect(Object.fromEntries(result)).toEqual({ 'a-1': 'नाम 0', 'a-2': 'नाम 1', 'b-1': 'नाम 0' });
   });
+
+  it("rejects with the signal's reason, not a provider error, when it aborts a call", async () => {
+    const reason = new DOMException('The server is stopping', 'AbortError');
+    const server = new AbortController();
+    const { fetchImpl, hang } = hangingFetch();
+
+    // Not an unanswered call: with only this provider, that would end as names it could not write.
+    const writing = transliterateNames(rows, [primary], fetchImpl, server.signal);
+    await vi.waitFor(() => expect(hang).toHaveBeenCalledTimes(1));
+    server.abort(reason);
+
+    await expect(writing).rejects.toBe(reason);
+    expect(getEventListeners(server.signal, 'abort')).toHaveLength(0);
+  });
+
+  it('sends nothing once the signal has aborted', async () => {
+    const reason = new DOMException('The server is stopping', 'AbortError');
+    const server = new AbortController();
+    server.abort(reason);
+    const { fetchImpl, hang } = hangingFetch();
+
+    await expect(
+      transliterateNames(rows, [primary, fallback], fetchImpl, server.signal),
+    ).rejects.toBe(reason);
+    expect(hang).not.toHaveBeenCalled();
+  });
+
+  it('leaves no listener on a signal that never aborts', async () => {
+    const server = new AbortController();
+    const { fetchImpl } = fakeFetch(completion([{ n: 0, hindi: 'पनीर टिक्का' }]));
+
+    await transliterateNames(rows.slice(0, 1), [primary], fetchImpl, server.signal);
+    expect(getEventListeners(server.signal, 'abort')).toHaveLength(0);
+  });
 });
 
 describe('fillHindiNames', () => {
-  it('stores the usable names for the rows that have none', async () => {
-    const rpc = vi
-      .fn<(fn: string, args: unknown) => Promise<{ data: unknown; error: null }>>()
-      .mockImplementation(async (fn) => ({
-        data:
-          fn === 'menu_hindi_names_claim'
-            ? rows.map(({ restaurantId, ...row }) => ({ restaurant_id: restaurantId, ...row }))
-            : 1,
-        error: null,
-      }));
-    const admin = { rpc } as unknown as Parameters<typeof fillHindiNames>[0];
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(completion([{ n: 0, hindi: 'पनीर टिक्का' }]));
+  it('leases the names, has the usable ones written and settles the batch', async () => {
+    const { admin, rpc } = fakeAdmin([rows.map(leasedRow)]);
+    const { fetchImpl } = fakeFetch(completion([{ n: 0, hindi: 'पनीर टिक्का' }]));
+    const { run } = stoppableRun();
 
-    await expect(fillHindiNames(admin, 'rest-1', 300, [primary])).resolves.toEqual({
-      missing: 2,
-      stored: 1,
-    });
-    expect(rpc).toHaveBeenNthCalledWith(1, 'menu_hindi_names_claim', {
+    await expect(
+      fillHindiNames(admin, {
+        restaurantId: 'rest-1',
+        maxNames: 300,
+        lanes: 1,
+        run,
+        providers: [primary],
+        fetchImpl,
+      }),
+    ).resolves.toEqual({ leased: 2, stored: 1 });
+    expect(rpc).toHaveBeenNthCalledWith(1, 'menu_hindi_names_lease', {
       p_restaurant_id: 'rest-1',
-      p_limit: 300,
+      p_limit: 100,
+      p_lease_seconds: 300,
     });
-    expect(rpc).toHaveBeenNthCalledWith(2, 'menu_set_hindi_names', {
-      p_names: [{ kind: 'item', id: 'dish-1', name: 'Paneer Tikka', name_hi: 'पनीर टिक्का' }],
+    // Every leased name is settled: the one the model wrote with it, the other as tried.
+    const settled = rpc.mock.calls[1]!;
+    expect(settled[0]).toBe('menu_hindi_names_settle');
+    expect(settled[1]).toEqual({
+      p_names: [
+        { kind: 'item', id: 'dish-1', name: 'Paneer Tikka', name_hi: 'पनीर टिक्का' },
+        { kind: 'category', id: 'cat-1', name: 'Starters' },
+      ],
     });
-    fetchSpy.mockRestore();
+    expect((settled[1].p_names as object[])[1]).not.toHaveProperty('name_hi');
+    // Then it asks for more, and there is none.
+    expect(rpc).toHaveBeenNthCalledWith(3, 'menu_hindi_names_lease', expect.anything());
+    expect(rpc).toHaveBeenCalledTimes(3);
+  });
+
+  it("asks for every restaurant's names, five lanes at a time, up to maxNames", async () => {
+    const { admin, calls } = fakeAdmin([]);
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { run, maxNames: 500, providers: [primary] }),
+    ).resolves.toEqual({ leased: 0, stored: 0 });
+    const leases = calls('menu_hindi_names_lease');
+    expect(leases).toHaveLength(5);
+    for (const lease of leases) {
+      expect(lease).toEqual({ p_limit: 100, p_lease_seconds: 300 });
+      expect(lease.p_restaurant_id).toBeUndefined();
+    }
   });
 
   it('does nothing without a provider', async () => {
-    const rpc = vi.fn();
-    const admin = { rpc } as unknown as Parameters<typeof fillHindiNames>[0];
-    await expect(fillHindiNames(admin, null, 500, [])).resolves.toEqual({ missing: 0, stored: 0 });
+    const { admin, rpc } = fakeAdmin([]);
+    const { run } = stoppableRun();
+    await expect(fillHindiNames(admin, { run, providers: [] })).resolves.toEqual({
+      leased: 0,
+      stored: 0,
+    });
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('settles each batch before it leases the next', async () => {
+    const { admin, order } = fakeAdmin([[dish('a')], [dish('b')]]);
+    const { fetchImpl } = fakeFetch(
+      completion([{ n: 0, hindi: 'डिश ए' }]),
+      completion([{ n: 0, hindi: 'डिश बी' }]),
+    );
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { lanes: 1, run, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 2, stored: 2 });
+    expect(order()).toEqual([
+      'menu_hindi_names_lease',
+      'menu_hindi_names_settle',
+      'menu_hindi_names_lease',
+      'menu_hindi_names_settle',
+      'menu_hindi_names_lease',
+    ]);
+  });
+
+  it('stores a batch that has answered while another is still being written', async () => {
+    const { admin, calls } = fakeAdmin([[dish('a')], [dish('b')]]);
+    let asked = 0;
+    // The first batch is answered; the second never is.
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      asked += 1;
+      if (asked === 1) return completion([{ n: 0, hindi: 'डिश ए' }]);
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init?.signal?.reason));
+      });
+    }) as unknown as typeof fetch;
+    const { run, stop } = stoppableRun();
+
+    const filling = fillHindiNames(admin, { lanes: 2, run, providers: [primary], fetchImpl });
+    await vi.waitFor(() => expect(calls('menu_hindi_names_settle')).toHaveLength(1));
+    expect(calls('menu_hindi_names_settle')[0]).toEqual({
+      p_names: [{ kind: 'item', id: 'a', name: 'Dish a', name_hi: 'डिश ए' }],
+    });
+
+    // The server stops with the second still out: it settles nothing.
+    stop();
+    await expect(filling).resolves.toEqual({ leased: 2, stored: 1, stopped: true });
+    expect(calls('menu_hindi_names_settle')).toHaveLength(1);
+  });
+
+  it('settles nothing for a call that the server stopping aborts', async () => {
+    const { admin, order } = fakeAdmin([rows.map(leasedRow)]);
+    const { fetchImpl, hang } = hangingFetch();
+    const { run, stop } = stoppableRun();
+
+    const filling = fillHindiNames(admin, {
+      lanes: 1,
+      run,
+      providers: [primary, fallback],
+      fetchImpl,
+    });
+    await vi.waitFor(() => expect(hang).toHaveBeenCalledTimes(1));
+    stop(new DOMException('The server is stopping', 'AbortError'));
+
+    await expect(filling).resolves.toEqual({ leased: 2, stored: 0, stopped: true });
+    // Leased and left: the lease runs out, and the names are leased again.
+    expect(order()).toEqual(['menu_hindi_names_lease']);
+    expect(hang).toHaveBeenCalledTimes(1);
+  });
+
+  it('leases no more than maxNames', async () => {
+    let made = 0;
+    const { admin, calls } = fakeAdmin((limit) =>
+      Array.from({ length: limit }, () => dish(`d${made++}`)),
+    );
+    const { fetchImpl } = fakeFetch(writeAll, writeAll);
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { maxNames: 150, lanes: 2, run, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 150, stored: 150 });
+    // The lanes asked together, and the second was given what was left.
+    expect(calls('menu_hindi_names_lease').map((args) => args.p_limit)).toEqual([100, 50]);
+  });
+
+  it('asks again for what a short lease left of the allowance', async () => {
+    const { admin, calls } = fakeAdmin([[dish('a')], [dish('b')], [dish('c')]]);
+    const { fetchImpl } = fakeFetch(writeAll, writeAll, writeAll);
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { maxNames: 3, lanes: 1, run, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 3, stored: 3 });
+    expect(calls('menu_hindi_names_lease').map((args) => args.p_limit)).toEqual([3, 2, 1]);
+  });
+
+  it('starts no batch once the run is over', async () => {
+    const { admin, rpc } = fakeAdmin([[dish('a')]]);
+    const over: JobRun = { signal: new AbortController().signal, stopping: () => true };
+    await expect(fillHindiNames(admin, { run: over, providers: [primary] })).resolves.toEqual({
+      leased: 0,
+      stored: 0,
+    });
+    expect(rpc).not.toHaveBeenCalled();
+
+    // Out of time after a batch: the one going on finishes, and no other starts.
+    const { admin: second, order } = fakeAdmin([[dish('a')], [dish('b')]]);
+    const { fetchImpl } = fakeFetch(writeAll, writeAll);
+    const budgetSpent: JobRun = {
+      signal: new AbortController().signal,
+      stopping: () => order().includes('menu_hindi_names_settle'),
+    };
+    await expect(
+      fillHindiNames(second, { lanes: 1, run: budgetSpent, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 1, stored: 1 });
+    expect(order()).toEqual(['menu_hindi_names_lease', 'menu_hindi_names_settle']);
+  });
+
+  it('throws a database error once every lane has ended', async () => {
+    let leases = 0;
+    const { admin, calls } = fakeAdmin([[dish('a')]], (fn) =>
+      fn === 'menu_hindi_names_lease' && ++leases === 1
+        ? { data: null, error: { message: 'connection lost' } }
+        : undefined,
+    );
+    const { fetchImpl } = fakeFetch(writeAll);
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { lanes: 2, run, providers: [primary], fetchImpl }),
+    ).rejects.toThrow('Could not lease missing Hindi names: connection lost');
+    // The other lane was left to finish its batch.
+    expect(calls('menu_hindi_names_settle')).toHaveLength(1);
+  });
+
+  it('throws when a batch cannot be stored', async () => {
+    const { admin } = fakeAdmin([[dish('a')]], (fn) =>
+      fn === 'menu_hindi_names_settle' ? { data: null, error: { message: 'too slow' } } : undefined,
+    );
+    const { fetchImpl } = fakeFetch(writeAll);
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { lanes: 1, run, providers: [primary], fetchImpl }),
+    ).rejects.toThrow('Could not store Hindi names: too slow');
+  });
+});
+
+describe('queueHindiNames', () => {
+  it('does nothing without a provider', () => {
+    queueHindiNames('rest-1');
+    expect(next.tasks).toHaveLength(0);
+  });
+
+  it("fills the restaurant's names after the response", async () => {
+    config.providers = [primary];
+    const { admin, calls } = fakeAdmin([]);
+    db.admin = admin;
+
+    queueHindiNames('rest-1');
+    expect(next.tasks).toHaveLength(1);
+    expect(calls('menu_hindi_names_lease')).toHaveLength(0);
+
+    await next.tasks[0]!();
+    // Three lanes, and the whole of 300 names asked for in 100s.
+    const leases = calls('menu_hindi_names_lease');
+    expect(leases).toHaveLength(3);
+    for (const lease of leases) {
+      expect(lease).toEqual({ p_restaurant_id: 'rest-1', p_limit: 100, p_lease_seconds: 300 });
+    }
+  });
+
+  it('logs a failure instead of throwing it', async () => {
+    config.providers = [primary];
+    db.admin = fakeAdmin([], () => ({ data: null, error: { message: 'connection lost' } })).admin;
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    queueHindiNames('rest-1');
+    await expect(next.tasks[0]!()).resolves.toBeUndefined();
+    expect(logged).toHaveBeenCalledWith('[hindi-names] fill failed', expect.any(Error));
   });
 });

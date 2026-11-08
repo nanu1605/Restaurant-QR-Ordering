@@ -112,6 +112,7 @@ export async function chatCompletion({
   timeoutMs,
   maxTokens = 16_384,
   fetchImpl = fetch,
+  signal,
 }: {
   provider: VisionProvider;
   messages: ChatMessage[];
@@ -120,7 +121,13 @@ export async function chatCompletion({
   timeoutMs: number;
   maxTokens?: number;
   fetchImpl?: typeof fetch;
+  /**
+   * Gives the call up when it aborts, as the server stopping does. The call then throws the
+   * signal's reason, not a ProviderError: the provider did nothing wrong.
+   */
+  signal?: AbortSignal;
 }): Promise<ChatResult> {
+  signal?.throwIfAborted();
   const body: Record<string, unknown> = {
     model: provider.model,
     messages,
@@ -137,9 +144,12 @@ export async function chatCompletion({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const giveUp = () => controller.abort();
+  signal?.addEventListener('abort', giveUp, { once: true });
   try {
     return await call(provider, body, jsonSchema, controller, fetchImpl);
   } catch (error) {
+    if (signal?.aborted) throw signal.reason;
     if (controller.signal.aborted) {
       throw new ProviderError(`${provider.name} did not answer in time`, 'timeout');
     }
@@ -148,6 +158,7 @@ export async function chatCompletion({
     // Cleared only once the body has been read too, so a provider that sends
     // headers and then stalls still runs out of time.
     clearTimeout(timer);
+    signal?.removeEventListener('abort', giveUp);
   }
 }
 
