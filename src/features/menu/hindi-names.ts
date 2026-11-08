@@ -43,6 +43,7 @@ export const HINDI_RUN_MS = 90_000;
 const MAX_LENGTH = { item: 80, category: 60 } as const;
 const DEVANAGARI = /\p{Script=Devanagari}/u;
 const LATIN = /[A-Za-z]/;
+const CONTROL = /\p{Cc}/u;
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -83,6 +84,9 @@ export function acceptableHindi(value: unknown, maxLength: number): string | nul
   if (typeof value !== 'string' || /[\r\n]/.test(value)) return null;
   const text = value.trim().replace(/\s+/g, ' ');
   if (text.length === 0 || text.length > maxLength) return null;
+  // No control character or half of a surrogate pair: Postgres holds neither \u0000 nor the half,
+  // so the batch's settle would fail, and the batch be leased and sent again every 5 minutes.
+  if (CONTROL.test(text) || !text.isWellFormed()) return null;
   return DEVANAGARI.test(text) && !LATIN.test(text) ? text : null;
 }
 

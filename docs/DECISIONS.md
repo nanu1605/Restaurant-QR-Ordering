@@ -5840,7 +5840,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     calls and settles nothing, and the result says `stopped`. A batch that finds every provider
     down (no connection, or 401, 403, 408, 429 or 5xx from each) settles nothing either: its names
     are leased again once the leases run out, no lane leases more, and the result says
-    `stopped: 'unavailable'`. A lane asks for no more than
+    `stopped: 'unavailable'`. A name the model writes must hold no control character and be well
+    formed (`acceptableHindi`): Postgres refuses `\u0000` and half a surrogate pair in the settle's
+    JSON, so the whole batch would fail to settle and go to the model again each time its leases
+    ran out (review finding R4). A lane asks for no more than
     `min(100, maxNames - names already asked for)`, so `maxNames` (300 after a menu edit, 500 in the
     daily run) is an exact cap even when lanes ask together. A database error lets the other lanes
     end and is then thrown. The log line of a call adds its seconds.
@@ -6063,7 +6066,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,007 tests, 60 to 66 files):**
+- **Unit (886 to 1,008 tests, 60 to 66 files):**
   - `jobs` (15, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6093,7 +6096,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     export; a table error stops the other readers and `buildExport` ends only once they have, with
     no read after it; no timer is left on any path; `startExportJobs` runs one queue at a time;
     `parseExportClaim`, busy included.
-  - `menu-hindi-names` (10 to 38): the lease and the settle in place of the claim and the store;
+  - `menu-hindi-names` (10 to 39): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
     lease gives back its share; no batch starts once the run is over; a database error is thrown
@@ -6102,7 +6105,8 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     that finds every provider down (no connection, 401, 403, 408, 429, 500, 503) answers null, and
     the fill then settles nothing and ends with one lease a lane, while a provider that runs out of
     time, sends an unusable or non-JSON reply or answers 422 after another was down still has the
-    batch counted as tried; `queueHindiNames`.
+    batch counted as tried; a name holding a control character or half a surrogate pair is dropped
+    and the settle never carries one, while a tab and a joiner are kept; `queueHindiNames`.
   - `announcement-emails` (28, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in

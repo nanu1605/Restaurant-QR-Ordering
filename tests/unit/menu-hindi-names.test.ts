@@ -167,6 +167,9 @@ describe('acceptableHindi', () => {
     expect(acceptableHindi('  पनीर   टिक्का ', 80)).toBe('पनीर टिक्का');
     expect(acceptableHindi('चिकन 65', 80)).toBe('चिकन 65');
     expect(acceptableHindi('क'.repeat(60), 60)).toBe('क'.repeat(60));
+    // A tab is space, tidied before the control characters are looked for; a joiner is no control.
+    expect(acceptableHindi('पनीर\tटिक्का', 80)).toBe('पनीर टिक्का');
+    expect(acceptableHindi('क्‍ष', 80)).toBe('क्‍ष');
   });
 
   it('drops anything else', () => {
@@ -176,6 +179,11 @@ describe('acceptableHindi', () => {
     expect(acceptableHindi('पनीर\nटिक्का', 80)).toBeNull();
     expect(acceptableHindi('   ', 80)).toBeNull();
     expect(acceptableHindi(5, 80)).toBeNull();
+    // Postgres holds neither \u0000 nor half a surrogate pair, so the settle would fail each time.
+    expect(acceptableHindi('मसाला\u0000 चाय', 80)).toBeNull();
+    expect(acceptableHindi('म\ud800', 80)).toBeNull();
+    expect(acceptableHindi('\udc00मसाला', 80)).toBeNull();
+    expect(acceptableHindi('मसाला\u0085चाय', 80)).toBeNull();
   });
 });
 
@@ -517,6 +525,30 @@ describe('fillHindiNames', () => {
     ).resolves.toEqual({ leased: 1, stored: 0 });
     expect(calls('menu_hindi_names_settle')).toEqual([
       { p_names: [{ kind: 'item', id: 'a', name: 'Dish a' }] },
+    ]);
+  });
+
+  it('never sends the settle a name Postgres cannot hold', async () => {
+    const { admin, calls } = fakeAdmin([[dish('a'), dish('b')]]);
+    const { fetchImpl } = fakeFetch(
+      completion([
+        { n: 0, hindi: 'मसाला\u0000 चाय' },
+        { n: 1, hindi: 'म\ud800' },
+      ]),
+    );
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { lanes: 1, run, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 2, stored: 0 });
+    // Counted as tried, so the batch is not leased and sent to the model again every 5 minutes.
+    expect(calls('menu_hindi_names_settle')).toEqual([
+      {
+        p_names: [
+          { kind: 'item', id: 'a', name: 'Dish a' },
+          { kind: 'item', id: 'b', name: 'Dish b' },
+        ],
+      },
     ]);
   });
 
