@@ -38,6 +38,18 @@ const exportRowSchema = z
   .nullable();
 export const parseExportRow = (json: unknown) => exportRowSchema.parse(json);
 
+/** An export the server may build, from restaurant_export_claim (docs/DECISIONS.md VPS-26). */
+const exportClaimSchema = z
+  .object({ export_id: z.uuid(), restaurant_id: z.uuid(), claim_id: z.uuid() })
+  .transform((claim) => ({
+    exportId: claim.export_id,
+    restaurantId: claim.restaurant_id,
+    claimId: claim.claim_id,
+  }))
+  .nullable();
+export type ExportClaim = NonNullable<z.infer<typeof exportClaimSchema>>;
+export const parseExportClaim = (json: unknown) => exportClaimSchema.parse(json);
+
 /** What a page shows of the latest export; its file's path stays on the server. */
 export type DataExport =
   | { state: 'none' | 'building' | 'failed' | 'expired' }

@@ -13,6 +13,7 @@ import {
   type ExportData,
 } from '@/features/closure/export-files';
 import { mandateCanCharge } from '@/features/subscriptions/autopay';
+import { jobRun } from '@/lib/jobs';
 import { zipArchive, zipEntry } from '@/lib/zip';
 
 import { readZip } from '../read-zip';
@@ -229,9 +230,10 @@ describe('the export size guard (SA-93, VPS-6)', () => {
   function adminWith(counts: Partial<ExportCounts>) {
     const select = (table: string) => (_columns: string, options?: { head?: boolean }) => {
       if (!options?.head) throw new Error(`a row of ${table} was read`);
-      return { eq: async () => ({ count: counts[table as keyof ExportCounts] ?? 0, error: null }) };
+      const counted = { count: counts[table as keyof ExportCounts] ?? 0, error: null };
+      return { eq: () => ({ abortSignal: async () => counted }) };
     };
-    const rpc = vi.fn(async () => ({ error: null }));
+    const rpc = vi.fn(() => ({ abortSignal: async () => ({ data: true, error: null }) }));
     const storage = { from: vi.fn() };
     const admin = {
       from: (table: string) => ({ select: select(table) }),
@@ -241,14 +243,20 @@ describe('the export size guard (SA-93, VPS-6)', () => {
     return { admin, rpc, storage };
   }
 
+  const claim = { exportId: 'e1', restaurantId: 'r1', claimId: 'c1' };
+
   it('refuses an export too big for memory before reading a row', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { admin, rpc, storage } = adminWith({ bills: 100_000 });
 
-    await buildExport(admin, 'r1', 'e1');
+    await expect(buildExport(admin, claim, jobRun(60_000))).resolves.toBe('failed');
 
-    // It ends as any failed build does: marked without a size, nothing uploaded.
-    expect(rpc).toHaveBeenCalledWith('restaurant_export_finish', { p_export_id: 'e1' });
+    // It ends as any failed build does: failed by its claim, nothing uploaded.
+    expect(rpc).toHaveBeenCalledWith('restaurant_export_fail', {
+      p_export_id: 'e1',
+      p_claim_id: 'c1',
+      p_error: expect.stringContaining('too big to build in memory'),
+    });
     expect(storage.from).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       '[closure] export failed',
@@ -264,13 +272,13 @@ describe('the export size guard (SA-93, VPS-6)', () => {
 
     // About 27 MiB of rows: more than half of a 40 MiB heap, nothing to a large one.
     heap.limit = 40 * MIB;
-    await buildExport(adminWith(counts).admin, 'r1', 'e1');
+    await buildExport(adminWith(counts).admin, claim, jobRun(60_000));
     expect(error.mock.calls.at(-1)![3]).toMatchObject({
       message: expect.stringContaining('too big to build in memory'),
     });
 
     heap.limit = heap.big;
-    await buildExport(adminWith(counts).admin, 'r1', 'e1');
+    await buildExport(adminWith(counts).admin, claim, jobRun(60_000));
     // The guard let it through: it went on to read the first table.
     expect(error.mock.calls.at(-1)![3]).toMatchObject({
       message: expect.stringContaining('a row of'),

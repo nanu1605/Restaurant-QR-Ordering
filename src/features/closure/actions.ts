@@ -1,7 +1,6 @@
 'use server';
 
 import { refresh } from 'next/cache';
-import { after } from 'next/server';
 
 import { restaurantIdSchema } from '@/features/platform/schemas';
 import { mandateCanCharge } from '@/features/subscriptions/autopay';
@@ -22,7 +21,7 @@ import { createClient } from '@/lib/supabase/server';
 
 import { closeAccountSchema, type CloseAccountInput } from './closure';
 import { sendClosureEmail, type ClosedRestaurant } from './email';
-import { buildExport } from './export';
+import { startExportJobs } from './export-jobs';
 
 /**
  * Closing an account and its data export (docs/SUPER_ADMIN_PLAN.md 14e,
@@ -32,18 +31,17 @@ import { buildExport } from './export';
 
 const refused = (code: string) => dbErrorMessage({ code: 'P0001', message: code }) ?? GENERIC_ERROR;
 
-function buildAfterResponse(restaurantId: string, exportId: string) {
-  // Up to the page's maxDuration; a build that dies reads as failed (SA-93).
-  after(() => buildExport(createAdminClient(), restaurantId, exportId));
-}
-
-/** The owner's copy, from Settings. A support session is never the owner. */
+/**
+ * The owner's copy, from Settings. A support session is never the owner. The request queues the
+ * export, and the queue builds it after the response; one cut off by a restart is built again
+ * (docs/DECISIONS.md VPS-26).
+ */
 export async function requestOwnerExport(): Promise<ActionResult> {
-  const membership = await requireMember(['owner']);
+  await requireMember(['owner']);
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('admin_request_data_export');
+  const { error } = await supabase.rpc('admin_request_data_export');
   if (error) return fromDbError(error, 'admin_request_data_export');
-  buildAfterResponse(membership.restaurant.id, data);
+  startExportJobs();
   refresh();
   return actionOk();
 }
@@ -53,11 +51,11 @@ export async function requestTeamExport(restaurantId: string): Promise<ActionRes
   const id = restaurantIdSchema.safeParse(restaurantId);
   if (!id.success) return actionError(GENERIC_ERROR);
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('platform_request_data_export', {
+  const { error } = await supabase.rpc('platform_request_data_export', {
     p_restaurant_id: id.data,
   });
   if (error) return fromDbError(error, 'platform_request_data_export');
-  buildAfterResponse(id.data, data);
+  startExportJobs();
   refresh();
   return actionOk();
 }
