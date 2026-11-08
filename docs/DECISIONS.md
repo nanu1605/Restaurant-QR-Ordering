@@ -5943,13 +5943,18 @@ review's fixes are listed after Tests.
     dashboard. At 03:00 the daily run's reminders and a minute run can overlap, up to about 3.3
     requests a second; a 429 ends the minute run until the next minute, while one in the reminders
     is still not retried until the next day. A running email announcement makes the minute job
-    read the active restaurants against its sent pairs every minute (VPS-29): about 4 ms at 6,500
-    restaurants once every email went to an announcement for everyone. One for part of the platform
-    also tests each restaurant left out of it against its audience, every minute, because those are
-    never sent: `in_audience` costs about 4 µs a call, so 30 to 45 ms at 6,500 restaurants. A
-    "scanned at" marker, or the audience written out in the query, is the answer past a few
-    thousand restaurants. The second needs care: tried for review finding D2, its estimates led the
-    planner to a 1-second plan for an announcement to everyone. On Vercel, which has no minute job,
+    read the active restaurants against its sent pairs every minute (VPS-29). Measured on the load
+    seed's 6,623 active restaurants, with texts as long as the form allows, once every email went:
+    3 to 7 ms for an announcement to everyone, 12 ms for a list of 300 (each active restaurant is
+    compared with the list), and 37 to 48 ms for a plan or a city, which also tests each restaurant
+    left out of it against its audience, every minute, because those are never sent (`in_audience`
+    costs about 6 µs a call). While a new announcement to everyone goes out, each check and each
+    round of 50 takes 60 to 65 ms, as it tests and looks up the addresses of every restaurant not
+    yet emailed. None of it writes a temporary file at the default `work_mem` of 4 MB: the steps
+    hold ids and the order's keys, never the texts (review finding S1). A "scanned at" marker, or
+    the audience written out in the query, is the answer past a few thousand restaurants. The second
+    needs care: tried for review finding D2, its estimates led the planner to a 1-second plan for an
+    announcement to everyone. On Vercel, which has no minute job,
     the daily run's email step now starts no send after 150 s and leaves the rest to the next daily
     run or save, where it used to run until the 300 s kill.
 - **VPS-29 · The every-minute jobs route:** `GET /api/cron/jobs` (`src/app/api/cron/jobs/route.ts`).
@@ -5973,15 +5978,19 @@ review's fixes are listed after Tests.
     `private.announcement_emails_waiting()` (`announcement_emails_next(now(), 1, true)` gives a row,
     asked only once an email announcement is due, so that until then nothing but the announcements
     is read). An idle tick is that one statement. `announcement_emails_next` finds the pairs not
-    sent and not set aside first, in a materialized CTE, and only then tests the audience and looks
-    up the owners' addresses. Before, it looked up every active restaurant's owners on every call,
-    even with no email announcement running (review finding D2): measured on the local load seed of
-    6,483 active restaurants, the check went from 23 to 26 ms and 47,335 buffers to 0.2 ms and 3
-    buffers with no email announcement due, and from 26 to 30 ms and 53,747 buffers to 4 ms and
-    about 6,900 buffers with one for everyone whose emails all went. The whole of `jobs_waiting()`
-    takes about 1 ms on that seed while a name waits, and 4 to 11 ms when none does: the Hindi check
-    then reads the seed's 61,000 names, nearly all without a Hindi name, so its partial indexes are
-    not small there. A database whose menus are filled in keeps few names in them.
+    sent and not set aside first (of a list, only its restaurants), as ids in a materialized CTE,
+    and only then joins the announcement and the restaurant back, tests the audience and looks up
+    the owners' addresses; the texts join only the emails it returns. Before, it looked up every
+    active restaurant's owners on every call, even with no email announcement running (review
+    finding D2): measured on the local load seed of 6,483 active restaurants, the check went from 23
+    to 26 ms and 47,335 buffers to 0.2 ms and 3 buffers with no email announcement due, and from 26
+    to 30 ms and 53,747 buffers to 4 ms and about 6,900 buffers with one for everyone whose emails
+    all went. That CTE then held a copy of the announcement for each restaurant, which went to
+    temporary files (review finding S1); the costs now are in VPS-28 Limits. The whole of
+    `jobs_waiting()` takes about 1 ms on that seed while a name waits, and 4 to 11 ms when none
+    does: the Hindi check then reads the seed's 61,000 names, nearly all without a Hindi name, so
+    its partial indexes are not small there. A database whose menus are filled in keeps few names in
+    them.
   - **The scheduler.** The deploy stop's crontab has it called every minute, from the `scheduler`
     container to the web container directly and never through Cloudflare (VPS-22): the line is
     `* * * * * wget -q -O /dev/null -T 25 --header "Authorization: Bearer $CRON_SECRET"` followed,
@@ -6034,7 +6043,7 @@ review's fixes are listed after Tests.
 
 ### Tests (VPS Stop A2)
 
-- **pgTAP (71 to 75 files, 3,311 to 3,554 tests):** four new files; `010_schema_guards` gains a
+- **pgTAP (71 to 75 files, 3,311 to 3,556 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
   - `690_export_jobs` (129): a request gives a `queued` row with no claim or lease, the card says it
     is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is
@@ -6066,7 +6075,7 @@ review's fixes are listed after Tests.
     its lease, and a fill working on the old name stores nothing; an owner's name typed after the
     lease stays the owner's; the old claim skips leased names and still stamps;
     `hindi_names_waiting` is true and false as the rules say.
-  - `692_announcement_email_jobs` (38): `announcement_emails_next` gives a save or the daily run
+  - `692_announcement_email_jobs` (40): `announcement_emails_next` gives a save or the daily run
     every email due today, in the due list's order, to its addresses, `p_limit` at a time (at least
     one, 50 when none is given); the minute job takes an announcement that has started, not one that
     starts later today until one of its emails went, and a restaurant that joins a running one's
@@ -6078,7 +6087,11 @@ review's fixes are listed after Tests.
     announcement running it reads no restaurant and no login, and once an announcement's emails all
     went, five more restaurants left out of its audience add no read of a login (the planner's own
     look at the logins' keys, each call, is the same both times). Both fail on the shape before
-    review finding D2, which looked up every restaurant's owners on each call.
+    review finding D2, which looked up every restaurant's owners on each call. At the smallest
+    `work_mem` (64 kB) the check writes no temporary file, for a list whose one email went, among
+    150 more restaurants, and while that list's 150 emails wait: the shape before review finding S1
+    wrote 1,056 and 3,030 blocks there (26 and 72 at CI's size), and the verifier's version of the
+    fix, which kept the texts in its second step, 14 in the second case.
   - `693_jobs_waiting` (9): nothing waits; each of a queued export, a name without Hindi and an
     announcement email to send makes its own key true, and none is left once each is done; two calls
     write nothing, counted in the rows the transaction has written (`pg_stat_xact_user_tables`), so
@@ -6289,9 +6302,10 @@ spec's Hindi column).
   restaurants, where the notes said one read of nearly empty indexes. `announcement_emails_waiting`
   now asks it only once an email announcement is due, and it finds the pairs not sent and not set
   aside first, before the audience and the addresses: 0.2 ms with nothing due, about 4 ms for one to
-  everyone whose emails went. An announcement to part of the platform still costs 30 to 45 ms a
-  minute at that size (VPS-28 Limits). 692 gained five tests that count reads. (132dc9f, notes
-  3aa5426)
+  everyone whose emails went. An announcement to part of the platform still cost 45 to 90 ms a
+  minute at that size, not the 30 to 45 ms given here first, and its check wrote 8 to 38 MB of
+  temporary files (review finding S1, under Re-review). 692 gained five tests: two count reads, and
+  three test the address rule and the limit. (132dc9f, notes 3aa5426)
 - **D3 · An outage set aside every waiting name (VPS-27):** the minute job's run has no cap, and a
   batch that no provider answered was settled as tried, so a few minutes without a reader set aside
   every waiting name for 12 hours though the model never saw it. A batch where every provider failed

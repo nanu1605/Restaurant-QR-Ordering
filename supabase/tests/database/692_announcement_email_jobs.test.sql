@@ -1,7 +1,8 @@
 -- Announcement emails in runs (docs/DECISIONS.md VPS-28): the next emails due, in the due list's
 -- order; a pair Resend refused, set aside for 20 hours; and what the minute job takes (the
 -- owner's answer, 2026-11-08): an announcement once it has started, or once one of its emails
--- went. And what the minute job's check reads to find that nothing waits (VPS-29).
+-- went. And what the minute job's check reads to find that nothing waits, and that it needs no
+-- temporary file (VPS-29).
 begin;
 select no_plan();
 
@@ -219,6 +220,46 @@ select is(pg_temp.next(now(), 1), array['Bare vps692-cumin'],
   'a restaurant with no address is passed over, and the limit counts the emails');
 select is(pg_temp.next(now(), 1, true), array['Bare vps692-cumin'], 'by the minute job too');
 select ok(private.announcement_emails_waiting(), 'which waits for it');
+
+-- No temporary file, even at the smallest work_mem: between its steps the check holds the ids of
+-- the pairs not sent and the order's keys, not an announcement's texts once for each restaurant
+-- (review finding S1). Long texts, in Hindi too, for one restaurant among 150 more.
+update public.announcements set ended_at = now() where ended_at is null;
+create function pg_temp.temp_blocks(p_query text)
+returns bigint
+language plpgsql
+set work_mem = '64kB'
+as $$
+declare
+  v_plan json;
+begin
+  execute 'explain (analyze, buffers, format json) ' || p_query into v_plan;
+  return coalesce((v_plan -> 0 -> 'Plan' ->> 'Temp Written Blocks')::bigint, 0);
+end;
+$$;
+create function pg_temp.announce_long(p_restaurant_ids uuid[])
+returns uuid
+language sql as $$
+  insert into public.announcements (title, body, title_hi, body_hi, panels, restaurant_ids,
+    starts_at, email)
+  values (left(repeat('Menu update ', 10), 120),
+    left(repeat('Prices now show in rupees. ', 19), 500),
+    left(repeat('मेनू अपडेट ', 12), 120),
+    left(repeat('अब कीमतें रुपये में दिखती हैं। ', 17), 500),
+    array['admin'], p_restaurant_ids, now() - interval '1 day', true)
+  returning id;
+$$;
+select array_agg(tests.create_restaurant('vps692-many' || n) order by n) as many
+  from generate_series(1, 150) as n \gset
+update public.restaurants set email = slug || '@example.test' where id = any (:'many'::uuid[]);
+select pg_temp.announce_long(array[(:'many'::uuid[])[1]]) as one \gset
+select public.announcement_email_sent(:'one', (:'many'::uuid[])[1]);
+select is(pg_temp.temp_blocks('select * from public.announcement_emails_next(now(), 1, true)'),
+  0::bigint, 'one whose email went is checked without a temporary file');
+update public.announcements set ended_at = now() where id = :'one';
+select pg_temp.announce_long(:'many'::uuid[]) as all_many \gset
+select is(pg_temp.temp_blocks('select * from public.announcement_emails_next(now(), 1, true)'),
+  0::bigint, 'and so is one whose 150 emails wait');
 
 -- ─── Grants ─────────────────────────────────────────────────────────────────
 select ok(

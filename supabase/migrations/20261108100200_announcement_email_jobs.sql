@@ -31,8 +31,11 @@ revoke all on public.announcement_email_failures from anon, authenticated;
 -- its addresses, without the pairs refused in the 20 hours before p_at. A save and the daily run
 -- take every due announcement, as before; the minute job (p_minute_job) only one that has
 -- started, or one with an email already sent. The pairs not sent and not set aside are found
--- first, and only they are tested for the audience and given addresses: once an announcement's
--- emails went, the minute job reads its sent pairs, not every owner's logins.
+-- first (of a list, only its restaurants), and only they are tested for the audience and given
+-- addresses: once an announcement's emails went, the minute job reads its sent pairs, not every
+-- owner's logins. The steps hold ids, the order's keys and what the addresses need, and the texts
+-- join only the emails returned: an announcement copied for each restaurant not yet emailed went
+-- to temporary files every minute (review finding S1).
 create function public.announcement_emails_next(
   p_at timestamptz default now(),
   p_limit int default 50,
@@ -45,9 +48,10 @@ security definer
 set search_path = ''
 as $$
   with unsent as materialized (
-    select a, r.id as restaurant_id, r.name, r.slug, r.email
+    select a.id as announcement_id, r.id as restaurant_id
     from public.announcements a
     join public.restaurants r on r.status = 'active'
+      and (a.restaurant_ids is null or r.id = any (a.restaurant_ids))
     where private.announcement_email_due(a, p_at)
       and (p_minute_job is not true or a.starts_at <= p_at
         or exists (select 1 from public.announcement_emails s where s.announcement_id = a.id))
@@ -60,25 +64,31 @@ as $$
         where f.announcement_id = a.id and f.restaurant_id = r.id
           and f.failed_at > p_at - interval '20 hours'
       )
+  ), audience as materialized (
+    select a.id as announcement_id, a.starts_at, r.id as restaurant_id, r.name, r.slug, r.email
+    from unsent p
+    join public.announcements a on a.id = p.announcement_id
+    join public.restaurants r on r.id = p.restaurant_id
+    where private.in_audience(a, r.id)
   )
-  select (p.a).id, p.restaurant_id, (p.a).title, (p.a).body, rcpt.emails
-  from unsent p
+  select q.announcement_id, q.restaurant_id, a.title, a.body, rcpt.emails
+  from audience q
+  join public.announcements a on a.id = q.announcement_id
   cross join lateral (
     select array_agg(distinct lower(e.email) order by lower(e.email)) as emails
     from (
       select u.email
       from public.restaurant_members m
       join auth.users u on u.id = m.user_id
-      where m.restaurant_id = p.restaurant_id and m.role = 'owner' and m.is_active
-        and split_part(u.email, '@', 2) not like p.slug || '.staff.%'
+      where m.restaurant_id = q.restaurant_id and m.role = 'owner' and m.is_active
+        and split_part(u.email, '@', 2) not like q.slug || '.staff.%'
       union all
-      select p.email
+      select q.email
     ) as e
     where nullif(btrim(e.email), '') is not null
   ) as rcpt
-  where private.in_audience(p.a, p.restaurant_id)
-    and rcpt.emails is not null
-  order by (p.a).starts_at, (p.a).id, p.name, p.restaurant_id
+  where rcpt.emails is not null
+  order by q.starts_at, q.announcement_id, q.name, q.restaurant_id
   limit least(greatest(coalesce(p_limit, 50), 1), 500);
 $$;
 
