@@ -252,14 +252,15 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     another `--tag` to swap images as a deploy does: the earlier build's scripts stay served from
     the volume. With `--internal-url` the server calls Supabase on `http://api-gw:8000`, as on the
     VPS, and the public address is out of its reach.
-  - `pnpm docker:check` ticks each of 11 checks (13 with `--internal-url`) and exits 1 on any
+  - `pnpm docker:check` ticks each of 12 checks (14 with `--internal-url`) and exits 1 on any
     failure: healthy; `/` answers 200; `/api/live` names this build and `/api/health` reaches the
     database; pages carry this build's deployment ID; only `menumesh.in` is indexable; the minute
-    job answers 401 without its secret and 200 with it; log out redirects to a relative address;
-    the prerendered files and `sw.js` are in the image; sharp resizes an image and its disk cache
-    works; this build's scripts are served for a year; the app runs as `node` with only
-    `.next/cache` and `.next/static` writable. If the build's last step (loading sharp) fails,
-    libvips is missing from the standalone output (VPS-18).
+    job answers 401 without its secret and 200 with it; the logs hold no
+    `[jobs] no SIGTERM listener` warning (a stop would run job work to the kill, VPS-25); log out
+    redirects to a relative address; the prerendered files and `sw.js` are in the image; sharp
+    resizes an image and its disk cache works; this build's scripts are served for a year; the app
+    runs as `node` with only `.next/cache` and `.next/static` writable. If the build's last step
+    (loading sharp) fails, libvips is missing from the standalone output (VPS-18).
   - Then a Playwright subset, which reuses the container on port 3100 instead of building:
     `SMOKE_URL=http://localhost:3100 EXPECTED_VERSION=$(git rev-parse HEAD) pnpm smoke`;
     `pnpm e2e --project=desktop --no-deps` on `tests/e2e/smoke.spec.ts`, `auth.spec.ts`,

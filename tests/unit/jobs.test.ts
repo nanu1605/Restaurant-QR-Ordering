@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -227,5 +229,16 @@ describe('stopJobsOnSigterm', () => {
     expect(isDraining()).toBe(true);
     // Once: Next's own listener is the one left.
     expect(proc.listenerCount('SIGTERM')).toBe(1);
+  });
+
+  it('finds Next.js’s listener there: its server adds it before it loads what runs register()', () => {
+    // An upgrade that moved it after would leave the stop off, with only register()'s warning.
+    const startServer = readFileSync(
+      createRequire(import.meta.url).resolve('next/dist/server/lib/start-server.js'),
+      'utf8',
+    );
+    const listener = startServer.indexOf("process.on('SIGTERM', cleanup)");
+    expect(listener).toBeGreaterThan(-1);
+    expect(startServer.indexOf('await getRequestHandlers(')).toBeGreaterThan(listener);
   });
 });

@@ -12,7 +12,15 @@ export async function register() {
   // At SIGTERM the jobs stop claiming work (docs/DECISIONS.md VPS-25). The edge runtime has no
   // process signals.
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    (await import('@/lib/shutdown')).stopJobsOnSigterm();
+    const listening = (await import('@/lib/shutdown')).stopJobsOnSigterm();
+    // Next.js adds its own listener before this runs, so this is false only when an upgrade or
+    // NEXT_MANUAL_SIG_HANDLE changed that: a stop would then run job work to the kill. Said once,
+    // in the logs, which docker:check reads. Not on Vercel, which stops its functions its own way.
+    if (!listening && !process.env.VERCEL) {
+      console.warn(
+        '[jobs] no SIGTERM listener before register(): a stop runs job work to the kill',
+      );
+    }
   }
 }
 

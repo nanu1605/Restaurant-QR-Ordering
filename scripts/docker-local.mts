@@ -53,6 +53,10 @@ const NODE_OPTIONS = '--max-old-space-size=1000';
 // VPS-29).
 const LOCAL_CRON_SECRET = 'local-only-cron-secret';
 
+// What register() (src/instrumentation.ts) logs when Next.js had no SIGTERM listener for the jobs'
+// stop to go beside: a stop would then run job work to the kill (docs/DECISIONS.md VPS-25).
+const NO_SIGTERM_LISTENER = '[jobs] no SIGTERM listener';
+
 // With --internal-url the server calls Supabase on the gateway's own address, as on the VPS, and
 // the public one is out of its reach (docs/DECISIONS.md VPS-20). Its first label is not the
 // public address's, which the auth cookie's name is made from, so the pinned name is tested too.
@@ -339,6 +343,21 @@ async function check() {
         assert(
           reply.status === 200 && JSON.parse(reply.body).ok === true,
           `${path} answers ${reply.status} ${reply.body}`,
+        );
+      },
+    ],
+    [
+      'a stop hands back job work: register() found Next.js’s SIGTERM listener',
+      () => {
+        // Both streams: the warning goes to stderr.
+        const logs = spawnSync('docker', ['logs', WEB], {
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024,
+        });
+        assert(logs.status === 0, `docker logs ${WEB} failed`);
+        assert(
+          !`${logs.stdout}${logs.stderr}`.includes(NO_SIGTERM_LISTENER),
+          `the logs say "${NO_SIGTERM_LISTENER}": a stop would run job work to the kill`,
         );
       },
     ],

@@ -5643,9 +5643,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     runtime, which makes `drainSignal()` abort at `SIGTERM`, and only beside a `SIGTERM` listener
     that is already there: `next/dist/server/lib/start-server.js` adds its own before
     `next/dist/server/next-server.js` runs `register()`. With none there it adds none, so that a
-    stop never changes how the process exits (and calling it twice adds no second listener). The
-    listener only aborts the signal and never exits or holds the process, so it does no harm
-    wherever it lands; it was not run on Vercel.
+    stop never changes how the process exits (and calling it twice adds no second listener), and
+    `register()` then warns once, with `[jobs] no SIGTERM listener before register()` (not on
+    Vercel, which stops its functions its own way). The listener only aborts the signal and never
+    exits or holds the process, so it does no harm wherever it lands; it was not run on Vercel.
   - **At a stop.** No run starts and no claim is made, and a run waiting for the export slot ends
     its wait (VPS-26); the reads and model calls in flight abort
     (the reason is an `AbortError`, which the Supabase client gives up on instead of retrying); an
@@ -5701,10 +5702,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     environment (single slot); a second replica would still be correct (database leases, Resend's
     keys) but could double the email rate. A dead scheduler is noticed only by its external
     heartbeat; until someone looks, the app behaves as it did before. The fast stop depends on
-    Next.js adding its `SIGTERM` listener before `register()` runs: an upgrade that changes the
-    order turns the signal off without a word, stops would then run to the kill, and the leases
-    would still recover the work (the unit test of the guard and the by-hand `docker stop` below
-    catch it).
+    Next.js adding its `SIGTERM` listener before `register()` runs: were it missing, stops would
+    run to the kill, and the leases would still recover the work. The guard's own tests use a fake
+    process, so they cannot see that (review findings R2 and K1). `tests/unit/jobs.test.ts` reads
+    `start-server.js` through Next's package and fails when its listener no longer comes before
+    the handlers that run `register()`, so an upgrade that moves it fails `pnpm test`; a listener
+    missing at run time all the same (`NEXT_MANUAL_SIG_HANDLE`, or another way to `register()`)
+    leaves the warning in the logs, and `pnpm docker:check` fails on it. Only the by-hand
+    `docker stop` below times a real stop.
   - **Left out.** The eight one-request `after()` tasks (such as the invitation, welcome, support
     and lead notices, the reset code and PostHog events): each finishes inside the stop and is lost
     only in a crash, and there is no email outbox. The subscription reminders in the daily run,
@@ -6048,14 +6053,17 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 989 tests, 60 to 65 files):**
-  - `jobs` (12, new): a run turned away makes no call and the run going on goes once more; kinds
+- **Unit (886 to 992 tests, 60 to 66 files):**
+  - `jobs` (13, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; an extra run that throws is logged and the first result kept; nothing starts
     once the server is stopping, and neither the waiting nor the turned-away work runs after a stop;
     the gate holds across copies of the module; a run stops starting work at its budget and at once
     on a stop, aborting what is in flight; `stopJobsOnSigterm` adds no listener to a process without
-    one and aborts the signal beside the one that is there.
+    one and aborts the signal beside the one that is there; and Next's `start-server.js` adds its
+    listener before it loads the handlers that run `register()`.
+  - `instrumentation` (2, new, with Sentry and the guard faked): `register()` warns once when the
+    guard found no listener, and says nothing when it listens, on Vercel or on the edge runtime.
   - `jobs-route` (9, new, with the admin client, `after()` and the runners faked): 401 without the
     secret, and the database is not asked; 400 for an unknown kind; an idle tick starts nothing; one
     run per waiting kind after the answer, exports first, within `?kinds=`; no emails without Resend
