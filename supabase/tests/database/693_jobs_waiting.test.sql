@@ -66,10 +66,24 @@ select is(
   'and nothing once each is done'
 );
 select tests.clear_auth();
+
+-- An idle minute writes nothing, whatever the tests behind it call: the rows this transaction has
+-- written, counted before and after two calls.
+select coalesce(sum(t.n_tup_ins + t.n_tup_upd + t.n_tup_del), 0) as writes
+  from pg_stat_xact_user_tables t \gset
+select tests.as_service_role();
+select public.jobs_waiting() as first_tick \gset
+select public.jobs_waiting() as second_tick \gset
+select tests.clear_auth();
+select is(
+  (select coalesce(sum(t.n_tup_ins + t.n_tup_upd + t.n_tup_del), 0) from pg_stat_xact_user_tables t),
+  :writes::numeric,
+  'two idle calls write nothing'
+);
 select is(
   (select p.provolatile::text from pg_proc p where p.oid = 'public.jobs_waiting()'::regprocedure),
   's',
-  'stable: an idle minute writes nothing'
+  'and it is stable'
 );
 
 -- ─── Grants ─────────────────────────────────────────────────────────────────

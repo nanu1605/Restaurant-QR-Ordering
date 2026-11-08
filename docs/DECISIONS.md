@@ -5968,7 +5968,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
 
 ### Tests (VPS Stop A2)
 
-- **pgTAP (71 to 75 files, 3,311 to 3,541 tests):** four new files; `010_schema_guards` gains a
+- **pgTAP (71 to 75 files, 3,311 to 3,542 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
   - `690_export_jobs` (122): a request gives a `queued` row with no claim or lease, the card says it
     is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is queued
@@ -6005,9 +6005,11 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     audience days later; a refusal is recorded with its answer cut to 300 characters and hides the
     pair for 20 hours from either mode, a second one counts up, and sending it clears it;
     `announcement_emails_waiting` follows the same rules; the app's roles can do none of it.
-  - `693_jobs_waiting` (8): nothing waits; each of a queued export, a name without Hindi and an
+  - `693_jobs_waiting` (9): nothing waits; each of a queued export, a name without Hindi and an
     announcement email to send makes its own key true, and none is left once each is done; two calls
-    write nothing; an owner and a signed-out caller cannot ask.
+    write nothing, counted in the rows the transaction has written (`pg_stat_xact_user_tables`), so
+    a test behind it that writes is caught too, and the function is stable; an owner and a
+    signed-out caller cannot ask.
   - `010_schema_guards` (44) has `announcement_email_failures` in both tenant lists, one more check.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
