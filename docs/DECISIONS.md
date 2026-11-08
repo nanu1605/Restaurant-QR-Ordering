@@ -6043,7 +6043,7 @@ review's fixes are listed after Tests.
 
 ### Tests (VPS Stop A2)
 
-- **pgTAP (71 to 75 files, 3,311 to 3,556 tests):** four new files; `010_schema_guards` gains a
+- **pgTAP (71 to 75 files, 3,311 to 3,563 tests):** four new files; `010_schema_guards` gains a
   check and the older files around them pass unchanged.
   - `690_export_jobs` (129): a request gives a `queued` row with no claim or lease, the card says it
     is being prepared, and `EXPORT_TOO_SOON` still counts it; a claim is null when nothing is
@@ -6092,11 +6092,14 @@ review's fixes are listed after Tests.
     150 more restaurants, and while that list's 150 emails wait: the shape before review finding S1
     wrote 1,056 and 3,030 blocks there (26 and 72 at CI's size), and the verifier's version of the
     fix, which kept the texts in its second step, 14 in the second case.
-  - `693_jobs_waiting` (9): nothing waits; each of a queued export, a name without Hindi and an
-    announcement email to send makes its own key true, and none is left once each is done; two calls
-    write nothing, counted in the rows the transaction has written (`pg_stat_xact_user_tables`), so
-    a function behind it that writes is caught too (review finding D1: it first read only the stable
-    flag), and the function is stable; an owner and a signed-out caller cannot ask.
+  - `693_jobs_waiting` (16): nothing waits; each of a queued export, a build whose lease ran out, a
+    name without Hindi and an announcement email to send makes its own key true, and none is left
+    once each is done; no call writes, counted in the rows the transaction has written
+    (`pg_stat_xact_user_tables`, pgTAP's own temporary tables left out) just before and just after
+    each of those calls and around two idle calls in a row, so a function behind it that writes is
+    caught too, whether or not it finds work (review findings D1 and S2: the file first read only
+    the stable flag, then counted only the idle calls), and the function is stable; an owner and a
+    signed-out caller cannot ask.
   - `010_schema_guards` (44) has `announcement_email_failures` in both tenant lists, one more check.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
@@ -6295,7 +6298,8 @@ spec's Hindi column).
   `jobs_waiting()` is marked stable, and a stable function can still call a helper that writes, so
   such a helper passed all 8 tests while Tests said two calls write nothing. It now counts the rows
   the transaction has written (`pg_stat_xact_user_tables`) before and after two calls, and keeps the
-  label check as a ninth test. (95cd03d)
+  label check as a ninth test; since review finding S2 it counts them around every call (Re-review).
+  (95cd03d)
 - **D2 · The idle email check read every restaurant (VPS-25, VPS-28, VPS-29):** with no email
   announcement running, `announcement_emails_next` still looked up the owners of every active
   restaurant on each call: 23 to 37 ms and about 47,000 buffers a minute on the load seed's 6,483
