@@ -4993,8 +4993,8 @@ that joins a running announcement is emailed within a minute (VPS-28).
     - **The export build** (SA-93): 2 to 6 s for a pilot restaurant, 20 to 40 s at the cap (VPS-6).
       If killed, the row stayed "building" and nothing resumed it: the card kept saying the download
       was being prepared, with no button, until SQL counted it failed after 15 minutes. Now a stop
-      hands the export back to the queue and a kill lets its lease run out within 90 s, so that the
-      next claim builds it again (VPS-26).
+      hands the export back to the queue (or, in the upload, lets it finish) and a kill lets its
+      lease run out within 90 s, so that the next claim builds it again (VPS-26).
     - **The Hindi names fill:** 5 to 25 s from a menu edit, 180 s at worst (4 calls of 45 s), hours
       at worst from the daily sweep. If killed, the claim had stamped every name and finished
       batches were lost (results were stored once, at the end), so those names had no Hindi for 12
@@ -5606,11 +5606,12 @@ limits, which had said its count comes back only after Refresh.
 ### Restartable jobs (VPS Stop A2)
 
 The three `after()` tasks that can outlast the 25 s stop (VPS-22) are now jobs that a restart, a
-kill or a crash does not lose: a data export, the automatic Hindi names and the announcement
-emails. Stop A2 adds four migrations (`20261108100000_export_jobs.sql`,
+kill or a crash does not lose: a data export, the automatic Hindi names and the announcement emails.
+Stop A2 adds four migrations (`20261108100000_export_jobs.sql`,
 `20261108100100_hindi_names_lease.sql`, `20261108100200_announcement_email_jobs.sql` and
 `20261108100300_jobs_waiting.sql`), each additive and safe while the previous build runs, and app
-code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and VPS-30.
+code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and VPS-30. A first
+review's fixes are listed after Tests.
 
 - **VPS-25 · Background work is found in the rows it changes, leased there, and resumed every
   minute:** each kind of work finds what is waiting in the rows that already hold it, and leases it
@@ -6257,3 +6258,74 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
   limit; and that an upsert keeps `created_at` on the server's own Storage. The export stop and kill
   are repeated there once, under the server's limits, with a build of 10 s or more: a pilot
   restaurant's 2 to 6 s is too short to land a stop in.
+
+### Review fixes (VPS Stop A2)
+
+A first review of the Stop A2 branch, at `fe94716`, gave nine findings from three reviewers (the
+database, the runtime and the real image): D1 to D3, R1 to R4, K1 and K2. A verifier confirmed all
+but R4, which it found plausible (the mechanism is shown, the trigger is not), and K1 is R2 again.
+All eight are fixed, the code ones with tests (under Tests) and K2 in the documents. The SQL fixes
+went into the stop's own four migrations, as none has left this branch. The entries above that a fix
+changed were corrected in place (VPS-22, VPS-25 to VPS-29, HN-6, HN-8, Tests, the RUNBOOK and the
+spec's Hindi column).
+
+- **D1 · The idle-minute test read only a label (Tests):** `693_jobs_waiting` checked only that
+  `jobs_waiting()` is marked stable, and a stable function can still call a helper that writes, so
+  such a helper passed all 8 tests while Tests said two calls write nothing. It now counts the rows
+  the transaction has written (`pg_stat_xact_user_tables`) before and after two calls, and keeps the
+  label check as a ninth test. (95cd03d)
+- **D2 · The idle email check read every restaurant (VPS-25, VPS-28, VPS-29):** with no email
+  announcement running, `announcement_emails_next` still looked up the owners of every active
+  restaurant on each call: 23 to 37 ms and about 47,000 buffers a minute on the load seed's 6,483
+  restaurants, where the notes said one read of nearly empty indexes. `announcement_emails_waiting`
+  now asks it only once an email announcement is due, and it finds the pairs not sent and not set
+  aside first, before the audience and the addresses: 0.2 ms with nothing due, about 4 ms for one to
+  everyone whose emails went. An announcement to part of the platform still costs 30 to 45 ms a
+  minute at that size (VPS-28 Limits). 692 gained five tests that count reads. (132dc9f, notes
+  3aa5426)
+- **D3 · An outage set aside every waiting name (VPS-27):** the minute job's run has no cap, and a
+  batch that no provider answered was settled as tried, so a few minutes without a reader set aside
+  every waiting name for 12 hours though the model never saw it. A batch where every provider failed
+  in a way no names can cause (no connection, or 401, 403, 408, 429 or 5xx) now settles nothing,
+  leaves its leases to run out and ends the run (`stopped: 'unavailable'`); a timeout, an unusable
+  reply or another 4xx still counts as tried, so a batch that always fails cannot loop. A lasting
+  outage costs up to 500 leases a minute until the key is fixed (VPS-27 Limits). (91bdc6f, notes
+  2ccc989)
+- **R1 · One Resend blip ended a save's run (VPS-28):** the run ended at the first unavailable
+  answer, so on Vercel, which has no minute job, a save's or the daily run left the rest of the
+  audience to the next save or night, where before Stop A2 the loop went on. The minute job's run
+  still ends at once; a save's or the daily run now leaves that pair due, goes on without asking it
+  again, and ends at the third unavailable answer since an email last went. Three refusals in a row
+  still end the run, as they point at `EMAIL_FROM`. (2f38a96, notes 1f4d7df)
+- **R2 with K1 · Nothing noticed a lost fast stop (VPS-25, Tests):** the jobs' stop goes in only
+  beside Next.js's own `SIGTERM` listener, `register()` dropped the answer that says it found none,
+  and the guard's tests use a fake process, so an upgrade that moved the listener (or
+  `NEXT_MANUAL_SIG_HANDLE`) would have sent every deploy with job work in flight to the kill at
+  25 s, with nothing in the logs, while the Limits text said the unit test caught it. `register()`
+  now warns once (`[jobs] no SIGTERM listener before register()`, not on Vercel),
+  `pnpm docker:check` fails on that warning, and `tests/unit/jobs.test.ts` fails when
+  `start-server.js` no longer adds its listener before `await getRequestHandlers(`. K1's pass timed
+  a real stop: 0.6 to 2.9 s. (57fded2)
+- **R3 · A request's export could lose its run on Vercel (VPS-25, VPS-26):** (a) when the first run
+  of a kind threw, the extra run for a caller it had turned away was skipped, and (b) a claim that
+  answered null because another server held the one build ended the run, so the export waited for
+  some other request and its card said failed after 15 minutes. `runExclusive` now runs the extra
+  run either way and throws the first error after it (2a564a0). `restaurant_export_claim` now
+  answers `{"busy": true}` when exports wait but a build is going, and `runExportJobs` waits 5 s
+  (`EXPORT_BUSY_WAIT_MS`, cut short by a stop) and claims again until the run stops starting work;
+  the verifier had the runner ask `export_jobs_waiting` instead (6b2666a, notes 1f4d7df).
+- **R4 · A control character in a reply could loop a batch (VPS-27, HN-6):** `acceptableHindi` let
+  U+0000 and half a surrogate pair through, Postgres refused the settle's JSON, and the batch, never
+  stored, was leased and sent to the paid model again every 5 minutes; the verifier showed the
+  mechanism but could not get such a reply from a real model. A name with a control character
+  (`\p{Cc}`) or one that is not well formed (`isWellFormed()`) is now dropped, so the batch counts
+  as tried. A retry of a failed settle that stamps the batch, the reviewer's second idea, was not
+  made: a settle that fails for another reason still leaves its batch to be leased again. (fd3ea0b,
+  notes 2ccc989)
+- **K2 · The by-hand stop check expected the wrong row (RUNBOOK, VPS-25, VPS-26, Tests):** they said
+  a `docker stop` with a build in flight leaves the row `queued` with `attempts` 0, but a stop in
+  the upload ends `ready`, and a stop also waits for the file being built in memory, not only the
+  upload; a pilot restaurant's build of 2 to 6 s is also too short to land a stop in. They now say
+  exit 143 within seconds, the row `queued` with `attempts` 0 or `ready` with one file, never left
+  `building` and never `attempts` 1, and ask for a build of 10 s or more. The image pass is recorded
+  under Tests. (8c7d2cc)
