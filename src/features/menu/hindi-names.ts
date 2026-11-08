@@ -87,7 +87,19 @@ export function acceptableHindi(value: unknown, maxLength: number): string | nul
 }
 
 /**
- * One batch through the providers in order; an error or unusable reply moves to the next. The
+ * A provider's failure that no batch of names can cause: no connection, its key or its limits
+ * (401, 403, 408, 429), or its own error (5xx). A timeout, an unusable reply or another 4xx can be
+ * the batch's own doing.
+ */
+function providerDown(error: ProviderError) {
+  if (error.kind === 'network') return true;
+  const status = error.kind === 'http' ? (error.status ?? 0) : 0;
+  return [401, 403, 408, 429].includes(status) || status >= 500;
+}
+
+/**
+ * One batch through the providers in order; an error or unusable reply moves to the next. Null
+ * when every provider was down (providerDown): an outage, which says nothing about the names. The
  * signal aborting is no provider's error: its reason is thrown, and no other provider is asked.
  */
 async function transliterateBatch(
@@ -95,7 +107,7 @@ async function transliterateBatch(
   providers: VisionProvider[],
   fetchImpl: typeof fetch | undefined,
   signal: AbortSignal | undefined,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string> | null> {
   const messages = [
     { role: 'system' as const, content: HINDI_NAMES_SYSTEM_PROMPT },
     {
@@ -103,6 +115,7 @@ async function transliterateBatch(
       content: JSON.stringify(rows.map((row, n) => ({ n, name: row.name }))),
     },
   ];
+  let allDown = true;
   for (const provider of providers) {
     let useSchema = true;
     while (true) {
@@ -136,6 +149,7 @@ async function transliterateBatch(
           continue;
         }
         console.warn(`[hindi-names] ${error.message}`);
+        if (!providerDown(error)) allDown = false;
         break;
       }
 
@@ -150,24 +164,26 @@ async function transliterateBatch(
       }
       if (result.size > 0) return result;
       console.warn(`[hindi-names] ${provider.name} sent no usable names`);
+      allDown = false;
       break;
     }
   }
-  return new Map();
+  return allDown ? null : new Map();
 }
 
 /**
  * Hindi names by row id. A call only ever carries one restaurant's names, so
  * a crafted name can't steer another restaurant's. Rows whose reply is
- * missing or unusable are left out and tried again later (HN-8). Rejects with
- * the signal's reason once it aborts.
+ * missing or unusable are left out and tried again later (HN-8). Null when a
+ * batch found every provider down: nothing counts then, and no other batch
+ * starts. Rejects with the signal's reason once it aborts.
  */
 export async function transliterateNames(
   rows: HindiNameRow[],
   providers: VisionProvider[],
   fetchImpl?: typeof fetch,
   signal?: AbortSignal,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string> | null> {
   const byRestaurant = Map.groupBy(rows, (row) => row.restaurantId);
   const batches = [...byRestaurant.values()].flatMap((group) =>
     Array.from({ length: Math.ceil(group.length / BATCH) }, (_, i) =>
@@ -181,7 +197,10 @@ export async function transliterateNames(
         .slice(from, from + PARALLEL)
         .map((batch) => transliterateBatch(batch, providers, fetchImpl, signal)),
     );
-    for (const names of done) for (const [id, hindi] of names) result.set(id, hindi);
+    for (const names of done) {
+      if (!names) return null;
+      for (const [id, hindi] of names) result.set(id, hindi);
+    }
   }
   return result;
 }
@@ -191,9 +210,10 @@ export async function transliterateNames(
  * restaurant's, or every restaurant's. Each lane leases up to 100 names of one restaurant, has the
  * model write them, and settles them as soon as the batch has answered, so a fill that is cut off
  * loses only the batches in flight: their leases run out and the names are leased again. When the
- * server stops, the calls in flight are aborted and settle nothing. Leases at most maxNames names,
- * and none once the run stops starting work. Throws, once every lane has ended, if one met a
- * database error.
+ * server stops, the calls in flight are aborted and settle nothing. A batch that finds every
+ * provider down settles nothing either, and no lane leases more (stopped: 'unavailable'). Leases
+ * at most maxNames names, and none once the run stops starting work. Throws, once every lane has
+ * ended, if one met a database error.
  */
 export async function fillHindiNames(
   admin: Admin,
@@ -212,15 +232,17 @@ export async function fillHindiNames(
     providers?: VisionProvider[];
     fetchImpl?: typeof fetch;
   },
-): Promise<{ leased: number; stored: number; stopped?: true }> {
+): Promise<{ leased: number; stored: number; stopped?: true | 'unavailable' }> {
   if (providers.length === 0) return { leased: 0, stored: 0 };
   let leased = 0;
   let stored = 0;
   // Names leased or being asked for, so that lanes asking together stay within maxNames.
   let asked = 0;
+  // Set once a batch finds every provider down.
+  let unavailable = false;
 
   const lane = async () => {
-    while (!run.stopping()) {
+    while (!run.stopping() && !unavailable) {
       const want = Math.min(BATCH, maxNames - asked);
       if (want <= 0) return;
       asked += want;
@@ -240,7 +262,7 @@ export async function fillHindiNames(
         id: row.id,
         name: row.name,
       }));
-      let hindi: Map<string, string>;
+      let hindi: Map<string, string> | null;
       try {
         hindi = await transliterateNames(rows, providers, fetchImpl, run.signal);
       } catch (error) {
@@ -248,6 +270,18 @@ export async function fillHindiNames(
         // leased again.
         if (run.signal.aborted) return;
         throw error;
+      }
+      if (!hindi) {
+        // An outage says nothing about these names: they are not counted as tried, which would
+        // set them aside for 12 hours, and are leased again once their leases run out. No lane
+        // leases more, so that an outage costs a batch a lane, not every name that waits.
+        if (!unavailable) {
+          console.warn(
+            '[hindi-names] every provider is down: the run ends, its names wait 5 minutes',
+          );
+        }
+        unavailable = true;
+        return;
       }
       // Every name of the batch, so that one the model did not write counts as tried (HN-8).
       const settled = await admin.rpc('menu_hindi_names_settle', {
@@ -264,7 +298,8 @@ export async function fillHindiNames(
   const ended = await Promise.allSettled(Array.from({ length: lanes }, lane));
   const failed = ended.find((result) => result.status === 'rejected');
   if (failed) throw failed.reason;
-  return run.signal.aborted ? { leased, stored, stopped: true } : { leased, stored };
+  if (run.signal.aborted) return { leased, stored, stopped: true };
+  return unavailable ? { leased, stored, stopped: 'unavailable' } : { leased, stored };
 }
 
 /**

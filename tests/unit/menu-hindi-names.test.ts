@@ -1,6 +1,6 @@
 import { getEventListeners } from 'node:events';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acceptableHindi,
@@ -30,6 +30,10 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => db.admin }));
 beforeEach(() => {
   next.tasks.length = 0;
   config.providers = [];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 const primary: VisionProvider = {
@@ -134,6 +138,22 @@ function fakeAdmin(
   return { admin, rpc, calls, order: () => rpc.mock.calls.map(([fn]) => fn) };
 }
 
+/** A provider's trouble that no batch of names can cause: an outage. */
+const outages: [string, () => Response][] = [
+  [
+    'cannot be reached',
+    () => {
+      throw new TypeError('fetch failed');
+    },
+  ],
+  ['answers 401', () => new Response('{"error":{"message":"invalid key"}}', { status: 401 })],
+  ['answers 403', () => new Response('forbidden', { status: 403 })],
+  ['answers 408', () => new Response('request timeout', { status: 408 })],
+  ['answers 429', () => new Response('rate limited', { status: 429 })],
+  ['answers 500', () => new Response('error', { status: 500 })],
+  ['answers 503', () => new Response('busy', { status: 503 })],
+];
+
 /** Writes every name it is sent, as नाम and its number. */
 const writeAll = (body: Record<string, unknown>) => {
   const sent = JSON.parse((body.messages as Array<{ content: string }>)[1]!.content) as Array<{
@@ -169,7 +189,7 @@ describe('transliterateNames', () => {
     );
     const result = await transliterateNames(rows, [primary], fetchImpl);
 
-    expect([...result]).toEqual([
+    expect([...result!]).toEqual([
       ['dish-1', 'पनीर टिक्का'],
       ['cat-1', 'स्टार्टर्स'],
     ]);
@@ -193,7 +213,7 @@ describe('transliterateNames', () => {
     );
     // Nothing usable from the first provider, so the second is asked.
     const result = await transliterateNames(rows, [primary, fallback], fetchImpl);
-    expect([...result]).toEqual([['dish-1', 'पनीर टिक्का']]);
+    expect([...result!]).toEqual([['dish-1', 'पनीर टिक्का']]);
   });
 
   it('moves to the next provider after an error', async () => {
@@ -202,8 +222,43 @@ describe('transliterateNames', () => {
       completion([{ n: 0, hindi: 'पनीर टिक्का' }]),
     );
     const result = await transliterateNames(rows.slice(0, 1), [primary, fallback], fetchImpl);
-    expect(result.get('dish-1')).toBe('पनीर टिक्का');
+    expect(result!.get('dish-1')).toBe('पनीर टिक्का');
     expect(bodies).toHaveLength(2);
+  });
+
+  it.each(outages)('answers null when every provider %s: no name is to blame', async (_, reply) => {
+    const { fetchImpl, bodies } = fakeFetch(reply, reply);
+    await expect(transliterateNames(rows, [primary, fallback], fetchImpl)).resolves.toBeNull();
+    expect(bodies).toHaveLength(2);
+  });
+
+  it.each<[string, Response]>([
+    ['sends no usable names', completion([{ n: 0, hindi: 'Paneer Tikka' }])],
+    ['sends a reply that is not JSON', new Response('<html></html>', { status: 200 })],
+    ['answers 422', new Response('too many names', { status: 422 })],
+  ])('still answers, with nothing, when a provider %s after another was down', async (_, reply) => {
+    // It may be the names' doing, so they count as tried, and a batch that always fails can't loop.
+    const { fetchImpl } = fakeFetch(new Response('busy', { status: 503 }), reply);
+    await expect(transliterateNames(rows, [primary, fallback], fetchImpl)).resolves.toEqual(
+      new Map(),
+    );
+  });
+
+  it('still answers, with nothing, when a provider runs out of time after another was down', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let asked = 0;
+    const fetchImpl = vi.fn((_url: string | URL | Request, init?: RequestInit) =>
+      ++asked === 1
+        ? Promise.resolve(new Response('busy', { status: 503 }))
+        : new Promise<Response>((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+          }),
+    ) as unknown as typeof fetch;
+
+    const writing = transliterateNames(rows, [primary, fallback], fetchImpl);
+    await vi.waitFor(() => expect(asked).toBe(2));
+    await vi.advanceTimersByTimeAsync(45_000);
+    await expect(writing).resolves.toEqual(new Map());
   });
 
   it('asks again without structured output when the provider refuses it', async () => {
@@ -214,7 +269,7 @@ describe('transliterateNames', () => {
       completion([{ n: 0, hindi: 'पनीर टिक्का' }]),
     );
     const result = await transliterateNames(rows.slice(0, 1), [primary], fetchImpl);
-    expect(result.get('dish-1')).toBe('पनीर टिक्का');
+    expect(result!.get('dish-1')).toBe('पनीर टिक्का');
     expect(bodies[1]!.response_format).toBeUndefined();
   });
 
@@ -239,8 +294,8 @@ describe('transliterateNames', () => {
         (body) => JSON.parse((body.messages as Array<{ content: string }>)[1]!.content).length,
       ),
     ).toEqual([100, 50]);
-    expect(result.size).toBe(150);
-    expect(result.get('dish-149')).toBe('डिश 49');
+    expect(result!.size).toBe(150);
+    expect(result!.get('dish-149')).toBe('डिश 49');
   });
 
   it("never puts two restaurants' names in one call", async () => {
@@ -267,7 +322,7 @@ describe('transliterateNames', () => {
         ).map(({ name }) => name),
       ),
     ).toEqual([['Paneer Tikka', 'Starters'], ['Dal Makhani']]);
-    expect(Object.fromEntries(result)).toEqual({ 'a-1': 'नाम 0', 'a-2': 'नाम 1', 'b-1': 'नाम 0' });
+    expect(Object.fromEntries(result!)).toEqual({ 'a-1': 'नाम 0', 'a-2': 'नाम 1', 'b-1': 'नाम 0' });
   });
 
   it("rejects with the signal's reason, not a provider error, when it aborts a call", async () => {
@@ -429,6 +484,40 @@ describe('fillHindiNames', () => {
     // Leased and left: the lease runs out, and the names are leased again.
     expect(order()).toEqual(['menu_hindi_names_lease']);
     expect(hang).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles nothing and ends the run when every provider is down', async () => {
+    const { admin, calls } = fakeAdmin(Array.from({ length: 8 }, (_, n) => [dish(`d${n}`)]));
+    const fetchImpl = vi.fn(
+      async () => new Response('busy', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+
+    // As the minute job runs it: every lane, and no cap.
+    await expect(
+      fillHindiNames(admin, { run, providers: [primary, fallback], fetchImpl }),
+    ).resolves.toEqual({ leased: 5, stored: 0, stopped: 'unavailable' });
+    // Not counted as tried: the leases run out, and the names are leased again.
+    expect(calls('menu_hindi_names_settle')).toEqual([]);
+    // One batch a lane, each asked of both providers, and no lane leased again.
+    expect(calls('menu_hindi_names_lease')).toHaveLength(5);
+    expect(fetchImpl).toHaveBeenCalledTimes(10);
+  });
+
+  it('still counts a batch as tried when no provider could write it', async () => {
+    const { admin, calls } = fakeAdmin([[dish('a')]]);
+    const { fetchImpl } = fakeFetch(
+      new Response('busy', { status: 503 }),
+      completion([{ n: 0, hindi: 'Dish a' }]),
+    );
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { lanes: 1, run, providers: [primary, fallback], fetchImpl }),
+    ).resolves.toEqual({ leased: 1, stored: 0 });
+    expect(calls('menu_hindi_names_settle')).toEqual([
+      { p_names: [{ kind: 'item', id: 'a', name: 'Dish a' }] },
+    ]);
   });
 
   it('leases no more than maxNames', async () => {

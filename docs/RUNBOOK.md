@@ -366,9 +366,12 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   `select count(*) from menu_items where name_hi is null and name_hi_auto is null;`, and the same on
   `menu_categories`. A name leased in the last 5 minutes (`name_hi_auto_lease_until` in the future)
   is being worked on, and one tried in the last 12 hours (`name_hi_auto_tried_at`) waits until the
-  12 hours pass, which includes a name the model could not write. To try a restaurant's names at
-  once, clear `name_hi_auto_tried_at` and `name_hi_auto_lease_until` on its rows that have neither
-  `name_hi` nor `name_hi_auto`, then run the minute job.
+  12 hours pass, which includes a name the model could not write. A reader that is down is no try:
+  the logs say `[hindi-names] every provider is down`, the names are leased 5 minutes at a time
+  meanwhile, and they are written within minutes of it answering again (a lasting one is usually
+  the key). To try a restaurant's names at once, clear `name_hi_auto_tried_at` and
+  `name_hi_auto_lease_until` on its rows that have neither `name_hi` nor `name_hi_auto`, then run
+  the minute job.
 - **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a
   minute, so look at why it stopped. The `[announcements]` lines in the logs say: Resend unavailable
   (it tries again each minute), a pair refused, or "three emails refused in a row, so none goes for

@@ -5837,7 +5837,10 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     after a menu edit). Each leases a batch of up to 100, has the model write it with the run's
     signal and settles it the moment it answers, so a fill that is cut off loses only the batches in
     flight: their leases run out after 5 minutes and the names are written again. A stop aborts the
-    calls and settles nothing, and the result says `stopped`. A lane asks for no more than
+    calls and settles nothing, and the result says `stopped`. A batch that finds every provider
+    down (no connection, or 401, 403, 408, 429 or 5xx from each) settles nothing either: its names
+    are leased again once the leases run out, no lane leases more, and the result says
+    `stopped: 'unavailable'`. A lane asks for no more than
     `min(100, maxNames - names already asked for)`, so `maxNames` (300 after a menu edit, 500 in the
     daily run) is an exact cap even when lanes ask together. A database error lets the other lanes
     end and is then thrown. The log line of a call adds its seconds.
@@ -5851,9 +5854,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     old claim and store, and one more for a name whose fill was cut off. A stop leaves its leased
     names for up to 5 minutes instead of releasing them. The fill after a menu edit has no gate, and
     the row locks that keep two of them apart were proved by hand with two sessions, not by a test
-    that runs. When every provider fails (an outage, not a stop) the batch is still settled as tried
-    and its names wait 12 hours, as the old stamp did, so that a short outage can set aside
-    everything that waits.
+    that runs. An outage settles nothing because the minute job's run has no cap: it settled batch
+    after batch as tried, so a few minutes without a reader set aside every name that waits for 12
+    hours (review finding D3). A timeout, an unusable reply or another 4xx still counts the batch
+    as tried, as it can be the names' doing, so that a batch that always fails cannot loop; a
+    reader that hangs on every call therefore still sets its batches aside. A lasting outage (a
+    revoked key) has the minute job lease the waiting names again each time their leases run out:
+    a write per name every 5 minutes, which changes `updated_at` and fires Realtime, until the key
+    is fixed. A pause after an outage, as the emails have after refusals, would cut that.
 - **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
   (`src/features/announcements/email.ts`) lists the emails due 50 at a time
   (`announcement_emails_next`), lists again each round and goes on until none is left or the run
@@ -6055,7 +6063,7 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 994 tests, 60 to 66 files):**
+- **Unit (886 to 1,007 tests, 60 to 66 files):**
   - `jobs` (15, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6085,13 +6093,16 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     export; a table error stops the other readers and `buildExport` ends only once they have, with
     no read after it; no timer is left on any path; `startExportJobs` runs one queue at a time;
     `parseExportClaim`, busy included.
-  - `menu-hindi-names` (10 to 25): the lease and the settle in place of the claim and the store;
+  - `menu-hindi-names` (10 to 38): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
     lease gives back its share; no batch starts once the run is over; a database error is thrown
     once every lane has ended; the signal's reason, not a provider error, comes out of an aborted
-    call, no other provider is asked, and a signal that never aborts keeps no listener;
-    `queueHindiNames`.
+    call, no other provider is asked, and a signal that never aborts keeps no listener; a batch
+    that finds every provider down (no connection, 401, 403, 408, 429, 500, 503) answers null, and
+    the fill then settles nothing and ends with one lease a lane, while a provider that runs out of
+    time, sends an unusable or non-JSON reply or answers 422 after another was down still has the
+    batch counted as tried; `queueHindiNames`.
   - `announcement-emails` (28, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in
