@@ -12,7 +12,8 @@
 
 # The BuildKit frontend on the first line reads this file, so it is pinned like the base images
 # below (docs/DECISIONS.md VPS-14): 1.27.1 was pushed on 2026-09-30, and 1.28.0 (2026-10-07) passes
-# the 14 days too. `# check=` and the heredocs need 1.8 or later. Bump it with the Node digest.
+# the 14 days too. `# check=` needs 1.8, the secret mount's `env=` 1.10 or later. Bump it with the
+# Node digest.
 
 # Node 24 on Debian 13, pinned by digest, and at least 14 days old when pinned, which is the
 # shared server's rule: 24.22.0 was pushed on 2026-10-21; 24.22.1 (2026-10-28) and 24.22.2
