@@ -434,6 +434,19 @@ test('behind a kept answer the toast says nothing was saved, and other switches 
   await search.click();
   await page.keyboard.type('Chicken');
   await expect(search).toHaveValue('Chicken');
+
+  // A button that only opens a menu still does (on a phone the panel's navigation is such a
+  // sheet), and what the menu holds that acts stays frozen; its links load in full.
+  const account = page.getByRole('banner').getByRole('button', { name: /Owner/ });
+  await expect(account).toHaveCSS('pointer-events', 'auto');
+  await account.click();
+  const logOut = page.getByRole('menuitem', { name: 'Log out' });
+  await expect(logOut).toBeVisible();
+  await expect(logOut).toHaveCSS('pointer-events', 'none');
+  await page.keyboard.press('Escape');
+  await expect(logOut).toBeHidden();
+  expect(sent).toHaveLength(1);
+
   const stored = async () => {
     const { data } = await adminClient()
       .from('menu_items')
@@ -504,9 +517,10 @@ test('behind a kept answer a link to a place on the same page still goes there',
   await expectLeftAlone(page);
 });
 
-// The rule's reach, in the browser that matters: the controls that show a change at once are
-// frozen, and links, text fields, tabs and the toaster's own buttons are not.
-test('behind a kept answer taps stop on the controls that show a change, and on nothing else', async ({
+// The rule's reach, in the browser that matters: buttons and the other controls are frozen, a
+// select's trigger too, and links, text fields, tabs, the buttons that only open a menu or a
+// dialog, what is marked to stay live and the toaster's own buttons are not.
+test('behind a kept answer taps stop on the controls, and not on links, fields, tabs or what only opens', async ({
   page,
 }) => {
   await page.goto('/login');
@@ -537,6 +551,8 @@ test('behind a kept answer taps stop on the controls that show a change, and on 
       'a checkbox': '<input type="checkbox">',
       'a radio': '<input type="radio">',
       'a range': '<input type="range">',
+      // It opens a list of choices, which is there to change a value.
+      'a select trigger': '<button aria-haspopup="listbox">Category</button>',
     };
     const open = {
       'a link': '<a href="/admin">Admin</a>',
@@ -546,6 +562,9 @@ test('behind a kept answer taps stop on the controls that show a change, and on 
       'a text area': '<textarea></textarea>',
       'a tab': '<button role="tab">Email</button>',
       'a tab that is no button': '<div role="tab">Email</div>',
+      'a sheet trigger': '<button aria-haspopup="dialog" aria-expanded="false">Open menu</button>',
+      'a menu trigger': '<button aria-haspopup="menu">Account</button>',
+      'a button that sends nothing': '<button data-live-when-kept>Pause</button>',
       'a button in the toaster': '<ol data-sonner-toaster><li><button>Refresh</button></li></ol>',
     };
     const read = (kinds: Record<string, string>) =>
@@ -557,7 +576,7 @@ test('behind a kept answer taps stop on the controls that show a change, and on 
   });
   expect(reach.frozen.filter(([, events]) => events !== 'none')).toEqual([]);
   expect(reach.open.filter(([, events]) => events !== 'auto')).toEqual([]);
-  expect(reach.frozen.length + reach.open.length).toBe(26);
+  expect(reach.frozen.length + reach.open.length).toBe(30);
 });
 
 test('a script missing after a deploy refreshes the page instead of breaking it', async ({

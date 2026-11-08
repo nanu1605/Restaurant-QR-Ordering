@@ -222,8 +222,9 @@ let loadingInFull = false;
  * this page, the browser scrolls there), and back or forward reloads the address the browser
  * moved to: the new build's page, as Next.js itself loads it on a deployment id mismatch
  * (VPS-7). Nothing a tap does is sent either, so <html> is marked for the stylesheet, which
- * stops taps on the controls that show their change at once (globals.css). Installed by the
- * first kept answer and not before, so a page that never meets a newer build is as it was.
+ * stops taps on buttons and the other controls, though not on those that only open a menu or a
+ * sheet (globals.css). Installed by the first kept answer and not before, so a page that never
+ * meets a newer build is as it was.
  */
 function loadInFullFromNow() {
   if (loadingInFull) return;
