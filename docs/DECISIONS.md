@@ -1931,12 +1931,13 @@ On staging the owner asked that dishes without a Hindi name be converted too, wh
   saving the form never turns the automatic one into the owner's.
 - **HN-6 · The menu import model writes them:** spelling rules from English mangle English menu
   words (Butter, Fried Rice, Manchurian), so the names go to the menu import provider chain
-  (`chatCompletion`, `menuImportProviders`, same keys and fallback): 100 names a call, about ₹1
-  per 100 names. A reply is kept only when it is one line of Devanagari with no Latin letters
-  within 80/60 characters; anything else stays empty and is tried again later. Names are data
-  in the prompt, and a call only ever carries one restaurant's names, so the worst a crafted
-  name can do is give its own restaurant odd Hindi names. Without a key nothing is written and
-  guests see the typed names, as before.
+  (`chatCompletion`, `menuImportProviders`, same keys and fallback): 100 names a call, about ₹1 per
+  100 names. A reply is kept only when it is one line of Devanagari with no Latin letters, no
+  control character and a well formed string (Postgres cannot store `\u0000` or half a surrogate
+  pair, VPS-27), within 80/60 characters; anything else stays empty and is tried again later. Names
+  are data in the prompt, and a call only ever carries one restaurant's names, so the worst a
+  crafted name can do is give its own restaurant odd Hindi names. Without a key nothing is written
+  and guests see the typed names, as before.
 - **HN-7 · Stale names:** a trigger clears `name_hi_auto` (and the attempt time below, and the
   lease since VPS-27) whenever `name` changes, by any path (form, rename, import), so no admin
   function changed. `menu_set_hindi_names` (`menu_hindi_names_settle` since VPS-27) stores a name
@@ -1944,18 +1945,18 @@ On staging the owner asked that dishes without a Hindi name be converted too, wh
   the call drops the stale result and repeats are harmless. Leasing and settling (claiming and
   storing before VPS-27) bump `updated_at`, which is also the dish photo's cache version: a dish's
   photo is fetched again after a fill.
-- **HN-8 · When:** after every menu action that can leave a name missing (add or rename a
-  category, the suggested sets, save a dish, commit an import), `after()` fills the whole
-  restaurant's missing names (up to 300) once the response is sent, so the first edit after
-  this release also fills the existing menu. The daily cron sweeps every restaurant (up to 500,
-  five calls at a time) for the rest: default categories of new restaurants and failed calls; on
-  the VPS the every-minute job fills what waits too (VPS-27). `menu_hindi_names_claim` handed out
-  names not tried in the last 12 hours, never-tried first, and stamped `name_hi_auto_tried_at`;
-  VPS-27's lease supersedes it: `menu_hindi_names_lease` hands out the same names but leaves
-  leased ones, and a name is stamped when its batch is settled. So repeated or overlapping edits
-  don't resend names (the cost of a fill is bounded by new or renamed names, not by how often a
-  manager saves), and a name the model can't write (digits only, emoji) waits 12 hours instead of
-  holding the front of the list, for the next daily sweep or the minute job.
+- **HN-8 · When:** after every menu action that can leave a name missing (add or rename a category,
+  the suggested sets, save a dish, commit an import), `after()` fills the whole restaurant's missing
+  names (up to 300) once the response is sent, so the first edit after this release also fills the
+  existing menu. The daily cron sweeps every restaurant (up to 500, five calls at a time) for the
+  rest: default categories of new restaurants and failed calls; on the VPS the every-minute job
+  fills what waits too (VPS-27). `menu_hindi_names_claim` handed out names not tried in the last
+  12 hours, never-tried first, and stamped `name_hi_auto_tried_at`; VPS-27's lease supersedes it:
+  `menu_hindi_names_lease` hands out the same names but leaves leased ones, and a name is stamped
+  when its batch is settled (not when no menu reader answered it, VPS-27). So repeated or
+  overlapping edits don't resend names (the cost of a fill is bounded by new or renamed names, not
+  by how often a manager saves), and a name the model can't write (digits only, emoji) waits
+  12 hours instead of holding the front of the list, for the next daily sweep or the minute job.
 
 ### Review fixes (automatic Hindi names)
 
@@ -1986,10 +1987,10 @@ name even on a deployment without import keys, where nothing breaks.
   names, names with an automatic name and blank or over-long ones; a rename clears the name, its
   stamp and its lease; an owner's name typed after the lease stays the owner's; the old claim
   leaves leased names alone; what waits is true and false by the same rules.
-- **Unit:** reply checks (one line of Devanagari, no Latin letters, length); numbers mapped
-  back; unusable replies dropped and the fallback asked; a refused `response_format` retried
-  without it; 100 names a call; never two restaurants in one call; each batch leased, then
-  settled (VPS-27), storing only the usable names; nothing without a provider.
+- **Unit:** reply checks (one line of Devanagari, no Latin letters, no control character, well
+  formed, length); numbers mapped back; unusable replies dropped and the fallback asked; a refused
+  `response_format` retried without it; 100 names a call; never two restaurants in one call; each
+  batch leased, then settled (VPS-27), storing only the usable names; nothing without a provider.
 - **E2E:** an owner saves "Masala Chai" with no Hindi name; it gets `मसाला चाय`, tagged
   "(auto)" in the editor and offered as the field's placeholder; a rename writes a new one,
   which a guest sees on the Hindi menu. The mock knows only a few words, so other tests' dishes
@@ -5870,13 +5871,14 @@ code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and V
     names for up to 5 minutes instead of releasing them. The fill after a menu edit has no gate, and
     the row locks that keep two of them apart were proved by hand with two sessions, not by a test
     that runs. An outage settles nothing because the minute job's run has no cap: it settled batch
-    after batch as tried, so a few minutes without a reader set aside every name that waits for 12
-    hours (review finding D3). A timeout, an unusable reply or another 4xx still counts the batch
-    as tried, as it can be the names' doing, so that a batch that always fails cannot loop; a
-    reader that hangs on every call therefore still sets its batches aside. A lasting outage (a
-    revoked key) has the minute job lease the waiting names again each time their leases run out:
-    a write per name every 5 minutes, which changes `updated_at` and fires Realtime, until the key
-    is fixed. A pause after an outage, as the emails have after refusals, would cut that.
+    after batch as tried, so a few minutes without a reader set aside every name that waits for
+    12 hours (review finding D3). A timeout, an unusable reply or another 4xx still counts the batch
+    as tried, as it can be the names' doing, so that a batch that always fails cannot loop; a reader
+    that hangs on every call therefore still sets its batches aside. A lasting outage (a revoked
+    key) has the minute job lease up to 500 waiting names a minute (5 lanes of 100), fail them, and
+    take each again once its lease has run out: a write for every lease, which changes `updated_at`
+    and fires Realtime, until the key is fixed. A pause after an outage, as the emails have after
+    refusals, would cut that.
 - **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
   (`src/features/announcements/email.ts`) lists the emails due 50 at a time
   (`announcement_emails_next`), lists again each round and goes on until none is left or the run

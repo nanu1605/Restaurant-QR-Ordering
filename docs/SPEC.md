@@ -503,7 +503,7 @@ Every new restaurant is created with a set of **default categories** so the menu
 | name | text | |
 | name_hi | text null | ≤ 80 chars — optional Hindi name, shown on the Hindi customer menu |
 | name_hi_auto | text null | ≤ 80 chars — the name sounded out in Devanagari by the app, used when `name_hi` is empty; cleared when the name changes |
-| name_hi_auto_tried_at | timestamptz null | when the app last handled the name, whether or not it wrote one; a name is tried again after 12 hours; cleared when the name changes |
+| name_hi_auto_tried_at | timestamptz null | when the app last handled the name, whether or not it wrote one, but not when no menu reader answered it (docs/DECISIONS.md VPS-27); a name is tried again after 12 hours; cleared when the name changes |
 | name_hi_auto_lease_until | timestamptz null | set for 5 minutes while a fill works on the name, so that overlapping fills take different names; cleared when the name is settled or changes (docs/DECISIONS.md VPS-27) |
 | description | text null | ≤ 300 chars |
 | price_paise | bigint | used when the item has no variants |
