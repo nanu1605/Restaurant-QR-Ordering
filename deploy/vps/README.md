@@ -73,6 +73,16 @@ puts the server's Caddy tree with `menumesh.caddy` in front of stub apps and tes
 Both need only Docker. Run them before every install, after copying the server team's files again
 if those changed.
 
+`pnpm vps:rehearse` runs the whole stack on Docker Desktop as project `menumesh-rehearsal`, the way
+the install and `app-deploy` would: `compose.yml` in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
+gitignored, with the throwaway values of `pnpm vps:secrets --rehearsal`) and
+`local/compose.rehearsal.yml` on top. That override is never installed (`app-apply` would refuse
+its name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300),
+gives Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and
+sends every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the
+nightly backup into that S3 and the monthly restore test; `pnpm vps:down` removes the project (its
+images too with `--images`), and nothing else.
+
 ## Where the borrowed files come from
 
 `config/SOURCES.md` lists the files taken from self-hosted Supabase (Apache-2.0), with their

@@ -1,0 +1,149 @@
+# The local rehearsal of the shared server's stack (docs/DECISIONS.md VPS-42), on Docker Desktop.
+# Never installed on the server and never given to app-apply, which would refuse its published
+# ports: it only ever goes on top of compose.yml here. pnpm vps:rehearse (scripts/vps-kit.mts)
+# lays out a mirror of /srv/menumesh in .vps-rehearsal/, with the throwaway values of
+# `pnpm vps:secrets --rehearsal`, and runs every step as
+#
+#   docker compose -p menumesh-rehearsal --project-directory .vps-rehearsal \
+#     -f .vps-rehearsal/compose.yml -f deploy/vps/local/compose.rehearsal.yml \
+#     --env-file .vps-rehearsal/.env --env-file .vps-rehearsal/images.env ...
+#
+# What changes here, and nothing else: the project's name; the app and the gateway answer on this
+# machine only; Postgres gets smaller buffers; the staging services sit behind a profile nobody
+# turns on; the edge networks are the project's own; a local S3 stands in for the backup bucket;
+# and every third-party host the containers could call resolves to a sinkhole, behind the empty
+# keys.
+name: menumesh-rehearsal
+
+# 0.0.0.0, the hosts-file sinkhole: a connection to it stays inside the container and is refused at
+# once, so a call that slips past the empty keys never leaves this machine. The hosts are the app's
+# providers (src/lib/env.server.ts's defaults, src/lib/posthog-hosts.ts), the backup's alerts
+# (backup/notify.sh), the usual heartbeat monitors (their URLs come from .env, empty here) and
+# MenuMesh's own public hosts, which System health reads. Sentry's ingest host carries the
+# project's own number, which no list can name: the rehearsal's web image is built without a DSN.
+x-sinkhole: &sinkhole
+  api.resend.com: 0.0.0.0
+  api.razorpay.com: 0.0.0.0
+  api.commandcode.ai: 0.0.0.0
+  openrouter.ai: 0.0.0.0
+  challenges.cloudflare.com: 0.0.0.0
+  sentry.io: 0.0.0.0
+  us.sentry.io: 0.0.0.0
+  de.sentry.io: 0.0.0.0
+  ingest.sentry.io: 0.0.0.0
+  ingest.us.sentry.io: 0.0.0.0
+  ingest.de.sentry.io: 0.0.0.0
+  us.i.posthog.com: 0.0.0.0
+  eu.i.posthog.com: 0.0.0.0
+  us-assets.i.posthog.com: 0.0.0.0
+  eu-assets.i.posthog.com: 0.0.0.0
+  api.telegram.org: 0.0.0.0
+  hc-ping.com: 0.0.0.0
+  uptime.betterstack.com: 0.0.0.0
+  cronitor.link: 0.0.0.0
+  menumesh.in: 0.0.0.0
+  www.menumesh.in: 0.0.0.0
+  api.menumesh.in: 0.0.0.0
+  staging.menumesh.in: 0.0.0.0
+
+services:
+  web:
+    # The browser's address for the app (SITE_URL), on this machine only.
+    ports: ['127.0.0.1:3300:3000']
+    environment:
+      # System health reads these two apps' versions; here both are this container.
+      PRODUCTION_APP_URL: http://localhost:3000
+      STAGING_APP_URL: http://localhost:3000
+    extra_hosts: *sinkhole
+
+  # The server's db command with shared_buffers=128MB instead of 480MB, for Docker Desktop's memory.
+  # Every other flag stays the server's: tests/unit/vps-kit.test.ts keeps the two in step.
+  db:
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=100
+      - -c
+      - max_slot_wal_keep_size=4GB
+      - -c
+      - jit=off
+      - -c
+      - log_min_messages=error
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_checkpoints=off
+
+  # The browser's and this machine's address for Supabase (SUPABASE_PUBLIC_URL).
+  api-gw:
+    ports: ['127.0.0.1:8300:8000']
+
+  scheduler:
+    extra_hosts: *sinkhole
+
+  backup:
+    extra_hosts: *sinkhole
+    networks: [bucket]
+
+  restore-test:
+    networks: [bucket]
+
+  recover:
+    networks: [bucket]
+
+  # Staging is hosted Supabase and its own image: never started here.
+  web-staging:
+    profiles: !override [staging]
+  scheduler-staging:
+    profiles: !override [staging]
+  migrate-staging:
+    profiles: !override [staging]
+
+  # The backup bucket's stand-in for pnpm vps:backup-test: rclone's own S3 server (the version the
+  # backup image's rclone is), on the internal bucket network only, with the bucket's folder made
+  # first. Its key pair is .env's, CSV-quoted as rclone reads a list from the environment.
+  s3:
+    image: rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
+    profiles: [backup-test]
+    entrypoint: ['/bin/sh', '-c', 'mkdir -p "/data/$$BUCKET" && exec rclone "$$@"', 's3']
+    command: ['serve', 's3', '/data', '--addr', ':9000', '--dir-cache-time', '5s']
+    environment:
+      BUCKET: ${BACKUP_BUCKET:?}
+      RCLONE_AUTH_KEY: '"${BACKUP_S3_ACCESS_KEY_ID:?},${BACKUP_S3_SECRET_ACCESS_KEY:?}"'
+    volumes:
+      - s3-data:/data
+    networks: [bucket]
+    healthcheck:
+      test: ['CMD', 'nc', '-z', '127.0.0.1', '9000']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    read_only: true
+    tmpfs: ['/tmp:size=64m']
+    restart: 'no'
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+
+networks:
+  # The server's edge networks belong to its admin and are internal, joined by Caddy. Here they are
+  # the project's own (menumesh-rehearsal_edge-*), and plain bridges: Docker publishes a port only
+  # through a network that isn't internal, and the published ports stand in for Caddy.
+  edge-menumesh:
+    external: false
+  edge-menumesh-staging:
+    external: false
+  bucket:
+    internal: true
+
+volumes:
+  s3-data: {}

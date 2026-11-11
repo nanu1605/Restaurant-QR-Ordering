@@ -4,16 +4,28 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { posthogHosts } from '@/lib/posthog-hosts';
+
 import {
+  accessLines,
   caddyRunArgs,
+  compareDumps,
   composeServices as services,
   cronCallJobs,
+  dumpObjects,
   envoyBootstrap,
   envoyKeyNames,
+  labelRefusal,
   lintCrontab,
+  memAvailableMib,
+  REHEARSAL_IMAGES,
+  rehearsalImagesEnv,
   renderListeners,
+  seedFiles,
   serviceKey as key,
   serviceMounts,
+  statsMib,
+  webContext,
 } from '../../scripts/vps-kit.mts';
 
 /**
@@ -1624,5 +1636,443 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
     expect(() =>
       envoyBootstrap(envoyYaml, listeners, cds.replace("  - '@type'", '  - "@type"')),
     ).toThrow("has no '@type' first");
+  });
+});
+
+// --- the local rehearsal: deploy/vps/local and scripts/vps-kit.mts ---
+
+// The override pnpm vps:rehearse puts on top of compose.yml on a development machine. It is never
+// installed: app-apply would refuse it (another project name, published ports), and these rules
+// keep it a stand-in that can't reach beyond this machine.
+const rehearsal = kit('local/compose.rehearsal.yml');
+
+/** Published only on 127.0.0.1, and only the app (3300) and the gateway (8300). */
+function localPorts(text: string): string[] {
+  const published = [...services(text)].flatMap(([name, service]) => {
+    const ports = key(service, 'ports');
+    if (!ports) return [];
+    const one =
+      ports.length === 1 ? /^ {4}ports: \['(127\.0\.0\.1:\d+:\d+)'\]$/.exec(ports[0]) : null;
+    return [one ? `${name} ${one[1]}` : `${name} ${ports.map((line) => line.trim()).join(' ')}`];
+  });
+  const wanted = ['web 127.0.0.1:3300:3000', 'api-gw 127.0.0.1:8300:8000'];
+  return [
+    ...published.filter((entry) => !wanted.includes(entry)).map((entry) => `publishes ${entry}`),
+    ...wanted
+      .filter((entry) => !published.includes(entry))
+      .map((entry) => `does not publish ${entry}`),
+  ];
+}
+
+/** compose.yml's staging services: those on a staging network. */
+const stagingServices = (composeText: string) =>
+  [...services(composeText)]
+    .filter(([, service]) =>
+      (key(service, 'networks') ?? []).some((line) => /\bstaging\b/.test(line)),
+    )
+    .map(([name]) => name);
+
+/** Each staging service is behind the staging profile alone, which the rehearsal never turns on. */
+const stagingOff = (text: string, composeText = compose) =>
+  stagingServices(composeText)
+    .filter((name) => value(services(text).get(name) ?? [], 'profiles') !== '!override [staging]')
+    .map((name) => `${name} is not behind the staging profile alone`);
+
+/** The rehearsal's db runs the server's command, with shared_buffers=128MB for Docker Desktop. */
+function dbCommand(text: string, composeText = compose): string[] {
+  const server = key(services(composeText).get('db') ?? [], 'command') ?? [];
+  const local = key(services(text).get('db') ?? [], 'command') ?? [];
+  if (!server.some((line) => line.endsWith('- shared_buffers=480MB'))) {
+    return ['compose.yml’s db has no shared_buffers=480MB'];
+  }
+  const expected = server.map((line) =>
+    line.replace(/- shared_buffers=480MB$/, '- shared_buffers=128MB'),
+  );
+  return JSON.stringify(local) === JSON.stringify(expected)
+    ? []
+    : [
+        `the override’s db command is not the server’s with shared_buffers=128MB: ${local
+          .filter((line) => !expected.includes(line))
+          .concat(expected.filter((line) => !local.includes(line)))
+          .map((line) => line.trim())
+          .join(', ')}`,
+      ];
+}
+
+/** Its own project, edge networks and an internal bucket network, and a stand-in S3 pinned there. */
+function localNetworks(text: string): string[] {
+  const block = text.slice(text.indexOf('\nnetworks:\n'));
+  const s3 = services(text).get('s3') ?? [];
+  return [
+    ...(/^name: menumesh-rehearsal$/m.test(text) ? [] : ['the project is not menumesh-rehearsal']),
+    ...['edge-menumesh', 'edge-menumesh-staging']
+      .filter((name) => !new RegExp(`^ {2}${name}:\\n {4}external: false$`, 'm').test(block))
+      .map((name) => `${name} is not the project’s own network`),
+    ...(/^ {2}bucket:\n {4}internal: true$/m.test(block) ? [] : ['bucket is not internal']),
+    ...(value(s3, 'networks') === '[bucket]' ? [] : ['s3 is not on the bucket network alone']),
+    ...(/^rclone\/rclone:[\d.]+@sha256:[0-9a-f]{64}$/.test(value(s3, 'image') ?? '')
+      ? []
+      : ['s3 is not rclone pinned by digest']),
+  ];
+}
+
+/**
+ * Every third-party host the code names: the providers' defaults (src/lib/env.server.ts, which
+ * also holds MenuMesh's own public hosts), PostHog's API and assets hosts in both regions, and
+ * the backup's alerts (notify.sh).
+ */
+const THIRD_PARTY = [
+  ...[
+    ...readFileSync('src/lib/env.server.ts', 'utf8').matchAll(
+      /urlWithDefault\('(https?:[^']+)'\)/g,
+    ),
+  ].map((match) => new URL(match[1]).hostname),
+  ...['https://us.i.posthog.com', 'https://eu.i.posthog.com'].flatMap((api) =>
+    Object.values(posthogHosts(api)).map((url) => new URL(url).hostname),
+  ),
+  ...[...kit('backup/notify.sh').matchAll(/https:\/\/([a-z0-9.-]+)\//g)].map((match) => match[1]),
+];
+
+/** Each of them resolves to 0.0.0.0 in the containers that have a way out: web, scheduler, backup. */
+function sinkhole(text: string): string[] {
+  const block = /^x-sinkhole: &sinkhole\n((?: {2}\S+: \S+\n)+)/m.exec(text)?.[1] ?? '';
+  const hosts = new Map([...block.matchAll(/^ {2}(\S+): (\S+)$/gm)].map((m) => [m[1], m[2]]));
+  return [
+    ...THIRD_PARTY.filter((host) => hosts.get(host) !== '0.0.0.0').map(
+      (host) => `${host} is not sent to the sinkhole`,
+    ),
+    ...[...hosts]
+      .filter(([, address]) => address !== '0.0.0.0')
+      .map(([host, address]) => `${host} goes to ${address}`),
+    ...['web', 'scheduler', 'backup']
+      .filter((name) => value(services(text).get(name) ?? [], 'extra_hosts') !== '*sinkhole')
+      .map((name) => `${name} does not use the sinkhole`),
+  ];
+}
+
+/** What the server gets from this folder (every file but local/, the vendored copies and the README), and CI. */
+const installed = () => [
+  ...readdirSync(KIT, { recursive: true, encoding: 'utf8' })
+    .map((path) => path.replaceAll('\\', '/'))
+    .filter((path) => !/^(local|test\/vendor)(\/|$)|^README\.md$/.test(path))
+    .filter((path) => !/\.(crt|pem|key)$/.test(path))
+    .flatMap((path) => {
+      try {
+        return [[`deploy/vps/${path}`, kit(path)] as const];
+      } catch {
+        return []; // a folder
+      }
+    }),
+  ...readdirSync(join('.github', 'workflows')).map(
+    (name) => [`.github/workflows/${name}`, workflow(name)] as const,
+  ),
+];
+
+/** Nothing the server or CI gets names the override; the README says it is never installed. */
+const neverInstalled = (files: readonly (readonly [string, string])[], readme: string) => [
+  ...files
+    .filter(([, text]) => /deploy\/vps\/local|compose\.rehearsal|(^|[\s'"`(])local\//m.test(text))
+    .map(([path]) => `${path} names the local override`),
+  ...readme
+    .split('\n')
+    .filter((line) => /`local\/`|local\/compose/.test(line) && !/never installed/.test(line))
+    .map((line) => `README: ${line.trim()}`),
+];
+
+/** A schema-only dump of two functions, in pg_dump's layout. */
+const DUMP = [
+  '--',
+  '-- PostgreSQL database dump',
+  '--',
+  '',
+  '\\restrict AbCd1234',
+  '',
+  '-- Dumped from database version 17.6',
+  '-- Dumped by pg_dump version 17.6',
+  '',
+  "SET client_encoding = 'UTF8';",
+  '',
+  '--',
+  '-- Name: one(); Type: FUNCTION; Schema: public; Owner: postgres',
+  '--',
+  '',
+  'CREATE FUNCTION public.one() RETURNS integer',
+  '    LANGUAGE sql',
+  '    AS $$',
+  '  select 1',
+  '  where true',
+  '$$;',
+  '',
+  '--',
+  '-- Name: two(); Type: FUNCTION; Schema: private; Owner: postgres',
+  '--',
+  '',
+  'CREATE FUNCTION private.two() RETURNS integer',
+  '    LANGUAGE sql',
+  '    AS $$ select 2 $$;',
+  '',
+  '\\unrestrict AbCd1234',
+  '',
+].join('\n');
+
+describe('the local rehearsal (deploy/vps/local, scripts/vps-kit.mts)', () => {
+  it('publishes only the app and the gateway, and only on 127.0.0.1', () => {
+    expect(localPorts(rehearsal)).toEqual([]);
+    refuses(localPorts, swap(rehearsal, "['127.0.0.1:3300:3000']", "['3300:3000']"), 'web');
+    refuses(localPorts, swap(rehearsal, '127.0.0.1:8300:8000', '0.0.0.0:8300:8000'), 'api-gw');
+    refuses(
+      localPorts,
+      swapIn(
+        rehearsal,
+        'db',
+        '    command:\n',
+        "    ports: ['127.0.0.1:5432:5432']\n    command:\n",
+      ),
+      'publishes db 127.0.0.1:5432:5432',
+    );
+    refuses(
+      localPorts,
+      swap(rehearsal, "    ports: ['127.0.0.1:8300:8000']", '    ports:\n      - 8300:8000'),
+      'does not publish api-gw 127.0.0.1:8300:8000',
+    );
+  });
+
+  it('keeps every staging service behind a profile the rehearsal never turns on', () => {
+    expect(stagingServices(compose)).toEqual([
+      'web-staging',
+      'scheduler-staging',
+      'migrate-staging',
+    ]);
+    expect(stagingOff(rehearsal)).toEqual([]);
+    refuses(
+      stagingOff,
+      swapIn(rehearsal, 'migrate-staging', 'profiles: !override [staging]', 'profiles: [staging]'),
+      'migrate-staging is not behind the staging profile alone',
+    );
+    refuses(
+      (text) => stagingOff(rehearsal, text),
+      swapIn(
+        compose,
+        'backup',
+        '    networks: [default, data]',
+        '    networks: [default, staging]',
+      ),
+      'backup is not behind the staging profile alone',
+    );
+  });
+
+  it('runs the server’s database command with smaller buffers, and nothing else changed', () => {
+    expect(dbCommand(rehearsal)).toEqual([]);
+    refuses(
+      dbCommand,
+      swap(rehearsal, '      - -c\n      - jit=off\n', ''),
+      'not the server’s with shared_buffers=128MB: - jit=off',
+    );
+    refuses(
+      (text) => dbCommand(rehearsal, text),
+      swapIn(
+        compose,
+        'db',
+        '      - jit=off\n',
+        '      - jit=off\n      - -c\n      - work_mem=8MB\n',
+      ),
+      'work_mem=8MB',
+    );
+    refuses(
+      (text) => dbCommand(rehearsal, text),
+      swap(compose, 'shared_buffers=480MB', 'shared_buffers=512MB'),
+      'has no shared_buffers=480MB',
+    );
+  });
+
+  it('has its own project and edge networks, and an S3 stand-in on an internal network', () => {
+    expect(localNetworks(rehearsal)).toEqual([]);
+    refuses(
+      localNetworks,
+      swap(rehearsal, 'name: menumesh-rehearsal', 'name: menumesh'),
+      'project',
+    );
+    refuses(
+      localNetworks,
+      swap(
+        rehearsal,
+        '  edge-menumesh:\n    external: false',
+        '  edge-menumesh:\n    external: true',
+      ),
+      'edge-menumesh is not the project’s own network',
+    );
+    refuses(
+      localNetworks,
+      swap(rehearsal, '  bucket:\n    internal: true', '  bucket: {}'),
+      'bucket is not internal',
+    );
+    refuses(
+      localNetworks,
+      swapIn(rehearsal, 's3', '    networks: [bucket]', '    networks: [bucket, default]'),
+      's3 is not on the bucket network alone',
+    );
+    refuses(localNetworks, rehearsal.replace(/(rclone:[\d.]+)@sha256:[0-9a-f]+/, '$1'), 'digest');
+  });
+
+  it('sends every third-party host the code names to 0.0.0.0 in the containers with a way out', () => {
+    expect(THIRD_PARTY).toEqual(
+      expect.arrayContaining([
+        'api.resend.com',
+        'api.razorpay.com',
+        'openrouter.ai',
+        'sentry.io',
+        'challenges.cloudflare.com',
+        'us-assets.i.posthog.com',
+        'api.telegram.org',
+        'staging.menumesh.in',
+      ]),
+    );
+    expect(sinkhole(rehearsal)).toEqual([]);
+    refuses(sinkhole, swap(rehearsal, '  openrouter.ai: 0.0.0.0\n', ''), 'openrouter.ai');
+    refuses(
+      sinkhole,
+      swap(rehearsal, '  api.resend.com: 0.0.0.0', '  api.resend.com: 10.0.0.1'),
+      '10.0.0.1',
+    );
+    refuses(
+      sinkhole,
+      swapIn(rehearsal, 'scheduler', '    extra_hosts: *sinkhole\n', ''),
+      'scheduler does not use the sinkhole',
+    );
+  });
+
+  it('is never installed: nothing the server or CI gets names it', () => {
+    const files = installed();
+    expect(files.map(([path]) => path)).toEqual(
+      expect.arrayContaining([
+        'deploy/vps/compose.yml',
+        'deploy/vps/test/kit-check.sh',
+        '.github/workflows/vps-deploy-staging.yml',
+      ]),
+    );
+    const readme = kit('README.md');
+    expect(neverInstalled(files, readme)).toEqual([]);
+    refuses(
+      (text) => neverInstalled([['deploy/vps/compose.yml', text]], readme),
+      `include: [local/compose.rehearsal.yml]\n${compose}`,
+      'deploy/vps/compose.yml names the local override',
+    );
+    refuses(
+      (text) => neverInstalled([], text),
+      swap(readme, '| never installed ', '| /srv/menumesh/ '),
+      'README',
+    );
+  });
+
+  it('names its images as images.env does, and checks their labels as app-deploy does', () => {
+    const template = kit('env/images.env.example');
+    expect(
+      Object.keys(REHEARSAL_IMAGES).every((name) => templateNames(template).includes(name)),
+    ).toBe(true);
+    expect(Object.values(REHEARSAL_IMAGES)).toEqual([
+      'menumesh-web:rehearsal',
+      'menumesh-migrate:rehearsal',
+      'menumesh-backup:rehearsal',
+    ]);
+    const filled = rehearsalImagesEnv(template);
+    expect(filled).toContain('\nWEB_IMAGE=menumesh-web:rehearsal\n');
+    expect(filled).toContain('\nMIGRATE_IMAGE=menumesh-migrate:rehearsal\n');
+    expect(filled).toContain('\nBACKUP_IMAGE=menumesh-backup:rehearsal\n');
+    // Staging's stay unset: a staging service started by mistake has no image to run.
+    expect(filled).toContain('\nSTAGING_IMAGE=ghcr.io/nanu1605/menumesh:none\n');
+    expect(filled).toContain('\nMIGRATE_STAGING_IMAGE=ghcr.io/nanu1605/menumesh:none\n');
+    expect(filled.split('\n').filter((line) => line.startsWith('#'))).toEqual(
+      template.split('\n').filter((line) => line.startsWith('#')),
+    );
+    expect(() => rehearsalImagesEnv(swap(template, 'BACKUP_IMAGE=', '# BACKUP_IMAGE='))).toThrow(
+      'no BACKUP_IMAGE line',
+    );
+
+    expect(labelRefusal('menumesh-web:rehearsal', 'rehearsal')).toBeUndefined();
+    expect(labelRefusal('ghcr.io/nanu1605/menumesh:prod-v1.2.3@sha256:ab12', 'prod-v1.2.3')).toBe(
+      undefined,
+    );
+    expect(labelRefusal('menumesh-migrate:migrate-0123abcd', 'rehearsal')).toBe(
+      "menumesh-migrate:migrate-0123abcd is labelled 'rehearsal', not migrate-0123abcd",
+    );
+    expect(labelRefusal('localhost:5000/menumesh', '')).toBe(
+      "localhost:5000/menumesh is labelled 'nothing', not latest",
+    );
+  });
+
+  it('reads the VM’s memory, the build context, the seed files and Envoy’s access lines', () => {
+    const meminfo =
+      'MemTotal:       15912824 kB\nMemFree:         3823408 kB\nMemAvailable:    7751448 kB\n';
+    expect(memAvailableMib(meminfo)).toBe(7569);
+    expect(memAvailableMib('MemTotal: 1 kB\n')).toBeUndefined();
+    expect(statsMib('143.6MiB / 1.5GiB')).toBeCloseTo(143.6);
+    expect(statsMib('1.5GiB / 2GiB')).toBe(1536);
+    expect(statsMib('512KiB / 32MiB')).toBe(0.5);
+    expect(statsMib('2GB / 4GB')).toBeCloseTo(1907.35, 2);
+    expect(statsMib('--')).toBeNaN();
+
+    const context = webContext(readFileSync('.dockerignore', 'utf8'));
+    expect(context).toEqual(
+      expect.arrayContaining(['src', 'public', 'package.json', 'next.config.ts', 'Dockerfile']),
+    );
+    expect(context).toContain('.dockerignore');
+    expect(context).not.toContain('supabase');
+
+    expect(seedFiles(readFileSync('supabase/config.toml', 'utf8'))).toEqual([
+      'supabase/seed.sql',
+      'supabase/seeds/test_helpers.sql',
+    ]);
+    expect(() => seedFiles('[db]\nport = 54322\n')).toThrow('no [db.seed] sql_paths');
+
+    const log = [
+      '[2026-11-12 00:00:01.000][1][warning][misc] Deprecated field: dns_refresh_rate',
+      '[2026-11-12T00:00:02.123Z] GET /rest/v1/x 503 UH 0ms rest',
+      'Envoy started',
+    ].join('\n');
+    expect(accessLines(log)).toEqual(['[2026-11-12T00:00:02.123Z] GET /rest/v1/x 503 UH 0ms rest']);
+  });
+
+  it('compares schema dumps object by object, telling line ends and layout from changes', () => {
+    const objects = dumpObjects(DUMP);
+    expect([...objects.keys()]).toEqual([
+      'the preamble',
+      'FUNCTION public.one()',
+      'FUNCTION private.two()',
+    ]);
+    expect(objects.get('the preamble')).not.toContain('restrict');
+    expect(objects.get('the preamble')).not.toContain('Dumped');
+    const same = compareDumps(DUMP, DUMP.replaceAll('AbCd1234', 'Other999'));
+    expect(same).toEqual({
+      objects: 3,
+      onlyMine: [],
+      onlyTheirs: [],
+      lineEnds: [],
+      layout: [],
+      changed: [],
+    });
+    const crlf = DUMP.replace('  select 1\n  where true\n', '  select 1\r\n  where true\r\n');
+    expect(compareDumps(DUMP, crlf).lineEnds).toEqual(['FUNCTION public.one()']);
+    const wrapped = DUMP.replace('  select 1\n  where true\n', '  select 1 where true\n');
+    expect(compareDumps(DUMP, wrapped)).toMatchObject({
+      lineEnds: [],
+      layout: ['FUNCTION public.one()'],
+      changed: [],
+    });
+    const changed = compareDumps(DUMP, DUMP.replace('select 2', 'select 3'));
+    expect(changed).toMatchObject({
+      lineEnds: [],
+      layout: [],
+      changed: ['FUNCTION private.two()'],
+    });
+    expect(objects.get('FUNCTION private.two()')).toBe(
+      'CREATE FUNCTION private.two() RETURNS integer\n    LANGUAGE sql\n    AS $$ select 2 $$;',
+    );
+    // Without the last object, the one before it is still the same.
+    const fewer = DUMP.slice(0, DUMP.indexOf('--\n-- Name: two()'));
+    expect(compareDumps(DUMP, fewer)).toMatchObject({
+      onlyMine: ['FUNCTION private.two()'],
+      changed: [],
+    });
+    expect(compareDumps(fewer, DUMP).onlyTheirs).toEqual(['FUNCTION private.two()']);
   });
 });
