@@ -6459,16 +6459,17 @@ the RUNBOOK and the spec's Hindi column).
   though no names can cause either: with the primary reader down and the OpenRouter fallback out of
   credit, one run of the minute job stamped all 2,000 names waiting in the reviewer's test, and as
   both readers default to the same model, a retired model does the same. It counted every 403 as an
-  outage, though OpenRouter also answers 403 for moderation or a guardrail, which is the batch's
-  doing: such a batch was never settled, every run leased it first and ended on it, and with the
-  pause the minute job was paused 116 minutes of 120 in the reviewer's test, which faked that answer
-  (the verifier did not get one from the real model). 402 and 404 are now an outage, and a 403 that
-  names moderation, a flag, a guardrail, a content policy or a refusal counts the batch as tried,
-  while any other 403 is still an outage. The minute job's fill also leases at most 2,000 names a
-  run, so that a status read wrongly cannot set aside every name that waits in one run. Left as it
-  is: OpenRouter's errors page says a 200 can carry an error and no reply when every upstream fails;
-  the client reads it as an empty reply, which counts the batch as tried, and the cap bounds it.
-  (292aded)
+  outage, though OpenRouter also answers 403 for moderation or a guardrail's content check, which is
+  the batch's doing: such a batch was never settled, every run leased it first and ended on it, and
+  with the pause the minute job was paused 116 minutes of 120 in the reviewer's test, which faked
+  that answer (the verifier did not get one from the real model). 402 and 404 are now an outage, and
+  a 403 that named moderation, a flag, a guardrail, a content policy or a refusal counted the batch
+  as tried, while any other 403 was still an outage; the final check replaced that word list with
+  the fields OpenRouter documents for such a refusal (F1 and F2, below). The minute job's fill also
+  leases at most 2,000 names a run, so that a status read wrongly cannot set aside every name that
+  waits in one run. Left as it is: OpenRouter's errors page says a 200 can carry an error and no
+  reply when every upstream fails; the client reads it as an empty reply, which counts the batch as
+  tried, and the cap bounds it. (292aded)
 - **T4 · One call turned away paused a reader that works (VPS-27, D3, Tests):** the pause followed
   any run in which one batch found every reader down, even when the same run wrote its other
   batches. A reader that takes four calls at once and answers the fifth of the lanes' calls with a
@@ -6492,3 +6493,53 @@ the RUNBOOK and the spec's Hindi column).
   one a minute. Letting a `?kinds=hindi_names` call skip the pause was not made either; the RUNBOOK
   says that until the pause ends the recipe needs a restart of the web container first, which ends
   it, or a menu edit, whose fill does not pause. (e8b313a)
+
+**Final check.** A last verify of the round-2 fixes, at `ffde352`, found all eight closed with no
+regression and gave two more findings, both low and confirmed (F1 and F2, on the Hindi fill's 403
+rule), two stale sentences (DI-1 and DI-2) and a loose comment. The entries above that a fix changed
+were corrected in place (HN-8, VPS-25, VPS-27, VPS-29, Tests, D3, S1, T3, the RUNBOOK and the spec's
+Hindi column).
+
+- **F1 · A data-region 403 stamped every batch (VPS-27, HN-8, Tests):** T3's word list took a 403
+  for the batch's own doing when its message named a guardrail, and OpenRouter's documented
+  data-region block does (it ends "update the workspace guardrail allowed data regions"), though it
+  refuses the workspace's settings, which no names can cause. With a workspace kept to
+  `eu.openrouter.ai`, the default base URL and the primary reader down, every batch was settled as
+  tried: in the verifier's run the minute job stamped all 5,000 waiting names in 3 minutes, 2,000 a
+  run, with no outage line and no pause, and a menu edit's fill and the daily run stamped what they
+  leased (on Vercel no worse than `main`, whose claim stamps what it takes). The client now keeps
+  the error body's `error.metadata` on `ProviderError`, with the message as it was and the metadata
+  never logged, and a 403 counts as the batch's doing only when that metadata carries a field
+  OpenRouter documents for a refusal of what was asked (its errors page and guardrails guide, read
+  2026-11-11): `reasons` or `flagged_input` (moderation), `patterns` (a guardrail's content check),
+  or an `error_type` of `content_policy_violation` or `refusal`. Every other 403 is an outage again,
+  as before T3, and no words are looked for, in the message or in the metadata as text: a budget's
+  `limit_source` is `openrouter_guardrail_budget`. (e82d1b6, notes 5d28144)
+- **F2 · A prompt-injection block looped (VPS-27, Tests):** OpenRouter's documented guardrail block,
+  "Request blocked: prompt injection patterns detected" with the matched `patterns`, names none of
+  T3's words, so it still counted as an outage: the batch was never settled, was leased first again
+  after each 5-minute lease and ended each run `unavailable`, and in the verifier's two hours the
+  minute job was paused 92 minutes of 120 and logged 8 outage lines. Its `patterns` now count the
+  batch as tried, with OpenRouter the only reader or after a primary that answered 503, and no pause
+  follows. T3's tests used made-up messages; the tests now use OpenRouter's documented bodies
+  (moderation, a prompt injection, the typed refusals, the data region, a budget, and a 403 that
+  says moderation or guardrail without the fields), and each new case fails on the code before the
+  fix, the budget case on a version that reads the metadata as text. Left as it is: a refusal for
+  content without those fields (another provider's, or a shape OpenRouter does not document, such as
+  its content filter's block) is still taken for an outage, as every 403 was before T3; VPS-27
+  Limits gives what that costs and the RUNBOOK how to leave one restaurant's waiting names alone.
+  Bounding such a loop, the verifier's other idea (a count of leases that settled nothing, or a 403
+  from a reader that wrote another batch in the same run), was not made. (e82d1b6, notes 5d28144)
+- **DI-1 · VPS-27 said a name counts as tried once its batch has answered (VPS-27):** a batch whose
+  readers all run out of time never answered and is stamped, and one whose readers all failed in a
+  way no names can cause is not. T5 corrected HN-8, the spec and the RUNBOOK, but not VPS-27's lead
+  or its settle and fill notes; they now say a name counts once its batch's calls have ended, not
+  when every reader failed so, and that a reader that runs out of time still counts. (5d28144)
+- **DI-2 · VPS-25 named two of the four places where Vercel had been worse (VPS-25):** it said R1
+  and R3 were fixed, but round 2's T1 (an email run that left emails never asked for) and T2 (a
+  caller turned away during an extra run that throws got no run) were two more, fixed in 50f4187 and
+  3315bc6. It now names all four. (5d28144)
+- **The email check's comment (VPS-29, S1):** the comment above `announcement_emails_next`, VPS-29
+  and S1 said the texts join only the emails returned, but the plan joins them in the final select,
+  for every row of the audience before the sort and the limit (small, with no temporary file). They
+  now say so; the comment is outside the function body, so the database is unchanged. (6ec7eec)
