@@ -1,0 +1,23 @@
+# The server team's own files, copied byte for byte and never edited here. The kit check
+# (deploy/vps/test) runs app-apply's rules on this repository's kit with them, so a file that passes
+# here is checked by the same code the shared server runs. Copy them again whenever the server team
+# changes these files, and before every install on the server.
+#
+# Repository: github.com/nanu1605/jainav-infotech
+# Commit:     66fe8b3851bb579d8a0406844bab289fe7bc8737 (main, 2026-11-11)
+# Copied:     2026-11-11, each file with: git show 66fe8b3:<path> > <file>
+#
+# File                     Path at that commit                          Mode there
+# app-apply                docker/host/app-apply                        100755
+# Caddyfile                docker/edge/config/Caddyfile                 100644
+# cloudflare-ranges.caddy  docker/edge/config/cloudflare-ranges.caddy   100644
+# edge.conf                docker/host/apps/edge.conf                   100644
+# snippets.caddy           docker/edge/config/snippets.caddy            100644
+#
+# sha256 of each file. In this directory, sha256sum --strict -c SOURCE checks them (GNU sha256sum
+# skips the lines that start with #).
+362a3df97d10dd408930affe9ab6defd88f7c9d05fe4c68300b62b68043423e3  app-apply
+41a63745faa2fb92492e5c5ee9105081f3866f454524cb898f9449518b293279  Caddyfile
+208070fc0b5540a02e7a477d1c22033a53eccab87b727730a82614c6de81a1f6  cloudflare-ranges.caddy
+d63501d22e5e8c9b90d853bae6f2253f31b37072af92e5071e0cd58116f63927  edge.conf
+2550e19b6ca13cef943a0a9e44152f7b18ca397b20df94cd66748103cdf68e77  snippets.caddy
