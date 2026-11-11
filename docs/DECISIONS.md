@@ -5898,7 +5898,13 @@ review's fixes, and a second's, are listed after Tests.
     again. A run that stored names met a reader that answers, so it sets no pause: a reader that
     takes four calls at once and turned away the fifth of the lanes' calls with a 429 used to pause
     the minute job after each run, which wrote 1,600 names in two hours where it could write 400 a
-    minute (review finding T4). A menu edit's fill and the daily run do not pause, so Vercel, which
+    minute (review finding T4). The pause is logged once, with its end
+    (`[hindi-names] the minute job leaves the names alone until <time>`), and a call it skips logs
+    nothing, which through an outage would be a line a minute. It used to be silent, beside an
+    outage warning that said the names waited 5 minutes (review finding T6). The route still lists
+    `hindi_names` among the kinds it started while the pause lasts, so trying names at once within
+    it takes a restart of the web container first, which ends the pause, or a menu edit, whose fill
+    does not pause (RUNBOOK). A menu edit's fill and the daily run do not pause, so Vercel, which
     has no minute job, is as before.
 - **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
   (`src/features/announcements/email.ts`) lists the emails due (`announcement_emails_next`) again
@@ -6124,7 +6130,7 @@ review's fixes, and a second's, are listed after Tests.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,023 tests, 60 to 66 files):**
+- **Unit (886 to 1,024 tests, 60 to 66 files):**
   - `jobs` (16, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6153,7 +6159,7 @@ review's fixes, and a second's, are listed after Tests.
     failed upload fails the export; a table error stops the other readers and `buildExport` ends
     only once they have, with no read after it; no timer is left on any path; `startExportJobs` runs
     one queue at a time; `parseExportClaim`, busy included.
-  - `menu-hindi-names` (10 to 52): the lease and the settle in place of the claim and the store;
+  - `menu-hindi-names` (10 to 53): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
     lease gives back its share; no batch starts once the run is over; a database error is thrown
@@ -6168,7 +6174,8 @@ review's fixes, and a second's, are listed after Tests.
     never carries one, while a tab and a joiner are kept; the minute job's fill leases at most 2,000
     names a run, and after a run that stored nothing because every provider was down it leases
     nothing for 30 minutes, while a run whose other lanes wrote their batches, or that ended any
-    other way, sets no pause; `queueHindiNames`.
+    other way, sets no pause; the pause is logged once, with its end, and a call it skips logs
+    nothing; `queueHindiNames`.
   - `announcement-emails` (29, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in

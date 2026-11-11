@@ -286,7 +286,7 @@ export async function fillHindiNames(
         // leases more, so that an outage costs a batch a lane, not every name that waits.
         if (!unavailable) {
           console.warn(
-            '[hindi-names] every provider is down: the run ends, its names wait 5 minutes',
+            '[hindi-names] every provider is down: the run ends, its names not counted as tried',
           );
         }
         unavailable = true;
@@ -326,8 +326,10 @@ const pause = globalThis as { [PAUSED_UNTIL]?: number };
  * it leaves them alone for 30 minutes in this process: each lease writes its row, which changes
  * the dish photo's cache version and sends Realtime, so a lasting outage would otherwise lease up
  * to 500 names again every minute. A run that stored names met a reader that answers, even if one
- * of its calls was turned away (a 429 among the lanes' calls at once), so it sets no pause. A menu
- * edit's fill and the daily run still try as they did before there was a minute job.
+ * of its calls was turned away (a 429 among the lanes' calls at once), so it sets no pause. The
+ * pause is logged once, with its end; a call it skips logs nothing, which during an outage would
+ * be a line a minute. A menu edit's fill and the daily run still try as they did before there was
+ * a minute job.
  */
 export async function fillWaitingHindiNames(
   admin: Admin,
@@ -336,7 +338,11 @@ export async function fillWaitingHindiNames(
   if (Date.now() < (pause[PAUSED_UNTIL] ?? -Infinity)) return { skipped: 'paused' };
   const result = await fillHindiNames(admin, { maxNames: MINUTE_JOB_NAMES, ...options });
   if (result.stopped === 'unavailable' && result.stored === 0) {
-    pause[PAUSED_UNTIL] = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+    const until = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+    pause[PAUSED_UNTIL] = until;
+    console.warn(
+      `[hindi-names] the minute job leaves the names alone until ${new Date(until).toISOString()}`,
+    );
   }
   return result;
 }

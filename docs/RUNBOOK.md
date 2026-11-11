@@ -375,13 +375,17 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   12 hours pass, which includes a name the model could not write. When every reader is down, a batch
   is no try (no connection, a 401, 402, 404, 408, 429 or 5xx, or a 403 that names no moderation,
   flag, guardrail, content policy or refusal): the logs say `[hindi-names] every provider is down`,
-  the minute job then leaves the names alone for 30 minutes when its run wrote none, and they are
-  written within about 30 minutes of a reader answering again (a lasting outage is usually the key;
-  a restart of the web container ends the pause at once). A reader that hangs still makes it a try:
-  the logs say `[hindi-names] <reader> did not answer in time`, and its names wait 12 hours unless
-  they are cleared as below. To try a restaurant's names at once, clear `name_hi_auto_tried_at` and
+  the minute job then leaves the names alone for 30 minutes when its run wrote none (it logs
+  `[hindi-names] the minute job leaves the names alone until <time>` once), and they are written
+  within about 30 minutes of a reader answering again (a lasting outage is usually the key). A
+  reader that hangs still makes it a try: the logs say
+  `[hindi-names] <reader> did not answer in time`, and its names wait 12 hours unless they are
+  cleared as below. To try a restaurant's names at once, clear `name_hi_auto_tried_at` and
   `name_hi_auto_lease_until` on its rows that have neither `name_hi` nor `name_hi_auto` (after a
-  reader that hung, on every restaurant's such rows), then run the minute job.
+  reader that hung, on every restaurant's such rows), then run the minute job. Until the time in
+  that pause line, the minute job still answers that it started `hindi_names` but leaves the names
+  alone: restart the web container first, which ends the pause, or edit the restaurant's menu
+  instead (save a dish), whose fill does not pause.
 - **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a
   minute, so look at why it stopped. The `[announcements]` lines in the logs say: Resend unavailable
   (the minute job's run ends and the next minute tries again; a save's or the daily run goes on past
@@ -397,10 +401,11 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   at once, `{"ok":true,"started":[…]}`, with the kinds it started (an empty list means nothing
   waits, or this server can't do it: no menu reader key, no Resend), and the work goes on after the
   answer: watch the logs for `[closure] export ready`, `[hindi-names]` and `[announcements] emails`.
-  `?kinds=data_exports` (or `hindi_names`, `announcement_emails`, several with commas) keeps it to
-  those kinds; a wrong secret is 401, an unknown kind 400, and `{"ok":false}` with 500 means it
-  could not ask the database. It writes no `cron_runs` rows, so System health doesn't show it: the
-  scheduler's heartbeat monitor is its alarm.
+  While the Hindi names are paused (above), `hindi_names` is still listed, but nothing is written or
+  logged until the pause ends. `?kinds=data_exports` (or `hindi_names`, `announcement_emails`,
+  several with commas) keeps it to those kinds; a wrong secret is 401, an unknown kind 400, and
+  `{"ok":false}` with 500 means it could not ask the database. It writes no `cron_runs` rows, so
+  System health doesn't show it: the scheduler's heartbeat monitor is its alarm.
 - **Database or Vercel down:** the health monitor alerts. Tell pilot restaurants to switch to
   paper order pads and bill by hand until it is back; nothing already recorded is lost. Check
   status.supabase.com and vercel-status.com.

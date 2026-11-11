@@ -729,6 +729,32 @@ describe('fillWaitingHindiNames', () => {
     expect(calls('menu_hindi_names_settle')).toHaveLength(20);
   });
 
+  it('warns once, with the end of the pause, and logs nothing for a call it skips', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { admin } = fakeAdmin(() => [dish('a')]);
+    const down = vi.fn(
+      async () => new Response('busy', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+    const options = { lanes: 1, run, providers: [primary, fallback], fetchImpl: down };
+
+    await fillWaitingHindiNames(admin, options);
+    // Each reader's answer, the outage, and the pause with its end.
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      '[hindi-names] commandcode answered 503: busy',
+      '[hindi-names] openrouter answered 503: busy',
+      '[hindi-names] every provider is down: the run ends, its names not counted as tried',
+      '[hindi-names] the minute job leaves the names alone until 2026-11-09T10:30:00.000Z',
+    ]);
+
+    // A line for each call it skips would be a line a minute through an outage.
+    vi.setSystemTime(new Date('2026-11-09T10:10:00Z'));
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ skipped: 'paused' });
+    expect(warn).toHaveBeenCalledTimes(4);
+  });
+
   it('sets no pause after a run whose other batches were written', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
