@@ -139,7 +139,73 @@ function fakeAdmin(
   return { admin, rpc, calls, order: () => rpc.mock.calls.map(([fn]) => fn) };
 }
 
-/** A provider's trouble that no batch of names can cause: an outage. */
+/**
+ * OpenRouter's 403s as its docs show them (https://openrouter.ai/docs/api-reference/errors and
+ * https://openrouter.ai/docs/guides/features/guardrails, read 2026-11-11). The docs give the fields
+ * of a moderation flag and of a typed refusal but no message, so the messages here name none of the
+ * words a 403 was once read for: the fields alone decide.
+ */
+const openRouter403 = {
+  /** A guardrail's content check: refused for what the names say. */
+  injection: {
+    error: {
+      code: 403,
+      message: 'Request blocked: prompt injection patterns detected',
+      metadata: { patterns: ['ignore all previous instructions'] },
+    },
+  },
+  /** A moderation flag (ModerationErrorMetadata). */
+  moderation: {
+    error: {
+      code: 403,
+      message: 'Your input was rejected',
+      metadata: {
+        reasons: ['violence'],
+        flagged_input: 'Death by Chocolate',
+        provider_name: 'Google',
+        model_slug: 'google/gemini-3.8-flash',
+      },
+    },
+  },
+  /** The workspace takes requests only through the EU hostname: no names can cause it. */
+  dataRegion: {
+    error: {
+      code: 403,
+      message:
+        "This request arrived on the global data region, but the key's workspace permits requests only on these OpenRouter hostnames: eu.openrouter.ai. Use one of the permitted hostnames or update the workspace guardrail allowed data regions.",
+    },
+  },
+  /** A guardrail's budget is spent. */
+  budget: {
+    error: {
+      code: 403,
+      message:
+        'Budget limit exceeded (weekly limit). Contact your org admin. $52.00 of $50.00 used; resets 2026-10-12T00:00:00.000Z.',
+      metadata: {
+        limit_source: 'openrouter_guardrail_budget',
+        remedy_hint:
+          'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.',
+        scope: 'workspace_default_member',
+        limit_usd: 50,
+        spend_usd: 52,
+        resets_at: '2026-10-12T00:00:00.000Z',
+      },
+    },
+  },
+};
+
+/** A provider's refusal as OpenRouter types it, in error.metadata.error_type. */
+const typedRefusal = (errorType: 'content_policy_violation' | 'refusal') => ({
+  error: {
+    code: 403,
+    message: 'Provider returned error',
+    metadata: { error_type: errorType, provider_name: 'Google' },
+  },
+});
+
+const forbidden = (body: unknown) => new Response(JSON.stringify(body), { status: 403 });
+
+/** A provider's trouble that no batch of names can cause, as far as its answer shows: an outage. */
 const outages: [string, () => Response][] = [
   [
     'cannot be reached',
@@ -153,6 +219,19 @@ const outages: [string, () => Response][] = [
     () => new Response('{"error":{"message":"insufficient credits"}}', { status: 402 }),
   ],
   ['answers 403', () => new Response('forbidden', { status: 403 })],
+  ["answers OpenRouter's 403 for its data region", () => forbidden(openRouter403.dataRegion)],
+  ["answers OpenRouter's 403 for a spent budget", () => forbidden(openRouter403.budget)],
+  [
+    'answers a 403 that says moderation, without its fields',
+    () =>
+      forbidden({
+        error: { code: 403, message: 'google/gemini-3.8-flash requires moderation on OpenRouter' },
+      }),
+  ],
+  [
+    'answers a 403 that says guardrail, without its fields',
+    () => forbidden({ error: { code: 403, message: 'Blocked by guardrail' } }),
+  ],
   ['answers 404', () => new Response('{"error":{"message":"no such model"}}', { status: 404 })],
   ['answers 408', () => new Response('request timeout', { status: 408 })],
   ['answers 429', () => new Response('rate limited', { status: 429 })],
@@ -553,20 +632,16 @@ describe('fillHindiNames', () => {
   });
 
   it.each([
-    'google/gemini-3.8-flash requires moderation on OpenRouter',
-    'Your input was flagged',
-    'Blocked by guardrail',
-    'content_policy_violation',
-    'The model refused the request',
+    ['a prompt injection', openRouter403.injection],
+    ['a moderation flag', openRouter403.moderation],
+    ['a content filter (content_policy_violation)', typedRefusal('content_policy_violation')],
+    ["the model's refusal (refusal)", typedRefusal('refusal')],
   ])(
-    'counts a batch as tried when a provider refuses it for what it says (403: %s)',
-    async (message) => {
+    'counts a batch as tried when OpenRouter refuses it for what it says (403: %s)',
+    async (_, body) => {
       // It may be the names' doing, as any 4xx: settled, so that it cannot loop.
       const { admin, calls } = fakeAdmin([[dish('a')]]);
-      const { fetchImpl } = fakeFetch(
-        new Response('busy', { status: 503 }),
-        new Response(JSON.stringify({ error: { message, code: 403 } }), { status: 403 }),
-      );
+      const { fetchImpl } = fakeFetch(new Response('busy', { status: 503 }), forbidden(body));
       const { run } = stoppableRun();
 
       await expect(
@@ -798,6 +873,73 @@ describe('fillWaitingHindiNames', () => {
     await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ leased: 1, stored: 1 });
     await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ leased: 1, stored: 1 });
     expect(calls('menu_hindi_names_lease')).toHaveLength(4);
+  });
+
+  it.each([
+    ['as the only reader', [fallback]],
+    ['after the primary answered 503', [primary, fallback]],
+  ])(
+    'settles a batch that OpenRouter blocks as a prompt injection, %s, and sets no pause',
+    async (_, providers) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { admin, calls } = fakeAdmin([[dish('a')]]);
+      const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+        String(url).startsWith(fallback.baseUrl)
+          ? forbidden(openRouter403.injection)
+          : new Response('busy', { status: 503 }),
+      ) as unknown as typeof fetch;
+      const { run } = stoppableRun();
+      const options = { lanes: 1, run, providers, fetchImpl };
+
+      // Counted as tried, so that it cannot be leased first and end every run.
+      await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({
+        leased: 1,
+        stored: 0,
+      });
+      expect(calls('menu_hindi_names_settle')).toEqual([
+        { p_names: [{ kind: 'item', id: 'a', name: 'Dish a' }] },
+      ]);
+      // No outage and no pause in the logs, and the answer's message as it came, without its fields.
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        ...(providers.length > 1 ? ['[hindi-names] commandcode answered 503: busy'] : []),
+        '[hindi-names] openrouter answered 403: Request blocked: prompt injection patterns detected',
+      ]);
+
+      // The next minute's run leases again.
+      vi.setSystemTime(new Date('2026-11-09T10:01:00Z'));
+      await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({
+        leased: 0,
+        stored: 0,
+      });
+      expect(calls('menu_hindi_names_lease')).toHaveLength(3);
+    },
+  );
+
+  it("settles nothing and pauses when OpenRouter's 403 is its data region and the primary is down", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
+    const { admin, calls } = fakeAdmin([[dish('a')]]);
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      String(url).startsWith(fallback.baseUrl)
+        ? forbidden(openRouter403.dataRegion)
+        : new Response('busy', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+    const options = { lanes: 1, run, providers: [primary, fallback], fetchImpl };
+
+    // Its message names a guardrail, but no names can cause it: an outage.
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({
+      leased: 1,
+      stored: 0,
+      stopped: 'unavailable',
+    });
+    expect(calls('menu_hindi_names_settle')).toEqual([]);
+
+    vi.setSystemTime(new Date('2026-11-09T10:01:00Z'));
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toEqual({ skipped: 'paused' });
+    expect(calls('menu_hindi_names_lease')).toHaveLength(1);
   });
 });
 

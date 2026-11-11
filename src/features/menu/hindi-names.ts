@@ -90,19 +90,38 @@ export function acceptableHindi(value: unknown, maxLength: number): string | nul
   return DEVANAGARI.test(text) && !LATIN.test(text) ? text : null;
 }
 
-/** What a 403 names when a provider refused the request for what it says, as OpenRouter's can. */
-const REFUSED_FOR_CONTENT = /moderat|flag|guardrail|content.?polic|refus/i;
+/**
+ * Whether a 403's `error.metadata` holds a field that OpenRouter documents for a refusal of what a
+ * request says: a moderation flag (`reasons`, `flagged_input`), a guardrail's content check
+ * (`patterns`), or a typed `error_type` of `content_policy_violation` or `refusal`.
+ */
+function refusedForContent(metadata: Record<string, unknown> | null) {
+  if (!metadata) return false;
+  return (
+    Array.isArray(metadata.reasons) ||
+    typeof metadata.flagged_input === 'string' ||
+    Array.isArray(metadata.patterns) ||
+    metadata.error_type === 'content_policy_violation' ||
+    metadata.error_type === 'refusal'
+  );
+}
 
 /**
  * A provider's failure that no batch of names can cause: no connection, its key, credit or limits
- * (401, 402, 403, 408, 429), a model it does not have (404), or its own error (5xx). A 403 that
- * names moderation, a flag, a guardrail, a content policy or a refusal, a timeout, an unusable
- * reply or another 4xx can be the batch's own doing.
+ * (401, 402, 403, 408, 429), a model it does not have (404), or its own error (5xx). A timeout, an
+ * unusable reply, another 4xx or a 403 refused for what was asked can be the batch's own doing. A
+ * 403 is taken for such a refusal only when it carries a field OpenRouter documents for one
+ * (refusedForContent; https://openrouter.ai/docs/api-reference/errors and
+ * https://openrouter.ai/docs/guides/features/guardrails, read 2026-11-11). Its other 403s are a
+ * key's permission, a budget, an allowlist or a data region, which no names can cause, and their
+ * documented bodies carry none of those fields. No words are looked for, in the message or in the
+ * metadata as text: the data region's message names a guardrail, and a budget's `limit_source` is
+ * "openrouter_guardrail_budget".
  */
 function providerDown(error: ProviderError) {
   if (error.kind === 'network') return true;
   const status = error.kind === 'http' ? (error.status ?? 0) : 0;
-  if (status === 403) return !REFUSED_FOR_CONTENT.test(error.message);
+  if (status === 403) return !refusedForContent(error.metadata);
   return [401, 402, 404, 408, 429].includes(status) || status >= 500;
 }
 
