@@ -24,6 +24,8 @@
     "docker:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts check",
     "docker:stop": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts stop",
     "vps:secrets": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-secrets.mts",
+    "vps:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-kit.mts check",
+    "vps:edge": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-kit.mts edge",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",

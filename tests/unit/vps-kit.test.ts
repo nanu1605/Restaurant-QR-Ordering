@@ -4,6 +4,18 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import {
+  caddyRunArgs,
+  composeServices as services,
+  cronCallJobs,
+  envoyBootstrap,
+  envoyKeyNames,
+  lintCrontab,
+  renderListeners,
+  serviceKey as key,
+  serviceMounts,
+} from '../../scripts/vps-kit.mts';
+
 /**
  * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-42) is checked by the server's
  * own code only when the owner installs it, and some of it only when it first runs there. These
@@ -38,33 +50,10 @@ function refuses(rule: (text: string) => string[], bad: string, problem: string 
 
 // --- compose.yml ---
 
+// The services as written (each name with its lines, comments left out) and one key of a
+// service: vps-kit.mts reads compose.yml with the same helpers.
 const compose = kit('compose.yml');
 
-/** The services as written: each name with its lines, comments left out. */
-function services(text: string): Map<string, string[]> {
-  const found = new Map<string, string[]>();
-  let inServices = false;
-  let current: string[] | undefined;
-  for (const line of code(text)) {
-    if (/^\S/.test(line)) {
-      inServices = line.startsWith('services:');
-      current = undefined;
-    } else if (inServices) {
-      const name = /^ {2}([a-z0-9][a-z0-9-]*):\s*$/.exec(line)?.[1];
-      if (name) found.set(name, (current = []));
-      else current?.push(line);
-    }
-  }
-  return found;
-}
-
-/** One key of a service: its line and the lines under it, or undefined. */
-function key(service: readonly string[], name: string): string[] | undefined {
-  const start = service.findIndex((line) => line.startsWith(`    ${name}:`));
-  if (start < 0) return undefined;
-  const end = service.findIndex((line, index) => index > start && /^ {4}\S/.test(line));
-  return service.slice(start, end < 0 ? service.length : end);
-}
 /** A key's value on its own line, e.g. mem_limit's. */
 const value = (service: readonly string[], name: string) =>
   key(service, name)?.[0].slice(`    ${name}:`.length).trim();
@@ -499,7 +488,7 @@ describe('deploy/vps/compose.yml', () => {
 const lds = kit('config/envoy/lds.template.yaml');
 const cds = kit('config/envoy/cds.yaml');
 const envoyStart = kit('config/envoy/start.sh');
-const envoyBootstrap = kit('config/envoy/envoy.yaml');
+const envoyYaml = kit('config/envoy/envoy.yaml');
 
 /** One route of the listener: the item that holds `line`. */
 function route(text: string, line: string): string[] {
@@ -663,10 +652,10 @@ describe('the Envoy gateway (deploy/vps/config/envoy)', () => {
   });
 
   it('fills in the template’s six keys off the command line and keeps the listeners on the tmpfs', () => {
-    expect(listenerKeys(envoyStart, lds, envoyBootstrap)).toEqual([]);
+    expect(listenerKeys(envoyStart, lds, envoyYaml)).toEqual([]);
     expect([...lds.matchAll(/\$\{SUPABASE_SECRET_KEY\}/g)].length).toBeGreaterThan(0);
     refuses(
-      (text) => listenerKeys(text, lds, envoyBootstrap),
+      (text) => listenerKeys(text, lds, envoyYaml),
       swap(
         envoyStart,
         `  printf 's|\${SUPABASE_SECRET_KEY}|%s|g\\n' "\${SUPABASE_SECRET_KEY}"\n`,
@@ -675,18 +664,18 @@ describe('the Envoy gateway (deploy/vps/config/envoy)', () => {
       'start.sh fills in',
     );
     refuses(
-      (text) => listenerKeys(envoyStart, text, envoyBootstrap),
+      (text) => listenerKeys(envoyStart, text, envoyYaml),
       `${lds}# \${NEW_KEY}\n`,
       'the template has',
     );
     refuses(
-      (text) => listenerKeys(text, lds, envoyBootstrap),
+      (text) => listenerKeys(text, lds, envoyYaml),
       swap(envoyStart, '>/run/envoy/lds.yaml', '>/etc/envoy/lds.yaml'),
       'does not write the listeners',
     );
     refuses(
       (text) => listenerKeys(envoyStart, lds, text),
-      swap(envoyBootstrap, 'path: /run/envoy/lds.yaml', 'path: /etc/envoy/lds.yaml'),
+      swap(envoyYaml, 'path: /run/envoy/lds.yaml', 'path: /etc/envoy/lds.yaml'),
       'envoy.yaml does not read',
     );
   });
@@ -1452,5 +1441,188 @@ describe('copies kept byte for byte', () => {
     expect(unlike(sums, { ...files, 'db/jwt.sql': Buffer.from('-- changed\n') })).toEqual([
       'db/jwt.sql changed',
     ]);
+  });
+});
+
+// --- the kit check: scripts/vps-kit.mts and deploy/vps/test ---
+
+const conf = kit('test/menumesh.conf');
+/** A value of the conf, as the shell reads it: NAME=value, NAME="value" or NAME='value'. */
+const confValue = (text: string, name: string) => {
+  const match = new RegExp(`(?:^|\\s)${name}=(?:"([^"]*)"|'([^']*)'|([^\\s#]*))`, 'm').exec(text);
+  return match ? (match[1] ?? match[2] ?? match[3]) : undefined;
+};
+/** The aliases each service has on an edge network: "<service> <network> <alias>". */
+const edgeAliases = (text: string) =>
+  [...services(text)].flatMap(([name, service]) =>
+    [
+      ...(key(service, 'networks') ?? [])
+        .join('\n')
+        .matchAll(/^ {6}(edge-[a-z-]+):\n {8}aliases: \[([^\]]*)\]$/gm),
+    ].flatMap((m) => m[2].split(',').map((alias) => `${name} ${m[1]} ${alias.trim()}`)),
+  );
+const VPS_WORKFLOWS = ['vps-build.yml', 'vps-backup-image.yml', 'vps-deploy-staging.yml'].map(
+  (name) => workflow(name),
+);
+
+/**
+ * /etc/apps/menumesh.conf as the kit check installs it (and the RUNBOOK asks the admin to write
+ * it) fits the kit: its upstreams are the edge aliases and the site's proxies, its edge networks
+ * the compose file's, each deploy target a service running its images.env variable, and each tag
+ * one CI checks before it pushes. app-deploy reads most of it, and that only runs on the server.
+ */
+const serverConf = (text: string, composeText = compose) => {
+  const upstreams = (confValue(text, 'UPSTREAMS') ?? '').split(' ').filter(Boolean);
+  const aliases = edgeAliases(composeText).map((line) => line.split(' ')[2]);
+  const external = [
+    ...composeText
+      .slice(composeText.indexOf('\nnetworks:\n'))
+      .matchAll(/^ {2}([a-z0-9-]+):\n {4}external: true$/gm),
+  ].map((m) => m[1]);
+  const targets = [...text.matchAll(/\b(?:MIGRATE_)?SERVICE=(\S+) (?:MIGRATE_)?VAR=(\S+)/g)];
+  const tags = [...text.matchAll(/\b(?:EXTRA_)?TAG='([^']+)'/g)].map((m) => m[1]);
+  return [
+    ...(JSON.stringify(upstreams.map((entry) => entry.split(':')[0]).sort()) ===
+    JSON.stringify([...aliases].sort())
+      ? []
+      : [`UPSTREAMS ${upstreams.join(' ')} are not the edge aliases ${aliases.join(' ')}`]),
+    ...upstreams
+      .filter((entry) => !site.includes(`\treverse_proxy ${entry} {\n`))
+      .map((entry) => `the site proxies to no ${entry}`),
+    ...(confValue(text, 'EDGE_NETWORKS') === external.join(' ')
+      ? []
+      : [`EDGE_NETWORKS is not ${external.join(' ')}`]),
+    ...(targets.length === 5 ? [] : [`${targets.length} deploy targets, not 5`]),
+    ...targets
+      .filter(
+        ([, service, variable]) =>
+          value(services(composeText).get(service) ?? [], 'image') !==
+            `\${${variable}:?set ${variable} in images.env}` ||
+          !templateNames(kit('env/images.env.example')).includes(variable),
+      )
+      .map(([, service, variable]) => `${service} does not run ${variable} from images.env`),
+    ...(tags.length === 4 ? [] : [`${tags.length} tags, not 4`]),
+    ...tags
+      .filter(
+        (tag) =>
+          !VPS_WORKFLOWS.some((file) => code(file).some((line) => line.includes(`^${tag}$`))),
+      )
+      .map((tag) => `no workflow checks ^${tag}$`),
+    ...(services(composeText).has((confValue(text, 'PREDEPLOY_DB') ?? '').split(' ')[0])
+      ? []
+      : ['PREDEPLOY_DB names no service']),
+    ...(confValue(text, 'ZONE') === 'menumesh.in' && confValue(text, 'ENV_PREFIX') === 'MENUMESH_'
+      ? []
+      : ['ZONE or ENV_PREFIX is not menumesh.in, MENUMESH_']),
+  ];
+};
+
+describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
+  it('installs a menumesh.conf that fits the compose file, the site file and CI', () => {
+    expect(serverConf(conf)).toEqual([]);
+    refuses(
+      serverConf,
+      swap(conf, 'SERVICE=web VAR=WEB_IMAGE', 'SERVICE=web VAR=WEB_IMG'),
+      'web does not run WEB_IMG from images.env',
+    );
+    refuses(
+      serverConf,
+      swap(conf, ' menumesh-gw:8000', ''),
+      'UPSTREAMS menumesh-web:3000 menumesh-web-staging:3000 are not the edge aliases',
+    );
+    refuses(serverConf, swap(conf, 'menumesh-gw:8000', 'menumesh-gw:8080'), 'no menumesh-gw:8080');
+    refuses(
+      serverConf,
+      swap(conf, "TAG='staging-[0-9a-f]{40}'", "TAG='staging-[0-9a-f]{7}'"),
+      'no workflow checks ^staging-[0-9a-f]{7}$',
+    );
+    refuses(
+      (text) => serverConf(conf, text),
+      swapIn(compose, 'web', '        aliases: [menumesh-web]', '        aliases: [menumesh-app]'),
+      'are not the edge aliases',
+    );
+    refuses(serverConf, swap(conf, '"db supabase_admin', '"postgres supabase_admin'), 'PREDEPLOY');
+  });
+
+  it('lints the crontabs as BusyBox crond reads them, against what the scheduler mounts', () => {
+    const jobsKnown = cronCallJobs(cronCall);
+    expect(jobsKnown).toEqual(['daily', 'daily-retry', 'digest', 'digest-retry', 'jobs']);
+    const mounted = serviceMounts(services(compose).get('scheduler') ?? []);
+    expect(mounted).toContainEqual(['./config/scheduler/production.crontab', '/etc/crontabs/root']);
+    const targets = mounted.map(([, target]) => target);
+    const lint = (text: string) => lintCrontab(text, targets, jobsKnown);
+    const production = kit('config/scheduler/production.crontab');
+    expect(lint(production)).toEqual([]);
+    expect(lint(kit('config/scheduler/staging.crontab'))).toEqual([]);
+    refuses(lint, swap(production, '30 21 * * *', '60 21 * * *'), 'the minute field 60');
+    refuses(lint, swap(production, '15 3 * * *', '15 3 * * 8'), 'the day of the week field 8');
+    refuses(lint, `CRON_SECRET=x\n${production}`, 'BusyBox crond takes no variables');
+    refuses(
+      lint,
+      swap(production, 'cron-call daily\n', 'cron-call weekly\n'),
+      'knows no job weekly',
+    );
+    refuses(
+      lint,
+      swap(production, '/opt/menumesh/cron-call jobs', '/opt/menumesh/other jobs'),
+      '/opt/menumesh/other is not mounted',
+    );
+    refuses(lint, swap(production, '* * * * * /bin/sh', '* * * * /bin/sh'), 'day of the week');
+    refuses(lint, '# nothing\n', 'no job at all');
+  });
+
+  it('runs Caddy with the flags of app-apply’s own caddy_run', () => {
+    const appApply = readFileSync(join(VENDOR, 'app-apply'), 'utf8');
+    const paths = { config: '/w/tree', certs: '/w/certs', envFile: '/w/edge.docker' };
+    expect(caddyRunArgs(appApply, paths, 'caddy:test', ['validate'])).toEqual([
+      ...['run', '--rm', '--network', 'none', '--log-driver', 'none', '--read-only'],
+      ...['--cap-drop', 'ALL', '--cap-add', 'NET_BIND_SERVICE'],
+      ...['--security-opt', 'no-new-privileges:true', '--label', 'kit.throwaway=1'],
+      ...['--cpus', '0.5', '--memory', '256m', '--memory-swap', '256m', '--pids-limit', '256'],
+      ...['--tmpfs', '/tmp:size=16m', '--tmpfs', '/data:size=16m', '--tmpfs', '/config:size=16m'],
+      ...['--env-file', '/w/edge.docker'],
+      ...['--mount', 'type=bind,source=/w/tree,target=/etc/caddy,readonly'],
+      ...['--mount', 'type=bind,source=/w/certs,target=/certs,readonly'],
+      ...['--entrypoint', 'caddy', 'caddy:test', 'validate'],
+    ]);
+    expect(() =>
+      caddyRunArgs(
+        swap(appApply, 'local config=$1 certs=$2 envf=$3', 'local dir=$1 certs=$2 envf=$3'),
+        paths,
+        'caddy:test',
+        [],
+      ),
+    ).toThrow('no caddy_run of the known shape');
+    expect(() =>
+      caddyRunArgs(
+        swap(appApply, '--label kit.throwaway=1', '--label kit.throwaway=1 -v "$HOME:/home"'),
+        paths,
+        'caddy:test',
+        [],
+      ),
+    ).toThrow('caddy_run uses $HOME');
+  });
+
+  it('validates the gateway as start.sh fills it in, with every resource inline', () => {
+    const names = envoyKeyNames(envoyStart);
+    expect(names).toHaveLength(6);
+    const keys = Object.fromEntries(names.map((name) => [name, `test-${name.toLowerCase()}`]));
+    const listeners = renderListeners(lds, keys);
+    expect(listeners).not.toMatch(/\$\{[A-Z_]/);
+    expect(listeners).toContain('test-supabase_secret_key');
+    const fewer = Object.fromEntries(Object.entries(keys).filter(([name]) => name !== 'ANON_KEY'));
+    expect(() => renderListeners(lds, fewer)).toThrow(
+      '${ANON_KEY}, which start.sh does not fill in',
+    );
+    const bootstrap = envoyBootstrap(envoyYaml, listeners, cds);
+    expect(bootstrap).not.toContain('dynamic_resources');
+    expect(bootstrap).not.toContain("'@type': type.googleapis.com/envoy.config.");
+    expect(bootstrap).toMatch(/^static_resources:\n {2}listeners:\n {4}-$/m);
+    expect(bootstrap.match(/^ {4}-$/gm)).toHaveLength(5);
+    expect(bootstrap).toContain('\nadmin:\n');
+    expect(() => envoyBootstrap(envoyYaml, 'kind: nothing\n', cds)).toThrow('no resources:');
+    expect(() =>
+      envoyBootstrap(envoyYaml, listeners, cds.replace("  - '@type'", '  - "@type"')),
+    ).toThrow("has no '@type' first");
   });
 });

@@ -63,6 +63,16 @@ otherwise. Every file here is LF only.
   (`sudo app-compose menumesh restart <service>`). The init SQL runs only on an empty volume.
 - The edge files: `app-apply` again; Caddy reloads without dropping connections.
 
+## Checking it here first
+
+None of the checks needs the server. `pnpm test` pins what each file must keep
+(`tests/unit/vps-kit.test.ts`). `pnpm vps:check` runs the server's own `app-apply` checks on this
+folder, as root in a throwaway container, with `test/menumesh.conf` as `/etc/apps/menumesh.conf`,
+then the contract's extra rules, Caddy's and Envoy's own validation and shellcheck. `pnpm vps:edge`
+puts the server's Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers.
+Both need only Docker. Run them before every install, after copying the server team's files again
+if those changed.
+
 ## Where the borrowed files come from
 
 `config/SOURCES.md` lists the files taken from self-hosted Supabase (Apache-2.0), with their
