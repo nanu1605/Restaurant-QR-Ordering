@@ -1,0 +1,11 @@
+# What the migrate image's build may see (BuildKit reads this file in place of the root's
+# .dockerignore for deploy/vps/migrate/Dockerfile): the migrations and this folder. An allowlist,
+# so supabase/seed.sql, supabase/seeds/ and anything added at the root later never reach it.
+*
+
+!supabase/migrations/
+!deploy/vps/migrate/
+
+# Never an environment file, even inside an allowed folder.
+**/.env
+**/.env.*
