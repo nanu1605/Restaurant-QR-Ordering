@@ -10,6 +10,22 @@ no NOTICE file.
 Each sha256 below is of the upstream file as tagged: the git blob, with LF line endings
 (`git show self-hosted/v0.8.4:<path> | sha256sum`).
 
+## Verbatim copies
+
+Byte for byte, without a header, so their sha256 is the upstream one: `sha256sum db/*.sql` here
+must print the hashes below. The Postgres image runs them once, on the first start of an empty
+volume (`compose.yml` mounts them read-only). `webhooks.sql` stays although nothing uses database
+webhooks: `roles.sql` sets the password of `supabase_functions_admin`, which only `webhooks.sql`
+creates. Not taken: `_supabase.sql`, `logs.sql` and `pooler.sql`, which serve the analytics and
+pooler services that don't run here.
+
+| File here         | Upstream path                    | sha256 of the upstream file                                        |
+| ----------------- | -------------------------------- | ------------------------------------------------------------------ |
+| `db/realtime.sql` | `docker/volumes/db/realtime.sql` | `7e9e442e7fc4dae05544c07b67bede37a00d84644304dfce4d937134cb4c8f88` |
+| `db/webhooks.sql` | `docker/volumes/db/webhooks.sql` | `05a61316b899374253891cbba66ce073d9273f33983c3f47961eda3aa26c2823` |
+| `db/roles.sql`    | `docker/volumes/db/roles.sql`    | `3ad717b225daa38aa982da26750f35641eb404e1eb5e69a763c22236ab96c1b2` |
+| `db/jwt.sql`      | `docker/volumes/db/jwt.sql`      | `c1d3f5c01e44646c2e533c5a1c111821cc49cb5a4c2534e08cddad61d8fb0339` |
+
 ## Changed copies
 
 Each starts with a comment that names its source and says what changed, and every change inside
