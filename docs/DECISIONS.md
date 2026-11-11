@@ -6023,17 +6023,17 @@ review's fixes, and a second's, are listed after Tests.
     is read). An idle tick is that one statement. `announcement_emails_next` finds the pairs not
     sent and not set aside first (of a list, only its restaurants), as ids in a materialized CTE,
     and only then joins the announcement and the restaurant back, tests the audience and looks up
-    the owners' addresses; the texts join only the emails it returns. Before, it looked up every
-    active restaurant's owners on every call, even with no email announcement running (review
-    finding D2): measured on the local load seed of 6,483 active restaurants, the check went from 23
-    to 26 ms and 47,335 buffers to 0.2 ms and 3 buffers with no email announcement due, and from 26
-    to 30 ms and 53,747 buffers to 4 ms and about 6,900 buffers with one for everyone whose emails
-    all went. That CTE then held a copy of the announcement for each restaurant, which went to
-    temporary files (review finding S1); the costs now are in VPS-28 Limits. The whole of
-    `jobs_waiting()` takes about 1 ms on that seed while a name waits, and 4 to 11 ms when none
-    does: the Hindi check then reads the seed's 61,000 names, nearly all without a Hindi name, so
-    its partial indexes are not small there. A database whose menus are filled in keeps few names in
-    them.
+    the owners' addresses; its final select joins the texts, for each row of the audience before the
+    sort and the limit. Before, it looked up every active restaurant's owners on every call, even
+    with no email announcement running (review finding D2): measured on the local load seed of 6,483
+    active restaurants, the check went from 23 to 26 ms and 47,335 buffers to 0.2 ms and 3 buffers
+    with no email announcement due, and from 26 to 30 ms and 53,747 buffers to 4 ms and about 6,900
+    buffers with one for everyone whose emails all went. That CTE then held a copy of the
+    announcement for each restaurant, which went to temporary files (review finding S1); the costs
+    now are in VPS-28 Limits. The whole of `jobs_waiting()` takes about 1 ms on that seed while a
+    name waits, and 4 to 11 ms when none does: the Hindi check then reads the seed's 61,000 names,
+    nearly all without a Hindi name, so its partial indexes are not small there. A database whose
+    menus are filled in keeps few names in them.
   - **The scheduler.** The deploy stop's crontab has it called every minute, from the `scheduler`
     container to the web container directly and never through Cloudflare (VPS-22): the line is
     `* * * * * wget -q -O /dev/null -T 25 --header "Authorization: Bearer $CRON_SECRET"` followed,
@@ -6426,13 +6426,13 @@ the RUNBOOK and the spec's Hindi column).
   wrote 8 to 38 MB of temporary files and took 45 to 90 ms on the load seed, not the 30 to 45 ms
   VPS-28 gave. The first step now keeps ids, and of a list only its restaurants (`in_audience`'s
   list rule, in the join); a second step joins the announcement and the restaurant back to test the
-  audience, and the texts join only the emails returned. The verifier's version kept the texts in
-  that step, which still wrote 582 blocks a call while a new announcement to everyone went out. The
-  answers are the same in 2,124 cases, and no case writes a temporary file: a list of 300 takes
-  12 ms and a plan or a city 37 to 48 ms. One to everyone whose emails went takes up to 7 ms, where
-  it took about 3, when the statistics hold only announcements to lists (as locally): the planner
-  then looks up the sent pairs one restaurant at a time. 692 checks the temporary files at a
-  `work_mem` of 64 kB. (70d734e)
+  audience, and the final select joins the texts, for each row of the audience before the sort and
+  the limit. The verifier's version kept the texts in that step, which still wrote 582 blocks a call
+  while a new announcement to everyone went out. The answers are the same in 2,124 cases, and no
+  case writes a temporary file: a list of 300 takes 12 ms and a plan or a city 37 to 48 ms. One to
+  everyone whose emails went takes up to 7 ms, where it took about 3, when the statistics hold only
+  announcements to lists (as locally): the planner then looks up the sent pairs one restaurant at a
+  time. 692 checks the temporary files at a `work_mem` of 64 kB. (70d734e)
 - **S2 · The write count missed the calls that find work (Tests):** 693 counted writes only around
   two idle calls, so a helper that writes only while work waits (one that stamps the due
   announcements, or takes back a lapsed build) passed all 9 tests, though Tests said any writing

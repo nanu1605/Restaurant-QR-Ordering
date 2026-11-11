@@ -33,9 +33,10 @@ revoke all on public.announcement_email_failures from anon, authenticated;
 -- started, or one with an email already sent. The pairs not sent and not set aside are found
 -- first (of a list, only its restaurants), and only they are tested for the audience and given
 -- addresses: once an announcement's emails went, the minute job reads its sent pairs, not every
--- owner's logins. The steps hold ids, the order's keys and what the addresses need, and the texts
--- join only the emails returned: an announcement copied for each restaurant not yet emailed went
--- to temporary files every minute (review finding S1).
+-- owner's logins. The two materialized steps hold ids, the order's keys and what the addresses
+-- need, never the texts: the final select joins the texts after them, for each row of the audience
+-- before the sort and the limit, so nothing is copied to temporary files. An announcement copied
+-- for each restaurant not yet emailed went to temporary files every minute (review finding S1).
 create function public.announcement_emails_next(
   p_at timestamptz default now(),
   p_limit int default 50,
