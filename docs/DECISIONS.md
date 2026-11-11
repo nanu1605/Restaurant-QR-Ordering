@@ -5636,7 +5636,9 @@ review's fixes, and a second's, are listed after Tests.
     the error is thrown after it: a caller turned away has no run of its own, and on Vercel no
     minute job comes, so an export asked for then waited for some other request and failed on its
     card after 15 minutes (review finding R3). An extra run that throws is logged
-    (`[jobs] <kind> failed`) and ends the extra runs; the gate is released either way.
+    (`[jobs] <kind> failed`), and the runs still go on for a caller turned away during it, which it
+    used to leave with no run (review finding T2); each extra run needs a caller turned away since
+    the last one began, so they cannot spin. The gate is released either way.
   - **Budgets.** `jobRun(budgetMs)` gives a run a signal and `stopping()`, true once the server is
     stopping or the budget is spent. The budget caps how long a run keeps starting units (a build, a
     batch of names, an email) and never cuts one that has started: exports 180 s (`EXPORT_RUN_MS`),
@@ -6108,17 +6110,17 @@ review's fixes, and a second's, are listed after Tests.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,011 tests, 60 to 66 files):**
-  - `jobs` (15, new): a run turned away makes no call and the run going on goes once more; kinds
+- **Unit (886 to 1,012 tests, 60 to 66 files):**
+  - `jobs` (16, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
     throws its own error, and when both throw the extra run's error is logged; an extra run that
-    throws is logged and the first result kept; nothing starts once the server is stopping, and
-    neither the waiting nor the turned-away work runs after a stop; the gate holds across copies of
-    the module; a run stops starting work at its budget and at once on a stop, aborting what is in
-    flight; `stopJobsOnSigterm` adds no listener to a process without one and aborts the signal
-    beside the one that is there; and Next's `start-server.js` adds its listener before it loads
-    the handlers that run `register()`.
+    throws is logged and the first result kept, and a caller turned away during it still gets a run;
+    nothing starts once the server is stopping, and neither the waiting nor the turned-away work
+    runs after a stop; the gate holds across copies of the module; a run stops starting work at its
+    budget and at once on a stop, aborting what is in flight; `stopJobsOnSigterm` adds no listener
+    to a process without one and aborts the signal beside the one that is there; and Next's
+    `start-server.js` adds its listener before it loads the handlers that run `register()`.
   - `instrumentation` (2, new, with Sentry and the guard faked): `register()` warns once when the
     guard found no listener, and says nothing when it listens, on Vercel or on the edge runtime.
   - `jobs-route` (9, new, with the admin client, `after()` and the runners faked): 401 without the

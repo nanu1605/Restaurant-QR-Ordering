@@ -96,8 +96,8 @@ export async function runExclusive<T>(
       try {
         await work(jobRun(budgetMs));
       } catch (error) {
+        // Logged, and the runs go on: a caller turned away during this one is owed a run too.
         console.error(`[jobs] ${kind} failed`, error);
-        break;
       }
     }
     if ('error' in first) throw first.error;

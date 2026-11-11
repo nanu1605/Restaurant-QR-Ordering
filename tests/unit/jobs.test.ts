@@ -155,6 +155,40 @@ describe('runExclusive', () => {
     );
   });
 
+  it('runs once more for a caller turned away during an extra run that throws', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const first = deferred();
+    const extra = deferred();
+    const work = vi
+      .fn(async () => 'more')
+      .mockImplementationOnce(async () => {
+        await first.promise;
+        return 'first';
+      })
+      .mockImplementationOnce(async () => {
+        await extra.promise;
+        throw new Error('connection reset');
+      });
+
+    const running = runExclusive('data_exports', 60_000, work);
+    // B is turned away during the first run, and C during the extra run made for B.
+    await runExclusive('data_exports', 60_000, work);
+    first.resolve();
+    await vi.waitFor(() => expect(work).toHaveBeenCalledTimes(2));
+    await runExclusive('data_exports', 60_000, work);
+    extra.resolve();
+
+    // On Vercel no minute job comes: C's export still gets its run.
+    await expect(running).resolves.toBe('first');
+    expect(work).toHaveBeenCalledTimes(3);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      '[jobs] data_exports failed',
+      expect.objectContaining({ message: 'connection reset' }),
+    );
+    await expect(runExclusive('data_exports', 60_000, async () => 'free')).resolves.toBe('free');
+  });
+
   it('logs a second run that throws, and keeps the first run’s result', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const first = deferred();
