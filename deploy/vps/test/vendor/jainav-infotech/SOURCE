@@ -12,6 +12,7 @@
 # Caddyfile                docker/edge/config/Caddyfile                 100644
 # cloudflare-ranges.caddy  docker/edge/config/cloudflare-ranges.caddy   100644
 # edge.conf                docker/host/apps/edge.conf                   100644
+# jainav.conf              docker/host/apps/jainav.conf                 100644
 # snippets.caddy           docker/edge/config/snippets.caddy            100644
 #
 # sha256 of each file. In this directory, sha256sum --strict -c SOURCE checks them (GNU sha256sum
@@ -20,4 +21,5 @@
 41a63745faa2fb92492e5c5ee9105081f3866f454524cb898f9449518b293279  Caddyfile
 208070fc0b5540a02e7a477d1c22033a53eccab87b727730a82614c6de81a1f6  cloudflare-ranges.caddy
 d63501d22e5e8c9b90d853bae6f2253f31b37072af92e5071e0cd58116f63927  edge.conf
+8ff29dff8a47290ece8b4a857d369adc8d6ec2108bfb765825de2cfd89d46c30  jainav.conf
 2550e19b6ca13cef943a0a9e44152f7b18ca397b20df94cd66748103cdf68e77  snippets.caddy
