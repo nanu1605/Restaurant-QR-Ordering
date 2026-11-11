@@ -466,6 +466,27 @@ describe('sendAnnouncementEmails', () => {
     expect(keysSent(fetchImpl).at(-1)).toBe('announcement/a2/joined');
   });
 
+  it('lists past the emails it left due, so that every due email is asked for once', async () => {
+    const emails = Array.from({ length: 150 }, (_, n) => due('a1', `r${100 + n}`));
+    const { admin, calls } = fakeDb(emails);
+    // 429 and 200 in turn, as with a rate limit shared with another sender: never three unavailable
+    // answers since an email last went, so a save's run goes on, and the 429s stay due, first.
+    const fetchImpl = resend({}, () =>
+      fetchImpl.mock.calls.length % 2 === 1
+        ? answer(429, { name: 'rate_limit_exceeded' })
+        : accepted(),
+    );
+
+    await expect(send(admin, fetchImpl)).resolves.toEqual({ sent: 75, duplicate: 0, refused: 0 });
+    expect(fetchImpl).toHaveBeenCalledTimes(150);
+    expect(new Set(keysSent(fetchImpl)).size).toBe(150);
+    expect(calls('announcement_email_sent')).toHaveLength(75);
+    // Each round holds 50 new ones beside the ones left due, then none is new.
+    expect(calls('announcement_emails_next').map((args) => args.p_limit)).toEqual([
+      50, 75, 100, 125,
+    ]);
+  });
+
   it('asks for the minute job’s emails when the minute job runs it, and logs nothing idle', async () => {
     const { admin, calls } = fakeDb([]);
 

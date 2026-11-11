@@ -5885,10 +5885,10 @@ review's fixes, and a second's, are listed after Tests.
     minutes of the reader answering again. A menu edit's fill and the daily run do not pause, so
     Vercel, which has no minute job, is as before.
 - **VPS-28 · Announcement emails go in runs that the minute job resumes:** `sendAnnouncementEmails`
-  (`src/features/announcements/email.ts`) lists the emails due 50 at a time
-  (`announcement_emails_next`), lists again each round and goes on until none is left or the run
-  stops starting work (200 s, 150 s in the daily run). A send starts at least 600 ms after the last
-  and only after a check of the stop, under Resend's idempotency key
+  (`src/features/announcements/email.ts`) lists the emails due (`announcement_emails_next`) again
+  each round, with up to 50 new ones, and goes on until none is left or the run stops starting work
+  (200 s, 150 s in the daily run). A send starts at least 600 ms after the last and only after a
+  check of the stop, under Resend's idempotency key
   `announcement/<announcement id>/<restaurant id>`, and the pair is then recorded
   (`announcement_email_sent`). A run that is cut off leaves the rest due; a send that Resend took
   but the app did not record goes again within minutes under the same key, Resend answers as before
@@ -5921,12 +5921,16 @@ review's fixes, and a second's, are listed after Tests.
   - **Trouble ends the run.** An unavailable answer logs a warning and ends the minute job's run,
     whose next run comes within a minute. A save's or the daily run goes on with the others, not
     asking that pair again, and ends at the third unavailable answer since an email last went
-    (`stopped: 'unavailable'`): on Vercel no minute job comes, and ending at the first left the
-    rest of the audience to the next save or the next night (review finding R1). A record that
-    fails (a sent pair or a refusal) ends it with `stopped: 'database'`, and the next run sends the
-    pair again under its key; a list that cannot be read throws. A run that ends at its budget or
-    at a stop reports no reason (`stopped` has none for it), and nor does one that went on past an
-    unavailable answer, so that a daily step that left emails due looks complete in `cron_runs`.
+    (`stopped: 'unavailable'`): on Vercel no minute job comes, and ending at the first left the rest
+    of the audience to the next save or the next night (review finding R1). Such a pair is still
+    listed, as is one in flight, so each round lists one more for each pair the run has left due, up
+    to the 500 the list gives: with 50 only, those pairs came first and filled the rounds, and a
+    save's run for 150 restaurants that Resend answered with 429 and 200 in turn sent 49 emails and
+    never asked for 51 (review finding T1). A record that fails (a sent pair or a refusal) ends it
+    with `stopped: 'database'`, and the next run sends the pair again under its key; a list that
+    cannot be read throws. A run that ends at its budget or at a stop reports no reason (`stopped`
+    has none for it), and nor does one that went on past an unavailable answer, so that a daily step
+    that left emails due looks complete in `cron_runs`.
   - **What the minute job takes** (the owner's answer, 2026-11-08). With `p_minute_job` on,
     `announcement_emails_next` takes an announcement that has started (`starts_at <= p_at`) or one
     with an `announcement_emails` row already. So a restaurant that joins the audience of a running
@@ -6104,7 +6108,7 @@ review's fixes, and a second's, are listed after Tests.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,010 tests, 60 to 66 files):**
+- **Unit (886 to 1,011 tests, 60 to 66 files):**
   - `jobs` (15, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6146,7 +6150,7 @@ review's fixes, and a second's, are listed after Tests.
     and the settle never carries one, while a tab and a joiner are kept; after a run that found
     every provider down the minute job's fill leases nothing for 30 minutes, and a run that ended
     any other way sets no pause; `queueHindiNames`.
-  - `announcement-emails` (28, new, as the reminders' test): each email goes in turn under its key
+  - `announcement-emails` (29, new, as the reminders' test): each email goes in turn under its key
     and is recorded; starts are 600 ms apart with no extra pause after a slow send; none starts once
     the run stops starting work or the server stops, and the one in flight is recorded; a 409 in
     flight is left for the next run, another is recorded; a refusal is set aside and the others go
@@ -6154,8 +6158,10 @@ review's fixes, and a second's, are listed after Tests.
     timeout, no connection, 401, 403, 429, 5xx) ends the minute job's run with nothing recorded,
     while a save's or the daily run goes on past it, leaves that pair due, and ends at the third
     since an email last went, each kind of answer; a record that fails ends it; the list is read
-    again each round; the minute job asks for its own emails and an idle run logs nothing;
-    `sendFailure`'s cases; and the save path waits for a run going, then lists by the save's rule.
+    again each round, one more for each pair the run left due, so that with Resend answering 429 and
+    200 in turn each of 150 emails is asked for once; the minute job asks for its own emails and an
+    idle run logs nothing; `sendFailure`'s cases; and the save path waits for a run going, then
+    lists by the save's rule.
   - `close-account` (13): the guard cases call `buildExport` with a claim and a run and expect
     `restaurant_export_fail` with "too big to build in memory", not `restaurant_export_finish`.
   - The menu reader: `menu-import-read-page` (15 to 25: the stop and its two texts, with another

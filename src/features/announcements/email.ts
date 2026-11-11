@@ -40,7 +40,7 @@ export function announcementEmail(announcement: Pick<DueEmail, 'title' | 'body'>
  * finishes, so a run ends inside the 300 s that the page saving an announcement allows on Vercel.
  */
 export const EMAIL_RUN_MS = 200_000;
-/** Due emails listed at a time; each round lists them again. */
+/** New due emails a round takes; each round lists the due emails again. */
 const ROUND = 50;
 /** Refusals in a row that point at the setup (EMAIL_FROM) rather than at addresses. */
 const REFUSALS_TO_PAUSE = 3;
@@ -79,8 +79,8 @@ export type AnnouncementEmailsRun =
   | { skipped: 'paused' };
 
 /**
- * Sends the announcement emails due (docs/DECISIONS.md VPS-28), 50 at a time and listed again
- * each round, until none is left or the run stops starting work; send starts are at least
+ * Sends the announcement emails due (docs/DECISIONS.md VPS-28), listed again each round with up to
+ * 50 new ones, until none is left or the run stops starting work; send starts are at least
  * pauseMs apart. An email sent again after a run was cut off goes under the same key, so Resend
  * answers as before without a second email, and it is recorded then. When a send fails:
  * - Resend is still busy with the key: it is left for the next run;
@@ -112,6 +112,9 @@ export async function sendAnnouncementEmails(
   let stopped: 'unavailable' | 'refused' | 'database' | undefined;
   // What this run has sent or asked for: an email Resend was still busy with stays due.
   const tried = new Set<string>();
+  // Of those, the ones still listed (in flight, or unavailable and gone on past). Each round lists
+  // that many more, up to the 500 the list gives, so that they cannot crowd out the new ones.
+  let leftDue = 0;
   let refusedInARow = 0;
   let unavailableInARow = 0;
   let lastStart = -Infinity;
@@ -119,7 +122,7 @@ export async function sendAnnouncementEmails(
   while (!stopped && !run.stopping()) {
     const { data, error } = await admin.rpc('announcement_emails_next', {
       p_at: now().toISOString(),
-      p_limit: ROUND,
+      p_limit: Math.min(ROUND + leftDue, 500),
       p_minute_job: minuteJob,
     });
     if (error) throw new Error(`Could not list due announcement emails: ${error.message}`);
@@ -135,7 +138,10 @@ export async function sendAnnouncementEmails(
       tried.add(pairOf(email));
 
       const { outcome, error: sendError } = await send(config, email, appUrl);
-      if (outcome === 'in_flight') continue;
+      if (outcome === 'in_flight') {
+        leftDue += 1;
+        continue;
+      }
       if (outcome === 'unavailable') {
         unavailableInARow += 1;
         if (minuteJob || unavailableInARow >= UNAVAILABLE_TO_STOP) {
@@ -152,6 +158,7 @@ export async function sendAnnouncementEmails(
           pairOf(email),
           sendError,
         );
+        leftDue += 1;
         continue;
       }
       const pair = {
