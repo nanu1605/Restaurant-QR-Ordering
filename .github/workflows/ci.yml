@@ -116,12 +116,42 @@ jobs:
           retention-days: 7
 
   # Staging follows main once the tests pass (docs/DECISIONS.md P10-1). Off until
-  # the repository variable DEPLOY_STAGING is "true" (the accounts exist).
+  # the repository variable DEPLOY_STAGING is "true" (the accounts exist), and again once
+  # VPS_DEPLOY_STAGING is "true": staging then runs on the shared server (the two jobs below).
   staging:
     name: Deploy staging
     needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_STAGING == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_STAGING == 'true' && vars.VPS_DEPLOY_STAGING != 'true'
     uses: ./.github/workflows/deploy.yml
     with:
       target: STAGING
+    secrets: inherit
+
+  # The shared server's staging (docs/DECISIONS.md VPS-23, VPS-24). Both jobs are skipped, and bill
+  # nothing, until the repository variables are "true": VPS_IMAGES builds and pushes the images,
+  # VPS_DEPLOY_STAGING also deploys and smoke-tests them (and takes over from the Vercel job above).
+  vps-build:
+    name: Build the VPS images
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VPS_IMAGES == 'true'
+    # A called workflow cannot raise its caller's permissions.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/vps-build.yml
+    with:
+      target: STAGING
+    secrets: inherit
+
+  vps-staging:
+    name: Deploy staging on the VPS
+    needs: vps-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VPS_IMAGES == 'true' && vars.VPS_DEPLOY_STAGING == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/vps-deploy-staging.yml
+    with:
+      web: ${{ needs.vps-build.outputs.web }}
+      migrate: ${{ needs.vps-build.outputs.migrate }}
     secrets: inherit

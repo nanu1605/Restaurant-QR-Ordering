@@ -1,0 +1,46 @@
+name: VPS ping
+
+# Tests the deploy key and the tunnel without deploying anything: the server's forced command
+# answers "v1 ping" with "pong <app> <environment>". Run it by hand after setting up the VPS_*
+# secrets (see vps-deploy-staging.yml). Not tied to VPS_DEPLOY_STAGING: a manual run is the owner's
+# own decision, and costs one billed minute.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping the VPS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Pinned binary, checked against its release digest.
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o /tmp/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
+          echo "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  /tmp/cloudflared" | sha256sum -c -
+          sudo install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
+
+      - name: Ping
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          SSH_TARGET: ${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_SSH_HOST }}
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.VPS_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.VPS_ACCESS_CLIENT_SECRET }}
+        run: |
+          trap 'rm -f ~/.ssh/id_ed25519' EXIT
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          answer=$(printf 'v1 ping\n' |
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+              -o ProxyCommand='cloudflared access ssh --hostname %h' "$SSH_TARGET" ping)
+          echo "$answer"
+          if [ "$answer" != 'pong menumesh staging' ]; then
+            echo "::error::Expected 'pong menumesh staging'"
+            exit 1
+          fi
