@@ -403,6 +403,9 @@ services:
     # crond runs as root, and changes identity for every job, even root's.
     user: '0:0'
     cap_add: [SETUID, SETGID]
+    # As process 1, crond ignores SIGTERM: a stop would wait out the 10 s and kill it. Docker's
+    # init runs it as its child and passes the signal on, so a stop ends it at once.
+    init: true
     entrypoint: ['/bin/sh', '/opt/menumesh/start']
     environment:
       CRON_BASE_URL: http://web:3000
@@ -438,6 +441,7 @@ services:
     image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     user: '0:0'
     cap_add: [SETUID, SETGID]
+    init: true
     entrypoint: ['/bin/sh', '/opt/menumesh/start']
     environment:
       CRON_BASE_URL: http://web-staging:3000
@@ -477,6 +481,8 @@ services:
     # crond changes identity for every job, even root's. Root without other capabilities reads
     # only what root owns or everyone may read, as the settings archives are.
     cap_add: [SETUID, SETGID]
+    # As process 1, crond ignores the stop signal (the image's SIGINT) too: init passes it on.
+    init: true
     environment:
       PGHOST: db
       PGUSER: supabase_admin

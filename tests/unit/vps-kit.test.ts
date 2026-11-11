@@ -232,6 +232,21 @@ const hardening = (text: string) => [
     .map(([name]) => `service ${name} does not start with its anchor`),
 ];
 
+/**
+ * BusyBox crond ignores SIGTERM and SIGINT as process 1, so a stop of a cron container waited out
+ * its 10 s and killed it (exit 137). Docker's init runs crond as its child and passes the signal
+ * on, and the stop takes under a second. The webs keep node as process 1, which drains (VPS-16).
+ */
+const CRON_SERVICES = ['scheduler', 'scheduler-staging', 'backup'];
+const crondInit = (text: string) =>
+  [...services(text)].flatMap(([name, service]) => {
+    const init = value(service, 'init');
+    if (CRON_SERVICES.includes(name)) {
+      return init === 'true' ? [] : [`${name} runs crond as process 1`];
+    }
+    return name.startsWith('web') && init !== undefined ? [`${name} sets init`] : [];
+  });
+
 /** Third-party images by tag and digest; this repository's from images.env, pulled by app-deploy only. */
 const images = (text: string) =>
   [...services(text)].flatMap(([name, service]) => {
@@ -466,6 +481,25 @@ describe('deploy/vps/compose.yml', () => {
       hardening,
       swapIn(compose, 'migrate', '    <<: *oneoff', '    <<: *steady'),
       'service migrate does not start',
+    );
+  });
+
+  it('runs crond under Docker’s init, so a stop doesn’t wait for the kill', () => {
+    expect(crondInit(compose)).toEqual([]);
+    refuses(
+      crondInit,
+      swapIn(compose, 'scheduler', '    init: true\n', ''),
+      'scheduler runs crond as process 1',
+    );
+    refuses(
+      crondInit,
+      swapIn(compose, 'backup', '    init: true\n', ''),
+      'backup runs crond as process 1',
+    );
+    refuses(
+      crondInit,
+      swapIn(compose, 'web', '    read_only: true', '    init: true\n    read_only: true'),
+      'web sets init',
     );
   });
 
