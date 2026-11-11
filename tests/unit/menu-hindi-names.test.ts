@@ -222,6 +222,28 @@ const outages: [string, () => Response][] = [
   ["answers OpenRouter's 403 for its data region", () => forbidden(openRouter403.dataRegion)],
   ["answers OpenRouter's 403 for a spent budget", () => forbidden(openRouter403.budget)],
   [
+    "answers OpenRouter's typed 403 for a permission",
+    () =>
+      forbidden({
+        error: {
+          code: 403,
+          message: 'Provider returned error',
+          metadata: { error_type: 'permission_denied', provider_name: 'Google' },
+        },
+      }),
+  ],
+  [
+    'answers a 403 whose content fields are not of their documented types',
+    () =>
+      forbidden({
+        error: {
+          code: 403,
+          message: 'Request blocked',
+          metadata: { reasons: 'violence', flagged_input: ['Death by Chocolate'], patterns: 'x' },
+        },
+      }),
+  ],
+  [
     'answers a 403 that says moderation, without its fields',
     () =>
       forbidden({
