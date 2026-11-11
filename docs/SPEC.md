@@ -503,7 +503,7 @@ Every new restaurant is created with a set of **default categories** so the menu
 | name | text | |
 | name_hi | text null | ≤ 80 chars — optional Hindi name, shown on the Hindi customer menu |
 | name_hi_auto | text null | ≤ 80 chars — the name sounded out in Devanagari by the app, used when `name_hi` is empty; cleared when the name changes |
-| name_hi_auto_tried_at | timestamptz null | when the app last handled the name, whether or not it wrote one, but not when every menu reader failed in a way no names can cause (no connection; 401, 402, 404, 408, 429 or 5xx; a 403 that names no moderation, flag, guardrail, content policy or refusal; docs/DECISIONS.md VPS-27), while a reader that runs out of time still counts; a name is tried again after 12 hours; cleared when the name changes |
+| name_hi_auto_tried_at | timestamptz null | when the app last handled the name, whether or not it wrote one, but not when every menu reader failed in a way no names can cause (no connection; 401, 402, 404, 408, 429 or 5xx; a 403 without the fields OpenRouter documents for a refusal of what was asked; docs/DECISIONS.md VPS-27), while a reader that runs out of time still counts; a name is tried again after 12 hours; cleared when the name changes |
 | name_hi_auto_lease_until | timestamptz null | set for 5 minutes while a fill works on the name, so that overlapping fills take different names; cleared when the name is settled or changes (docs/DECISIONS.md VPS-27) |
 | description | text null | ≤ 300 chars |
 | price_paise | bigint | used when the item has no variants |

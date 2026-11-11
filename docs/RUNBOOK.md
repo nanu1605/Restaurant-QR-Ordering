@@ -373,8 +373,8 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   `menu_categories`. A name leased in the last 5 minutes (`name_hi_auto_lease_until` in the future)
   is being worked on, and one tried in the last 12 hours (`name_hi_auto_tried_at`) waits until the
   12 hours pass, which includes a name the model could not write. When every reader is down, a batch
-  is no try (no connection, a 401, 402, 404, 408, 429 or 5xx, or a 403 that names no moderation,
-  flag, guardrail, content policy or refusal): the logs say `[hindi-names] every provider is down`,
+  is no try (no connection, a 401, 402, 404, 408, 429 or 5xx, or a 403 without OpenRouter's fields
+  for a refusal of what was asked, VPS-27): the logs say `[hindi-names] every provider is down`,
   the minute job then leaves the names alone for 30 minutes when its run wrote none (it logs
   `[hindi-names] the minute job leaves the names alone until <time>` once), and they are written
   within about 30 minutes of a reader answering again (a lasting outage is usually the key). A
@@ -385,7 +385,23 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   reader that hung, on every restaurant's such rows), then run the minute job. Until the time in
   that pause line, the minute job still answers that it started `hindi_names` but leaves the names
   alone: restart the web container first, which ends the pause, or edit the restaurant's menu
-  instead (save a dish), whose fill does not pause.
+  instead (save a dish), whose fill does not pause. A reader that refuses one restaurant's batch
+  for what it says, with a 403 that carries none of those fields (another provider's, or a shape
+  OpenRouter does not document), is taken for an outage too: each `every provider is down` line
+  follows the same `[hindi-names] <reader> answered 403: <message>` line, and the names still
+  leased just after it are that batch's:
+  ```sql
+  select restaurant_id, count(*) from menu_items
+  where name_hi_auto_lease_until > now() group by restaurant_id;
+  ```
+  and the same on `menu_categories`. To leave that restaurant's waiting names alone, stamp them as
+  tried a week ahead, on both tables (the fills pass over a name until 12 hours after its time):
+  ```sql
+  update menu_items set name_hi_auto_tried_at = now() + interval '7 days',
+    name_hi_auto_lease_until = null
+  where restaurant_id = '<id>' and name_hi is null and name_hi_auto is null;
+  ```
+  A rename starts a name again, and clearing `name_hi_auto_tried_at` as above tries them at once.
 - **Announcement emails stopped part way** (SA-83, VPS-28): the minute job sends the rest within a
   minute, so look at why it stopped. The `[announcements]` lines in the logs say: Resend unavailable
   (the minute job's run ends and the next minute tries again; a save's or the daily run goes on past
