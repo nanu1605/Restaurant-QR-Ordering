@@ -6544,3 +6544,26 @@ Hindi column).
   and S1 said the texts join only the emails returned, but the plan joins them in the final select,
   for every row of the audience before the sort and the limit (small, with no temporary file). They
   now say so; the comment is outside the function body, so the database is unchanged. (6ec7eec)
+
+A check of those fixes, at `e92156a`, found F1, F2, DI-1, DI-2 and the comment closed, every answer
+other than a 403 classified as before and the error message unchanged, and three more, all low and
+confirmed:
+
+- **N1 · A content filter's block is still taken for an outage (VPS-27):** OpenRouter documents its
+  content filter's and PII blocks by their message only ("Request blocked by content filter: …"),
+  with no `error.metadata`, so a dish name such a filter blocks loops as F2 did: in the checker's
+  two hours, with OpenRouter the only reader, the minute job was paused 92 minutes of 120. Left as
+  it is, as F2 recorded: no names are lost, menu edits and the daily run do not pause, and the
+  RUNBOOK says how to leave one restaurant's names alone. Not made: asking OpenRouter for its
+  experimental pipeline details (`X-OpenRouter-Experimental-Metadata`), which show a guardrail
+  stage that blocked; an experimental header is no ground for which names are stamped.
+- **N2 · No test kept the other typed 403s outages (Tests):** a check that took any `error_type`
+  for a refusal of the names passed every test, and so did one that only looked for the fields'
+  names. Two cases now pin OpenRouter's typed `permission_denied` 403 and a 403 whose `reasons`,
+  `flagged_input` and `patterns` are not of their documented types as outages; each fails on its
+  wider check. (4ce74ea)
+- **N3 · VPS-25 said the batches that answered are stored (VPS-25):** a batch whose readers all
+  run out of time never answered and is stamped as tried. VPS-25's kill note now says a batch
+  already settled stays settled (its written names stored, the rest stamped) and the batches in
+  flight are leased again; the fill's comment and the lease migration's two comments say a batch is
+  settled once its calls end (outside the function bodies: the database is unchanged). (b0d644a)
