@@ -271,14 +271,15 @@ const envNames = (text: string) => {
 
 /**
  * What db's log may hold (VPS-34): errors only, each on one line, and no statement text. The
- * image's settings file logs every DDL statement (log_statement = 'ddl'), so the command says
- * otherwise.
+ * image's settings file logs every DDL statement (log_statement = 'ddl'), and auto_explain logs
+ * any statement over 10 s with its values, so the command says otherwise.
  */
 const DB_LOG_FLAGS = [
   'log_min_messages=error',
   'log_min_error_statement=panic',
   'log_error_verbosity=terse',
   'log_statement=none',
+  'auto_explain.log_min_duration=-1',
 ];
 const quietDatabase = (text: string) => {
   const command = (key(services(text).get('db') ?? [], 'command') ?? []).map((line) => line.trim());
@@ -523,6 +524,11 @@ describe('deploy/vps/compose.yml', () => {
       quietDatabase,
       swap(compose, 'log_error_verbosity=terse', 'log_error_verbosity=default'),
       'log_error_verbosity=terse',
+    );
+    refuses(
+      quietDatabase,
+      swap(compose, 'auto_explain.log_min_duration=-1', 'auto_explain.log_min_duration=10s'),
+      'db does not run with auto_explain.log_min_duration=-1',
     );
   });
 });

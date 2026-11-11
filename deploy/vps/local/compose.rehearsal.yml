@@ -81,6 +81,8 @@ services:
       - log_checkpoints=off
       - -c
       - log_statement=none
+      - -c
+      - auto_explain.log_min_duration=-1
 
   # The browser's and this machine's address for Supabase (SUPABASE_PUBLIC_URL).
   api-gw:

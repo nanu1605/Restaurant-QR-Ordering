@@ -101,7 +101,8 @@ services:
     # rehearsal counts its lines an hour, and upstream's fatal is the fallback if Realtime's
     # polling makes too many (VPS-34). The image's settings file logs every DDL statement
     # (log_statement = 'ddl'), which LOG passes at log_min_messages=error: one migrate run of the
-    # 80 files wrote 38,293 lines, function bodies and all.
+    # 80 files wrote 38,293 lines, function bodies and all. And auto_explain, which the image
+    # loads, logs the plan of every statement over 10 s with its text and literal values.
     command:
       - postgres
       - -c
@@ -124,6 +125,8 @@ services:
       - log_checkpoints=off
       - -c
       - log_statement=none
+      - -c
+      - auto_explain.log_min_duration=-1
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: '5432'
