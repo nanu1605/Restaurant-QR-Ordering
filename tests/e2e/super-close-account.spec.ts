@@ -345,8 +345,9 @@ test('a mandate that could still charge goes first, or nothing closes', async ({
         .throwOnError()
     ).data!.status;
 
-  // Razorpay is retrying a failed charge, and refuses this cancel.
-  await setMandate('sub_E2EUnknownToRazorpay');
+  // Razorpay is retrying a failed charge, and refuses this cancel. The id is new each run: the
+  // column is unique, and a run cut off here leaves it on its restaurant.
+  await setMandate(`sub_E2EUnknown${Date.now().toString(36)}`);
   await logInAsPlatformAdmin(page, await createPlatformAdmin('e2e-close-mandate'));
   await page.goto(`/super/restaurants/${restaurant.restaurantId}/account`);
   await page
