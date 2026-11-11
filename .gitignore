@@ -42,6 +42,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# the local VPS rehearsal's throwaway secrets (pnpm vps:secrets --rehearsal)
+/.vps-rehearsal/
+
 # vercel
 .vercel
 
