@@ -148,7 +148,12 @@ const outages: [string, () => Response][] = [
     },
   ],
   ['answers 401', () => new Response('{"error":{"message":"invalid key"}}', { status: 401 })],
+  [
+    'answers 402',
+    () => new Response('{"error":{"message":"insufficient credits"}}', { status: 402 }),
+  ],
   ['answers 403', () => new Response('forbidden', { status: 403 })],
+  ['answers 404', () => new Response('{"error":{"message":"no such model"}}', { status: 404 })],
   ['answers 408', () => new Response('request timeout', { status: 408 })],
   ['answers 429', () => new Response('rate limited', { status: 429 })],
   ['answers 500', () => new Response('error', { status: 500 })],
@@ -502,7 +507,7 @@ describe('fillHindiNames', () => {
     ) as unknown as typeof fetch;
     const { run } = stoppableRun();
 
-    // As the minute job runs it: every lane, and no cap.
+    // Every lane, and no cap, so that only the outage ends the run.
     await expect(
       fillHindiNames(admin, { run, providers: [primary, fallback], fetchImpl }),
     ).resolves.toEqual({ leased: 5, stored: 0, stopped: 'unavailable' });
@@ -511,6 +516,24 @@ describe('fillHindiNames', () => {
     // One batch a lane, each asked of both providers, and no lane leased again.
     expect(calls('menu_hindi_names_lease')).toHaveLength(5);
     expect(fetchImpl).toHaveBeenCalledTimes(10);
+  });
+
+  it.each([
+    ['has no credit', 402, 'Your account or API key has insufficient credits'],
+    ['does not have the model', 404, 'No endpoints found for google/gemini-3.8-flash'],
+  ])('settles nothing when one provider is down and the other %s', async (_, status, message) => {
+    const { admin, calls } = fakeAdmin(Array.from({ length: 8 }, (_, n) => [dish(`d${n}`)]));
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      String(url).startsWith(fallback.baseUrl)
+        ? new Response(JSON.stringify({ error: { message, code: status } }), { status })
+        : new Response('busy', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+
+    await expect(
+      fillHindiNames(admin, { run, providers: [primary, fallback], fetchImpl }),
+    ).resolves.toEqual({ leased: 5, stored: 0, stopped: 'unavailable' });
+    expect(calls('menu_hindi_names_settle')).toEqual([]);
   });
 
   it('still counts a batch as tried when no provider could write it', async () => {
@@ -528,6 +551,32 @@ describe('fillHindiNames', () => {
       { p_names: [{ kind: 'item', id: 'a', name: 'Dish a' }] },
     ]);
   });
+
+  it.each([
+    'google/gemini-3.8-flash requires moderation on OpenRouter',
+    'Your input was flagged',
+    'Blocked by guardrail',
+    'content_policy_violation',
+    'The model refused the request',
+  ])(
+    'counts a batch as tried when a provider refuses it for what it says (403: %s)',
+    async (message) => {
+      // It may be the names' doing, as any 4xx: settled, so that it cannot loop.
+      const { admin, calls } = fakeAdmin([[dish('a')]]);
+      const { fetchImpl } = fakeFetch(
+        new Response('busy', { status: 503 }),
+        new Response(JSON.stringify({ error: { message, code: 403 } }), { status: 403 }),
+      );
+      const { run } = stoppableRun();
+
+      await expect(
+        fillHindiNames(admin, { lanes: 1, run, providers: [primary, fallback], fetchImpl }),
+      ).resolves.toEqual({ leased: 1, stored: 0 });
+      expect(calls('menu_hindi_names_settle')).toEqual([
+        { p_names: [{ kind: 'item', id: 'a', name: 'Dish a' }] },
+      ]);
+    },
+  );
 
   it('never sends the settle a name Postgres cannot hold', async () => {
     const { admin, calls } = fakeAdmin([[dish('a'), dish('b')]]);
@@ -661,6 +710,23 @@ describe('fillWaitingHindiNames', () => {
       stopped: 'unavailable',
     });
     expect(calls('menu_hindi_names_lease')).toHaveLength(2);
+  });
+
+  it('leases at most 2,000 names a run', async () => {
+    let made = 0;
+    const { admin, calls } = fakeAdmin((limit) =>
+      made >= 2_500 ? [] : Array.from({ length: limit }, () => dish(`d${made++}`)),
+    );
+    // A failure taken for the names' doing: each batch is counted as tried.
+    const fetchImpl = vi.fn(
+      async () => new Response('too many names', { status: 422 }),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+
+    await expect(
+      fillWaitingHindiNames(admin, { run, providers: [primary], fetchImpl }),
+    ).resolves.toEqual({ leased: 2_000, stored: 0 });
+    expect(calls('menu_hindi_names_settle')).toHaveLength(20);
   });
 
   it('sets no pause after a run that ended any other way', async () => {

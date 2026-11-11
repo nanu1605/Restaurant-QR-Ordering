@@ -90,15 +90,20 @@ export function acceptableHindi(value: unknown, maxLength: number): string | nul
   return DEVANAGARI.test(text) && !LATIN.test(text) ? text : null;
 }
 
+/** What a 403 names when a provider refused the request for what it says, as OpenRouter's can. */
+const REFUSED_FOR_CONTENT = /moderat|flag|guardrail|content.?polic|refus/i;
+
 /**
- * A provider's failure that no batch of names can cause: no connection, its key or its limits
- * (401, 403, 408, 429), or its own error (5xx). A timeout, an unusable reply or another 4xx can be
- * the batch's own doing.
+ * A provider's failure that no batch of names can cause: no connection, its key, credit or limits
+ * (401, 402, 403, 408, 429), a model it does not have (404), or its own error (5xx). A 403 that
+ * names moderation, a flag, a guardrail, a content policy or a refusal, a timeout, an unusable
+ * reply or another 4xx can be the batch's own doing.
  */
 function providerDown(error: ProviderError) {
   if (error.kind === 'network') return true;
   const status = error.kind === 'http' ? (error.status ?? 0) : 0;
-  return [401, 403, 408, 429].includes(status) || status >= 500;
+  if (status === 403) return !REFUSED_FOR_CONTENT.test(error.message);
+  return [401, 402, 404, 408, 429].includes(status) || status >= 500;
 }
 
 /**
@@ -308,23 +313,27 @@ export async function fillHindiNames(
 
 /** How long the minute job leaves the names alone after a run that found every provider down. */
 export const HINDI_OUTAGE_PAUSE_MS = 30 * 60_000;
+/** Names a run of the minute job's fill leases at most. */
+const MINUTE_JOB_NAMES = 2_000;
 // On globalThis, as the job gates are: Next can bundle this file more than once.
 const PAUSED_UNTIL = Symbol.for('menumesh.hindiNamesPausedUntil');
 const pause = globalThis as { [PAUSED_UNTIL]?: number };
 
 /**
- * The minute job's fill of every restaurant's waiting names (docs/DECISIONS.md VPS-27). After a
- * run that found every provider down, it leaves them alone for 30 minutes in this process: each
- * lease writes its row, which changes the dish photo's cache version and sends Realtime, so a
- * lasting outage would otherwise lease up to 500 names again every minute. A menu edit's fill and
- * the daily run still try as they did before there was a minute job.
+ * The minute job's fill of every restaurant's waiting names (docs/DECISIONS.md VPS-27), at most
+ * 2,000 a run, so that a provider's failure taken for the names' doing sets aside 2,000 names a
+ * run, not every name that waits. After a run that found every provider down, it leaves them alone
+ * for 30 minutes in this process: each lease writes its row, which changes the dish photo's cache
+ * version and sends Realtime, so a lasting outage would otherwise lease up to 500 names again
+ * every minute. A menu edit's fill and the daily run still try as they did before there was a
+ * minute job.
  */
 export async function fillWaitingHindiNames(
   admin: Admin,
   options: Parameters<typeof fillHindiNames>[1],
 ): Promise<Awaited<ReturnType<typeof fillHindiNames>> | { skipped: 'paused' }> {
   if (Date.now() < (pause[PAUSED_UNTIL] ?? -Infinity)) return { skipped: 'paused' };
-  const result = await fillHindiNames(admin, options);
+  const result = await fillHindiNames(admin, { maxNames: MINUTE_JOB_NAMES, ...options });
   if (result.stopped === 'unavailable') pause[PAUSED_UNTIL] = Date.now() + HINDI_OUTAGE_PAUSE_MS;
   return result;
 }
