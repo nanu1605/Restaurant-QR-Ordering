@@ -1,0 +1,112 @@
+# MenuMesh's sites on the shared edge (docs/DECISIONS.md VPS-37). The owner installs this file with
+# `sudo app-apply menumesh site menumesh.caddy`, which checks it against the edge's rules first;
+# deploys never touch it. The hosts are literal, so edge.env holds only staging's basic-auth pair.
+# No regexp here may hold {...}: Caddy would read it as a placeholder.
+
+# The app. Next.js caps a server action at 2 MiB and the app caps a webhook at 1 MB.
+https://menumesh.in {
+	import site_common
+	import tls_menumesh
+	request_body {
+		max_size 3MB
+	}
+	# The app serves no WebSockets: an upgrade request gets 400 (VPS-16).
+	@upgrade header Upgrade *
+	respond @upgrade 400
+	# Busy successes stay out of the shared log: static files, icons, the health check, the
+	# diners' order poll and the alerts bell.
+	@quiet path /_next/static/* /_next/image /icon/* /apple-icon /maskable-icon.png /favicon.ico /sw.js /app.webmanifest /api/health
+	log_skip @quiet
+	@guest_poll {
+		method GET
+		path_regexp ^/t/[A-Za-z0-9]+/session$
+	}
+	log_skip @guest_poll
+	@alerts_poll {
+		method GET
+		path /super/alerts
+	}
+	log_skip @alerts_poll
+	reverse_proxy menumesh-web:3000 {
+		import upstream
+	}
+}
+
+https://www.menumesh.in {
+	import site_common
+	import tls_menumesh
+	redir https://menumesh.in{uri} 308
+}
+
+# Supabase through Envoy: only its four prefixes. Anything else is 404 here, and again in Envoy
+# for the web container's own calls.
+https://api.menumesh.in {
+	import site_common
+	import tls_menumesh
+	# The largest browser upload through the gateway is a 5 MiB support screenshot.
+	request_body {
+		max_size 6MB
+	}
+	# Busy successes stay out of the shared log: preflights, public files (menu photos), the
+	# boards' polls and the menu reads of the staff's Add dishes and Availability screens.
+	@preflight method OPTIONS
+	log_skip @preflight
+	@public_objects {
+		method GET HEAD
+		path /storage/v1/object/public/*
+	}
+	log_skip @public_objects
+	@board_reads {
+		method POST
+		path /rest/v1/rpc/staff_get_board /rest/v1/rpc/admin_report_sales /rest/v1/rpc/admin_billing_sessions /rest/v1/rpc/admin_preview_bill
+	}
+	log_skip @board_reads
+	@menu_reads {
+		method GET
+		path /rest/v1/menu_categories /rest/v1/menu_items /rest/v1/menu_addon_groups
+	}
+	log_skip @menu_reads
+	@supabase path /auth/v1/* /rest/v1/* /realtime/v1/* /storage/v1/*
+	handle @supabase {
+		reverse_proxy menumesh-gw:8000 {
+			import upstream
+			# Realtime sockets survive a Caddy reload for 5 minutes and live at most a day.
+			stream_close_delay 5m
+			stream_timeout 24h
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+# Staging: basic auth on everything but what machines and app installs fetch without a password:
+# the health check, the install files and the two webhooks. The diners' pages are behind it too.
+# The app sets noindex on every host but menumesh.in, so Caddy adds no header.
+https://staging.menumesh.in {
+	import site_common
+	import tls_menumesh
+	request_body {
+		max_size 3MB
+	}
+	@upgrade header Upgrade *
+	respond @upgrade 400
+	@quiet path /_next/static/* /_next/image /icon/* /apple-icon /maskable-icon.png /favicon.ico /sw.js /app.webmanifest /api/health
+	log_skip @quiet
+	@protected {
+		not {
+			method GET HEAD
+			path /api/health /app.webmanifest /sw.js /icon/* /apple-icon /maskable-icon.png /favicon.ico
+		}
+		not {
+			method POST
+			path /api/webhooks/razorpay /api/webhooks/resend
+		}
+	}
+	basic_auth @protected {
+		{$MENUMESH_STAGING_AUTH_USER} {$MENUMESH_STAGING_AUTH_HASH}
+	}
+	reverse_proxy menumesh-web-staging:3000 {
+		import upstream
+	}
+}
