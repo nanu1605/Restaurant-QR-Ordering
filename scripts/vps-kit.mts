@@ -1896,28 +1896,30 @@ function images(checks: Checks, env: Record<string, string>, rebuild: boolean) {
 // Step 3: db, then the Supabase services; the locale.
 async function supabase(checks: Checks) {
   const db = value('db', 'image');
-  const up = (service: string) => {
-    const id = containerOf(service);
-    return (
-      id !== undefined &&
-      docker(['inspect', '--format', '{{.State.Running}}', id]).stdout.trim() === 'true'
-    );
-  };
+  // The running containers, by id: compose recreates one whose settings changed.
+  const running = (services: string[]) =>
+    services
+      .map((service) => {
+        const id = containerOf(service);
+        const state = id && docker(['inspect', '--format', '{{.State.Running}}', id]).stdout;
+        return state?.trim() === 'true' ? id : '-';
+      })
+      .join(' ');
+  const took = (before: string, services: string[], started: number) =>
+    before === running(services) ? '(already up)' : `in ${seconds(started)} s`;
   let started = Date.now();
-  let was = up('db');
+  let before = running(['db']);
   let run = compose(['up', '-d', '--wait', '--wait-timeout', '180', 'db']);
   if (run.status !== 0) fail(`db did not turn healthy:\n${tail(run.stderr)}`);
   checks.ok(
-    `db healthy ${was ? '(it was up)' : `in ${seconds(started)} s`}: ${db.split('@')[0]}, shared_buffers ${dbSql('show shared_buffers')[0]}`,
+    `db healthy ${took(before, ['db'], started)}: ${db.split('@')[0]}, shared_buffers ${dbSql('show shared_buffers')[0]}`,
   );
   const services = ['auth', 'rest', 'realtime', 'storage', 'api-gw'];
-  was = services.every(up);
+  before = running(services);
   started = Date.now();
   run = compose(['up', '-d', '--wait', '--wait-timeout', '180', ...services]);
   if (run.status !== 0) fail(`The Supabase services did not turn healthy:\n${tail(run.stderr)}`);
-  checks.ok(
-    `${services.join(', ')} healthy ${was ? '(they were up)' : `in ${seconds(started)} s`}`,
-  );
+  checks.ok(`${services.join(', ')} healthy ${took(before, services, started)}`);
 
   // The locale gate (VPS-34): what initdb gave the rehearsal, the CLI stack and the image.
   const locale =
@@ -2620,9 +2622,12 @@ async function backupTest() {
       'find /storage -type f | wc -l; find /storage -type f -exec stat -c %s {} + | awk \'{ n += $1 } END { printf "%.0f\\n", n }\'',
     ]).stdout,
   );
+  // restore.sh compared the night's Storage archive (files and bytes) with its manifest; nothing
+  // has written to storage-data since the night, so the volume must hold that many files.
+  const counted = /Storage holds (\d+) files as the manifest counted\n/.exec(run.stdout)?.[1];
   checks.expect(
-    `storage-data holds ${storage[0]} files, ${storage[1]} bytes, as the restore test's manifest counted (above)`,
-    /Storage holds \d+ files as the manifest counted/.test(run.stdout),
+    `storage-data holds ${storage[0]?.trim()} files, ${storage[1]} bytes, as the night's archive and its manifest do (${counted ?? '?'} files)`,
+    counted !== undefined && counted === storage[0]?.trim(),
     run.stdout,
   );
   compose(['rm', '--stop', '--force', 's3']);
