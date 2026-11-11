@@ -236,7 +236,7 @@ export async function transliterateNames(
 /**
  * Writes automatic names for the names that wait for one (docs/DECISIONS.md VPS-27): one
  * restaurant's, or every restaurant's. Each lane leases up to 100 names of one restaurant, has the
- * model write them, and settles them as soon as the batch has answered, so a fill that is cut off
+ * model write them, and settles them as soon as the batch's calls end, so a fill that is cut off
  * loses only the batches in flight: their leases run out and the names are leased again. When the
  * server stops, the calls in flight are aborted and settle nothing. A batch that finds every
  * provider down settles nothing either, and no lane leases more (stopped: 'unavailable'). Leases

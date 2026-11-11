@@ -5674,9 +5674,9 @@ review's fixes, and a second's, are listed after Tests.
     builds it; during the build, or after the upload but before `complete`, its lease runs out
     within 90 s and the next claim queues it again and builds over the same file. The card says
     "Preparing" throughout (about 3 minutes longer at most), and after three cuts or 15 minutes it
-    says failed and offers Try again. Hindi names: the batches that answered are stored; the rest
-    stay leased for up to 5 minutes and are then written again, and guests see the typed names
-    meanwhile. Emails: the pairs not sent stay due for the next minute, and one that Resend took but
+    says failed and offers Try again. Hindi names: a batch already settled stays settled (its
+    written names stored, the rest stamped as tried); the batches in flight stay leased for up to 5
+    minutes and are then written again, and guests see the typed names meanwhile. Emails: the pairs not sent stay due for the next minute, and one that Resend took but
     the app did not record is sent again under the same key within minutes, with no second email,
     and recorded then.
   - **The fast paths and the minute job run the same functions.** An export request starts the queue
@@ -6147,7 +6147,7 @@ review's fixes, and a second's, are listed after Tests.
     `680_close_account` (145), `440_auto_hindi_names` (30) and `660_announcements_standees` (72)
     pass unchanged, so the kept functions behave as before: `680` still finishes exports through
     `restaurant_export_finish` and reads a queued export as building.
-- **Unit (886 to 1,030 tests, 60 to 66 files):**
+- **Unit (886 to 1,032 tests, 60 to 66 files):**
   - `jobs` (16, new): a run turned away makes no call and the run going on goes once more; kinds
     keep to their own gates; `wait` runs after the run going on, one at a time; the gate is freed
     when work throws; a run that throws still goes once more for a caller it turned away and then
@@ -6176,14 +6176,15 @@ review's fixes, and a second's, are listed after Tests.
     failed upload fails the export; a table error stops the other readers and `buildExport` ends
     only once they have, with no read after it; no timer is left on any path; `startExportJobs` runs
     one queue at a time; `parseExportClaim`, busy included.
-  - `menu-hindi-names` (10 to 59): the lease and the settle in place of the claim and the store;
+  - `menu-hindi-names` (10 to 61): the lease and the settle in place of the claim and the store;
     each batch is settled before the next lease and while another is still being written; a stop
     settles nothing and says `stopped`; `maxNames` is exact even when lanes ask together and a short
     lease gives back its share; no batch starts once the run is over; a database error is thrown
     once every lane has ended; the signal's reason, not a provider error, comes out of an aborted
     call, no other provider is asked, and a signal that never aborts keeps no listener; a batch that
     finds every provider down (no connection, 401, 402, 403, 404, 408, 429, 500, 503, OpenRouter's
-    documented 403 for its data region or a spent budget, and a 403 that says moderation or
+    documented 403 for its data region or a spent budget, its typed 403 for a permission, a 403
+    whose content fields are not of their documented types, and a 403 that says moderation or
     guardrail without the fields) answers null, and the fill then settles nothing and ends with one
     lease a lane, as it does with one provider down and the other out of credit or without the
     model, while a provider that runs out of time, sends an unusable or non-JSON reply, answers 422,

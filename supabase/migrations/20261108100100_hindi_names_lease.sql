@@ -1,7 +1,7 @@
 -- Restartable jobs: the automatic Hindi names (docs/DECISIONS.md VPS-27).
 --
 -- A fill leases the names it works on for five minutes, instead of stamping them as tried when it
--- takes them, and settles each batch the moment it answers: the names it found are stored and
+-- takes them, and settles each batch as soon as its calls end: the names it found are stored and
 -- name_hi_auto_tried_at is stamped. A fill that is cut off settles nothing, so its names are leased
 -- again once the lease runs out, not left for twelve hours. A name the model can't write is still
 -- tried again after twelve hours (HN-8). Only name_hi_auto is ever written: an owner's own Hindi
@@ -171,9 +171,9 @@ begin
 end;
 $$;
 
--- p_names: [{ kind: 'item'|'category', id, name, name_hi }], the names of a batch that has
--- answered, name_hi left out for a name the model didn't write. Each is settled only while the row
--- still has that name and no automatic name, so a rename during the conversion drops the stale
+-- p_names: [{ kind: 'item'|'category', id, name, name_hi }], the names of a batch whose calls
+-- have ended, name_hi left out for a name the model didn't write. Each is settled only while the
+-- row still has that name and no automatic name, so a rename during the conversion drops the stale
 -- result and a repeat changes nothing. The automatic name is stored when it is there and fits;
 -- the name counts as tried either way, and is no longer leased. name_hi, the owner's, is never
 -- written: guests get coalesce(name_hi, name_hi_auto). Returns how many names were stored.
