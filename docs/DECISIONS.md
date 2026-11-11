@@ -6242,8 +6242,9 @@ review's fixes, and a second's, are listed after Tests.
     cannot run twice at once, or beside any other open email announcement with unsent pairs, and
     fails only in the 2 s before midnight in India. A server killed mid-build leaves the export
     `building` for up to 90 s, while the export specs wait 60 s. The first Hindi tick on a local
-    database works through the load seed's names in the background, in thousands of small batches
-    that log "sent no usable names" warnings, and the test does not wait for it.
+    database works through up to 2,000 of the load seed's names in the background (review finding
+    T3), in small batches that log "sent no usable names" warnings, and the test does not wait for
+    it.
 - **By hand, done:** the migration's data step in a rolled-back transaction with two old `building`
   rows (one became `queued`, one `failed`); two sessions on the Hindi lease (A holding 3 rows in an
   open transaction for 6 s while B took the others and a call with no restaurant moved on to the
@@ -6394,7 +6395,8 @@ spec's Hindi column).
 
 **Re-review (round 2).** A second review of these fixes, at `c2fe3a9`, gave eight more findings, all
 low: S1 and S2 on the database and T1 to T6 on the runtime, all confirmed by a verifier. The entries
-above that a fix changed were corrected in place.
+above that a fix changed were corrected in place (VPS-25, VPS-27 to VPS-29, HN-8, D1 to D3, Tests,
+the RUNBOOK and the spec's Hindi column).
 
 - **S1 · The email check copied an announcement for each restaurant (VPS-28, VPS-29, D2, Tests):**
   D2's first step held the whole announcement, texts and list included, once for every active
@@ -6415,3 +6417,56 @@ above that a fix changed were corrected in place.
   function is caught. The count is now read just before and after every call, without pgTAP's own
   temporary tables (each `is()` adds a row there), and a build whose lease ran out joins the
   fixtures: the two helpers fail tests 10 and 6. (8e9fd73)
+- **T1 · Emails left due could fill a save's rounds (VPS-28, Tests):** a save's or the daily run
+  that goes on past an unavailable answer leaves that pair due and unrecorded, and the list gives
+  such pairs first. Each round listed only 50, so once 50 of them headed the list a round held
+  nothing new, and the run ended with no reason: with Resend answering 429 and 200 in turn, as a
+  rate limit shared with another sender can, a run for 150 restaurants asked Resend 99 times, sent
+  49 emails and never asked for the other 51, where the loop before Stop A2 sent 75. The run now
+  counts the pairs it left due (in flight, or unavailable and gone on past) and lists that many more
+  each round, up to the 500 the list gives, so a round still holds up to 50 new ones; the same run
+  asks for all 150 once and sends 75. The list costs the same, as the query sorts every unsent pair
+  before its limit anyway. (50f4187)
+- **T2 · An extra run that threw ended the extra runs (VPS-25, Tests):** R3's fix kept the extra run
+  when the first one threw, but an extra run that threw still broke out of the loop, so a caller
+  turned away during it got no run: on Vercel such an export request waited for some other request,
+  and its card said failed after 15 minutes. The error is still logged, and the runs now go on; each
+  needs a caller turned away since the last one began, so they cannot spin. (3315bc6)
+- **T3 · Two account errors stamped names, and a content refusal looped (VPS-27, D3, Tests):**
+  `providerDown` counted a 402 (no credit) and a 404 (no such model) as the batch's own doing,
+  though no names can cause either: with the primary reader down and the OpenRouter fallback out of
+  credit, one run of the minute job stamped all 2,000 names waiting in the reviewer's test, and as
+  both readers default to the same model, a retired model does the same. It counted every 403 as an
+  outage, though OpenRouter also answers 403 for moderation or a guardrail, which is the batch's
+  doing: such a batch was never settled, every run leased it first and ended on it, and with the
+  pause the minute job was paused 116 minutes of 120 in the reviewer's test, which faked that answer
+  (the verifier did not get one from the real model). 402 and 404 are now an outage, and a 403 that
+  names moderation, a flag, a guardrail, a content policy or a refusal counts the batch as tried,
+  while any other 403 is still an outage. The minute job's fill also leases at most 2,000 names a
+  run, so that a status read wrongly cannot set aside every name that waits in one run. Left as it
+  is: OpenRouter's errors page says a 200 can carry an error and no reply when every upstream fails;
+  the client reads it as an empty reply, which counts the batch as tried, and the cap bounds it.
+  (292aded)
+- **T4 · One call turned away paused a reader that works (VPS-27, D3, Tests):** the pause followed
+  any run in which one batch found every reader down, even when the same run wrote its other
+  batches. A reader that takes four calls at once and answers the fifth of the lanes' calls with a
+  429 paused the minute job after every run: 1,600 names in two hours where it could write 400 a
+  minute. The pause now follows only a run that ended so and stored nothing. Waiting and asking
+  again after a 429 (with `Retry-After`), the reviewer's other idea, was not made. (293952f)
+- **T5 · Three notes said a reader that did not answer leaves its names untried (HN-8, the spec's
+  Hindi column, RUNBOOK):** they said a name is not stamped when no menu reader answered it, while a
+  batch whose readers all run out of time is stamped for 12 hours, as a timeout is no outage; only
+  VPS-27 Limits said so. The wording was also wrong the other way: a 503 is an answer, and it is no
+  try. They now say a batch goes unstamped only when every reader failed in a way no names can
+  cause, with T3's list, and that a reader that runs out of time still counts as a try, so its names
+  wait 12 hours unless they are cleared; the RUNBOOK says how such a reader shows in the logs and
+  that its names are cleared as for a restaurant, on every restaurant's rows. (d21a576)
+- **T6 · The pause was silent (VPS-27, RUNBOOK, Tests):** the outage warning said the names waited
+  5 minutes while the minute job left them for 30, the pause was set and kept without a line, and
+  the minute job run by hand still listed `hindi_names` as started, so the RUNBOOK's clear-then-run
+  recipe did nothing for up to 30 minutes and logged nothing. Setting the pause now logs one warning
+  with its end, and the outage warning says its names are not counted as tried. A call the pause
+  skips still logs nothing, where the verifier's fix logged a line: through an outage that would be
+  one a minute. Letting a `?kinds=hindi_names` call skip the pause was not made either; the RUNBOOK
+  says that until the pause ends the recipe needs a restart of the web container first, which ends
+  it, or a menu edit, whose fill does not pause. (e8b313a)
