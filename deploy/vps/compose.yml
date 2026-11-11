@@ -99,7 +99,9 @@ services:
     # Upstream's settings file, then the contract's sizes. The log keeps errors only, each on one
     # line with no DETAIL (which can quote a value such as a QR token) and no statement text; the
     # rehearsal counts its lines an hour, and upstream's fatal is the fallback if Realtime's
-    # polling makes too many (VPS-34).
+    # polling makes too many (VPS-34). The image's settings file logs every DDL statement
+    # (log_statement = 'ddl'), which LOG passes at log_min_messages=error: one migrate run of the
+    # 80 files wrote 38,293 lines, function bodies and all.
     command:
       - postgres
       - -c
@@ -120,6 +122,8 @@ services:
       - log_error_verbosity=terse
       - -c
       - log_checkpoints=off
+      - -c
+      - log_statement=none
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: '5432'

@@ -269,6 +269,24 @@ const envNames = (text: string) => {
   ];
 };
 
+/**
+ * What db's log may hold (VPS-34): errors only, each on one line, and no statement text. The
+ * image's settings file logs every DDL statement (log_statement = 'ddl'), so the command says
+ * otherwise.
+ */
+const DB_LOG_FLAGS = [
+  'log_min_messages=error',
+  'log_min_error_statement=panic',
+  'log_error_verbosity=terse',
+  'log_statement=none',
+];
+const quietDatabase = (text: string) => {
+  const command = (key(services(text).get('db') ?? [], 'command') ?? []).map((line) => line.trim());
+  return DB_LOG_FLAGS.filter((flag) => !command.includes(`- ${flag}`)).map(
+    (flag) => `db does not run with ${flag}`,
+  );
+};
+
 describe('deploy/vps/compose.yml', () => {
   it('is project menumesh, with only the top-level keys app-apply allows', () => {
     expect(topLevel(compose)).toEqual([]);
@@ -491,6 +509,20 @@ describe('deploy/vps/compose.yml', () => {
       envNames,
       swap(compose, '      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}\n', ''),
       'TELEGRAM_CHAT_ID is not used',
+    );
+  });
+
+  it('keeps statement text out of the database log', () => {
+    expect(quietDatabase(compose)).toEqual([]);
+    refuses(
+      quietDatabase,
+      swap(compose, '      - -c\n      - log_statement=none\n', ''),
+      'db does not run with log_statement=none',
+    );
+    refuses(
+      quietDatabase,
+      swap(compose, 'log_error_verbosity=terse', 'log_error_verbosity=default'),
+      'log_error_verbosity=terse',
     );
   });
 });

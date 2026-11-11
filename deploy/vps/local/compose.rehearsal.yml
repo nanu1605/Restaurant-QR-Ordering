@@ -79,6 +79,8 @@ services:
       - log_error_verbosity=terse
       - -c
       - log_checkpoints=off
+      - -c
+      - log_statement=none
 
   # The browser's and this machine's address for Supabase (SUPABASE_PUBLIC_URL).
   api-gw:
