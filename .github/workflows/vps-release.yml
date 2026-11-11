@@ -1,0 +1,79 @@
+name: VPS release
+
+# Builds the production images for the shared server from a commit that already passed CI on main
+# (docs/DECISIONS.md VPS-23). It does not deploy: the owner deploys on the server with the command
+# printed in the job summary, `sudo app-deploy menumesh production <web> <migrate>`. Only the
+# repository owner can run it, and only by typing "production". The image tag is prod-<version>; a
+# tag that exists is never rebuilt, so the tag and its revision label are the release record. Off
+# until the repository variable VPS_IMAGES is "true".
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release as vMAJOR.MINOR.PATCH, e.g. v1.0.0 (the image is tagged prod-<version>)
+        required: true
+        type: string
+      ref:
+        description: Commit on main to release (empty for the latest)
+        required: false
+        type: string
+      confirm:
+        description: Type "production" to release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    name: Check who releases what
+    if: vars.VPS_IMAGES == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || 'main' }}
+          CONFIRM: ${{ inputs.confirm }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_ACTOR" != "$GITHUB_REPOSITORY_OWNER" ]; then
+            echo "::error::Only $GITHUB_REPOSITORY_OWNER can release to production."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "production" ]; then
+            echo "::error::Type production in the confirm box to release."
+            exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version must look like v1.2.3 (got: $VERSION)."
+            exit 1
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --event push --commit "$sha" --json conclusion --jq '.[0].conclusion')
+          if [ "$result" != "success" ]; then
+            echo "::error::CI on main has not passed for $sha (${result:-no run})."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the production images
+    needs: check
+    # A called workflow cannot raise its caller's permissions.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/vps-build.yml
+    with:
+      target: PRODUCTION
+      version: ${{ inputs.version }}
+      ref: ${{ needs.check.outputs.sha }}
+    secrets: inherit
