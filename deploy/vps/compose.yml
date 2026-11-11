@@ -1,0 +1,712 @@
+# MenuMesh on the shared server (docs/DECISIONS.md VPS-31 to VPS-42; docs/RUNBOOK.md, "The shared
+# server (VPS)"). Installed as /srv/menumesh/compose.yml with `sudo app-apply menumesh compose
+# compose.yml` and run only through `sudo app-compose menumesh ...`, which reads .env and then
+# images.env. Values from those two files appear only in image, environment and healthcheck (of
+# the keys app-apply allows them in); everything else is literal, so a later edit of an env file
+# can't change what the server approved. No logging keys: journald is the daemon's default.
+#
+# Every service, one-offs included, drops every capability, can't gain privileges and has its own
+# memory, CPU, process and OOM limits, because the server is shared. The long-running ones add up
+# to 6,560 MiB of mem_limit (VPS-33).
+name: menumesh
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+x-steady: &steady
+  <<: *hardened
+  restart: unless-stopped
+x-oneoff: &oneoff
+  <<: *hardened
+  restart: 'no'
+
+services:
+  web:
+    <<: *steady
+    image: ${WEB_IMAGE:?set WEB_IMAGE in images.env}
+    # Only app-deploy brings this repository's images, by digest.
+    pull_policy: never
+    # No command or entrypoint: the image's CMD loads the drain preload (VPS-16), and its
+    # HEALTHCHECK asks /api/health, which app-deploy waits on (VPS-17).
+    env_file: env/web.env
+    environment:
+      # The V8 heap at about 65% of mem_limit, so Node's own error comes before the cgroup's kill;
+      # a data export sizes itself from it (VPS-6).
+      NODE_OPTIONS: --max-old-space-size=1000
+      # Server-side calls reach Supabase through the gateway, never through Cloudflare (VPS-20),
+      # and name the visitor to Auth for its per-IP limits (VPS-4).
+      SUPABASE_INTERNAL_URL: http://api-gw:8000
+      SUPABASE_FORWARD_CLIENT_IP: 'true'
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?}
+      CRON_SECRET: ${CRON_SECRET:?}
+    read_only: true
+    tmpfs: ['/tmp:size=64m']
+    volumes:
+      # Earlier builds' scripts and styles (VPS-21) and the resized images (VPS-18).
+      - web-static:/app/.next/static
+      - web-cache:/app/.next/cache
+    networks:
+      default:
+      gateway:
+      edge-menumesh:
+        aliases: [menumesh-web]
+    depends_on:
+      api-gw: { condition: service_started }
+    stop_grace_period: 25s
+    mem_limit: 1536m
+    memswap_limit: 1792m
+    mem_reservation: 768m
+    cpus: 1.5
+    cpu_shares: 1024
+    pids_limit: 512
+    oom_score_adj: -300
+
+  web-staging:
+    <<: *steady
+    image: ${STAGING_IMAGE:?set STAGING_IMAGE in images.env}
+    pull_policy: never
+    # Holds the hosted staging project's SUPABASE_SECRET_KEY: staging's database stays hosted.
+    env_file: env/web-staging.env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=500
+      CRON_SECRET: ${STAGING_CRON_SECRET:?}
+    read_only: true
+    tmpfs: ['/tmp:size=64m']
+    volumes:
+      - web-staging-static:/app/.next/static
+      - web-staging-cache:/app/.next/cache
+    # Staging's own networks only: it can't reach production's containers.
+    networks:
+      staging:
+      edge-menumesh-staging:
+        aliases: [menumesh-web-staging]
+    stop_grace_period: 25s
+    mem_limit: 768m
+    memswap_limit: 1024m
+    cpus: 1.0
+    cpu_shares: 256
+    pids_limit: 512
+    oom_score_adj: 500
+
+  # The self-hosted Supabase stack: one release, v0.8.4, without Studio, meta, functions,
+  # imgproxy, analytics, vector or the pooler (VPS-34).
+  db:
+    <<: *steady
+    image: supabase/postgres:17.6.1.136@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00
+    # The entrypoint fixes the data directory's owner and drops to postgres, as the server's own
+    # Postgres does.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    # Upstream's settings file, then the contract's sizes. The log keeps errors only, each on one
+    # line with no DETAIL (which can quote a value such as a QR token) and no statement text; the
+    # rehearsal counts its lines an hour, and upstream's fatal is the fallback if Realtime's
+    # polling makes too many (VPS-34).
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - shared_buffers=480MB
+      - -c
+      - max_connections=100
+      - -c
+      - max_slot_wal_keep_size=4GB
+      - -c
+      - jit=off
+      - -c
+      - log_min_messages=error
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_checkpoints=off
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: '5432'
+      POSTGRES_PORT: '5432'
+      # app-deploy's pre-deploy dump runs pg_dump as supabase_admin in this container; the image
+      # sets that role's password from POSTGRES_PASSWORD.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      JWT_EXP: '3600'
+      # POSTGRES_INITDB_ARGS (the locale) is set from the rehearsal's locale check before the
+      # server's first start, to match production's database (VPS-34).
+    # The init SQL runs only on the first start of an empty volume.
+    volumes:
+      - ./config/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./config/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
+      - ./config/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./config/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    networks: [data]
+    shm_size: 256m
+    stop_signal: SIGINT
+    stop_grace_period: 60s
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-h', 'localhost']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1920m
+    memswap_limit: 1920m
+    cpus: 1.5
+    cpu_shares: 1024
+    pids_limit: 512
+    oom_score_adj: -900
+
+  auth:
+    <<: *steady
+    image: supabase/gotrue:v2.197.0@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b
+    # Upstream's settings without SMTP (GoTrue sends no mail here, and an empty number stops it at
+    # start-up), set like the hosted projects (VPS-34).
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: '9999'
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:?}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:?}@db:5432/postgres
+      GOTRUE_DB_MAX_POOL_SIZE: '10'
+      # Also the issuer of the TOTP codes.
+      GOTRUE_SITE_URL: ${SITE_URL:?}
+      # Accounts come from the Admin API only.
+      GOTRUE_DISABLE_SIGNUP: 'true'
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: '3600'
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?}
+      # The signing keys: user tokens are ES256, so the app checks them against the JWKS.
+      GOTRUE_JWT_KEYS: ${JWT_KEYS:?}
+      GOTRUE_JWT_ISSUER: ${SUPABASE_PUBLIC_URL:?}/auth/v1
+      # Password sign-in; no anonymous, phone or SMS sign-in.
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
+      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
+      GOTRUE_SMS_AUTOCONFIRM: 'false'
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: 'true'
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: 'true'
+      GOTRUE_PASSWORD_MIN_LENGTH: '8'
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: 'true'
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: '10'
+      # The per-IP limits key on the visitor's address, which the web container and Caddy send
+      # (VPS-4); never X-Forwarded-For, which Envoy appends to.
+      GOTRUE_SECURITY_SB_FORWARDED_FOR_ENABLED: 'true'
+      GOTRUE_RATE_LIMIT_HEADER: X-Real-IP
+      GOTRUE_LOG_LEVEL: warn
+    networks: [data]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:9999/health']
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.5
+    cpu_shares: 512
+    pids_limit: 128
+    oom_score_adj: -100
+
+  rest:
+    <<: *steady
+    image: postgrest/postgrest:v14.18@sha256:c7cd7e265a85b05248abf53f4473fcec7e327c282d0bd0cf60f1551996d09fcf
+    command: ['postgrest']
+    # The schemas and search path this repository tests with (supabase/config.toml).
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:?}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,graphql_public
+      PGRST_DB_MAX_ROWS: '1000'
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_ADMIN_SERVER_PORT: '3001'
+      PGRST_ADMIN_SERVER_HOST: localhost
+      # The JWKS: the ES256 public key and the legacy HS256 secret.
+      PGRST_JWT_SECRET: ${JWT_JWKS:?}
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+      PGRST_APP_SETTINGS_JWT_EXP: '3600'
+      PGRST_LOG_LEVEL: error
+    networks: [data]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'postgrest', '--ready']
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    cpu_shares: 512
+    pids_limit: 128
+    oom_score_adj: -100
+
+  realtime:
+    <<: *steady
+    image: supabase/realtime:v2.148.3@sha256:25cf375b9b7cb71d90cdf6e04a1a30996e39a8df866ebd0525bba1d959edc8d6
+    environment:
+      PORT: '4000'
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: ${REALTIME_DB_ENC_KEY:?}
+      API_JWT_SECRET: ${JWT_SECRET:?}
+      # Read when the self-hosted tenant is seeded: the staff's ES256 tokens join channels.
+      API_JWT_JWKS: ${JWT_JWKS:?}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?}
+      METRICS_JWT_SECRET: ${JWT_SECRET:?}
+      # One scheduler thread and no busy waiting, so an idle Realtime leaves the shared CPU alone.
+      ERL_AFLAGS: '-proto_dist inet_tcp +S 1:1 +sbwt none +sbwtdcpu none +sbwtdio none'
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: '10000'
+      APP_NAME: realtime
+      SEED_SELF_HOST: 'true'
+      RUN_JANITOR: 'true'
+      DISABLE_HEALTHCHECK_LOGGING: 'true'
+      LOG_LEVEL: warning
+    ulimits:
+      nofile: { soft: 10000, hard: 10000 }
+    networks:
+      data:
+        # Realtime takes the tenant id from the host's first label, so the gateway calls it by
+        # this name (container_name is refused on the server).
+        aliases: [realtime-dev.supabase-realtime]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'curl -sSfL --head -o /dev/null -H "Authorization: Bearer ${ANON_KEY:?}" http://localhost:4000/api/tenants/realtime-dev/health'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1.0
+    cpu_shares: 512
+    pids_limit: 512
+    oom_score_adj: -100
+
+  storage:
+    <<: *steady
+    image: supabase/storage-api:v1.89.12@sha256:8526956cb462e9f7d392e9848ec77133b2769982ed614e9753cc687e8e4339a6
+    environment:
+      ANON_KEY: ${ANON_KEY:?}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY:?}
+      POSTGREST_URL: http://rest:3000
+      AUTH_JWT_SECRET: ${JWT_SECRET:?}
+      JWT_JWKS: ${JWT_JWKS:?}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:?}@db:5432/postgres
+      STORAGE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:?}
+      REQUEST_ALLOW_X_FORWARDED_PATH: 'true'
+      # At least the restaurant-exports bucket's 50 MiB.
+      FILE_SIZE_LIMIT: '52428800'
+      # Files on the storage-data volume. The bucket, tenant and region names are part of every
+      # stored path: never change them once data exists.
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      GLOBAL_S3_BUCKET: stub
+      TENANT_ID: stub
+      REGION: stub
+      # No imgproxy (next/image resizes in the web container) and no S3 protocol.
+      ENABLE_IMAGE_TRANSFORMATION: 'false'
+      S3_PROTOCOL_ENABLED: 'false'
+      # Info logs a line for every request.
+      LOG_LEVEL: warn
+    volumes:
+      - storage-data:/var/lib/storage
+    networks: [data]
+    depends_on:
+      db: { condition: service_healthy }
+      rest: { condition: service_started }
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://storage:5000/status']
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    cpu_shares: 512
+    pids_limit: 256
+    oom_score_adj: 100
+
+  # Envoy: the one way in to the Supabase services, for Caddy (api.menumesh.in) and for the web
+  # container (http://api-gw:8000). Its config is upstream's with the changes in VPS-35.
+  api-gw:
+    <<: *steady
+    image: envoyproxy/envoy:v1.39.6@sha256:1fde8efee875e4e4f6a39a90fe49d9338e1caacce5762034ef9fb4bbb9ad6aed
+    # The image's envoy user, with a read-only root: start.sh writes the listeners to the tmpfs.
+    user: '101:101'
+    entrypoint: ['/bin/sh', '/opt/menumesh/envoy-start.sh']
+    command: ['--log-level', 'warn', '--concurrency', '2', '--disable-hot-restart']
+    # All six keys must be set, or the sb_ keys get 401.
+    environment:
+      ANON_KEY: ${ANON_KEY:?}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?}
+      ANON_KEY_ASYMMETRIC: ${ANON_KEY_ASYMMETRIC:?}
+      SERVICE_ROLE_KEY_ASYMMETRIC: ${SERVICE_ROLE_KEY_ASYMMETRIC:?}
+    read_only: true
+    tmpfs: ['/run/envoy:size=4m,mode=1777']
+    volumes:
+      - ./config/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./config/envoy/cds.yaml:/etc/envoy/cds.yaml:ro
+      - ./config/envoy/lds.template.yaml:/etc/envoy/lds.template.yaml:ro
+      - ./config/envoy/start.sh:/opt/menumesh/envoy-start.sh:ro
+    networks:
+      gateway:
+      data:
+      edge-menumesh:
+        aliases: [menumesh-gw]
+    depends_on:
+      auth: { condition: service_started }
+      rest: { condition: service_started }
+      realtime: { condition: service_started }
+      storage: { condition: service_started }
+    healthcheck:
+      # The image has no curl or wget.
+      test: ['CMD-SHELL', "timeout 1 bash -c '</dev/tcp/127.0.0.1/8000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    mem_limit: 224m
+    memswap_limit: 224m
+    cpus: 0.5
+    cpu_shares: 768
+    pids_limit: 256
+    oom_score_adj: -200
+
+  # The scheduler (VPS-38): BusyBox crond calls the web container's cron routes directly, never
+  # through Cloudflare. start.sh writes the values the jobs need to a file only root reads, and
+  # cron-call hands the bearer to curl on stdin, so it never shows in a process list.
+  scheduler:
+    <<: *steady
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    # crond runs as root, and changes identity for every job, even root's.
+    user: '0:0'
+    cap_add: [SETUID, SETGID]
+    entrypoint: ['/bin/sh', '/opt/menumesh/start']
+    environment:
+      CRON_BASE_URL: http://web:3000
+      CRON_SECRET: ${CRON_SECRET:?}
+      HEARTBEAT_DAILY_URL: ${HEARTBEAT_DAILY_URL:-}
+      HEARTBEAT_DIGEST_URL: ${HEARTBEAT_DIGEST_URL:-}
+      HEARTBEAT_JOBS_URL: ${HEARTBEAT_JOBS_URL:-}
+    read_only: true
+    tmpfs: ['/run/menumesh:size=1m,mode=0700', '/tmp:size=1m']
+    volumes:
+      - ./config/scheduler/production.crontab:/etc/crontabs/root:ro
+      - ./config/scheduler/start.sh:/opt/menumesh/start:ro
+      - ./config/scheduler/cron-call:/opt/menumesh/cron-call:ro
+    networks: [default]
+    depends_on:
+      web: { condition: service_started }
+    healthcheck:
+      # Every answered minute call touches jobs.ok: ten minutes without one is unhealthy.
+      test: ['CMD-SHELL', 'find /run/menumesh/jobs.ok -mmin -10 | grep -q .']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10m
+    mem_limit: 32m
+    memswap_limit: 32m
+    cpus: 0.25
+    cpu_shares: 256
+    pids_limit: 64
+    oom_score_adj: 200
+
+  scheduler-staging:
+    <<: *steady
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    user: '0:0'
+    cap_add: [SETUID, SETGID]
+    entrypoint: ['/bin/sh', '/opt/menumesh/start']
+    environment:
+      CRON_BASE_URL: http://web-staging:3000
+      CRON_SECRET: ${STAGING_CRON_SECRET:?}
+      HEARTBEAT_DAILY_URL: ${STAGING_HEARTBEAT_DAILY_URL:-}
+      HEARTBEAT_DIGEST_URL: ${STAGING_HEARTBEAT_DIGEST_URL:-}
+      HEARTBEAT_JOBS_URL: ${STAGING_HEARTBEAT_JOBS_URL:-}
+    read_only: true
+    tmpfs: ['/run/menumesh:size=1m,mode=0700', '/tmp:size=1m']
+    volumes:
+      - ./config/scheduler/staging.crontab:/etc/crontabs/root:ro
+      - ./config/scheduler/start.sh:/opt/menumesh/start:ro
+      - ./config/scheduler/cron-call:/opt/menumesh/cron-call:ro
+    # Staging's network only: one scheduler never joins both.
+    networks: [staging]
+    depends_on:
+      web-staging: { condition: service_started }
+    healthcheck:
+      test: ['CMD-SHELL', 'find /run/menumesh/jobs.ok -mmin -10 | grep -q .']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10m
+    mem_limit: 32m
+    memswap_limit: 32m
+    cpus: 0.25
+    cpu_shares: 128
+    pids_limit: 64
+    oom_score_adj: 500
+
+  # Nightly backups (VPS-40): the image's crond runs backup.sh at 20:30 UTC (02:00 IST). Each part
+  # is age-encrypted to the owner's key and streamed to the bucket; nothing decrypted is written.
+  backup:
+    <<: *steady
+    image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
+    pull_policy: never
+    # crond changes identity for every job, even root's. Root without other capabilities reads
+    # only what root owns or everyone may read, as the settings archives are.
+    cap_add: [SETUID, SETGID]
+    environment:
+      PGHOST: db
+      PGUSER: supabase_admin
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      # The same key as BACKUP_RECIPIENT in /etc/apps/menumesh.conf (hostwatch compares them).
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      # The rclone remote "backups": the India bucket, through any S3-compatible provider.
+      RCLONE_CONFIG_BACKUPS_TYPE: s3
+      RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
+      RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+      RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+      RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
+      # Pinged after every full success; empty values send nothing.
+      HEARTBEAT_URL: ${HEARTBEAT_BACKUP_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    volumes:
+      # The host's encrypted settings archives (app-apply creates the directory).
+      - ./backup-out:/config-out:ro
+      - storage-data:/storage:ro
+    networks: [default, data]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'pidof', 'crond']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    mem_limit: 320m
+    memswap_limit: 320m
+    cpus: 0.5
+    cpu_shares: 128
+    pids_limit: 128
+    oom_score_adj: 300
+
+  # One-offs: a profile keeps them out of the steady sum and out of the restart rule; they still
+  # carry every limit and drop every capability. app-deploy runs the migrate ones with
+  # `run --rm --no-deps -T`, which also turns their profile on.
+  migrate:
+    <<: *oneoff
+    image: ${MIGRATE_IMAGE:?set MIGRATE_IMAGE in images.env}
+    pull_policy: never
+    profiles: [migrate]
+    environment:
+      PGHOST: db
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: postgres
+      PGSSLMODE: disable
+      PGAPPNAME: menumesh-migrate
+    networks: [data]
+    # With --no-deps, db must already run.
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    cpu_shares: 512
+    pids_limit: 64
+    oom_score_adj: 800
+
+  migrate-staging:
+    <<: *oneoff
+    image: ${MIGRATE_STAGING_IMAGE:?set MIGRATE_STAGING_IMAGE in images.env}
+    pull_policy: never
+    profiles: [migrate]
+    # Hosted staging through its IPv4 session pooler (Docker's bridges have no IPv6), checked
+    # against Supabase's CA, which the owner downloads (config/migrate/README.md).
+    environment:
+      PGHOST: ${STAGING_DB_HOST:?}
+      PGPORT: '5432'
+      PGUSER: ${STAGING_DB_USER:?}
+      PGPASSWORD: ${STAGING_DB_PASSWORD:?}
+      PGDATABASE: postgres
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /etc/menumesh/supabase-ca.crt
+      PGAPPNAME: menumesh-migrate-staging
+    volumes:
+      - ./config/migrate/supabase-ca.crt:/etc/menumesh/supabase-ca.crt:ro
+    networks: [staging]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    cpu_shares: 256
+    pids_limit: 64
+    oom_score_adj: 800
+
+  # The monthly restore test (VPS-40): a bare cluster in memory, so a full dump restores onto an
+  # empty server, reachable only from restore-test.
+  restore-db:
+    <<: *oneoff
+    image: supabase/postgres:17.6.1.136@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00
+    profiles: [restore-test]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    entrypoint: ['/bin/sh', '/opt/menumesh/bare-postgres.sh', '--throwaway']
+    environment:
+      # A literal: the restore network is internal and the data lives in memory.
+      POSTGRES_PASSWORD: restore-test
+    volumes:
+      - ./config/db/bare-postgres.sh:/opt/menumesh/bare-postgres.sh:ro
+    tmpfs:
+      - /var/lib/postgresql/data:size=1g
+      - /etc/postgresql-custom:size=16m
+    networks: [restore]
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.0
+    cpu_shares: 256
+    pids_limit: 256
+    oom_score_adj: 600
+
+  # Run with the owner's age key on a ramfs:
+  # sudo app-compose menumesh --profile restore-test run --rm -v /run/age:/run/age:ro restore-test
+  restore-test:
+    <<: *oneoff
+    image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
+    pull_policy: never
+    profiles: [restore-test]
+    entrypoint: ['/usr/local/bin/restore.sh', '--test']
+    environment:
+      PGHOST: restore-db
+      PGUSER: supabase_admin
+      PGPASSWORD: restore-test
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      RCLONE_CONFIG_BACKUPS_TYPE: s3
+      RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
+      RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+      RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+      RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
+      AGE_IDENTITY_FILE: /run/age/identity.txt
+      # Empty: the newest night.
+      RESTORE_STAMP: ${RESTORE_STAMP:-}
+    networks: [default, restore]
+    depends_on:
+      restore-db: { condition: service_healthy }
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    cpu_shares: 256
+    pids_limit: 128
+    oom_score_adj: 600
+
+  # Disaster recovery only (VPS-40): the real, empty volumes and a bare cluster. After it, stop
+  # recover-db and start db, which finds a cluster and skips its init.
+  recover-db:
+    <<: *oneoff
+    image: supabase/postgres:17.6.1.136@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00
+    profiles: [recover]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    entrypoint: ['/bin/sh', '/opt/menumesh/bare-postgres.sh']
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ./config/db/bare-postgres.sh:/opt/menumesh/bare-postgres.sh:ro
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    networks: [restore]
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    mem_limit: 1920m
+    memswap_limit: 1920m
+    cpus: 1.5
+    cpu_shares: 1024
+    pids_limit: 512
+    oom_score_adj: -800
+
+  # sudo app-compose menumesh --profile recover run --rm -v /run/age:/run/age:ro recover
+  recover:
+    <<: *oneoff
+    image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
+    pull_policy: never
+    profiles: [recover]
+    entrypoint: ['/usr/local/bin/restore.sh', '--into']
+    environment:
+      PGHOST: recover-db
+      PGUSER: supabase_admin
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      RCLONE_CONFIG_BACKUPS_TYPE: s3
+      RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
+      RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+      RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+      RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
+      AGE_IDENTITY_FILE: /run/age/identity.txt
+      # Empty: the newest night.
+      RESTORE_STAMP: ${RESTORE_STAMP:-}
+    volumes:
+      # Writable here only: the restore fills it.
+      - storage-data:/storage
+    networks: [default, restore]
+    depends_on:
+      recover-db: { condition: service_healthy }
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    cpu_shares: 512
+    pids_limit: 128
+    oom_score_adj: 100
+
+# default (implicit) is the egress bridge. gateway carries web to Envoy only, so the web
+# container reaches no Supabase service directly; data holds the Supabase services, with no way
+# out; staging can't reach production; restore holds decrypted data. The edge networks are the
+# server's, internal, and joined by Caddy (VPS-32).
+networks:
+  gateway:
+    internal: true
+  data:
+    internal: true
+  staging: {}
+  restore:
+    internal: true
+  edge-menumesh:
+    external: true
+  edge-menumesh-staging:
+    external: true
+
+volumes:
+  db-data: {}
+  db-config: {}
+  storage-data: {}
+  web-static: {}
+  web-cache: {}
+  web-staging-static: {}
+  web-staging-cache: {}
