@@ -62,3 +62,9 @@ otherwise. Every file here is LF only.
 - A file under `config/`: install it over the old one, then restart the services that mount it
   (`sudo app-compose menumesh restart <service>`). The init SQL runs only on an empty volume.
 - The edge files: `app-apply` again; Caddy reloads without dropping connections.
+
+## Where the borrowed files come from
+
+`config/SOURCES.md` lists the files taken from self-hosted Supabase (Apache-2.0), with their
+upstream paths and hashes. `test/vendor/jainav-infotech/SOURCE` does the same for the server
+team's files that the local checks run.
