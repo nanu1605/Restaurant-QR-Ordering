@@ -311,7 +311,7 @@ export async function fillHindiNames(
   return unavailable ? { leased, stored, stopped: 'unavailable' } : { leased, stored };
 }
 
-/** How long the minute job leaves the names alone after a run that found every provider down. */
+/** How long the minute job leaves the names alone after a run that stored none in an outage. */
 export const HINDI_OUTAGE_PAUSE_MS = 30 * 60_000;
 /** Names a run of the minute job's fill leases at most. */
 const MINUTE_JOB_NAMES = 2_000;
@@ -322,11 +322,12 @@ const pause = globalThis as { [PAUSED_UNTIL]?: number };
 /**
  * The minute job's fill of every restaurant's waiting names (docs/DECISIONS.md VPS-27), at most
  * 2,000 a run, so that a provider's failure taken for the names' doing sets aside 2,000 names a
- * run, not every name that waits. After a run that found every provider down, it leaves them alone
- * for 30 minutes in this process: each lease writes its row, which changes the dish photo's cache
- * version and sends Realtime, so a lasting outage would otherwise lease up to 500 names again
- * every minute. A menu edit's fill and the daily run still try as they did before there was a
- * minute job.
+ * run, not every name that waits. After a run that stored none because every provider was down,
+ * it leaves them alone for 30 minutes in this process: each lease writes its row, which changes
+ * the dish photo's cache version and sends Realtime, so a lasting outage would otherwise lease up
+ * to 500 names again every minute. A run that stored names met a reader that answers, even if one
+ * of its calls was turned away (a 429 among the lanes' calls at once), so it sets no pause. A menu
+ * edit's fill and the daily run still try as they did before there was a minute job.
  */
 export async function fillWaitingHindiNames(
   admin: Admin,
@@ -334,7 +335,9 @@ export async function fillWaitingHindiNames(
 ): Promise<Awaited<ReturnType<typeof fillHindiNames>> | { skipped: 'paused' }> {
   if (Date.now() < (pause[PAUSED_UNTIL] ?? -Infinity)) return { skipped: 'paused' };
   const result = await fillHindiNames(admin, { maxNames: MINUTE_JOB_NAMES, ...options });
-  if (result.stopped === 'unavailable') pause[PAUSED_UNTIL] = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+  if (result.stopped === 'unavailable' && result.stored === 0) {
+    pause[PAUSED_UNTIL] = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+  }
   return result;
 }
 

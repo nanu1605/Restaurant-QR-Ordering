@@ -729,6 +729,37 @@ describe('fillWaitingHindiNames', () => {
     expect(calls('menu_hindi_names_settle')).toHaveLength(20);
   });
 
+  it('sets no pause after a run whose other batches were written', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T10:00:00Z'));
+    let made = 0;
+    const { admin, calls } = fakeAdmin((limit) =>
+      made >= 1_000 ? [] : Array.from({ length: limit }, () => dish(`d${made++}`)),
+    );
+    // One reader that takes 4 calls at once: the fifth of the lanes' calls is turned away.
+    let asked = 0;
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+      ++asked === 5
+        ? new Response('rate limited', { status: 429 })
+        : writeAll(JSON.parse(String(init?.body)) as Record<string, unknown>),
+    ) as unknown as typeof fetch;
+    const { run } = stoppableRun();
+    const options = { run, providers: [primary], fetchImpl };
+
+    // The other lanes write their batches, and then the run ends.
+    await expect(fillWaitingHindiNames(admin, options)).resolves.toMatchObject({
+      stopped: 'unavailable',
+    });
+    expect(calls('menu_hindi_names_settle').length).toBeGreaterThan(0);
+
+    // The next minute's run leases again: every name is leased, and every batch but the one
+    // turned away is written.
+    vi.setSystemTime(new Date('2026-11-09T10:01:00Z'));
+    await expect(fillWaitingHindiNames(admin, options)).resolves.not.toHaveProperty('skipped');
+    expect(made).toBe(1_000);
+    expect(calls('menu_hindi_names_settle')).toHaveLength(9);
+  });
+
   it('sets no pause after a run that ended any other way', async () => {
     const { admin, calls } = fakeAdmin([[dish('a')], [], [dish('b')]]);
     const { fetchImpl } = fakeFetch(
