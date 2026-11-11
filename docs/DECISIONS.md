@@ -1953,10 +1953,13 @@ On staging the owner asked that dishes without a Hindi name be converted too, wh
   fills what waits too (VPS-27). `menu_hindi_names_claim` handed out names not tried in the last
   12 hours, never-tried first, and stamped `name_hi_auto_tried_at`; VPS-27's lease supersedes it:
   `menu_hindi_names_lease` hands out the same names but leaves leased ones, and a name is stamped
-  when its batch is settled (not when no menu reader answered it, VPS-27). So repeated or
-  overlapping edits don't resend names (the cost of a fill is bounded by new or renamed names, not
-  by how often a manager saves), and a name the model can't write (digits only, emoji) waits
-  12 hours instead of holding the front of the list, for the next daily sweep or the minute job.
+  when its batch is settled. So repeated or overlapping edits don't resend names (the cost of a fill
+  is bounded by new or renamed names, not by how often a manager saves), and a name the model can't
+  write (digits only, emoji) waits 12 hours instead of holding the front of the list, for the next
+  daily sweep or the minute job. Only a batch for which every menu reader failed in a way no names
+  can cause is not stamped: no connection, a 401, 402, 404, 408, 429 or 5xx, or a 403 that names no
+  moderation, flag, guardrail, content policy or refusal (VPS-27). A reader that runs out of time
+  still counts as a try, so its names wait 12 hours unless they are cleared (RUNBOOK).
 
 ### Review fixes (automatic Hindi names)
 
