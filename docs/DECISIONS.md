@@ -5611,7 +5611,7 @@ Stop A2 adds four migrations (`20261108100000_export_jobs.sql`,
 `20261108100100_hindi_names_lease.sql`, `20261108100200_announcement_email_jobs.sql` and
 `20261108100300_jobs_waiting.sql`), each additive and safe while the previous build runs, and app
 code that Vercel runs too. The owner's answers of 2026-11-08 are in VPS-28 and VPS-30. A first
-review's fixes are listed after Tests.
+review's fixes, and a second's, are listed after Tests.
 
 - **VPS-25 · Background work is found in the rows it changes, leased there, and resumed every
   minute:** each kind of work finds what is waiting in the rows that already hold it, and leases it
@@ -6357,3 +6357,27 @@ spec's Hindi column).
   exit 143 within seconds, the row `queued` with `attempts` 0 or `ready` with one file, never left
   `building` and never `attempts` 1, and ask for a build of 10 s or more. The image pass is recorded
   under Tests. (8c7d2cc)
+
+**Re-review (round 2).** A second review of these fixes, at `c2fe3a9`, gave eight more findings, all
+low: S1 and S2 on the database and T1 to T6 on the runtime, all confirmed by a verifier. The entries
+above that a fix changed were corrected in place.
+
+- **S1 · The email check copied an announcement for each restaurant (VPS-28, VPS-29, D2, Tests):**
+  D2's first step held the whole announcement, texts and list included, once for every active
+  restaurant not yet emailed. So while one for a list, a plan or a city ran, each minute's check
+  wrote 8 to 38 MB of temporary files and took 45 to 90 ms on the load seed, not the 30 to 45 ms
+  VPS-28 gave. The first step now keeps ids, and of a list only its restaurants (`in_audience`'s
+  list rule, in the join); a second step joins the announcement and the restaurant back to test the
+  audience, and the texts join only the emails returned. The verifier's version kept the texts in
+  that step, which still wrote 582 blocks a call while a new announcement to everyone went out. The
+  answers are the same in 2,124 cases, and no case writes a temporary file: a list of 300 takes
+  12 ms and a plan or a city 37 to 48 ms. One to everyone whose emails went takes up to 7 ms, where
+  it took about 3, when the statistics hold only announcements to lists (as locally): the planner
+  then looks up the sent pairs one restaurant at a time. 692 checks the temporary files at a
+  `work_mem` of 64 kB. (70d734e)
+- **S2 · The write count missed the calls that find work (Tests):** 693 counted writes only around
+  two idle calls, so a helper that writes only while work waits (one that stamps the due
+  announcements, or takes back a lapsed build) passed all 9 tests, though Tests said any writing
+  function is caught. The count is now read just before and after every call, without pgTAP's own
+  temporary tables (each `is()` adds a row there), and a build whose lease ran out joins the
+  fixtures: the two helpers fail tests 10 and 6. (8e9fd73)
