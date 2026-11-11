@@ -579,7 +579,9 @@ services:
       - /etc/postgresql-custom:size=16m
     networks: [restore]
     healthcheck:
-      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost']
+      # On template1: a bare cluster has no database named after supabase_admin, and probing one
+      # would log a FATAL line every 2 s.
+      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost', '-d', 'template1']
       interval: 2s
       timeout: 3s
       retries: 60
@@ -639,7 +641,9 @@ services:
       - db-config:/etc/postgresql-custom
     networks: [restore]
     healthcheck:
-      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost']
+      # On template1: a bare cluster has no database named after supabase_admin, and probing one
+      # would log a FATAL line every 2 s.
+      test: ['CMD', 'pg_isready', '-U', 'supabase_admin', '-h', 'localhost', '-d', 'template1']
       interval: 2s
       timeout: 3s
       retries: 60
