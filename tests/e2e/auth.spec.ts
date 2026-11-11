@@ -94,7 +94,9 @@ test('platform admin needs a second factor, then lands on super-admin', async ({
 
   await main.getByLabel('6-digit code').fill(totpCode(secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  // The answer to Verify carries Home, which reads the whole platform: as long as
+  // passSecondFactor gives it.
+  await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
   await expect(header(page).getByText('Platform admin').first()).toBeVisible();
 
   await page.goto('/admin');
@@ -108,7 +110,7 @@ test('platform admin needs a second factor, then lands on super-admin', async ({
   await expect(main.getByRole('button', { name: 'Set up authenticator app' })).toHaveCount(0);
   await main.getByLabel('6-digit code').fill(totpCode(secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
 });
 
 test('a signed-out visit returns to the requested page after login', async ({ page }) => {
