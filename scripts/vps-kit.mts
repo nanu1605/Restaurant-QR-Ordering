@@ -25,8 +25,9 @@
  *   pnpm vps:backup-test
  *                    the nightly backup into a local S3: a night with a stale settings archive, then
  *                    the month's copy in monthly/ past planted names, no second copy, and a 1st's
- *                    copy; the monthly restore test; planted nights the restore must refuse or not
- *                    read; and the disaster recovery, from the monthly copy, on the rehearsal's own
+ *                    copy; the monthly restore test; planted nights and names the restore must
+ *                    refuse or not read, each night read from the one folder its age gives; and the
+ *                    disaster recovery of the 1st's copy, from monthly/, on the rehearsal's own
  *                    volumes.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
@@ -3287,7 +3288,8 @@ async function backupTest() {
     if (aged.status !== 0) fail(`Removing ${oldFirst} from daily/ failed: ${aged.stderr.trim()}`);
 
     // The monthly restore test into restore-db, with the rehearsal's throwaway key on /run/age, of
-    // the month's copy by name: both folders hold it, so their manifests must be the same.
+    // the month's copy by name: younger than 29 days, it is read from daily/ alone, though monthly/
+    // holds it too (review finding RV1).
     const age = ['--volume', `${slash(join(MIRROR, 'age'))}:/run/age:ro`];
     const test = await measured(
       `${PROJECT}-restore-test-${process.pid}`,
@@ -3335,14 +3337,48 @@ async function backupTest() {
       test.stdout,
     );
 
+    // A manifest a token holder put in monthly/ under the later night, which daily/ alone holds,
+    // and not even age's: a night younger than 29 days is read from daily/ only, so it stops
+    // nothing (review finding RV1: the two folders' manifests were compared, and the restore test
+    // and the recovery of that night stopped).
+    if (nextNight === night) fail('The later night of the month did not run.');
+    const stray = `manifest-${nextNight}.txt.age`;
+    const strayPut = inBackup(
+      `printf 'planted, not age\\n' | rclone rcat "backups:$BACKUP_BUCKET/monthly/${stray}"`,
+    );
+    if (strayPut.status !== 0)
+      fail(`Planting ${stray} in monthly/ failed: ${strayPut.stderr.trim()}`);
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows it.
+    for (let tries = 0; tries < 20; tries++) {
+      if (bucketNames('monthly').includes(stray)) break;
+      await sleep(1000);
+    }
+    const beside = await measured(
+      `${PROJECT}-restore-test-${process.pid}`,
+      ['-T', '-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${nextNight}`, ...age, 'restore-test'],
+      'restore-test',
+    );
+    compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
+    const strayListed = bucketNames('monthly').includes(stray);
+    checks.expect(
+      `a manifest planted in monthly/ under ${nextNight}, a night of daily/ alone, not even age's (${strayListed ? 'listed there' : 'not listed'}): the night's restore test by RESTORE_STAMP exit ${beside.status}, "${lines(beside.stdout).find((line) => line.startsWith('restore: the night')) ?? ''}", "${tail(beside.stdout, 1)}"`,
+      beside.status === 0 &&
+        strayListed &&
+        beside.stdout.includes(
+          `restore: the night of ${nextNight}, from daily/, into restore-db\n`,
+        ) &&
+        beside.stdout.endsWith(`restore test passed: the night of ${nextNight}, from daily/\n`),
+      tail(`${beside.stdout}${beside.stderr}`),
+    );
+
     // Planted nights, as whoever holds the bucket's token and the public key could upload them.
     // One stamped 9999-12-31 sorts last and is never taken unasked; one of this minute, the newest
     // by name, is, and its roles file has psql print a notice made to erase the night's line and
     // put the good night's in its place (N4), then reads the owner's key with \i; one named by
     // RESTORE_STAMP would copy the key into the bucket with \! first (S1). Each must stop at the
     // roles with nothing run: no object at the bucket's top, no line of the key, no escape. One
-    // has a link in its Storage archive (N6), and one is a copy of the 1st two months back, which
-    // monthly/ alone holds (N1).
+    // has a link in its Storage archive (N6), and one is a copy in daily/ of the 1st two months
+    // back, past 29 days and so read from monthly/ alone (RV2).
     while (stampOf(daemonNow()) <= nextNight) await sleep(1000);
     const planted = stampOf(daemonNow());
     const daysAgo = (days: number) =>
@@ -3387,7 +3423,9 @@ async function backupTest() {
           lines(output).find((line) => line.startsWith('restore: the night of ')) ===
             `restore: the night of ${want}, from daily/, into restore-db` &&
           refused.includes('backslash commands are restricted') &&
-          output.includes(`restore: the roles of ${want} did not restore (see above)`) &&
+          output.includes(
+            `restore: the roles of ${want} (globals-${want}.sql.age in daily/) did not restore (see above)`,
+          ) &&
           (extra.length > 0 || (notice.endsWith(fake) && notice !== fake)) &&
           !terminalControls(output) &&
           !keyShown(output) &&
@@ -3418,7 +3456,8 @@ async function backupTest() {
         linkRole === '0',
       tail(linkOutput),
     );
-    // The 1st two months back, with the planted copy in daily/ under its name: monthly/ only (N1).
+    // The 1st two months back, with the planted copy in daily/ under its name: past 29 days, read
+    // from monthly/ alone, and daily/ never listed (RV2).
     const past = await measured(
       `${PROJECT}-restore-test-${process.pid}`,
       ['-T', '-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${oldFirst}`, ...age, 'restore-test'],
@@ -3428,25 +3467,24 @@ async function backupTest() {
     const pastOutput = `${past.stdout}\n${past.stderr}`;
     const pastTop = bucketNames('');
     checks.expect(
-      `a night more than 31 days old (${oldFirst}), held by monthly/ and planted in daily/ under its name: exit ${past.status}, "${lines(pastOutput).find((line) => line.startsWith('restore: not reading')) ?? ''}", "${tail(past.stdout, 1)}"; the planted copy never read (no psql command refused), the bucket's top ${pastTop.length ? `holds ${pastTop.join(', ')}` : 'empty'}`,
+      `a night 29 days old or more (${oldFirst}), held by monthly/ and planted in daily/ under its name: exit ${past.status}, "${lines(past.stdout).find((line) => line.startsWith('restore: the night')) ?? ''}", "${tail(past.stdout, 1)}"; daily/ never named, the planted copy never read (no psql command refused), the bucket's top ${pastTop.length ? `holds ${pastTop.join(', ')}` : 'empty'}`,
       past.status === 0 &&
-        past.stdout.includes(
-          `restore: not reading the copy of ${oldFirst} in daily/: daily/ keeps a night 30 days, and this one is more than 31 days old\n`,
-        ) &&
         past.stdout.includes(
           `restore: the night of ${oldFirst}, from monthly/, into restore-db\n`,
         ) &&
         past.stdout.endsWith(`restore test passed: the night of ${oldFirst}, from monthly/\n`) &&
+        !pastOutput.includes('daily/') &&
         !pastOutput.includes('restricted') &&
         pastTop.length === 0,
       tail(pastOutput),
     );
 
-    // The planted nights go but the one with a link, which the recovery is given first, and so
-    // does the good night's daily copy, as after its 30 days: from here on it is read from
-    // monthly/ (review finding B1), by the restore test and the recovery.
+    // The planted nights go but the one with a link, which the recovery is given first, and the
+    // copy of the 1st two months back, which the recovery must not read. So does the good night's
+    // daily copy: younger than 29 days, it is read from daily/ alone, so with only its monthly/
+    // copy left its restore test is refused, saying why (review findings B1 and RV1).
     const removed = inBackup(
-      `rclone delete --include '*-${FUTURE}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${oldFirst}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
+      `rclone delete --include '*-${FUTURE}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
     if (removed.status !== 0) fail(`Removing nights from daily/ failed: ${removed.stderr.trim()}`);
     // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ no longer shows them.
@@ -3454,24 +3492,22 @@ async function backupTest() {
       if (!bucketNames('daily').some((name) => name.includes(night))) break;
       await sleep(1000);
     }
-    const monthlyTest = await measured(
+    const youngOnly = await measured(
       `${PROJECT}-restore-test-${process.pid}`,
-      ['-T', '-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${night}`, ...age, 'restore-test'],
+      ['-T', '-e', `RESTORE_STAMP=${night}`, ...age, 'restore-test'],
       'restore-test',
     );
     compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
     checks.expect(
-      `the restore test of ${night} with daily/ no longer holding it, by RESTORE_STAMP: exit ${monthlyTest.status} in ${monthlyTest.took} s, "${lines(monthlyTest.stdout).find((line) => line.startsWith('restore: the night')) ?? ''}", "${tail(monthlyTest.stdout, 1)}"`,
-      monthlyTest.status === 0 &&
-        monthlyTest.stdout.includes(
-          `restore: the night of ${night}, from monthly/, into restore-db\n`,
-        ) &&
-        monthlyTest.stdout.endsWith(`restore test passed: the night of ${night}, from monthly/\n`),
-      tail(`${monthlyTest.stdout}${monthlyTest.stderr}`),
+      `the restore test of ${night}, younger than 29 days, by RESTORE_STAMP with only its monthly/ copy left: exit ${youngOnly.status}, "${tail(youngOnly.stdout, 1)}"`,
+      youngOnly.status === 1 &&
+        youngOnly.stdout ===
+          `restore: the night of ${night} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there, so no backup finished it (the backup's journal names the nights that did)\n`,
+      tail(`${youngOnly.stdout}${youngOnly.stderr}`),
     );
 
     handedOver = true;
-    await recovery(checks, env, night, source, files, age, linked);
+    await recovery(checks, env, oldFirst, source, files, age, linked);
   } finally {
     if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
   }
@@ -3540,8 +3576,9 @@ function vault(checks: Checks, service: string, profile?: string) {
  * apply, and the rest follows. On the way, recover is refused while db runs, onto db's cluster once
  * it stopped, and onto Storage's old files; and given a planted night whose Storage archive holds a
  * link (`linked`), it stops before it writes anything (review finding N6), so the same new volumes
- * then take the real night. That night must be the source's; daily/ no longer holds it, so it is
- * read from its monthly copy.
+ * then take the real night. That night, the 1st two months back, must be the source's: past 29
+ * days, it is read from its monthly copy alone, past the planted copy in daily/ under its name
+ * (review finding RV2).
  */
 async function recovery(
   checks: Checks,
