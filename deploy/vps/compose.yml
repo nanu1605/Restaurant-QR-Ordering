@@ -423,7 +423,8 @@ services:
     depends_on:
       web: { condition: service_started }
     healthcheck:
-      # Every answered minute call touches jobs.ok: ten minutes without one is unhealthy.
+      # Every answered minute call touches jobs.ok. Once it is ten minutes old the check fails,
+      # and the third failure in a row, 12 to 13 minutes after the last answer, is unhealthy.
       test: ['CMD-SHELL', 'find /run/menumesh/jobs.ok -mmin -10 | grep -q .']
       interval: 60s
       timeout: 5s
