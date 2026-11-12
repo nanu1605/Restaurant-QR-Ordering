@@ -7301,8 +7301,9 @@ and `deploy/vps/README.md`).
   17.10, 27 planted files (`\!`, backticks, `\i` of the key, `\copy`, `\o |`, `\gexec`,
   `\lo_import`, `\if` and the like, and ways out of the mode: no key, a guess, the file's own key
   indented or after SQL, a variable, a quote that flips when its line is dropped, the file's own
-  pair) ran a command 11 times and showed or stored the key 5 ways through the old pipeline, and
-  none through the new one, which stops at the command (exit 3); a real pg_dumpall 17.10 roles file
+  pair) made the client run a command or write a file 10 times, and show or store the key 5 ways,
+  through the old pipeline; through the new one none did, each stopped at its command (exit 3),
+  and SQL with psql's variables ran nothing outside the server. A real pg_dumpall 17.10 roles file
   still restores, its SCRAM hashes equal. The rest of the script was audited for anything else taken
   from a night: the manifest must hold only the lines a backup writes, in printable ASCII, its first
   line naming the night and its database names plain (`[a-z_][a-z0-9_]*`, under 64 characters, no
