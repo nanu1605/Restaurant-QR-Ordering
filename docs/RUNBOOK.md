@@ -1,19 +1,24 @@
 # Runbook
 
 How MenuMesh is deployed and kept running. Decisions behind it: `docs/DECISIONS.md` (Phase 10, and
-Self-hosting on the VPS for the web image).
+Self-hosting on the VPS for the web image and the shared server).
 
 ## Environments
 
-| Environment | App                         | Database                         | Deploys                           |
-| ----------- | --------------------------- | -------------------------------- | --------------------------------- |
-| Local       | http://localhost:3000       | Supabase CLI (Docker), with seed | `pnpm dev`                        |
-| Staging     | https://staging.menumesh.in | Supabase project, Mumbai         | automatically, after CI on `main` |
-| Production  | https://menumesh.in         | Supabase project, Mumbai (free)  | the **Release** workflow          |
+| Environment               | App                         | Database                         | Deploys                           |
+| ------------------------- | --------------------------- | -------------------------------- | --------------------------------- |
+| Local                     | http://localhost:3000       | Supabase CLI (Docker), with seed | `pnpm dev`                        |
+| Staging                   | https://staging.menumesh.in | Supabase project, Mumbai         | automatically, after CI on `main` |
+| Production                | https://menumesh.in         | Supabase project, Mumbai (free)  | the **Release** workflow          |
+| Staging, from the move    | https://staging.menumesh.in | Supabase project, still hosted   | automatically, after CI on `main` |
+| Production, from the move | https://menumesh.in         | Supabase on the same server      | the owner, on the server          |
 
 Each environment has its own Supabase project, Vercel project, keys and secrets. Nothing is
 shared. The seed (demo restaurant, demo logins) exists only locally and in CI: deploys never
-push it.
+push it. From the move (Stop D), both web apps run on one shared server in Mumbai, staging behind a
+password, and production's database is that server's own Supabase stack on
+`https://api.menumesh.in`; staging deploys through the VPS workflows and production by
+`sudo app-deploy` on the server: see The shared server (VPS).
 
 ## Deploying
 
@@ -123,9 +128,10 @@ Two server-only variables are for the VPS and stay empty on Vercel: `SUPABASE_IN
 
 The web app also builds as a Docker image, for the planned move to a shared VPS (docs/DECISIONS.md,
 Self-hosting on the VPS). **Nothing deploys it yet: Vercel stays the live host, for staging and
-production, until the deploy stop**, which adds the compose project, the gateway, the Caddy site
-file, the scheduler, backups, and the image build and deploys in GitHub Actions. Until then this
-section is how to build the image and check it on this machine.
+production, until the cut-over (Stop D).** The compose project, the gateway, the Caddy site file,
+the scheduler, backups, and the image build and deploys in GitHub Actions are written and rehearsed,
+and switched off until the server exists: The shared server (VPS), below. This section is how to
+build the image and check it on this machine.
 
 `Dockerfile` builds the Next.js standalone server on Node 24 (Debian 13), run as the non-root `node`
 user on port 3000. It makes one image per environment, because `NEXT_PUBLIC_*` values are built in
@@ -167,7 +173,8 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   `KEEP_ALIVE_TIMEOUT=130000`: keep the proxy's idle upstream time under 130 s (Caddy's is 2
   minutes). Leave `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` unset (VPS-10): each build gets new action
   ids, and open pages move onto it by a refresh (VPS-8).
-- **What the deploy stop owes the image** (VPS-24):
+- **What the shared server gives the image** (VPS-24; the kit in `deploy/vps/` does all of it, as
+  The shared server (VPS) describes):
   - Stop with a 25 s grace period: node is process 1 and gets `SIGTERM`, requests and `after()` work
     finish, and what still runs at 25 s is killed, exit 137 (VPS-22). A stop that finds work in
     flight takes as long as the work, exit 143: with a pooled keep-alive client an idle stop
@@ -192,11 +199,12 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     deleted afterwards. Then `docker kill` with an export building (once its lease has run out, or
     `lease_until` is set to the past, the minute job builds it: the row ends `ready` with `attempts`
     1). Both were tried on the local image (DECISIONS, Tests (VPS Stop A2)).
-  - The scheduler's every-minute line (VPS-29): `GET /api/cron/jobs` on `http://web:3000` with the
-    `CRON_SECRET` bearer and `wget -T 25` (the route answers at once), then a heartbeat ping when
-    the call succeeds. `scheduler-staging` calls `http://web-staging:3000` under staging's own
-    secret. Never through Cloudflare. VPS-29 has the line, and the rehearsal must check that the
-    job's shell sees `$CRON_SECRET`.
+  - The scheduler's every-minute line (VPS-29, VPS-38): `GET /api/cron/jobs` on `http://web:3000`
+    with the `CRON_SECRET` bearer, which curl reads from its standard input, and 25 s to answer
+    (the route answers at once), then a heartbeat ping when the call succeeds. `scheduler-staging`
+    calls `http://web-staging:3000` under staging's own secret. Never through Cloudflare. The
+    rehearsal checked the job's shell: crond passes its environment, and `cron-call` reads the
+    values from a file anyway.
   - 1536m of memory for `web` and 768m for `web-staging`, with `NODE_OPTIONS=--max-old-space-size`
     at about 65% of it (1000 and 500). The data export's size limit follows the heap: Node's limit
     in the container is 1096 MiB on `web` and 548 MiB on `web-staging`, so `web` allows the 512 MiB
@@ -217,8 +225,8 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
     address would answer 400 for every dish photo (VPS-18).
   - Caddy and Cloudflare must pass `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
     never cache HTML or RSC (VPS-7).
-  - The Caddy site file should refuse `Upgrade` requests to the web container (a header matcher and
-    a 400): the app serves no WebSockets, and an upgrade request that nothing answers keeps its
+  - The Caddy site file refuses `Upgrade` requests to the web container (a header matcher and a
+    400): the app serves no WebSockets, and an upgrade request that nothing answers keeps its
     connection open for as long as the client waits, up to Cloudflare's 100 s. The image's preload
     already ends such sockets when a stop begins, so this is defence in depth (VPS-16, VPS-24).
   - Docker's health check calls `/api/health`, which reaches the database: the deploy waits up to
@@ -227,20 +235,16 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   - The daily cron and digest routes (`maxDuration` 300 and 60 on Vercel, ignored elsewhere) can
     outlast Cloudflare's 100 s, so the scheduler calls the web container directly, not through
     Cloudflare (VPS-22).
-- **After the move:** until the deploy stop rewrites them, the Vercel rules in this runbook describe
-  the live deploy path (Deploying, One-time setup, the variables, the 7-day migration rule, Rolling
-  back, Rotating secrets, Restore from an export and the Razorpay live switch). After the move a
-  deploy replaces the container, so the live screens refresh on their next tap and the other pages
-  offer Refresh (VPS-8), and until then their polls and the board's direct Supabase reads run the
-  old browser code against the new build: keep their JSON and the tables the board reads additive,
-  like migrations (VPS-11).
-  Production deploys are run by the owner on the server,
+- **After the move:** until the cut-over (Stop D) rewrites them, the Vercel rules in this runbook
+  describe the live deploy path (Deploying, One-time setup, the variables, the 7-day migration rule,
+  Rolling back, Rotating secrets, Restore from an export and the Razorpay live switch). After the
+  move a deploy replaces the container, so the live screens refresh on their next tap and the other
+  pages offer Refresh (VPS-8), and until then their polls and the board's direct Supabase reads run
+  the old browser code against the new build: keep their JSON and the tables the board reads
+  additive, like migrations (VPS-11). Production deploys are run by the owner on the server,
   `sudo app-deploy menumesh production <prod-ref> <migrate-ref>`; staging deploys from GitHub after
-  a merge to `main` (VPS-23).
-- **When to deploy, from the move:** no deploys, and no merges to `main` (every merge deploys
-  staging), from 02:55 to 03:30 or from 08:40 to 08:50 IST: those are the daily cron and the digest.
-  Releases also avoid 12:00 to 15:30 and 19:00 to 23:30 IST, and maintenance runs 01:00 to 07:00 IST
-  (VPS-24).
+  a merge to `main` (VPS-23). How, and when not to deploy: The shared server (VPS), Deploys on the
+  VPS.
 - **Checking an image here** (Docker Desktop, `pnpm db:start`, and `.env.local` pointing at the
   local stack):
   - `pnpm docker:build [--tag menumesh-web:local] [--deployment-id <id>]` builds it with the local
@@ -522,6 +526,8 @@ created. A team account that is also a restaurant login can't start sessions.
 
 ## Rotating secrets
 
+On Vercel, as today. On the shared server, from the move: The shared server (VPS), Secrets (VPS).
+
 | Secret                        | Where                                 | What happens                                                                              |
 | ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `SUPABASE_SECRET_KEY`         | Supabase → API keys, then Vercel      | Create a new secret key, set it in Vercel, deploy, then revoke the old one.               |
@@ -542,6 +548,9 @@ up to 7 days, so after deploying a rotated secret set the new deployment's **Ske
 Threshold** (Deployments → ⋯) before revoking or deleting the old value.
 
 ## Backups and restore
+
+As on hosted Supabase today. On the shared server, from the move: The shared server (VPS), Backups
+and restore (VPS).
 
 - **Production starts on Supabase's free plan, which keeps no backups.** The **Backup** workflow
   exports it every night at 02:00 IST once the variable `BACKUP_PRODUCTION` is `true` (Actions →
@@ -584,6 +593,570 @@ Threshold** (Deployments → ⋯) before revoking or deleting the old value.
   staging while the throwaway exists, then restore it). A restore target's Auth must be at least
   the backup's version: a new hosted project always is; a local stack isn't unless it runs the
   hosted versions (copy the linked project's `supabase/.temp/*-version` files).
+
+## The shared server (VPS)
+
+From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
+in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-42 for the kit). The server team's
+host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
+Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
+`deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
+is live yet:** the server isn't bought, Vercel stays the live host until the cut-over (Stop D), and
+the CI jobs stay off until the two variables below are set. The server team's runbooks in their
+repository (`docs/runbooks/server.md`, `edge.md`, `backups.md`) have the steps that are theirs.
+
+### Who does what, and the server's conf
+
+- **The server's admin** signs in as `ops` (sudo, through the SSH tunnel) and does the server team's
+  side: `/etc/apps/menumesh.conf` (below), the deploy user `deploy-menumesh` with its key and the
+  Access service token `github-deploy-menumesh`, the edge (the `tls_menumesh` snippet, the Origin CA
+  certificate, authenticated origin pulls, the two `MENUMESH_STAGING_AUTH_*` lines of `edge.env`),
+  the settings archive's timer, and `/srv/menumesh` with its `config/` folder, which the contract
+  leaves to the admin.
+- **The owner**, through the same `ops` account (`app-deploy` takes a deploy by hand only from `ops`
+  or root), brings what is MenuMesh's: the backup key, the bucket, the alert bot and the monitors,
+  the secrets and env files, the compose, site and redaction files through `app-apply`, the
+  services, production's deploys and the restore tests; and, off the server, the Cloudflare zone and
+  the GitHub settings.
+- **CI**, once switched on, builds the images and deploys staging.
+
+The admin writes `/etc/apps/menumesh.conf` (root, 0644) as below; the server team's
+`apps/app.conf.example` explains each line. It is `deploy/vps/test/menumesh.conf`, the file
+`pnpm vps:check` installs, without its header, and a unit test keeps the two the same.
+`BACKUP_RECIPIENT` is the owner's age public key, the same as `BACKUP_AGE_RECIPIENT` in `.env`
+(hostwatch alerts while they differ), and `app-deploy` refuses production while it is empty, since
+each production deploy starts with an encrypted dump. The `edge.env` lines go in only once this file
+exists.
+
+```sh
+PROJECT_DIR=/srv/menumesh
+APP_COMPOSE_FILE=compose.yml
+ENV_FILES=".env images.env"
+CI_USER=deploy-menumesh
+CI_ENVS="staging"
+REPO=ghcr.io/nanu1605/menumesh
+REGISTRY_USER=nanu1605
+env_config() {
+  case $1 in
+    staging)
+      SERVICE=web-staging VAR=STAGING_IMAGE TAG='staging-[0-9a-f]{40}'
+      MIGRATE_SERVICE=migrate-staging MIGRATE_VAR=MIGRATE_STAGING_IMAGE ;;
+    production)
+      SERVICE=web VAR=WEB_IMAGE TAG='prod-v[0-9]+\.[0-9]+\.[0-9]+'
+      MIGRATE_SERVICE=migrate MIGRATE_VAR=MIGRATE_IMAGE ;;
+    backup) SERVICE=backup VAR=BACKUP_IMAGE TAG='backup-[0-9a-f]{40}' ;;
+    *) return 1 ;;
+  esac
+}
+EXTRA_TAG='migrate-[0-9a-f]{40}' EXTRA_MODE=migrate EXTRA_KEEP=3
+HEALTH_TIMEOUT=120
+LOG_LINE_BUDGET=45000
+LOG_REDACT=1
+PREDEPLOY_DB="db supabase_admin postgres"
+BACKUP_RECIPIENT=           # age1..., sent when the key exists; same as BACKUP_AGE_RECIPIENT in .env
+CONFIG_ARCHIVE_FILES=".env images.env env config deploys.log"
+ZONE=menumesh.in
+UPSTREAMS="menumesh-web:3000 menumesh-gw:8000 menumesh-web-staging:3000"
+ENV_PREFIX=MENUMESH_
+EDGE_NETWORKS="edge-menumesh edge-menumesh-staging"
+```
+
+### First install, in order
+
+Files go to the server in `~/incoming` (`scp` through the tunnel), from this repository at the
+commit being installed, after `pnpm vps:check` and `pnpm vps:edge` passed on it (Checking the kit
+here). Every file under `/srv/menumesh` is root's, and nothing on the way up to `/` may be writable
+by anyone else, or `app-apply` refuses the compose file.
+
+**The owner, before the server:**
+
+1. **The backup key**, an age key pair, made on a machine of the owner's (the server team's form):
+
+   ```sh
+   docker run --rm -v "$PWD:/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'
+   ```
+
+   The public key (`age1…`) goes to the admin for `BACKUP_RECIPIENT` and into `.env`. The private
+   key goes into the password manager and on paper, then off that machine: it never stays on the
+   server, and without it no backup can be restored.
+
+2. **The bucket:** an India-region, S3-compatible bucket, with object lock or versioning that keeps
+   objects just under the job's own ages (29 days for `daily/`, 365 for `monthly/`), set with an
+   admin login that never goes on the server, and an API token for this bucket only.
+3. **Alerts:** a Telegram bot and chat for the backup's failures, and heartbeat monitors: the backup
+   (a ping a night, alerting after 26 hours), the daily and the digest calls (a ping a day each),
+   the minute job (a ping a minute), and the same three for staging. Each is optional; an empty
+   address pings nothing.
+4. **Production's locale**, one read-only query in hosted production's SQL editor:
+
+   ```sql
+   select datname, datlocprovider, datcollate, datctype, datlocale from pg_database where datname = 'postgres';
+   ```
+
+   The server's database gets ICU `en-US` (`en_US.UTF-8`), as the local stack has. If production
+   differs, `compose.yml` must set `POSTGRES_INITDB_ARGS` for `db` before its first start (VPS-34):
+   changing it later takes a dump and a restore.
+
+5. **Supabase's CA certificate** for staging's migrations: `deploy/vps/config/migrate/README.md`.
+6. **The secrets** (Secrets, below): `pnpm vps:secrets --out <a folder outside the repository>`,
+   fill each `# FILL IN` line, then `pnpm vps:secrets --check <that folder>`. Note the date it gives
+   for the API keys.
+7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
+   (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
+8. **The zone:** `menumesh.in` on Cloudflare, Full (strict), with zone-level authenticated origin
+   pulls ready for the admin's certificate (the server team's `edge.md` §3).
+
+**The server's admin** (the server team's `server.md` §2 and `edge.md` §3 and §5):
+
+9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in.
+10. The deploy user with `gha-menumesh-staging.pub`, and the Access service token
+    `github-deploy-menumesh` for the tunnel.
+11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the
+    server (`sudo app-apply edge cert menumesh origin.pem origin-key.pem`), the snippet of
+    `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`
+    (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
+    MenuMesh container runs**. Then the two lines of `deploy/vps/edge/edge.env.example` in
+    `/srv/edge/edge.env`, installed with `sudo app-apply edge env edge.env` and
+    `sudo app-compose edge up -d`. The hash comes from staging's password and the edge's Caddy
+    image:
+
+    ```sh
+    docker run --rm caddy:2.11.9-alpine caddy hash-password --plaintext '<password>'
+    ```
+
+12. `/srv/menumesh` and `config/`:
+
+    ```sh
+    sudo install -d -m 0750 -o root -g root /srv/menumesh /srv/menumesh/env
+    sudo cp -R ~/incoming/config /srv/menumesh/config     # deploy/vps/config as it is
+    sudo install -m 0644 ~/incoming/prod-ca-2021.crt /srv/menumesh/config/migrate/supabase-ca.crt
+    sudo chown -R root:root /srv/menumesh/config
+    sudo find /srv/menumesh/config -type d -exec chmod 0755 {} +
+    sudo find /srv/menumesh/config -type f -exec chmod 0644 {} +
+    ```
+
+13. The settings archive's timer at 20:20 UTC, ten minutes before the backup:
+    `sudo systemctl edit app-config-archive@menumesh.timer` with these lines (the empty
+    `OnCalendar=` clears the default time), then, once `.env` is in place (step 14),
+    `sudo systemctl enable --now app-config-archive@menumesh.timer`:
+
+    ```ini
+    [Timer]
+    OnCalendar=
+    OnCalendar=*-*-* 20:20:00 UTC
+    ```
+
+**The owner, on the server:**
+
+14. The env files, then `images.env` as it is, five `:none` lines that only `app-deploy` changes
+    from then on:
+
+    ```sh
+    sudo install -m 0600 -o root -g root ~/incoming/.env /srv/menumesh/.env
+    sudo install -m 0600 -o root -g root ~/incoming/web.env /srv/menumesh/env/web.env
+    sudo install -m 0600 -o root -g root ~/incoming/web-staging.env /srv/menumesh/env/web-staging.env
+    sudo install -m 0644 -o root -g root ~/incoming/images.env.example /srv/menumesh/images.env
+    ```
+
+15. `sudo app-apply menumesh compose ~/incoming/compose.yml`. It checks the file and every file it
+    mounts, creates the two edge networks and `/srv/menumesh/backup-out`, and pins the file's
+    sha256: `app-deploy` refuses to deploy while the installed file differs from it.
+16. The database, then the Supabase services: `sudo app-compose menumesh up -d db`, and once it is
+    healthy (`sudo app-compose menumesh ps`),
+    `sudo app-compose menumesh up -d auth rest realtime storage api-gw`. Auth and Storage make their
+    own schemas at their first start, and the first migration needs them (VPS-39).
+17. The backup image: Actions → **VPS backup image** → Run workflow on `main`, then, with a GitHub
+    token that can read packages typed at the prompt:
+
+    ```sh
+    read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh backup backup-<sha>@sha256:<digest>
+    ```
+
+18. The first deploys, which run the migrations: staging from CI or by hand, production by a release
+    (Deploys on the VPS).
+19. The schedulers: `sudo app-compose menumesh up -d scheduler scheduler-staging`. Each turns
+    healthy at its first answered minute call.
+20. A first restore test once a night has run, before the first restaurant (Backups and restore
+    (VPS)).
+21. Last, after the server rehearsal (below):
+    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
+    `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`; then the admin's leak test
+    (the server team's `edge.md` §6, with a made-up 16-character `/t/` token, which the log must
+    show as `/t/_`); then DNS.
+
+### Secrets (VPS)
+
+`pnpm vps:secrets --out <folder>` writes the server's three secret files from the templates in
+`deploy/vps/env/`: every value the stack makes for itself is generated, and the owner's own values
+stay empty under `# FILL IN` lines, which Compose refuses to start with.
+`pnpm vps:secrets --check <folder>` checks the files by name and prints no value. Copy them to the
+server (First install, step 14), keep the values in the password manager, and delete the folder. The
+generator never overwrites a file without `--force`, and a running stack keeps its old values: new
+ones are for a new install or a planned rotation.
+
+- `/srv/menumesh/.env` (0600): what `compose.yml` reads. Generated: `POSTGRES_PASSWORD`, the
+  Supabase keys, `SECRET_KEY_BASE`, `REALTIME_DB_ENC_KEY`, `SITE_URL`, `SUPABASE_PUBLIC_URL` and
+  both cron secrets. The owner's: the heartbeat addresses, the backup's key, bucket and token,
+  `HEARTBEAT_BACKUP_URL` and Telegram, and hosted staging's pooler login (`STAGING_DB_*`).
+- `/srv/menumesh/env/web.env` (0600): production's app settings. Generated: `STAFF_EMAIL_DOMAIN` and
+  `CUSTOMER_COOKIE_SECRET`. The owner's: Razorpay's live keys, Resend, the menu readers, Turnstile
+  and Sentry's read token.
+- `/srv/menumesh/env/web-staging.env` (0600): hosted staging's `SUPABASE_SECRET_KEY`, its own
+  `STAFF_EMAIL_DOMAIN` and `CUSTOMER_COOKIE_SECRET` (generated), Razorpay's test keys, and the
+  optional rest.
+- `/srv/menumesh/images.env` (0644): the five image references, `:none` at first, then
+  `app-deploy`'s.
+- The admin's: `BACKUP_RECIPIENT` in `/etc/apps/menumesh.conf` (the backup key's public half), and
+  `MENUMESH_STAGING_AUTH_USER` and `MENUMESH_STAGING_AUTH_HASH` in `/srv/edge/edge.env` (the hash of
+  staging's password).
+
+Never on the server: the backup key's private half, the bucket's admin login, staging's password
+itself (in the password manager; testers get it from the owner) and the GitHub secrets.
+`SUPABASE_PUBLISHABLE_KEY` is also the production image's built-in key, the GitHub variable below.
+
+**GitHub** (Settings → Secrets and variables → Actions, at the repository level), for the VPS
+workflows:
+
+- Variables: `VPS_IMAGES` and `VPS_DEPLOY_STAGING`, the two switches (`true` turns each on: the
+  first builds and pushes images, the second deploys staging too and turns the Vercel staging job
+  off); the build values `STAGING_SUPABASE_URL` and `STAGING_SUPABASE_PUBLISHABLE_KEY` (the hosted
+  staging project's), `PRODUCTION_SUPABASE_URL` (`https://api.menumesh.in`) and
+  `PRODUCTION_SUPABASE_PUBLISHABLE_KEY` (`SUPABASE_PUBLISHABLE_KEY` from the server's `.env`),
+  beside the existing `STAGING_APP_URL` and `PRODUCTION_APP_URL`; and `SENTRY_DSN`, `SENTRY_ORG`,
+  `SENTRY_PROJECT`, `POSTHOG_KEY` and `POSTHOG_HOST`, the public values Vercel has today.
+- Secrets: `SENTRY_AUTH_TOKEN` (there already); `VPS_SSH_HOST` (the tunnel's SSH host name),
+  `VPS_SSH_USER` (`deploy-menumesh`), `VPS_SSH_KEY` (the private half of `gha-menumesh-staging`),
+  `VPS_KNOWN_HOSTS` (the host name, a space and the server's `/etc/ssh/ssh_host_ed25519_key.pub`),
+  `VPS_ACCESS_CLIENT_ID` and `VPS_ACCESS_CLIENT_SECRET` (the Access service token
+  `github-deploy-menumesh`), and `STAGING_SMOKE_BASIC_AUTH` (`user:password` of staging's basic
+  auth).
+- Then Actions → **VPS ping** → Run workflow must print `pong menumesh staging` (one billed minute).
+
+**Rotation.** After changing `.env` or an env file, `up -d` the services that read it, which
+recreates them; a `restart` keeps the old values.
+
+- `CRON_SECRET` or `STAGING_CRON_SECRET`: a new 32-byte base64url value in `.env`, then
+  `sudo app-compose menumesh up -d web scheduler` (staging: `web-staging scheduler-staging`); the
+  minute between the two may log one 401 line.
+- A value in `env/web.env` or `env/web-staging.env`: the provider's step as in Rotating secrets, the
+  edited file installed again, then `up -d web` (or `web-staging`). A new `CUSTOMER_COOKIE_SECRET`
+  gives phones new device ids, as on Vercel.
+- Production's `SUPABASE_SECRET_KEY`: a new key from a fresh `pnpm vps:secrets --out <new folder>`
+  (that value only) in `.env`, then `up -d api-gw web` together; the old key stops working at once.
+- The bucket's token, Telegram and the heartbeat addresses: `.env`, then `up -d backup`, and
+  `scheduler scheduler-staging` for the heartbeats.
+- The backup key: a new pair, the admin's `BACKUP_RECIPIENT` and the owner's `BACKUP_AGE_RECIPIENT`
+  changed the same day, then `up -d backup`. Keep the old private key while its backups (366 days)
+  can be needed.
+- Staging's password: the admin's new hash in `edge.env` (`app-apply edge env`, then recreate
+  Caddy), the GitHub secret `STAGING_SMOKE_BASIC_AUTH`, and the testers.
+- The deploy key or the Access token: a new key pair (the admin swaps the public half) or token,
+  then the GitHub secrets.
+
+The rest are set once at install, and changing any of them is a planned window that has not been
+rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
+
+- **The API keys expire** five years after `pnpm vps:secrets` made them (the date is in `.env`'s
+  header). Take a whole new set of keys from a fresh `pnpm vps:secrets --out <new folder>`:
+  `JWT_SECRET`, `JWT_KEYS`, `JWT_JWKS`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `ANON_KEY_ASYMMETRIC`,
+  `SERVICE_ROLE_KEY_ASYMMETRIC`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY` go together,
+  and every other value stays. Set the GitHub variable `PRODUCTION_SUPABASE_PUBLISHABLE_KEY` and run
+  a release, then in one window put the new `.env` in place,
+  `up -d auth rest realtime storage api-gw` and deploy the release. Tokens signed with the old key
+  stop working, so expect sessions to need a new sign-in.
+- **`POSTGRES_PASSWORD`** is set only when the database volume is made: changing it takes
+  `ALTER ROLE … PASSWORD` for `supabase_admin`, `postgres`, `authenticator`, `supabase_auth_admin`,
+  `supabase_storage_admin`, `supabase_functions_admin` and `pgbouncer`, then `.env`, then `up -d` of
+  every service. `SECRET_KEY_BASE` and `REALTIME_DB_ENC_KEY` belong to Realtime's stored tenant:
+  leave them.
+
+### The server rehearsal and the cut-over
+
+An outline; Stop D details it. The contract's order: rehearse with the limits and no site file, then
+install the site file, then change DNS last.
+
+1. The first install up to step 20, with the limits on and no site file, so nothing is public.
+2. On the server: `sudo hostwatch check` clean; the services healthy; a staging and a production
+   deploy, with its pre-deploy dump and a rollback; the night's backup and a restore test; the
+   schedulers' first minutes and a day of `jobs.ok`; `docker stop` of the scheduler and `backup`
+   under a second each; the journal's lines against the budget; Envoy's
+   `cluster.rest.upstream_cx_destroy_remote` staying near 0 (its admin page on `127.0.0.1:9901`
+   inside `api-gw`).
+3. `docker stop` of `web` with an export building, Hindi names being written and announcement emails
+   going out: exit 143 within seconds, the export queued again or ready, a batch's names written
+   again within 5 minutes, no email sent twice (docs/DECISIONS.md, Tests (VPS Stop A2)).
+4. The site file and the redaction file, the leak test, the data as Stop D decides, and DNS last.
+   The rollback is Vercel and the hosted production project, paused but kept: DNS back to them.
+   Everyone signs in again either way.
+5. After: `CRON_SECRET` out of Vercel, `VPS_DEPLOY_STAGING` on, and the Vercel parts of this runbook
+   and the old workflows go (Stop D).
+
+### Deploys on the VPS
+
+- **Staging** follows `main` once `VPS_IMAGES` and `VPS_DEPLOY_STAGING` are `true`. A merge that
+  passes CI builds `staging-<sha>` and `migrate-<sha>` (**VPS build**) and deploys them (**VPS
+  deploy staging**): through the tunnel, `app-deploy` pulls them by digest, checks their labels,
+  runs `migrate-staging` on hosted staging's database and swaps `web-staging`; then the smoke tests
+  run against staging with its password. Inside the blackouts below the deploy job fails at once:
+  run it again after. `app-deploy` also refuses staging while hostwatch reports the server
+  CPU-throttled, and any deploy with under 5 GB of disk free.
+- **Production**, by the owner:
+  1. Actions → **VPS release** → Run workflow: the version (`vX.Y.Z`, never one used before),
+     optionally a commit of `main` whose CI passed, and `production` in the confirm box. Its summary
+     prints the line to run.
+  2. On the server, with a GitHub token that can read packages (a classic token with
+     `read:packages`), typed at the prompt and never on the command line:
+
+     ```sh
+     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh production \
+       prod-vX.Y.Z@sha256:<digest> migrate-<sha>@sha256:<digest>
+     ```
+
+     It dumps the database first (age-encrypted, in `/srv/menumesh/predeploy/`, the newest three
+     kept), runs `migrate` for at most 10 minutes (a failure switches nothing), switches `web` and
+     waits up to 120 s for it to turn healthy. If it never does, `app-deploy` goes back to the
+     previous image by itself and alerts. Migrations that ran stay applied either way.
+
+  3. From this machine: `SMOKE_URL=https://menumesh.in EXPECTED_VERSION=<commit> pnpm smoke`.
+
+- **Rolling back by hand:** `sudo tail -5 /srv/menumesh/deploys.log` names the previous image, and
+  deploying it again without a migrate reference brings it back. An image still on the server needs
+  no token: `sudo app-deploy menumesh production prod-vX.Y.W@sha256:<digest>`. Migrations are never
+  undone, which is why they stay backward-compatible for one release (Database migrations).
+- **When to deploy:** no deploys, and no merges to `main` (every merge deploys staging), from 02:55
+  to 03:30 or from 08:40 to 08:50 IST: those are the daily run and the digest. Releases also avoid
+  12:00 to 15:30 and 19:00 to 23:30 IST, and maintenance runs 01:00 to 07:00 IST (VPS-24).
+- **`/srv/menumesh/deploys.log`** has one line per deploy (the time, the environment, the service,
+  the old and new image, and who), and a failed or rolled-back one says what happened, for example
+  that the migrations of a new image stay applied. It goes into the nightly settings archive.
+- **The other services** never change with a deploy: a changed `compose.yml` goes through
+  `pnpm vps:check` and `app-apply` again, then `sudo app-compose menumesh up -d <service>`; a file
+  under `config/` is installed by the admin, then `sudo app-compose menumesh restart <service>` for
+  the services that mount it (the init SQL runs only on an empty volume); an env file is installed
+  again, then `up -d` of the services that read it; an edge file goes through `app-apply` again and
+  Caddy reloads; the backup image through `app-deploy menumesh backup`.
+- **The journal:** a service's lines, and the deploys':
+
+  ```sh
+  sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=web --since -1h -o cat
+  sudo journalctl -t app-deploy --since today
+  ```
+
+### The scheduler (VPS)
+
+`scheduler` calls the production web container and `scheduler-staging` the staging one, never
+through Cloudflare (VPS-38). Times are UTC:
+
+| Line          | IST          | Job            | Calls              | Limit  | Prints                               |
+| ------------- | ------------ | -------------- | ------------------ | ------ | ------------------------------------ |
+| `30 21 * * *` | 03:00        | `daily`        | `/api/cron/daily`  | 1740 s | one line: the status and the seconds |
+| `0 22 * * *`  | 03:30        | `daily-retry`  | `/api/cron/daily`  | 1800 s | nothing if 03:00 got a 200           |
+| `15 3 * * *`  | 08:45        | `digest`       | `/api/cron/digest` | 300 s  | one line                             |
+| `45 3 * * *`  | 09:15        | `digest-retry` | `/api/cron/digest` | 300 s  | nothing if 08:45 got a 200           |
+| `* * * * *`   | every minute | `jobs`         | `/api/cron/jobs`   | 25 s   | nothing on a 200                     |
+
+- A call without a 200 prints one line, `cron-call <job>: HTTP <code> in N s` or
+  `no answer in N s (curl exit N: …)`, and a daily or digest call still running when the next starts
+  makes it say `skipped`. A healthy minute prints nothing.
+- After each 200 the job pings its heartbeat (`HEARTBEAT_DAILY_URL`, `HEARTBEAT_DIGEST_URL`,
+  `HEARTBEAT_JOBS_URL`, and staging's `STAGING_HEARTBEAT_*`); an empty address pings nothing.
+- The container turns unhealthy 12 to 13 minutes after its last answered minute call, which
+  hostwatch alerts on, and healthy again at the next one.
+- **A call by hand**, with the scheduler's own values, so the bearer is never typed:
+  `sudo app-compose menumesh exec scheduler /bin/sh /opt/menumesh/cron-call jobs` (or `daily`,
+  `digest`; `scheduler-staging` for staging). A `daily` by hand that gets a 200 writes the day's
+  marker, so the 03:30 retry then does nothing. The minute job also answers through Cloudflare
+  (Incidents, Run the minute job by hand).
+- **After a change:** a crontab or a script under `config/scheduler/` is installed by the admin,
+  then `sudo app-compose menumesh restart scheduler` (crond reads its crontab when it starts); a new
+  cron secret or heartbeat address in `.env` needs `sudo app-compose menumesh up -d scheduler`,
+  since `start.sh` writes the values when the container is made.
+
+### Backups and restore (VPS)
+
+The `backup` container's crond runs `backup.sh` at 20:30 UTC (02:00 IST), and the host's settings
+archive runs at 20:20 UTC, ten minutes before (VPS-40).
+
+- **A night** under `daily/` in the bucket, every part age-encrypted to the owner's key:
+  `globals-<stamp>.sql.age` (the roles), `postgres-<stamp>.dump.age` (the database),
+  `storage-<stamp>.tar.age` (the Storage files, with their content types),
+  `manifest-<stamp>.txt.age` (row counts and the Storage files' count, which a restore compares) and
+  `config-<stamp>.tar.age` (the settings archive). The night of the 1st is also copied to
+  `monthly/`; daily copies go after 30 days and monthly ones after 366, and the bucket's lock keeps
+  anyone from deleting them sooner.
+- **The settings archive**, `/srv/menumesh/backup-out/config-<stamp>.tar.age`, holds `.env`,
+  `images.env`, `env/`, `config/` and `deploys.log`, encrypted to `BACKUP_RECIPIENT`. A night whose
+  archive is missing or more than 2 hours old fails, with an alert, after its other parts are up.
+  `systemctl list-timers 'app-config-archive@*'`,
+  `sudo journalctl -t app-config-archive --since yesterday` and `ls -l /srv/menumesh/backup-out`
+  show it, and `sudo systemctl start app-config-archive@menumesh.service` makes one now.
+- **Last night's backup:**
+
+  ```sh
+  sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since yesterday -o cat
+  sudo app-compose menumesh exec backup sh -c 'rclone lsf --format sp "backups:$BACKUP_BUCKET/daily/" | tail -5'
+  ```
+
+  The first shows `backup <stamp>: 5 parts, N bytes`, or
+  `[menumesh] backup failed (exit 1) at <stamp>: <the step>`, which Telegram got too; the second
+  lists the newest parts and their sizes. The heartbeat monitor alerts after 26 hours without a
+  whole night. One now, as the container runs it:
+  `sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`.
+
+- **The monthly restore test**, in the third week of the month (the first one before the first
+  restaurant), never while hostwatch reports the server throttled. The private key goes on a ramfs,
+  which is never swapped and is gone at unmount:
+
+  ```sh
+  sudo install -d -m 700 /run/age
+  sudo mount -t ramfs -o mode=700 ramfs /run/age
+  sudo tee /run/age/identity.txt >/dev/null     # paste the private key, then Ctrl-D
+  sudo chmod 600 /run/age/identity.txt
+  sudo app-compose menumesh --profile restore-test run --rm -v /run/age:/run/age:ro restore-test
+  sudo app-compose menumesh --profile restore-test rm -sf restore-db
+  sudo rm /run/age/identity.txt && sudo umount /run/age
+  ```
+
+  It restores the night into a throwaway database in memory, compares it with the manifest, lists
+  the Storage archive and the settings archive's file names, and ends with `restore test passed`.
+  Counts that moved during the night are listed; only a missing table, an empty one or missing
+  Storage files fail it. `app-compose` first checks that the server has the memory. For another
+  night add `-e RESTORE_STAMP=<stamp>` (as in the object names, for example `2026-12-17T2030Z`):
+  name the night before when the newest one failed, as a failed night may lack its settings archive.
+  Record the date, the night and the result.
+
+- **Disaster recovery**, whose database and Storage steps `pnpm vps:backup-test` rehearses on this
+  machine (docs/DECISIONS.md, Tests (VPS Stop B)):
+  1. A new server: the admin's part of First install, with new deploy keys and the new host key in
+     `VPS_KNOWN_HOSTS`. If the old server may still run, stop its `cloudflared` first.
+  2. The private key on a ramfs (as above). The newest `daily/config-<stamp>.tar.age`, downloaded
+     with the bucket provider's dashboard or a new read-only token (the token on the server is
+     inside the archive), unpacked into `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
+
+     ```sh
+     age --decrypt --identity /run/age/identity.txt config-<stamp>.tar.age | sudo tar -x -C /srv/menumesh
+     ```
+
+  3. `sudo app-apply menumesh compose ~/incoming/compose.yml`, from the commit the server last had.
+  4. The backup image that `images.env` names, by the admin form with a token on stdin as in First
+     install, step 17: `sudo app-deploy menumesh backup <its tag@digest>`.
+  5. The recovery, into new volumes. On a new server they are new; on the same server the old
+     `db-data`, `db-config` and `storage-data` must go first, once no container uses them, and
+     recovering onto a new server instead keeps them.
+
+     ```sh
+     sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<stamp> -v /run/age:/run/age:ro recover
+     sudo app-compose menumesh --profile recover rm -sf recover-db
+     ```
+
+     It refuses while `db` runs, onto `db`'s old cluster and onto old Storage files, and ends with
+     `recovery of <stamp> done`.
+
+  6. `sudo app-compose menumesh up -d db`, which finds the cluster and skips its init, then
+     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`.
+  7. The images `images.env` names, by the admin form: production with its migrate image (the
+     migrations find nothing to apply), and staging; then
+     `sudo app-compose menumesh up -d scheduler scheduler-staging`.
+  8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
+     password manager, then the site and redaction files from this repository, the leak test, and
+     DNS to the new address.
+  9. The key off the ramfs, and a restore test after the next night.
+
+  A recovery does not bring back what no backup holds: pgsodium's root key (vault secrets come back
+  but do not decrypt; the app keeps none) and a few extension settings MenuMesh doesn't use
+  (docs/DECISIONS.md VPS-40). WAL archiving, which a nightly dump can't replace, comes in Stop C.
+
+### Logs and alerts (VPS)
+
+Every container logs to journald, the server's default, and the journal keeps a line 180 to 187
+days, which the privacy text must say.
+
+```sh
+sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh --since -1h -o cat
+sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=db --since today -o cat
+sudo journalctl -t app-deploy --since today
+sudo journalctl -t app-config-archive --since yesterday
+sudo journalctl CONTAINER_NAME=edge-caddy-1 --since -1h -o cat | grep menumesh.in
+```
+
+- **The budget** is `LOG_LINE_BUDGET=45000` lines a day for the project, Caddy's lines for
+  MenuMesh's hosts included; hostwatch's daily report counts them. The stack writes nothing while
+  idle, boards open or not, so lines come from events (measured in the rehearsal): a web start 5, a
+  database restart about 200, a failed sign-in or code 1, a QR code that doesn't work 2 a view, a
+  gateway error 1, a minute call without a 200 1. A day over budget means an error loop (find it
+  with the commands above) or a noisy successful route (`log_skip` it in the site file).
+- **Never in a line:** statement text or DETAIL from the database, query strings (Envoy and Caddy
+  drop them), tokens and keys (the scripts print none), a visitor's address in Caddy's lines, and
+  `/t/<token>` (redacted to `/t/_`). Auth's lines for failed sign-ins, failed codes and 429s do hold
+  the visitor's address.
+- **Alerts that concern MenuMesh:** hostwatch's (every 5 minutes, on Telegram, and its daily
+  report): a container unhealthy (`web` in a database outage, the scheduler 12 to 13 minutes without
+  an answered minute call), restarts (Realtime restarts once after a database stop), memory kills
+  and the memory sum, lines over budget, the redaction file missing, `BACKUP_RECIPIENT` and
+  `BACKUP_AGE_RECIPIENT` differing, `app-config-archive@menumesh.timer` not enabled, a certificate
+  near expiry and an edge config that no longer validates. Also `app-deploy`'s rollback alerts, the
+  backup's own Telegram line, the heartbeat monitors and Sentry. Auth's "rate limiting is not
+  applied" or "error processing Sb-Forwarded-For" warnings mean a call without the visitor's
+  address: a bug to fix (VPS-4).
+
+### Checking the kit here
+
+Each needs only Docker Desktop, runs throwaway containers named `menumesh-kit-*` or the project
+`menumesh-rehearsal`, publishes on `127.0.0.1` only, and calls no outside service. The local
+Supabase stack is only ever read.
+
+- `pnpm test` pins what each kit file must keep (`tests/unit/vps-kit.test.ts`,
+  `tests/unit/vps-secrets.test.ts`).
+- `pnpm vps:check` (about 20 s, and 46 s more the first time, for its checker image) runs the
+  server's own `app-apply` checks on `deploy/vps/` as root in a throwaway container, then the
+  contract's rules, Caddy's and Envoy's validation and shellcheck. Run it after any change under
+  `deploy/vps/` and before every install.
+- `pnpm vps:edge` (about 10 s) puts the site file in the server's Caddy tree, in front of stub apps
+  on `127.0.0.1:8443`, and tests how it answers. Run it after any change under `deploy/vps/edge/`.
+- `pnpm vps:rehearse [--fresh] [--rebuild]` (2 to 4 minutes) runs the whole stack as the server
+  would, as project `menumesh-rehearsal`, with throwaway secrets in `.vps-rehearsal/` (gitignored):
+  the app on `http://localhost:3300` and the gateway on `http://127.0.0.1:8300`. It needs 6 GiB
+  available in Docker Desktop's VM. A rerun keeps the stack, its secrets and an image nothing
+  changed for; `--fresh` starts over with new secrets and empty volumes; `--rebuild` builds every
+  image. A look inside:
+
+  ```sh
+  docker compose -p menumesh-rehearsal --project-directory .vps-rehearsal \
+    -f .vps-rehearsal/compose.yml -f deploy/vps/local/compose.rehearsal.yml \
+    --env-file .vps-rehearsal/.env --env-file .vps-rehearsal/images.env ps
+  ```
+
+  The smoke tests run against it with `SMOKE_URL=http://localhost:3300` and `EXPECTED_VERSION` set
+  to the web image's revision:
+
+  ```sh
+  docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' menumesh-web:rehearsal
+  ```
+
+  A Playwright subset ran by hand with `E2E_PORT=3300` and the rehearsal's address and keys in the
+  environment, through a copy of `playwright.config.ts` without its `webServer`; specs that need the
+  mock APIs can't run against it.
+
+- `pnpm vps:backup-test` (about 2.5 minutes, on a running rehearsal) runs the nightly backup into a
+  local S3, the monthly restore test, and a disaster recovery on the rehearsal's own volumes.
+- `pnpm vps:down [--images]` removes the rehearsal's containers, networks and volumes (and its three
+  images with `--images`), and nothing else. `.vps-rehearsal/` stays for the next run.
+- **Copying the server team's files again**, whenever they change `app-apply`, the edge's
+  `Caddyfile`, snippets or ranges, or the confs, and before every install:
+  1. For each file `deploy/vps/test/vendor/jainav-infotech/SOURCE` lists:
+     `git -C <their checkout> show <commit>:<path> > deploy/vps/test/vendor/jainav-infotech/<file>`,
+     byte for byte; nothing there is ever edited.
+  2. In `SOURCE`, the commit, the date and the sha256 lines (`sha256sum` of the six files in that
+     folder); `app-apply` keeps its mode, 100755 (`git update-index --chmod=+x`).
+  3. If their `edge.conf` names a new Caddy image, pin its digest as `CADDY` in
+     `scripts/vps-kit.mts` (`docker buildx imagetools inspect caddy:<tag>`): `vps:check` refuses a
+     tag the copy no longer names.
+  4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
+     question for the server team.
+
+  Once the server exists, `MEMTOTAL_MIB` in `scripts/vps-kit.mts` becomes the MemTotal it reports
+  (`awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`).
 
 ## Razorpay live switch
 

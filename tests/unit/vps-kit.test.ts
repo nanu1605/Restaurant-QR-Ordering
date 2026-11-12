@@ -1779,7 +1779,42 @@ const serverConf = (text: string, composeText = compose) => {
   ];
 };
 
+/**
+ * The RUNBOOK gives the server's admin the conf as one sh block, which must be test/menumesh.conf
+ * without its header: the values the kit check ran with are the ones the server gets.
+ */
+const runbookConf = (runbook: string, confText = conf) => {
+  const blocks = [...runbook.matchAll(/^```sh\n([\s\S]*?)^```$/gm)]
+    .map((match) => match[1])
+    .filter((block) => /^PROJECT_DIR=/m.test(block));
+  if (blocks.length !== 1) return [`the RUNBOOK has ${blocks.length} conf blocks, not 1`];
+  const lines = confText.split('\n');
+  const want = lines.slice(lines.findIndex((line) => !line.startsWith('#')));
+  const have = blocks[0].split('\n');
+  const at = [...Array(Math.max(want.length, have.length)).keys()].find(
+    (index) => want[index] !== have[index],
+  );
+  return at === undefined
+    ? []
+    : [
+        `line ${at + 1} of the RUNBOOK's conf block is ${JSON.stringify(have[at] ?? '')}, ` +
+          `test/menumesh.conf has ${JSON.stringify(want[at] ?? '')}`,
+      ];
+};
+
 describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
+  it('is the conf the RUNBOOK gives the server’s admin, line for line', () => {
+    const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
+    expect(runbookConf(runbook)).toEqual([]);
+    refuses(runbookConf, swap(runbook, '\nLOG_REDACT=1\n', '\nLOG_REDACT=0\n'), 'LOG_REDACT=0');
+    refuses(
+      runbookConf,
+      swap(runbook, '\nPROJECT_DIR=/srv/menumesh\n', '\nPROJECT=/srv/menumesh\n'),
+      'the RUNBOOK has 0 conf blocks, not 1',
+    );
+    refuses((text) => runbookConf(runbook, text), `${conf}EXTRA_KEEP=5\n`, 'EXTRA_KEEP=5');
+  });
+
   it('installs a menumesh.conf that fits the compose file, the site file and CI', () => {
     expect(serverConf(conf)).toEqual([]);
     refuses(
