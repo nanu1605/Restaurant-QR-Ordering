@@ -21,6 +21,7 @@ import {
   REHEARSAL_IMAGES,
   rehearsalImagesEnv,
   renderListeners,
+  restoreDifferences,
   seedFiles,
   serviceKey as key,
   serviceMounts,
@@ -2270,5 +2271,69 @@ describe('the local rehearsal (deploy/vps/local, scripts/vps-kit.mts)', () => {
       changed: [],
     });
     expect(compareDumps(fewer, DUMP).onlyTheirs).toEqual(['FUNCTION private.two()']);
+  });
+
+  it('tells what a dump can’t carry from a restore that lost something', () => {
+    // Lines as vps:backup-test's FINGERPRINT writes them, from the rehearsal's own clusters.
+    const source = [
+      'ext|pg_graphql|1.5.11|graphql',
+      'ext|pg_net|0.20.3|extensions',
+      'proc|graphql_public.graphql(text,text,jsonb,jsonb)|supabase_admin 0 v -|=X/supabase_admin src=eea1e5aaac19 ext=pg_graphql',
+      'proc|net.http_get(text,jsonb,jsonb,integer)|supabase_admin 0 v search_path=net|=X/supabase_admin src=7ceed451732f ext=pg_net',
+      'proc|public.place_order(uuid)|postgres 1 v search_path=""|=X/postgres src=0123456789ab ext=-',
+      'rel|public.orders|r postgres 1 0 p d|anon=r/postgres,postgres=arwdDxtm/postgres ext=-',
+      'schema|graphql_public|supabase_admin|anon=U/supabase_admin,supabase_admin=UC/supabase_admin',
+      'schema|public|pg_database_owner|=U/pg_database_owner,pg_database_owner=UC/pg_database_owner',
+      'seq|graphql.seq_schema_version|11|ext=pg_graphql',
+      'seq|public.invoice_seq|42|ext=-',
+      'rows|public.orders|25|33a6d08881910e74a1afaec53b55ab6f',
+    ];
+    expect(restoreDifferences(source, source)).toEqual({ known: [], unknown: [] });
+    const restored = source
+      .filter((line) => !line.startsWith('proc|graphql_public.graphql('))
+      .map((line) =>
+        line
+          .replace('v search_path=net|', 'v -|')
+          .replace(
+            'graphql_public|supabase_admin|anon=U/supabase_admin,',
+            'graphql_public|supabase_admin|',
+          )
+          .replace('seq_schema_version|11|', 'seq_schema_version|3632|'),
+      );
+    expect(restoreDifferences(source, restored)).toEqual({
+      known: [
+        "pg_graphql's graphql_public.graphql(text,text,jsonb,jsonb): made by an event trigger, not by its script, so not there",
+        "pg_net's net.http_get(text,jsonb,jsonb,integer): settings search_path=net → -",
+        "schema graphql_public: only its owner's grant, not anon=U/supabase_admin,supabase_admin=UC/supabase_admin",
+        "pg_graphql's graphql.seq_schema_version: value 11 → 3632",
+      ],
+      unknown: [],
+    });
+    // The same changes outside an extension, or with the extension at another version, are lost
+    // data: every one of them fails.
+    const lost = source
+      .filter((line) => !line.startsWith('rel|public.orders|'))
+      .map((line) =>
+        line
+          .replace('ext|pg_net|0.20.3|', 'ext|pg_net|0.19.5|')
+          .replace('v search_path=net|', 'v -|')
+          .replace('v search_path=""|', 'v -|')
+          .replace('public|pg_database_owner|=U/pg_database_owner,', 'public|pg_database_owner|')
+          .replace('invoice_seq|42|', 'invoice_seq|1|')
+          .replace('orders|25|33a6d08881910e74a1afaec53b55ab6f', 'orders|24|0000'),
+      )
+      .concat('role|intruder|0100100|-1 -');
+    const { known, unknown } = restoreDifferences(source, lost);
+    expect(known).toEqual([]);
+    expect(unknown).toEqual([
+      'ext|pg_net: 0.20.3 | extensions in the source, 0.19.5 | extensions restored',
+      'proc|net.http_get(text,jsonb,jsonb,integer): supabase_admin 0 v search_path=net | =X/supabase_admin src=7ceed451732f ext=pg_net in the source, supabase_admin 0 v - | =X/supabase_admin src=7ceed451732f ext=pg_net restored',
+      'proc|public.place_order(uuid): postgres 1 v search_path="" | =X/postgres src=0123456789ab ext=- in the source, postgres 1 v - | =X/postgres src=0123456789ab ext=- restored',
+      'only in the source: rel|public.orders|r postgres 1 0 p d|anon=r/postgres,postgres=arwdDxtm/postgres ext=-',
+      'schema|public: pg_database_owner | =U/pg_database_owner,pg_database_owner=UC/pg_database_owner in the source, pg_database_owner | pg_database_owner=UC/pg_database_owner restored',
+      'seq|public.invoice_seq: 42 | ext=- in the source, 1 | ext=- restored',
+      'rows|public.orders: 25 | 33a6d08881910e74a1afaec53b55ab6f in the source, 24 | 0000 restored',
+      'only in the restore: role|intruder|0100100|-1 -',
+    ]);
   });
 });

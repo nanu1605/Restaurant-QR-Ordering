@@ -425,6 +425,105 @@ export function accessLines(output: string): string[] {
     .filter((line) => /^\[\d{4}-\d\d-\d\dT[\d:.]+Z\] [A-Z]+ \S+ \d{3} /.test(line));
 }
 
+/** What the third field of a FINGERPRINT line holds, word by word (the last takes the rest). */
+const FINGERPRINT_FIELDS: Record<string, string[]> = {
+  proc: ['owner', 'security definer', 'volatility', 'settings'],
+  rel: ['kind', 'owner', 'row security', 'forced row security', 'persistence', 'replica identity'],
+  type: ['type', 'owner'],
+  seq: ['value'],
+};
+
+/**
+ * A cluster's FINGERPRINT (vps:backup-test) against its restore's: what differs, as `known` (what a
+ * dump can't carry, each named) and `unknown` (anything else, which fails the test). pg_dump writes
+ * no member of an extension but its grants: CREATE EXTENSION makes the members again from the
+ * extension's script, and pg_restore makes event triggers last. So what an event trigger or
+ * supautils changed on a member after the script ran (pg_net's search_path, pg_graphql's
+ * graphql_public.graphql, the pgsodium objects supautils makes for postgres) and a member
+ * sequence's value come back as the script makes them. And the graphql and graphql_public schemas
+ * keep their grants in a pg_init_privs row of an extension that owns neither (the image's
+ * pg_graphql setup): pg_dump takes that row for their first state and writes no grant, so they
+ * come back with their owner's grant only.
+ */
+export function restoreDifferences(source: readonly string[], restored: readonly string[]) {
+  const fields = (line: string) => line.split('|');
+  // One line per name, but for these kinds: one per name and second field.
+  const keyOf = (line: string) => {
+    const parts = fields(line);
+    const wide = ['member', 'setting', 'published', 'defacl'].includes(parts[0]);
+    return parts.slice(0, wide ? 3 : 2).join('|');
+  };
+  const [had, have] = [new Set(source), new Set(restored)];
+  const gone = new Map(source.filter((line) => !have.has(line)).map((line) => [keyOf(line), line]));
+  const added = new Map(
+    restored.filter((line) => !had.has(line)).map((line) => [keyOf(line), line]),
+  );
+  // The extensions both clusters have, at the same version.
+  const extensions = new Set(
+    source
+      .filter((line) => line.startsWith('ext|') && have.has(line))
+      .map((line) => fields(line)[1]),
+  );
+  const memberOf = (line: string) => /(?:^|[ |])ext=([^ |]+)$/.exec(line)?.[1];
+  const words = (kind: string, text: string) => {
+    const count = FINGERPRINT_FIELDS[kind]?.length ?? 1;
+    const parts = text.split(' ');
+    return [...parts.slice(0, count - 1), parts.slice(count - 1).join(' ')];
+  };
+  // The first word of the fourth field is the grants; then the body's hash, then the extension.
+  const more = (text: string) => {
+    const tokens = text.split(' ');
+    return { grants: tokens[0], body: tokens.find((token) => token.startsWith('src=')) };
+  };
+  const known: string[] = [];
+  const unknown: string[] = [];
+  for (const [key, line] of gone) {
+    const [kind, name, attributes, rest] = fields(line);
+    const back = added.get(key);
+    added.delete(key);
+    const extension = memberOf(line);
+    const member = extension !== undefined && extensions.has(extension);
+    if (back === undefined) {
+      if (member)
+        known.push(
+          `${extension}'s ${name}: made by an event trigger, not by its script, so not there`,
+        );
+      else unknown.push(`only in the source: ${line}`);
+      continue;
+    }
+    const [, , attributesBack, restBack] = fields(back);
+    if (member && memberOf(back) === extension) {
+      const [was, is] = [words(kind, attributes), words(kind, attributesBack)];
+      const [before, after] = [more(rest), more(restBack)];
+      const changes = [
+        ...(FINGERPRINT_FIELDS[kind] ?? ['attributes']).flatMap((label, n) =>
+          was[n] === is[n] ? [] : [`${label} ${was[n]} → ${is[n]}`],
+        ),
+        ...(kind !== 'seq' && before.grants !== after.grants ? ['its grants'] : []),
+        ...(before.body !== after.body ? ['its body'] : []),
+      ];
+      known.push(`${extension}'s ${name}: ${changes.join(', ')}`);
+      continue;
+    }
+    const ownerOnly = `${attributes}=UC/${attributes}`;
+    if (
+      kind === 'schema' &&
+      ['graphql', 'graphql_public'].includes(name) &&
+      attributesBack === attributes &&
+      restBack === ownerOnly &&
+      rest.split(',').includes(ownerOnly)
+    ) {
+      known.push(`schema ${name}: only its owner's grant, not ${rest}`);
+    } else {
+      unknown.push(
+        `${key}: ${[attributes, rest].join(' | ')} in the source, ${[attributesBack, restBack].join(' | ')} restored`,
+      );
+    }
+  }
+  for (const line of added.values()) unknown.push(`only in the restore: ${line}`);
+  return { known, unknown };
+}
+
 // --- running things ---
 
 type Run = { status: number; stdout: string; stderr: string };
@@ -2502,139 +2601,795 @@ async function rehearse(fresh: boolean, rebuild: boolean) {
   if (checks.failed) process.exit(1);
 }
 
-// --- vps:backup-test (J.4 step 12) ---
+// --- vps:backup-test (J.4 step 12; plan H) ---
+
+/**
+ * What a restore must give back, read the same way from a cluster and from its restore, one
+ * "kind|name|attributes|more" line each: the roles with their memberships and settings; the
+ * databases, schemas, relations, functions and types with their owners and grants (none written
+ * means the owner's default); which extension each relation, function, type and sequence belongs
+ * to; the extensions, event triggers, publications and their tables, policies, triggers and
+ * constraints; every sequence's value; then every table's rows, as a hash of the rows sorted as
+ * text. With an empty search_path every name is written in full.
+ */
+const FINGERPRINT = `
+set search_path = '';
+select 'role', rolname::text, concat(rolsuper::int, rolinherit::int, rolcreaterole::int, rolcreatedb::int, rolcanlogin::int, rolreplication::int, rolbypassrls::int), concat_ws(' ', rolconnlimit, coalesce(rolvaliduntil::text, '-'))
+  from pg_roles where rolname !~ '^pg_'
+union all
+select 'member', r.rolname::text, m.rolname::text, concat(a.admin_option::int, a.inherit_option::int, a.set_option::int)
+  from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
+union all
+select 'setting', coalesce(d.datname::text, '*'), coalesce(r.rolname::text, '*'), array_to_string(s.setconfig, ',')
+  from pg_db_role_setting s left join pg_database d on d.oid = s.setdatabase left join pg_roles r on r.oid = s.setrole
+union all
+select 'database', datname::text, concat_ws(' ', datdba::regrole, pg_encoding_to_char(encoding), datlocprovider, datcollate, datctype, coalesce(datlocale, '-')),
+       (select string_agg(a::text, ',' order by a::text) from unnest(coalesce(datacl, acldefault('d', datdba))) a)
+  from pg_database
+union all
+select 'schema', nspname::text, nspowner::regrole::text, (select string_agg(a::text, ',' order by a::text) from unnest(coalesce(nspacl, acldefault('n', nspowner))) a)
+  from pg_namespace where nspname !~ '^pg_(toast_)?temp_'
+union all
+select 'ext', extname::text, extversion::text, extnamespace::regnamespace::text from pg_extension
+union all
+select 'evt', evtname::text, concat_ws(' ', evtevent, evtfoid::regproc, coalesce(array_to_string(evttags, ','), '-')), concat_ws(' ', evtenabled, evtowner::regrole)
+  from pg_event_trigger
+union all
+select 'publication', pubname::text, concat(puballtables::int, pubinsert::int, pubupdate::int, pubdelete::int, pubtruncate::int, pubviaroot::int), pubowner::regrole::text
+  from pg_publication
+union all
+select 'published', pubname::text, schemaname || '.' || tablename, '' from pg_publication_tables
+union all
+select 'policy', schemaname || '.' || tablename || ' ' || policyname, concat_ws(' ', permissive, cmd, array_to_string(roles, ',')), left(md5(concat_ws('|', qual, with_check)), 12)
+  from pg_policies
+union all
+select 'trigger', tgrelid::regclass::text || ' ' || tgname, concat_ws(' ', tgfoid::regproc, tgtype, tgenabled), ''
+  from pg_trigger where not tgisinternal
+union all
+select 'constraint', conrelid::regclass::text || ' ' || conname, concat_ws(' ', contype, convalidated::int, condeferrable::int), ''
+  from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+ where n.nspname not in ('pg_catalog', 'information_schema') and conrelid <> 0
+union all
+select 'rel', c.oid::regclass::text, concat_ws(' ', c.relkind, c.relowner::regrole, c.relrowsecurity::int, c.relforcerowsecurity::int, c.relpersistence, c.relreplident),
+       concat_ws(' ', (select string_agg(a::text, ',' order by a::text) from unnest(coalesce(c.relacl, acldefault((case c.relkind when 'S' then 's' else 'r' end)::"char", c.relowner))) a),
+                 'ext=' || coalesce((select e.extname from pg_depend d join pg_extension e on e.oid = d.refobjid
+                                      where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.refclassid = 'pg_extension'::regclass and d.deptype = 'e'), '-'))
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname !~ '^pg_(toast_)?temp_'
+union all
+select 'seq', c.oid::regclass::text, coalesce(pg_sequence_last_value(c.oid)::text, '-'),
+       'ext=' || coalesce((select e.extname from pg_depend d join pg_extension e on e.oid = d.refobjid
+                            where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.refclassid = 'pg_extension'::regclass and d.deptype = 'e'), '-')
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where c.relkind = 'S' and n.nspname not in ('pg_catalog', 'information_schema')
+union all
+select 'proc', p.oid::regprocedure::text, concat_ws(' ', p.proowner::regrole, p.prosecdef::int, p.provolatile, coalesce(array_to_string(p.proconfig, ','), '-')),
+       concat_ws(' ', (select string_agg(a::text, ',' order by a::text) from unnest(coalesce(p.proacl, acldefault('f', p.proowner))) a),
+                 'src=' || left(md5(p.prosrc), 12),
+                 'ext=' || coalesce((select e.extname from pg_depend d join pg_extension e on e.oid = d.refobjid
+                                      where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.refclassid = 'pg_extension'::regclass and d.deptype = 'e'), '-'))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname not in ('pg_catalog', 'information_schema')
+union all
+select 'type', t.oid::regtype::text, concat_ws(' ', t.typtype, t.typowner::regrole),
+       concat_ws(' ', (select string_agg(a::text, ',' order by a::text) from unnest(coalesce(t.typacl, acldefault('T', t.typowner))) a),
+                 'ext=' || coalesce((select e.extname from pg_depend d join pg_extension e on e.oid = d.refobjid
+                                      where d.classid = 'pg_type'::regclass and d.objid = t.oid and d.refclassid = 'pg_extension'::regclass and d.deptype = 'e'), '-'))
+  from pg_type t join pg_namespace n on n.oid = t.typnamespace
+ where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and t.typrelid = 0 and t.typelem = 0
+union all
+select 'defacl', concat_ws(' ', d.defaclrole::regrole, coalesce(d.defaclnamespace::regnamespace::text, '*')), d.defaclobjtype::text, (select string_agg(a::text, ',' order by a::text) from unnest(d.defaclacl) a)
+  from pg_default_acl d
+order by 1, 2, 3, 4;
+select format('select %L || ''|'' || count(*) || ''|'' || coalesce(md5(string_agg(t::text, E''\\n'' order by t::text)), ''-'') from %I.%I t',
+              'rows|' || schemaname || '.' || tablename, schemaname, tablename)
+  from pg_tables
+ where schemaname not in ('pg_catalog', 'information_schema')
+ order by schemaname, tablename
+\\gexec
+`;
+
+/** The FINGERPRINT of the cluster a service runs (db, restore-db), as supabase_admin on 127.0.0.1. */
+function fingerprint(service: string, profile?: string): string[] {
+  const run = compose(
+    [
+      ...(profile ? ['--profile', profile] : []),
+      'exec',
+      '-T',
+      service,
+      'psql',
+      '-X',
+      '-q',
+      '-A',
+      '-t',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-U',
+      'supabase_admin',
+      ...LOCAL_DB,
+    ],
+    FINGERPRINT,
+  );
+  if (run.status !== 0) fail(`psql in ${service}: ${run.stderr.trim()}`);
+  return lines(run.stdout);
+}
+
+/** One query in a service's cluster as supabase_admin, without failing: its exit, output and error. */
+function sqlIn(service: string, query: string, profile?: string) {
+  return compose(
+    [
+      ...(profile ? ['--profile', profile] : []),
+      'exec',
+      '-T',
+      service,
+      ...PSQL,
+      '-U',
+      'supabase_admin',
+      ...LOCAL_DB,
+    ],
+    query,
+  );
+}
+
+/**
+ * The Storage files of one of the rehearsal's volumes, one line each, sorted: the path, the bytes,
+ * the sha256 and every user.* xattr with its value (where Storage keeps an object's content type
+ * and cache control), read with Storage's own fs-xattr in a throwaway container of its image.
+ */
+function storageFiles(volume: string): string[] {
+  const script = [
+    "import { getAttributeSync, listAttributesSync } from 'fs-xattr';",
+    "import { createHash } from 'node:crypto';",
+    "import { readdirSync, readFileSync } from 'node:fs';",
+    "for (const entry of readdirSync('/files', { recursive: true, withFileTypes: true })) {",
+    '  if (!entry.isFile()) continue;',
+    "  const file = entry.parentPath + '/' + entry.name;",
+    '  const body = readFileSync(file);',
+    "  const xattrs = listAttributesSync(file).filter((name) => name.startsWith('user.')).sort();",
+    "  const values = xattrs.map((name) => name + '=' + getAttributeSync(file, name).toString());",
+    "  const sum = createHash('sha256').update(body).digest('hex');",
+    "  console.log([file.slice('/files/'.length), body.length, sum, ...values].join(' '));",
+    '}',
+  ].join('\n');
+  const run = docker(
+    [
+      'run',
+      '--rm',
+      '-i',
+      '--network',
+      'none',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges:true',
+      '--name',
+      `${PROJECT}-files-${process.pid}`,
+      '--mount',
+      `type=volume,source=${PROJECT}_${volume},target=/files,readonly`,
+      '--workdir',
+      '/app',
+      '--entrypoint',
+      'node',
+      value('storage', 'image'),
+      '--input-type=module',
+      '-',
+    ],
+    script,
+  );
+  if (run.status !== 0) fail(`Reading ${volume}'s files failed:\n${tail(run.stderr)}`);
+  return lines(run.stdout).sort();
+}
+
+/** How many files a storageFiles() list holds, and their bytes. */
+const fileTotals = (files: string[]) =>
+  `${files.length} files, ${files.reduce((sum, line) => sum + Number(line.split(' ')[1]), 0)} bytes`;
+
+/** backup.sh's stamp (date -u +%Y-%m-%dT%H%MZ) for a time of the daemon's clock. */
+const stampOf = (time: string) => `${new Date(time).toISOString().slice(0, 16).replace(':', '')}Z`;
+
+/**
+ * A container's memory as its cgroup counts it: the high-water mark (memory.peak, page cache
+ * included, which is what the limit holds), and what docker stats shows (memory.current less the
+ * inactive file cache). In MiB; undefined if the container doesn't run.
+ */
+function cgroupMemory(container: string, profile?: string, service = false) {
+  const read =
+    'cat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.current; grep "^inactive_file " /sys/fs/cgroup/memory.stat';
+  const run = service
+    ? compose([
+        ...(profile ? ['--profile', profile] : []),
+        'exec',
+        '-T',
+        container,
+        'sh',
+        '-c',
+        read,
+      ])
+    : docker(['exec', container, 'sh', '-c', read]);
+  const [peak, current, inactive] = lines(run.stdout).map((line) => Number(line.split(' ').pop()));
+  if (run.status !== 0 || [peak, current, inactive].some((n) => !Number.isFinite(n)))
+    return undefined;
+  const mib = (bytes: number) => Math.round(bytes / 1048576);
+  return { peak: mib(peak), stats: mib(current - inactive) };
+}
+
+/**
+ * `compose run --rm` of a one-off under a known name, as the server runs it, with how long it took
+ * and its memory: the cgroup's high-water mark and the most docker stats would have shown, read
+ * every quarter second while it runs.
+ */
+async function measured(name: string, args: string[], profile?: string) {
+  const started = Date.now();
+  const child = spawn(
+    'docker',
+    composeArgs([
+      ...(profile ? ['--profile', profile] : []),
+      'run',
+      '--rm',
+      '--name',
+      name,
+      ...args,
+    ]),
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk: Buffer) => (stdout += chunk));
+  child.stderr.on('data', (chunk: Buffer) => (stderr += chunk));
+  let status: number | undefined;
+  const closed = new Promise<void>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code) => {
+      status = code ?? 1;
+      resolve();
+    });
+  });
+  let peakMib = 0;
+  let statsMib = 0;
+  while (status === undefined) {
+    const now = cgroupMemory(name);
+    if (now) {
+      peakMib = Math.max(peakMib, now.peak);
+      statsMib = Math.max(statsMib, now.stats);
+    }
+    await sleep(250);
+  }
+  await closed;
+  return {
+    status: status ?? 1,
+    stdout,
+    stderr: lines(stderr)
+      .filter((line) => !/^ ?(Container|Network|Volume) /.test(line.trim()))
+      .join('\n'),
+    took: seconds(started),
+    peakMib,
+    statsMib,
+  };
+}
+
+/** A measured run's memory and time against its service's limit, for a check line. */
+const usage = (run: { took: number; peakMib: number; statsMib: number }, service: string) =>
+  `${run.took} s, memory at most ${run.peakMib} MiB of its ${value(service, 'mem_limit')} (docker stats: ${run.statsMib} MiB)`;
+
+/** The night's objects the backup must leave: every part, and the settings archive if it was fresh. */
+const nightParts = (stamp: string, config: boolean) =>
+  [
+    `globals-${stamp}.sql.age`,
+    `manifest-${stamp}.txt.age`,
+    `postgres-${stamp}.dump.age`,
+    `storage-${stamp}.tar.age`,
+    ...(config ? [`config-${stamp}.tar.age`] : []),
+  ].sort();
+
+/** Runs sh in a one-off of the backup service (its environment and networks), without its deps. */
+const inBackup = (script: string) =>
+  compose(['run', '--rm', '--no-deps', '-T', '--entrypoint', 'sh', 'backup', '-c', script]);
+
+/** The vault secret the test makes in the source: its value is no secret. */
+const VAULT_NAME = 'menumesh-rehearsal';
+const VAULT_VALUE = 'rehearsal-only';
 
 async function backupTest() {
   const checks = new Checks();
-  const db = containerOf('db');
-  if (!db || !existsSync(join(MIRROR, '.env')))
+  if (!containerOf('db') || !existsSync(join(MIRROR, '.env')))
     fail('The rehearsal is not up: pnpm vps:rehearse first.');
   const env = parseEnv(readFileSync(join(MIRROR, '.env'), 'utf8')) as Record<string, string>;
+  // A bare cluster left by a run that stopped would hold that run's restore: start without one.
+  compose(['--profile', '*', 'rm', '--stop', '--force', 'restore-db', 'recover-db']);
+  // The working tree's compose file, bare-postgres.sh and backup image, as vps:rehearse would
+  // install and build them.
+  mirror(checks);
+  const backupImage = REHEARSAL_IMAGES.BACKUP_IMAGE;
+  const sha = git('rev-parse', 'HEAD').stdout.trim();
+  const built = build(backupImage, ['--build-arg', `REVISION=${sha}`, join(KIT, 'backup')]);
+  checks.ok(`${backupImage} built in ${built} s from the working tree`);
+
+  // The extensions the image ships and preloads beyond the kit's (pg_net, supabase_vault), as a
+  // project turns them on (as postgres, through supautils); a pg_cron job (a no-op once a year)
+  // and a vault secret: the restore must bring them back too. The secret is made again each run:
+  // after a recovery, an earlier one no longer decrypts.
+  dbSql(
+    [
+      'create extension if not exists pg_cron with schema pg_catalog;',
+      'create extension if not exists pgsodium;',
+      'create extension if not exists pg_graphql;',
+      "select cron.schedule('menumesh-rehearsal-noop', '0 0 1 1 *', 'select 1');",
+      `delete from vault.secrets where name = '${VAULT_NAME}';`,
+      `select vault.create_secret('${VAULT_VALUE}', '${VAULT_NAME}');`,
+    ].join('\n'),
+    'postgres',
+  );
+  const extensions = dbSql('select extname from pg_extension order by 1');
+  const secret = vaultSecret('db');
+  checks.expect(
+    `the rehearsal's db holds ${extensions.join(', ')}; a pg_cron job, and a vault secret that decrypts (${secret === VAULT_VALUE ? 'it does' : secret})`,
+    ['pg_cron', 'pg_graphql', 'pg_net', 'pgsodium', 'supabase_vault'].every((name) =>
+      extensions.includes(name),
+    ) && secret === VAULT_VALUE,
+  );
+
   // The bucket's stand-in: rclone's S3 server, on the internal bucket network only.
   const s3 = compose(['up', '-d', '--wait', '--wait-timeout', '60', 's3']);
   if (s3.status !== 0) fail(`s3 did not start:\n${tail(s3.stderr)}`);
-  checks.ok(`the local S3 (rclone serve s3) is up, bucket ${env.BACKUP_BUCKET}`);
+  // The heartbeat and the alert are sent below, to hosts the sinkhole must answer in the
+  // container, so that nothing leaves this machine.
+  const hosts = inBackup('cat /etc/hosts');
+  const sunk = ['hc-ping.com', 'api.telegram.org'].filter((host) =>
+    new RegExp(`^0\\.0\\.0\\.0\\s+${host.replaceAll('.', '\\.')}\\s*$`, 'm').test(hosts.stdout),
+  );
+  if (sunk.length !== 2)
+    fail(`The backup container's /etc/hosts lacks the sinkhole:\n${hosts.stdout}${hosts.stderr}`);
+  checks.ok(
+    `the local S3 (rclone serve s3) is up, bucket ${env.BACKUP_BUCKET}; in the backup container ${sunk.join(' and ')} resolve to the sinkhole (0.0.0.0)`,
+  );
 
-  // A settings archive as the host's app-config-archive leaves it: an age-encrypted tar.
-  const out = join(MIRROR, 'backup-out');
-  for (const old of readdirSync(out)) rmSync(join(out, old), { force: true });
-  const archive = (stamp: string) => {
-    const file = join(out, `config-${stamp}.tar.age`);
-    const made = docker([
-      'run',
-      '--rm',
-      '--network',
-      'none',
-      '--name',
-      `${PROJECT}-archive-${process.pid}`,
-      '--mount',
-      `type=bind,source=${out},target=/out`,
-      REHEARSAL_IMAGES.BACKUP_IMAGE,
-      'sh',
-      '-c',
-      `mkdir -p /tmp/s/env && cd /tmp/s && printf 'POSTGRES_PASSWORD=stand-in\\n' >.env && printf 'WEB_IMAGE=x:none\\n' >images.env && printf 'X=1\\n' >env/web.env && tar -cf - .env images.env env | age -r "$1" >/out/config-${stamp}.tar.age`,
-      'archive',
-      env.BACKUP_AGE_RECIPIENT,
-    ]);
-    if (made.status !== 0) fail(`The stand-in settings archive failed: ${made.stderr}`);
-    return file;
-  };
-  // backup.sh's own stamp: date -u +%Y-%m-%dT%H%MZ.
-  const stampNow = () => `${new Date().toISOString().slice(0, 16).replace(':', '')}Z`;
-  const backup = () => {
-    const started = Date.now();
-    const ran = compose(['run', '--rm', '--no-deps', '-T', 'backup', '/usr/local/bin/backup.sh']);
-    return { ...ran, took: seconds(started) };
-  };
-  const bucket = () =>
-    lines(
-      compose([
+  // The source: nothing writes while the night is taken and compared (web and the scheduler stop;
+  // the recovery at the end starts them again, or the finally below if the run stops before it).
+  compose(['stop', 'web', 'scheduler']);
+  let handedOver = false;
+  try {
+    const source = fingerprint('db');
+    const files = storageFiles('storage-data');
+    const tables = source.filter((line) => line.startsWith('rows|')).length;
+    checks.ok(
+      `the source, with web and the scheduler stopped: ${source.length - tables} catalog lines, ${tables} tables hashed; ${fileTotals(files)} in storage-data`,
+    );
+
+    // A settings archive as the host's app-config-archive leaves it: an age-encrypted tar.
+    const out = join(MIRROR, 'backup-out');
+    for (const old of readdirSync(out)) rmSync(join(out, old), { force: true });
+    const archive = (stamp: string) => {
+      const file = join(out, `config-${stamp}.tar.age`);
+      const made = docker([
         'run',
         '--rm',
-        '--no-deps',
-        '-T',
-        '--entrypoint',
-        'rclone',
-        'backup',
-        'lsf',
-        '--format',
-        'sp',
-        '--recursive',
-        `backups:${env.BACKUP_BUCKET}/`,
-      ]).stdout,
-    );
-  const fresh = archive(stampNow());
-  const good = backup();
-  const night = /^backup (\S+): (.*)$/m.exec(good.stdout);
-  const objects = bucket().filter((line) => night && line.includes(night[1]));
-  checks.expect(
-    `backup.sh with a fresh settings archive: exit ${good.status} in ${good.took} s, "${night?.[0] ?? tail(good.stdout + good.stderr, 3)}"; ${objects.length} objects of the night in the bucket`,
-    good.status === 0 && night !== null && objects.length >= 5,
-    `${good.stdout}${good.stderr}\n${objects.join('\n')}`,
-  );
-  // A new minute, so the next night has its own stamp; then the archive three hours old.
-  const minute = new Date().getUTCMinutes();
-  while (new Date().getUTCMinutes() === minute) await sleep(1000);
-  const hoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
-  utimesSync(fresh, hoursAgo, hoursAgo);
-  const old = backup();
-  const later = bucket()
-    .filter((line) => !night || !line.includes(night[1]))
-    .filter((line) => line.startsWith('daily/'));
-  checks.expect(
-    `backup.sh with the archive three hours old: exit ${old.status} after its uploads (${later.length} more objects), "${tail(old.stderr, 1)}"`,
-    old.status === 1 && /more than 2 hours old/.test(old.stderr + old.stdout) && later.length >= 4,
-    `${old.stdout}${old.stderr}`,
-  );
+        '--network',
+        'none',
+        '--name',
+        `${PROJECT}-archive-${process.pid}`,
+        '--mount',
+        `type=bind,source=${out},target=/out`,
+        backupImage,
+        'sh',
+        '-c',
+        `mkdir -p /tmp/s/env && cd /tmp/s && printf 'POSTGRES_PASSWORD=stand-in\\n' >.env && printf 'WEB_IMAGE=x:none\\n' >images.env && printf 'X=1\\n' >env/web.env && tar -cf - .env images.env env | age -r "$1" >/out/config-${stamp}.tar.age`,
+        'archive',
+        env.BACKUP_AGE_RECIPIENT,
+      ]);
+      if (made.status !== 0) fail(`The stand-in settings archive failed: ${made.stderr}`);
+      return file;
+    };
+    // The bucket's objects under daily/ as "<bytes> <name>".
+    const daily = () =>
+      lines(
+        compose([
+          'run',
+          '--rm',
+          '--no-deps',
+          '-T',
+          '--entrypoint',
+          'rclone',
+          'backup',
+          'lsf',
+          '--files-only',
+          '--format',
+          'sp',
+          '--separator',
+          ' ',
+          `backups:${env.BACKUP_BUCKET}/daily/`,
+        ]).stdout,
+      );
+    const nightOf = (stamp: string) =>
+      daily()
+        .map((line) => line.split(' ')[1])
+        .filter((name) => name.includes(`-${stamp}.`))
+        .sort();
 
-  // The monthly restore test into restore-db, with the rehearsal's throwaway key on /run/age.
-  const started = Date.now();
-  const run = compose([
-    '--profile',
-    'restore-test',
-    'run',
-    '--rm',
-    '-T',
-    '-e',
-    'RESTORE_EXACT=1',
-    '-e',
-    `RESTORE_STAMP=${night?.[1] ?? ''}`,
-    '--volume',
-    `${slash(join(MIRROR, 'age'))}:/run/age:ro`,
-    'restore-test',
-  ]);
-  compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
-  checks.expect(
-    `the restore test (restore-db, RESTORE_EXACT=1): exit ${run.status} in ${seconds(started)} s, "${lines(run.stdout).at(-1)}"`,
-    run.status === 0 && /restore test passed/.test(run.stdout),
-    tail(`${run.stdout}${run.stderr}`),
-  );
-  const storage = lines(
-    compose([
-      'run',
-      '--rm',
+    // The night as the service runs it, with a heartbeat URL in the sinkhole: the ping is the
+    // last step, after every upload was checked.
+    const fresh = archive(stampOf(daemonNow()));
+    const good = await measured(`${PROJECT}-backup-${process.pid}`, [
       '--no-deps',
       '-T',
-      '--entrypoint',
-      'sh',
+      '-e',
+      'HEARTBEAT_URL=https://hc-ping.com/menumesh-rehearsal',
       'backup',
-      '-c',
-      'find /storage -type f | wc -l; find /storage -type f -exec stat -c %s {} + | awk \'{ n += $1 } END { printf "%.0f\\n", n }\'',
-    ]).stdout,
-  );
-  // restore.sh compared the night's Storage archive (files and bytes) with its manifest; nothing
-  // has written to storage-data since the night, so the volume must hold that many files.
-  const counted = /Storage holds (\d+) files as the manifest counted\n/.exec(run.stdout)?.[1];
-  checks.expect(
-    `storage-data holds ${storage[0]?.trim()} files, ${storage[1]} bytes, as the night's archive and its manifest do (${counted ?? '?'} files)`,
-    counted !== undefined && counted === storage[0]?.trim(),
-    run.stdout,
-  );
+      '/usr/local/bin/backup.sh',
+    ]);
+    const summary = /^backup (\S+): (.*)$/m.exec(good.stdout);
+    const night = summary?.[1] ?? '';
+    const objects = night ? nightOf(night) : [];
+    checks.expect(
+      `backup.sh as the service runs it, with a fresh settings archive: exit ${good.status} in ${usage(good, 'backup')}; "${summary?.[0] ?? tail(good.stdout, 1)}", the night's ${objects.length} objects in the bucket; the heartbeat last, into the sinkhole ("${tail(good.stderr, 1)}")`,
+      good.status === 0 &&
+        night !== '' &&
+        objects.join(' ') === nightParts(night, true).join(' ') &&
+        /notify: the heartbeat ping failed \(curl exit 7\)/.test(good.stderr),
+      `${good.stdout}${good.stderr}\n${objects.join('\n')}`,
+    );
+    // Each object is age's: its first line is age's header, nothing of the data in plain text.
+    const headers = lines(
+      inBackup(
+        `for name in ${objects.join(' ')}; do printf '%s ' "$name"; rclone cat --head 21 "backups:$BACKUP_BUCKET/daily/$name"; echo; done`,
+      ).stdout,
+    );
+    checks.expect(
+      `each of the night's objects starts with age's header (${headers.filter((line) => line.endsWith(' age-encryption.org/v1')).length} of ${objects.length})`,
+      objects.length > 0 &&
+        headers.length === objects.length &&
+        headers.every((line) => line.endsWith(' age-encryption.org/v1')),
+      headers.join('\n'),
+    );
+
+    // A new minute of the daemon's clock, so the next night has its own stamp; then the archive
+    // three hours old, and the alert to a Telegram bot in the sinkhole.
+    while (stampOf(daemonNow()) === night) await sleep(1000);
+    const hoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
+    utimesSync(fresh, hoursAgo, hoursAgo);
+    const old = await measured(`${PROJECT}-backup-${process.pid}`, [
+      '--no-deps',
+      '-T',
+      '-e',
+      'TELEGRAM_BOT_TOKEN=rehearsal',
+      '-e',
+      'TELEGRAM_CHAT_ID=rehearsal',
+      'backup',
+      '/usr/local/bin/backup.sh',
+    ]);
+    const failedNight = /backup failed \(exit \d+\) at (\S+):/.exec(old.stderr)?.[1] ?? '';
+    const later = failedNight ? nightOf(failedNight) : [];
+    checks.expect(
+      `backup.sh with the archive three hours old: exit ${old.status} after its ${later.length} uploads (no settings archive), "${lines(old.stderr).find((line) => line.startsWith('[menumesh]')) ?? ''}", and the alert sent, into the sinkhole ("${tail(old.stderr, 1)}")`,
+      old.status === 1 &&
+        failedNight !== night &&
+        later.join(' ') === nightParts(failedNight, false).join(' ') &&
+        /is more than 2 hours old/.test(old.stderr) &&
+        /notify: the Telegram alert failed \(curl exit 7\)/.test(old.stderr),
+      `${old.stdout}${old.stderr}`,
+    );
+
+    // The monthly restore test into restore-db, with the rehearsal's throwaway key on /run/age.
+    // The night is named: the newest one, the failed run's, has no settings archive.
+    const age = ['--volume', `${slash(join(MIRROR, 'age'))}:/run/age:ro`];
+    const test = await measured(
+      `${PROJECT}-restore-test-${process.pid}`,
+      ['-T', '-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${night}`, ...age, 'restore-test'],
+      'restore-test',
+    );
+    const restoreDb = cgroupMemory('restore-db', 'restore-test', true);
+    const restoredMb = Math.round(
+      Number(
+        compose([
+          '--profile',
+          'restore-test',
+          'exec',
+          '-T',
+          'restore-db',
+          'du',
+          '-sk',
+          '/var/lib/postgresql/data',
+        ]).stdout.split('\t')[0],
+      ) / 1024,
+    );
+    const said = lines(test.stdout).filter((line) => line.startsWith('restore'));
+    checks.expect(
+      `the restore test (restore-db, RESTORE_EXACT=1, the night ${night}): exit ${test.status} in ${usage(test, 'restore-test')}; restore-db at most ${restoreDb?.peak ?? '?'} MiB of its ${value('restore-db', 'mem_limit')}, the cluster ${restoredMb} MB of its 1g tmpfs. pg_restore read the dump from the pipe (rclone cat | age -d | pg_restore). ${said.join(' / ')}`,
+      test.status === 0 &&
+        /^restore: postgres has its \d+ tables as the manifest counted them$/m.test(test.stdout) &&
+        /^restore: Storage holds \d+ files as the manifest counted$/m.test(test.stdout) &&
+        /^restore test passed$/m.test(test.stdout),
+      tail(`${test.stdout}${test.stderr}`),
+    );
+    if (test.status === 0) {
+      compareRestore(checks, 'restore-db', source, fingerprint('restore-db', 'restore-test'));
+      vault(checks, 'restore-db', 'restore-test');
+    }
+    compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
+    // restore.sh compared the night's Storage archive (files and bytes) with its manifest; nothing
+    // has written to storage-data since the night, so the volume holds that many files.
+    const counted = /^restore: Storage holds (\d+) files as the manifest counted$/m.exec(
+      test.stdout,
+    )?.[1];
+    checks.expect(
+      `the night's Storage archive holds ${counted ?? '?'} files, as storage-data does (${fileTotals(files)})`,
+      counted !== undefined && Number(counted) === files.length,
+      test.stdout,
+    );
+
+    handedOver = true;
+    await recovery(checks, env, night, source, files, age);
+  } finally {
+    if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
+  }
   compose(['rm', '--stop', '--force', 's3']);
+  removeOldBuilds();
   console.log(
     `\nvps:backup-test: ${checks.passed + checks.failed} checks, ${checks.failed} failed`,
   );
   if (checks.failed) process.exit(1);
+}
+
+/**
+ * A restore against the source's FINGERPRINT: the same catalog and rows, but for what a dump can't
+ * carry (restoreDifferences), listed under the check.
+ */
+function compareRestore(checks: Checks, what: string, source: string[], restored: string[]) {
+  const { known, unknown } = restoreDifferences(source, restored);
+  const of = (kind: string) => restored.filter((line) => line.startsWith(`${kind}|`));
+  const rows = of('rows').reduce((sum, line) => sum + Number(line.split('|')[2]), 0);
+  const names = of('ext').map((line) => line.split('|')[1]);
+  checks.expect(
+    `${what} against the source: the same ${of('role').length} roles (${of('member').length} memberships, ${of('setting').length} settings), ${of('ext').length} extensions (${names.join(', ')}), ${of('evt').length} event triggers, ${of('publication').length} publications (${of('published').length} tables); ${of('schema').length} schemas, ${of('rel').length} relations, ${of('proc').length} functions and ${of('type').length} types with their owners and grants, ${of('constraint').length} constraints, ${of('policy').length} policies, ${of('trigger').length} triggers, ${of('seq').length} sequences; ${of('rows').length} tables with the same ${rows} rows. Not carried by a dump: ${known.length}`,
+    restored.length > 0 && !unknown.length,
+    unknown.join('\n'),
+  );
+  for (const line of known) console.log(`    · ${line}`);
+}
+
+/** The vault secret, decrypted: its value, or psql's error. */
+function vaultSecret(service: string, profile?: string) {
+  const read = sqlIn(
+    service,
+    `select decrypted_secret from vault.decrypted_secrets where name = '${VAULT_NAME}'`,
+    profile,
+  );
+  return read.status === 0
+    ? read.stdout.trim()
+    : (/ERROR: +(.*)/.exec(read.stderr)?.[1] ?? read.stderr.trim());
+}
+
+/**
+ * The vault secret in a restored cluster: its row is back, but it decrypts only with the source's
+ * root key (pgsodium_root.key on db-config), which no part of the backup holds. MenuMesh keeps
+ * nothing in vault.
+ */
+function vault(checks: Checks, service: string, profile?: string) {
+  const count = sqlIn(
+    service,
+    `select count(*) from vault.secrets where name = '${VAULT_NAME}'`,
+    profile,
+  );
+  const read = vaultSecret(service, profile);
+  checks.expect(
+    `vault in ${service}: the secret's row is back (${count.stdout.trim()}), and it doesn't decrypt without db's first root key, which no part of the backup holds ("${read}")`,
+    count.stdout.trim() === '1' && read !== VAULT_VALUE,
+    `${count.stdout}${count.stderr}${read}`,
+  );
+}
+
+// --- the disaster recovery (plan H.6), on the rehearsal's own volumes ---
+
+/**
+ * docs/RUNBOOK.md's disaster recovery, on the rehearsal: the recover one-off restores a night into
+ * new db-data, db-config and storage-data volumes, as on a new server, through recover-db's bare
+ * cluster; then db starts on them, finds a cluster and skips its init, migrate finds nothing to
+ * apply, and the rest follows. On the way, recover is refused while db runs, onto db's cluster once
+ * it stopped, and onto Storage's old files. The night must be the source's.
+ */
+async function recovery(
+  checks: Checks,
+  env: Record<string, string>,
+  night: string,
+  source: string[],
+  files: string[],
+  age: string[],
+) {
+  const recover = (extra: string[] = []) =>
+    measured(`${PROJECT}-recover-${process.pid}`, ['-T', ...extra, ...age, 'recover'], 'recover');
+  const recoverDbLog = () => logsOf(containerOf('recover-db') ?? '');
+  const dropRecoverDb = () =>
+    compose(['--profile', 'recover', 'rm', '--stop', '--force', 'recover-db']);
+  const [dbData, dbConfig, storageData] = ['db-data', 'db-config', 'storage-data'].map(
+    (name) => `${PROJECT}_${name}`,
+  );
+  const removeVolumes = (...names: string[]) => {
+    const removed = docker(['volume', 'rm', ...names]);
+    if (removed.status !== 0) fail(`docker volume rm ${names.join(' ')}: ${removed.stderr.trim()}`);
+  };
+  const said = (run: Run, pattern: RegExp) =>
+    lines(`${run.stdout}\n${run.stderr}`).find((line) => pattern.test(line)) ?? tail(run.stderr, 1);
+
+  // With db running, recover-db must not start a second server on db's files.
+  const db = containerOf('db') ?? fail('db has no container');
+  const since = daemonNow();
+  let run: Run & { took: number; peakMib: number; statsMib: number } = await recover();
+  const refusal = /bare-postgres: .*not shut down cleanly.*/.exec(recoverDbLog())?.[0] ?? '';
+  dropRecoverDb();
+  const dbHealth = docker(['inspect', '--format', '{{.State.Health.Status}}', db]).stdout.trim();
+  const dbWrote = logsSince(db, since);
+  checks.expect(
+    `recover with db still running: exit ${run.status}, recover-db refused at once ("${refusal}"); db ${dbHealth}, ${dbWrote.length} lines in its log since`,
+    run.status !== 0 && refusal !== '' && dbHealth === 'healthy' && !dbWrote.length,
+    `${run.stdout}${run.stderr}\n${recoverDbLog()}\n${dbWrote.join('\n')}`,
+  );
+
+  // The disaster: everything stops, db shut down cleanly with its cluster still on db-data.
+  compose(['stop', 'web', 'scheduler', 'api-gw', 'auth', 'rest', 'realtime', 'storage', 'db']);
+  run = await recover();
+  dropRecoverDb();
+  checks.expect(
+    `recover onto db's own cluster, db stopped: exit ${run.status}, "${said(run, /^restore: .*not a bare cluster/)}"`,
+    run.status === 1 && /is not a bare cluster/.test(run.stderr),
+    `${run.stdout}${run.stderr}`,
+  );
+  compose(['rm', '--force', 'db', 'storage']);
+  removeVolumes(dbData, dbConfig);
+  run = await recover();
+  dropRecoverDb();
+  checks.expect(
+    `recover onto new db volumes with Storage's old files still there: exit ${run.status}, "${said(run, /^restore: \/storage is not empty/)}"`,
+    run.status === 1 && /\/storage is not empty/.test(run.stderr),
+    `${run.stdout}${run.stderr}`,
+  );
+
+  // A new server's volumes: all three new.
+  removeVolumes(dbData, dbConfig, storageData);
+  run = await recover(['-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${night}`]);
+  const recoverDb = cgroupMemory('recover-db', 'recover', true);
+  dropRecoverDb();
+  checks.expect(
+    `recover into new db-data, db-config and storage-data (RESTORE_EXACT=1): exit ${run.status} in ${usage(run, 'recover')}; recover-db at most ${recoverDb?.peak ?? '?'} MiB of its ${value('recover-db', 'mem_limit')}. ${lines(
+      run.stdout,
+    )
+      .filter((line) => line.startsWith('restore:') && !line.startsWith('restore: the night'))
+      .join(' / ')}; "${said(run, /^recovery of /).split(':')[0]}"`,
+    run.status === 0 &&
+      /^restore: postgres has its \d+ tables as the manifest counted them$/m.test(run.stdout) &&
+      /^restore: Storage holds \d+ files as the manifest counted$/m.test(run.stdout) &&
+      /^recovery of \S+ done/m.test(run.stdout),
+    tail(`${run.stdout}${run.stderr}`),
+  );
+  if (run.status !== 0) {
+    fail('The recovery failed. pnpm vps:rehearse --fresh starts the rehearsal over.');
+  }
+
+  // db on them as `up -d db` starts it: the image finds a cluster and skips its init.
+  let started = Date.now();
+  const up = compose(['up', '-d', '--wait', '--wait-timeout', '180', 'db']);
+  const dbLog = logsOf(containerOf('db') ?? '');
+  checks.expect(
+    `db started on the recovered volumes in ${seconds(started)} s: "${/[^\n]*Skipping initialization/.exec(dbLog)?.[0].trim() ?? 'no "Skipping initialization"'}"`,
+    up.status === 0 && /Skipping initialization/.test(dbLog),
+    tail(`${up.stderr}\n${dbLog}`),
+  );
+  compareRestore(checks, 'the recovered db', source, fingerprint('db'));
+  const recovered = storageFiles('storage-data');
+  const types = [
+    ...new Set(files.map((line) => /user\.supabase\.content-type=(\S+)/.exec(line)?.[1])),
+  ].filter((type): type is string => type !== undefined);
+  checks.expect(
+    `storage-data recovered: ${fileTotals(recovered)}, each with the source's bytes, sha256 and user.* xattrs (content types ${types.join(', ')})`,
+    recovered.join('\n') === files.join('\n'),
+    [
+      ...files
+        .filter((line) => !recovered.includes(line))
+        .map((line) => `not as in the source: ${line}`),
+      ...recovered.filter((line) => !files.includes(line)).map((line) => `only recovered: ${line}`),
+    ].join('\n'),
+  );
+  // What app-deploy runs first: the migrations, which the restored history makes a no-op.
+  const migrate = compose(['run', '--rm', '--no-deps', '-T', 'migrate']);
+  const migrated = lines(migrate.stdout).filter((line) => line.startsWith('migrate:'));
+  checks.expect(
+    `migrate on the recovered db, as app-deploy runs it: exit ${migrate.status}, "${migrated.at(-1)}"`,
+    migrate.status === 0 && /nothing to apply/.test(migrated.join('\n')),
+    tail(`${migrate.stdout}${migrate.stderr}`),
+  );
+
+  // The rest of the stack, then the app's data through the gateway.
+  started = Date.now();
+  const services = ['auth', 'rest', 'realtime', 'storage', 'api-gw'];
+  const rest = compose(['up', '-d', '--wait', '--wait-timeout', '180', ...services]);
+  if (rest.status !== 0) fail(`The Supabase services did not turn healthy:\n${tail(rest.stderr)}`);
+  const apps = compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
+  if (apps.status !== 0) fail(`web and the scheduler did not start:\n${tail(apps.stderr)}`);
+  const [web, scheduler] = await Promise.all([
+    waitHealthy('web', 180, started),
+    waitHealthy('scheduler', 180, started),
+  ]);
+  checks.ok(
+    `${services.join(', ')}, then web and the scheduler, healthy on the recovered data (web in ${web} s, scheduler in ${scheduler} s)`,
+  );
+  const apikey = { apikey: env.SUPABASE_PUBLISHABLE_KEY };
+  const owner = await local(8300, '/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { ...apikey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'owner@local.test', password: 'Password123!' }),
+  });
+  let token = '';
+  try {
+    token = String((JSON.parse(owner.body) as Record<string, unknown>).access_token ?? '');
+  } catch {
+    // Not JSON: the check below shows the answer.
+  }
+  const slugs = await local(8300, '/rest/v1/restaurants?select=slug&order=slug', {
+    headers: { ...apikey, Authorization: `Bearer ${token}` },
+  });
+  const realtime = await local(
+    8300,
+    `/realtime/v1/websocket?apikey=${env.SUPABASE_PUBLISHABLE_KEY}&vsn=1.0.0`,
+    { headers: websocket },
+  );
+  checks.expect(
+    `through 127.0.0.1:8300: the seed's owner signs in (${token ? jwtHeader(token).alg : owner.status}), rest ${slugs.status} with the owner's restaurant, realtime ${realtime.status}`,
+    owner.status === 200 &&
+      token !== '' &&
+      jwtHeader(token).alg === 'ES256' &&
+      slugs.status === 200 &&
+      slugs.body.includes('"slug":"demo"') &&
+      realtime.status === 101,
+    `sign-in ${owner.status} ${owner.body.slice(0, 200)}; rest ${slugs.status} ${slugs.body.slice(0, 200)}`,
+  );
+  // One object of each content type, downloaded the server's way: its type, cache control and
+  // bytes. Then a new upload next to one, and its removal: the recovered files are Storage's own.
+  const objects = types.map((type) => {
+    const line = files.find((file) => file.includes(`content-type=${type}`)) ?? '';
+    const [path, bytes, sum] = line.split(' ');
+    const [, , bucket, ...name] = path.split('/');
+    return {
+      bucket,
+      name: name.slice(0, -1).join('/'),
+      bytes: Number(bytes),
+      sum,
+      type,
+      cache: /cache-control=(\S+)/.exec(line)?.[1],
+    };
+  });
+  const fetched = inWeb<
+    { status: number; type: string; cache: string; sum: string; put: number; gone: number }[]
+  >(
+    [
+      "const { createHash } = await import('node:crypto');",
+      'const out = [];',
+      'const path = (bucket, name) => [bucket, ...name.split("/")].map(encodeURIComponent).join("/");',
+      'for (const { bucket, name, type } of input) {',
+      "  const res = await fetch(gw + '/storage/v1/object/' + path(bucket, name), { headers: { apikey: key } });",
+      '  const body = Buffer.from(await res.arrayBuffer());',
+      "  const copy = path(bucket, name.replace(/[^/]*$/, 'rehearsal-recovered-' + Date.now() + '$&'));",
+      "  const put = await fetch(gw + '/storage/v1/object/' + copy, { method: 'POST', headers: { apikey: key, 'Content-Type': type }, body });",
+      "  const gone = await fetch(gw + '/storage/v1/object/' + copy, { method: 'DELETE', headers: { apikey: key } });",
+      "  out.push({ status: res.status, type: res.headers.get('content-type'), cache: res.headers.get('cache-control'), sum: createHash('sha256').update(body).digest('hex'), put: put.status, gone: gone.status });",
+      '}',
+      'console.log(JSON.stringify(out));',
+    ].join('\n'),
+    objects.map(({ bucket, name, type }) => ({ bucket, name, type })),
+  );
+  checks.expect(
+    `recovered objects through http://api-gw:8000: ${fetched.map((got) => `${got.status} ${got.type}, ${got.cache}`).join('; ')}, the source's bytes; a new upload beside each ${fetched.map((got) => got.put).join(', ')}, removed ${fetched.map((got) => got.gone).join(', ')}`,
+    fetched.length === objects.length &&
+      fetched.length > 0 &&
+      fetched.every(
+        (got, n) =>
+          got.status === 200 &&
+          got.type === objects[n].type &&
+          got.cache === objects[n].cache &&
+          got.sum === objects[n].sum &&
+          got.put === 200 &&
+          got.gone === 200,
+      ),
+    JSON.stringify(fetched),
+  );
+  vault(checks, 'db');
 }
 
 // --- vps:down (J.4 step 13) ---
