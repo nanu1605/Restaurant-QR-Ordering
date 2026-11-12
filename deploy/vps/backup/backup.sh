@@ -162,7 +162,7 @@ elif [ "$(wc -c <"$archive")" -le 1024 ]; then
   archive_problem="the settings archive ${archive##*/} is too small"
 else
   reason='the copy of the settings archive'
-  rclone copyto "$archive" "$day/config-$night.tar.age"
+  rclone copyto --no-check-dest "$archive" "$day/config-$night.tar.age"
 fi
 
 # Every part of tonight is in the bucket, and none is empty (the floors above).
@@ -184,6 +184,7 @@ done
 # can't stop the 1st's copy, nor stand in for one unless they are a whole night's. The manifest
 # goes last there too, so a copy cut short is no whole copy.
 reason='the monthly copy'
+# --no-check-dest on each copyto: rclone skips a same-size, same-mtime destination, so a look-alike planted first would stay.
 month=${stamp%-??T*}
 kept=
 if [ -z "$archive_problem" ]; then
@@ -210,9 +211,9 @@ if [ -z "$archive_problem" ]; then
   if [ -z "$whole" ]; then
     for part in $expected; do
       name=${part%:*}
-      case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac
+      case $name in manifest-*) ;; *) rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name" ;; esac
     done
-    rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"
+    rclone copyto --no-check-dest "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"
     kept=", kept in monthly/ as the month's copy"
   fi
 fi

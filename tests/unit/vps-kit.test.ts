@@ -1336,10 +1336,10 @@ const monthlyCopy = (script: string) => {
   );
   const check = script.indexOf('  if [ -z "$whole" ]; then');
   const parts = script.indexOf(
-    'case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac',
+    'case $name in manifest-*) ;; *) rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name" ;; esac',
   );
   const manifest = script.indexOf(
-    'rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"',
+    'rclone copyto --no-check-dest "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"',
   );
   const archive = script.indexOf('[ -z "$archive_problem" ] || fail "$archive_problem"');
   return [
@@ -1367,6 +1367,19 @@ const monthlyCopy = (script: string) => {
     ...(manifest < archive ? [] : ['the copy is not before the settings archive’s failure']),
   ];
 };
+
+/**
+ * Every rclone copyto writes whatever its destination holds (--no-check-dest). Without it rclone
+ * skips a destination of the same size and modification time, so a look-alike a token holder put
+ * at monthly/<name> during the 1st's run stayed as the month's copy, with no write for a lock to
+ * refuse (final verifier's finding V1).
+ */
+const copyWrites = (script: string) =>
+  script
+    .split('\n')
+    .filter((line) => /\brclone copyto\b/.test(line) && !line.trimStart().startsWith('#'))
+    .filter((line) => !/\brclone copyto --no-check-dest /.test(line))
+    .map((line) => `a copy skips an equal destination: ${line.trim()}`);
 
 /**
  * Each night's names end in its id, its stamp and 8 random hex characters from /dev/urandom, so no
@@ -1955,7 +1968,7 @@ describe('the migrate and backup images', () => {
       monthlyCopy,
       swap(
         backupSh,
-        '    rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"\n',
+        '    rclone copyto --no-check-dest "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"\n',
         '',
       ),
       'not copied last',
@@ -1969,6 +1982,24 @@ describe('the migrate and backup images', () => {
         'Z[.]txt[.]age$")) continue',
       ),
       'not looked for under a night’s id',
+    );
+  });
+
+  it('writes every copy whatever the destination holds', () => {
+    expect(copyWrites(backupSh)).toEqual([]);
+    refuses(
+      copyWrites,
+      swap(
+        backupSh,
+        'rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"',
+        'rclone copyto "$day/$name" "$remote/monthly/$name"',
+      ),
+      'skips an equal destination',
+    );
+    refuses(
+      copyWrites,
+      swap(backupSh, 'rclone copyto --no-check-dest "$archive"', 'rclone copyto "$archive"'),
+      'skips an equal destination',
     );
   });
 
