@@ -1580,12 +1580,12 @@ Acceptance:
 
 | Item | Choice |
 |---|---|
-| App hosting | Vercel (commercial use requires a paid team plan) — alternative: Node server on a VPS in Mumbai (log if chosen) |
-| Database | Supabase paid plan for production (free projects can pause when inactive and have limited backups) |
-| Region | Mumbai for Supabase; Vercel functions region closest to Mumbai |
-| Domains | `app.<domain>` for the app; QR codes use `NEXT_PUBLIC_APP_URL` — choose the final domain **before printing QR codes for real restaurants** |
+| App hosting | Vercel (commercial use requires a paid team plan) today; after the move, a Node server (the Docker image) on a shared VPS in Mumbai behind Cloudflare, chosen and logged as docs/DECISIONS.md VPS-1 (the compose kit: VPS-31 to VPS-42) |
+| Database | Hosted Supabase today, a paid plan for production before charging (free projects can pause when inactive and have limited backups); after the move, production on self-hosted Supabase (release v0.8.4) on that VPS, with nightly encrypted backups and a monthly restore test (docs/DECISIONS.md VPS-1, VPS-34, VPS-40), and staging on its hosted Supabase project |
+| Region | Mumbai for Supabase; Vercel functions region closest to Mumbai; after the move, Mumbai for both the VPS and the hosted staging project |
+| Domains | `menumesh.in` for the app (not `app.<domain>`), `api.menumesh.in` for Supabase after the move, and `staging.menumesh.in` for staging; QR codes use `NEXT_PUBLIC_APP_URL` — print QR codes for real restaurants **only once production is live on `menumesh.in`** |
 | Environments | local → staging → production, separate keys everywhere |
-| Cron | Vercel Cron (or Supabase scheduled function) → `/api/cron/daily` today; after the move to the VPS, a scheduler container calls `/api/cron/daily`, `/api/cron/digest` and, every minute, `/api/cron/jobs` (docs/DECISIONS.md VPS-1, VPS-24, VPS-29) |
+| Cron | Vercel Cron (or Supabase scheduled function) → `/api/cron/daily` today; after the move to the VPS, a scheduler container calls `/api/cron/daily`, `/api/cron/digest` and, every minute, `/api/cron/jobs` (docs/DECISIONS.md VPS-1, VPS-24, VPS-29, VPS-38) |
 | Email | Resend with verified sending domain |
 
 ---
