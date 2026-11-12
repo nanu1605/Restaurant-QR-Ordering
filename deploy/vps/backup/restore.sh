@@ -8,20 +8,23 @@
 #   restore.sh --into   disaster recovery (the recover service): restores a night into recover-db's
 #                       bare cluster on the real, empty volumes, and the Storage files into /storage
 #
-# The night is RESTORE_STAMP, as in the object names; else the newest night of daily/ with a
-# manifest, which the backup uploads after every other part, younger than 29 days and never one
-# stamped later than now. The folder a night is read from hangs on its age alone, from its stamp and
-# this clock, never on what the bucket holds: anyone holding the bucket's token can add objects
-# under new names, so a folder chosen from what is there can be steered. The bucket's prefix locks
-# (docs/RUNBOOK.md, First install) keep each object as the backup wrote it 29 days in daily/ and 365
-# in monthly/. So a night younger than 29 days is read from daily/ only, which keeps every night
-# that long; one from 29 to 365 days old from monthly/ only, which keeps each month's copy; an older
-# one from neither. Nothing falls back to the other folder, and no manifest is compared across
-# them. The owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams
-# from the bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the
-# restored data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the
-# server, writes during the backup can move a count, so differences are listed and only a missing
-# table, a table restored empty, or no Storage files where there were some fail the test.
+# The night is RESTORE_STAMP: its id, as the backup's journal line prints it and every name of the
+# night ends, its stamp and 8 random hex characters (2026-11-13T2030Z-3f9c0a1b); else the newest
+# night of daily/ with a manifest, which the backup uploads after every other part, younger than 29
+# days and never one stamped later than now. The folder a night is read from hangs on its age alone,
+# from its stamp and this clock, never on what the bucket holds: anyone holding the bucket's token
+# can add objects under new names, so a folder chosen from what is there can be steered. The
+# bucket's prefix locks (docs/RUNBOOK.md, First install) keep each object as the backup wrote it 29
+# days in daily/ and 365 in monthly/. So a night younger than 29 days is read from daily/ only,
+# which keeps every night that long; one from 29 to 365 days old from monthly/ only, which keeps
+# each month's copy; an older one from neither. Nothing falls back to the other folder, and no
+# manifest is compared across them. Each part is looked for and read by its exact name, one request
+# each, and no folder's listing is held here, as a token holder can fill a folder with names. The
+# owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams from the
+# bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the restored
+# data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the server,
+# writes during the backup can move a count, so differences are listed and only a missing table, a
+# table restored empty, or no Storage files where there were some fail the test.
 #
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
@@ -50,7 +53,7 @@ writing=
 finish() {
   status=$?
   if [ "$status" -ne 0 ] && [ -n "$writing" ]; then
-    echo "restore: the recovery of $stamp stopped after it began to write: make db-data, db-config and storage-data new (docs/RUNBOOK.md, Disaster recovery) before recovering a night"
+    echo "restore: the recovery of $night stopped after it began to write: make db-data, db-config and storage-data new (docs/RUNBOOK.md, Disaster recovery) before recovering a night"
   fi
   exec >&- 2>&-
   wait "$filter" || true
@@ -83,9 +86,16 @@ exact=${RESTORE_EXACT:-0}
 bucket="backups:$BACKUP_BUCKET"
 export RCLONE_LOG_LEVEL=ERROR
 
-# A part of the night, decrypted, on stdout, from the night's folder (below).
+# A part of the night, decrypted, on stdout, from the night's folder (below). --no-traverse: rclone
+# reads the object by its name, without listing the folder first.
 fetch() {
-  rclone cat "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
+  rclone cat --no-traverse "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
+}
+# Which of the names on stdin the night's folder holds, one a line. rclone asks for each by its
+# exact name (--no-traverse: one request each) and lists nothing, so names someone else put in the
+# folder cost nothing here (review finding F2).
+held() {
+  rclone lsf --files-only --no-traverse --files-from-raw - "$bucket/$folder/"
 }
 # Stops after a command that failed, with a line naming what it was reading, and its exit status.
 stop() {
@@ -96,8 +106,8 @@ stop() {
 sql() {
   psql -X -q -At -v ON_ERROR_STOP=1 "$@"
 }
-# Whether a folder's listing names an object: listed <listing> <name>. A match in the shell: piped
-# into grep -q under pipefail, a listing could fail when grep stopped reading at the match.
+# Whether a list of names, one a line, holds a name: listed <names> <name>. A match in the shell:
+# piped into grep -q under pipefail, a list could fail when grep stopped reading at the match.
 nl='
 '
 listed() {
@@ -134,6 +144,8 @@ compare() {
     }'
 }
 
+night=${RESTORE_STAMP-}
+
 # A night's age against the lines 29 and 365 days back, to the minute, from this clock: a night
 # stamped later than a line is younger than its days. Stamps sort as they are written, and every
 # part goes up after its night's stamp, so its folder's lock holds it at least that long.
@@ -141,53 +153,61 @@ seconds=$(date -u +%s)
 now=$(date -u -d "@$seconds" +%Y-%m-%dT%H%MZ)
 daily_lock=$(date -u -d "@$((seconds - 29 * 86400))" +%Y-%m-%dT%H%MZ)
 monthly_lock=$(date -u -d "@$((seconds - 365 * 86400))" +%Y-%m-%dT%H%MZ)
-stamp=${RESTORE_STAMP-}
-if [ -z "$stamp" ]; then
-  # The newest stamp of daily/ as backup.sh writes them, younger than 29 days and none later than
-  # now: a planted 9999-12-31 would always sort last.
-  daily=$(rclone lsf --files-only "$bucket/daily/")
-  stamps=$(printf '%s\n' "$daily" |
-    sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z\)\.txt\.age$/\1/p' | sort)
-  for later in $(printf '%s\n' "$stamps" | awk -v now="$now" '$0 > now'); do
-    echo "restore: not taking the night of $later, stamped later than now ($now)"
-  done
-  stamp=$(printf '%s\n' "$stamps" |
-    awk -v now="$now" -v lock="$daily_lock" '$0 != "" && $0 <= now && $0 > lock' | tail -n 1)
-  [ -n "$stamp" ] ||
+if [ -z "$night" ]; then
+  # The night when none is named: the newest id of a manifest in daily/ as backup.sh
+  # names one, younger than 29 days and stamped no later than now (a planted
+  # 9999-12-31T2359Z-... would always sort last), which a few lines name as not taken. Only those
+  # ids pass the pipe and only the newest is kept, so other names in daily/ cost this shell
+  # nothing; rclone still lists the folder, which naming the night avoids.
+  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |
+    sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z-[0-9a-f]\{8\}\)\.txt\.age$/\1/p' |
+    LC_ALL=C awk -v now="$now" -v lock="$daily_lock" '
+      BEGIN { newest = "" }
+      substr($0, 1, 16) > now {
+        if (++later <= 3) print "restore: not taking the night of " $0 ", stamped later than now (" now ")" > "/dev/stderr"
+        next
+      }
+      substr($0, 1, 16) > lock && $0 > newest { newest = $0 }
+      END {
+        if (later > 3) print "restore: not taking " later - 3 " more nights stamped later than now" > "/dev/stderr"
+        print newest
+      }')
+  [ -n "$night" ] ||
     die "no night of the last 29 days with a manifest in daily/ of the bucket (one of monthly/ needs RESTORE_STAMP)"
 fi
-case $stamp in
-  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z) ;;
-  *) die 'RESTORE_STAMP must be a stamp as in the object names, like 2026-11-11T2030Z' ;;
+case $night in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *) die "RESTORE_STAMP must be a night's id as the backup's journal line prints it, like 2026-11-11T2030Z-0f3c9a1b" ;;
 esac
-# The night's one folder, from its age alone: whatever the other folder holds under its name is
-# never listed or read.
+# The night's stamp, which gives its age; then its one folder, from that age alone: whatever the
+# other folder holds under its name is never looked for or read.
+stamp=${night%-*}
 under() { [ "$(awk -v stamp="$stamp" -v line="$1" 'BEGIN { print (stamp > line) }')" = 1 ]; }
 if under "$daily_lock"; then
   folder=daily
 elif under "$monthly_lock"; then
   folder=monthly
 else
-  die "the night of $stamp is 365 days old or more, so no folder is read for it: monthly/ keeps the month's copy under its lock 365 days, and past that anyone holding the bucket's token could have replaced its parts"
+  die "the night of $night is 365 days old or more, so no folder is read for it: monthly/ keeps the month's copy under its lock 365 days, and past that anyone holding the bucket's token could have replaced its parts"
 fi
-names=$(rclone lsf --files-only "$bucket/$folder/")
-if ! listed "$names" "manifest-$stamp.txt.age"; then
+names=$(printf '%s\n' "manifest-$night.txt.age" "globals-$night.sql.age" "storage-$night.tar.age" "config-$night.tar.age" | held)
+if ! listed "$names" "manifest-$night.txt.age"; then
   [ "$folder" = monthly ] ||
-    die "the night of $stamp is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there, so no backup finished it (the backup's journal names the nights that did)"
-  die "the night of $stamp is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no manifest there"
+    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there, so no backup finished it (the backup's journal names the nights that did)"
+  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no manifest there"
 fi
-for part in "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do
+for part in "globals-$night.sql.age" "storage-$night.tar.age"; do
   listed "$names" "$part" || die "$part is not in $folder/"
 done
 
-manifest=$(fetch "manifest-$stamp.txt.age") ||
-  stop "the manifest of $stamp (manifest-$stamp.txt.age in $folder/) could not be read (see above)"
-# Only the lines backup.sh writes, in printable ASCII: the night's stamp first, then plain database
+manifest=$(fetch "manifest-$night.txt.age") ||
+  stop "the manifest of $night (manifest-$night.txt.age in $folder/) could not be read (see above)"
+# Only the lines backup.sh writes, in printable ASCII: the night's id first, then plain database
 # names (they reach SQL and psql's arguments), and counts.
-problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
+problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v night="$night" '
   /[^ -~]/ { print "line " NR " holds a control character or a byte past ASCII"; exit }
   NR == 1 {
-    if ($0 != "menumesh backup " stamp) { print "its first line is not \"menumesh backup " stamp "\""; exit }
+    if ($0 != "menumesh backup " night) { print "its first line is not \"menumesh backup " night "\""; exit }
     next
   }
   $1 == "database" && NF == 2 && $2 ~ /^[a-z_][a-z0-9_]*$/ && length($2) < 64 && $2 !~ /^template[01]$/ {
@@ -198,11 +218,12 @@ problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
   $1 == "migration" && NF == 3 && ($3 ~ /^[0-9]+$/ || $3 == "none") { next }
   $1 == "storage" && NF == 3 && ($2 == "files" || $2 == "bytes") && $3 ~ /^[0-9]+$/ { next }
   { print "line " NR " is not one a backup writes"; exit }')
-[ -z "$problem" ] || die "the manifest of $stamp is not a backup's: $problem"
+[ -z "$problem" ] || die "the manifest of $night is not a backup's: $problem"
 dbs=$(printf '%s\n' "$manifest" | awk '$1 == "database" { print $2 }')
-[ -n "$dbs" ] || die "the manifest of $stamp names no database"
+[ -n "$dbs" ] || die "the manifest of $night names no database"
+dumps=$(for db in $dbs; do echo "$db-$night.dump.age"; done | held)
 for db in $dbs; do
-  listed "$names" "$db-$stamp.dump.age" || die "$db-$stamp.dump.age is not in $folder/"
+  listed "$dumps" "$db-$night.dump.age" || die "$db-$night.dump.age is not in $folder/"
 done
 
 # Only into a bare cluster (bare-postgres.sh): no roles but its superuser, no databases but
@@ -215,22 +236,22 @@ fi
 if [ "$mode" = --into ] && [ -n "$(ls -A /storage)" ]; then
   die '/storage is not empty: recover only into a new storage-data volume'
 fi
-echo "restore: the night of $stamp, from $folder/, into $PGHOST"
+echo "restore: the night of $night, from $folder/, into $PGHOST"
 
 # Storage writes only files and folders. A link or a special file would be served, once the stack
 # runs on the volume, from the storage container's own files (its environment, for one), so every
 # member of the archive is checked before anything is restored; the test counts the files from the
 # same listing. GNU tar escapes the control characters of a name: one line per member.
-listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |
+listing=$(fetch "storage-$night.tar.age" | tar --list --verbose --numeric-owner --file=- |
   LC_ALL=C awk '
     /^-/ { files++; bytes += $3; next }
     /^d/ { next }
     { others++ }
     END { printf "storage files %d\nstorage bytes %.0f\nothers %d\n", files, bytes, others }') ||
-  die "the Storage archive of $stamp (storage-$stamp.tar.age in $folder/) could not be listed (see above)"
+  die "the Storage archive of $night (storage-$night.tar.age in $folder/) could not be listed (see above)"
 others=$(printf '%s\n' "$listing" | awk '$1 == "others" { print $2 }')
 [ "$others" -eq 0 ] ||
-  die "the Storage archive of $stamp holds links or special files ($others), which Storage never writes: nothing was restored"
+  die "the Storage archive of $night holds links or special files ($others), which Storage never writes: nothing was restored"
 
 # From here on a recovery writes to the new volumes: one that stops leaves part of a night there.
 [ "$mode" != --into ] || writing=yes
@@ -244,11 +265,11 @@ key=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
 [ "${#key}" -eq 32 ] || die "no random key for psql's restricted mode"
 if ! {
   printf '%srestrict %s\n' "\\" "$key"
-  fetch "globals-$stamp.sql.age" |
+  fetch "globals-$night.sql.age" |
     sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' \
       -e "/^CREATE ROLE $PGUSER;\$/d" -e "/^ALTER ROLE $PGUSER WITH /d"
 } | sql -d template1 >/dev/null; then
-  die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"
+  die "the roles of $night (globals-$night.sql.age in $folder/) did not restore (see above)"
 fi
 
 # Each database whole, as the backup dumped it: created from template0 with its own locale and
@@ -257,8 +278,8 @@ fi
 for db in $dbs; do
   echo "restore: database $db"
   sql -d template1 -c "drop database if exists \"$db\" with (force)"
-  fetch "$db-$stamp.dump.age" | pg_restore --create --exit-on-error --dbname=template1 ||
-    stop "the database $db of $stamp ($db-$stamp.dump.age in $folder/) did not restore (see above)"
+  fetch "$db-$night.dump.age" | pg_restore --create --exit-on-error --dbname=template1 ||
+    stop "the database $db of $night ($db-$night.dump.age in $folder/) did not restore (see above)"
 done
 
 failed=0
@@ -280,12 +301,12 @@ done
 # through a link).
 if [ "$mode" = --into ]; then
   echo 'restore: Storage files into /storage'
-  fetch "storage-$stamp.tar.age" |
+  fetch "storage-$night.tar.age" |
     tar --extract --file=- --directory=/storage --no-same-owner --xattrs --xattrs-include='user.*' ||
-    stop "the Storage files of $stamp (storage-$stamp.tar.age in $folder/) did not restore (see above)"
+    stop "the Storage files of $night (storage-$night.tar.age in $folder/) did not restore (see above)"
   others=$(find /storage ! -type f ! -type d | wc -l)
   [ "$others" -eq 0 ] ||
-    die "the Storage archive of $stamp held links or special files when extracted ($((others))), which Storage never writes"
+    die "the Storage archive of $night held links or special files when extracted ($((others))), which Storage never writes"
   files=$(find /storage -type f | wc -l)
   bytes=$(find /storage -type f -exec stat -c %s {} + | awk '{ n += $1 } END { printf "%.0f", n }')
   storage="storage files $((files))
@@ -304,18 +325,18 @@ fi
 
 if [ "$mode" = --test ]; then
   # The settings archive holds every secret of the server: only the names of its files are shown.
-  listed "$names" "config-$stamp.tar.age" ||
-    die "the night of $stamp has no settings archive (config-$stamp.tar.age)"
-  files=$(fetch "config-$stamp.tar.age" | tar --list --file=-) ||
-    stop "the settings archive of $stamp (config-$stamp.tar.age in $folder/) could not be listed (see above)"
-  [ -n "$files" ] || die "the settings archive of $stamp is empty"
+  listed "$names" "config-$night.tar.age" ||
+    die "the night of $night has no settings archive (config-$night.tar.age)"
+  files=$(fetch "config-$night.tar.age" | tar --list --file=-) ||
+    stop "the settings archive of $night (config-$night.tar.age in $folder/) could not be listed (see above)"
+  [ -n "$files" ] || die "the settings archive of $night is empty"
   echo "restore: the settings archive holds $(printf '%s\n' "$files" | tr '\n' ' ')"
 fi
 
-[ "$failed" -eq 0 ] || die "the restore of $stamp does not match its manifest"
+[ "$failed" -eq 0 ] || die "the restore of $night does not match its manifest"
 # The last line names the night: whatever a night's text added above, nothing of it comes after.
 if [ "$mode" = --test ]; then
-  echo "restore test passed: the night of $stamp, from $folder/"
+  echo "restore test passed: the night of $night, from $folder/"
 else
-  echo "recovery of $stamp done: stop recover-db, then start db, auth, rest, realtime, storage, api-gw and backup (docs/RUNBOOK.md)"
+  echo "recovery of $night done: stop recover-db, then start db, auth, rest, realtime, storage, api-gw and backup (docs/RUNBOOK.md)"
 fi

@@ -3,15 +3,17 @@
 # MenuMesh's nightly backup (docs/DECISIONS.md VPS-40), run by the image's crond at 20:30 UTC (02:00
 # IST) in the backup service. Each part streams through age, to the owner's key in
 # BACKUP_AGE_RECIPIENT, into the bucket (the rclone remote "backups", from RCLONE_CONFIG_BACKUPS_*),
-# so nothing is written in the container, decrypted or not. Under daily/ in BACKUP_BUCKET:
+# so nothing is written in the container, decrypted or not. Under daily/ in BACKUP_BUCKET, every
+# name ends in the night's id, <night>: its stamp and 8 random hex characters, such as
+# 2026-11-13T2030Z-3f9c0a1b.
 #
-#   globals-<stamp>.sql.age    the roles, with their passwords (pg_dumpall --globals-only)
-#   <db>-<stamp>.dump.age      each database in full, owners and grants included (pg_dump -Fc)
-#   storage-<stamp>.tar.age    the Storage volume, with the xattrs that hold each file's type
-#   manifest-<stamp>.txt.age   row counts, the newest migration and the files, which a restore
+#   globals-<night>.sql.age    the roles, with their passwords (pg_dumpall --globals-only)
+#   <db>-<night>.dump.age      each database in full, owners and grants included (pg_dump -Fc)
+#   storage-<night>.tar.age    the Storage volume, with the xattrs that hold each file's type
+#   manifest-<night>.txt.age   row counts, the newest migration and the files, which a restore
 #                              compares; uploaded after the parts above, so a manifest means a
 #                              whole night
-#   config-<stamp>.tar.age     the host's newest settings archive, already encrypted by the host
+#   config-<night>.tar.age     the host's newest settings archive, already encrypted by the host
 #
 # A whole night stamped the 1st (UTC) is also copied to monthly/, or the next whole night when the
 # 1st's wasn't; daily copies go after 30 days and monthly ones after 366. A missing or stale
@@ -21,11 +23,12 @@
 set -eu -o pipefail
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
+night=$stamp
 reason='the settings of the job'
 finish() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    message="[menumesh] backup failed (exit $status) at $stamp: $reason"
+    message="[menumesh] backup failed (exit $status) at $night: $reason"
     echo "$message" >&2
     notify.sh alert "$message"
   fi
@@ -35,6 +38,15 @@ fail() {
   reason=$1
   exit 1
 }
+
+# The night's id, in every name it writes: nobody can know it before this run, so nobody can put
+# an object under one of tonight's names ahead of it, where the bucket's locks would refuse the
+# night's own uploads (review finding F1).
+hex=$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')
+case $hex in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) night=$stamp-$hex ;;
+  *) fail "no random part for the night's names" ;;
+esac
 
 for name in PGHOST PGUSER PGPASSWORD BACKUP_AGE_RECIPIENT BACKUP_BUCKET RCLONE_CONFIG_BACKUPS_TYPE; do
   eval "set -- \"\${$name-}\""
@@ -58,6 +70,12 @@ rclone lsf --dirs-only "$remote/" >/dev/null
 put() {
   age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "$day/$1"
 }
+# "<bytes> <name>" for each of the names on stdin that a folder holds: held <folder>. rclone asks
+# for each by its exact name (--no-traverse: one request each) and lists nothing, so names someone
+# else put in the folder cost nothing here.
+held() {
+  rclone lsf --files-only --no-traverse --format sp --separator ' ' --files-from-raw - "$1/"
+}
 
 reason='the list of databases'
 dbs=$(psql -X -At -v ON_ERROR_STOP=1 -d postgres -c \
@@ -67,18 +85,35 @@ for db in $dbs; do
   case $db in *[!a-z0-9_]*) fail "the database name $db is not lower-case letters, digits and _" ;; esac
 done
 
+# Tonight's parts, each with the size it must pass: age's file of empty input is about 200 bytes.
+# A dump of even an empty database is a few KB and a tar at least 10 KB, so those must pass 1 KB;
+# the roles and the manifest, short texts, must pass 256 bytes. The settings archive joins them
+# once it is checked (below).
+expected="globals-$night.sql.age:256 storage-$night.tar.age:1024 manifest-$night.txt.age:256"
+for db in $dbs; do expected="$expected $db-$night.dump.age:1024"; done
+
+# None of tonight's names may be in either folder before the first upload: nobody could know them,
+# so one that is there means someone else wrote to the bucket, and the night stops here.
+reason="the check of tonight's names"
+for folder in daily monthly; do
+  there=$(for part in $expected "config-$night.tar.age:1024"; do echo "${part%:*}"; done |
+    held "$remote/$folder" | awk '{ printf "%s%s", sep, $2; sep = " " }')
+  [ -z "$there" ] ||
+    fail "someone else wrote to the bucket: $folder/ holds $there before tonight's first upload"
+done
+
 reason='the roles'
-pg_dumpall --globals-only | put "globals-$stamp.sql.age"
+pg_dumpall --globals-only | put "globals-$night.sql.age"
 for db in $dbs; do
   reason="the dump of $db"
-  pg_dump --format=custom --dbname="$db" | put "$db-$stamp.dump.age"
+  pg_dump --format=custom --dbname="$db" | put "$db-$night.dump.age"
 done
 
 # What a restore compares (counts.sql): exact row counts of the app's, Auth's and Storage's
 # tables, the newest migration, and the Storage files, counted before the archive below, which so
 # holds at least the files the dumped rows name.
 reason='the manifest'
-manifest="menumesh backup $stamp"
+manifest="menumesh backup $night"
 for db in $dbs; do
   counts=$(psql -X -At -v ON_ERROR_STOP=1 -d "$db" -f /usr/local/share/menumesh/counts.sql |
     awk -v db="$db" '{ $1 = $1 " " db; print }')
@@ -106,10 +141,10 @@ storage_tar() {
   return "$rc"
 }
 reason='the Storage archive'
-storage_tar | put "storage-$stamp.tar.age"
+storage_tar | put "storage-$night.tar.age"
 
 reason='the manifest'
-printf '%s\n' "$manifest" | put "manifest-$stamp.txt.age"
+printf '%s\n' "$manifest" | put "manifest-$night.txt.age"
 
 # The host's settings archive (app-config-archive, 20:20 UTC): the newest name sorts last. One more
 # than two hours old means the host's timer stopped; it isn't copied, and the run fails at the end.
@@ -126,17 +161,13 @@ elif [ "$(wc -c <"$archive")" -le 1024 ]; then
   archive_problem="the settings archive ${archive##*/} is too small"
 else
   reason='the copy of the settings archive'
-  rclone copyto "$archive" "$day/config-$stamp.tar.age"
+  rclone copyto "$archive" "$day/config-$night.tar.age"
 fi
 
-# Every part of tonight is in the bucket, and none is empty: age's file of empty input is about 200
-# bytes. A dump of even an empty database is a few KB and a tar at least 10 KB, so those must pass
-# 1 KB; the roles and the manifest, short texts, must pass 256 bytes.
+# Every part of tonight is in the bucket, and none is empty (the floors above).
 reason='the check of the uploads'
-listing=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$stamp.*" "$day/")
-expected="globals-$stamp.sql.age:256 storage-$stamp.tar.age:1024 manifest-$stamp.txt.age:256"
-for db in $dbs; do expected="$expected $db-$stamp.dump.age:1024"; done
-[ -n "$archive_problem" ] || expected="$expected config-$stamp.tar.age:1024"
+[ -n "$archive_problem" ] || expected="$expected config-$night.tar.age:1024"
+listing=$(for part in $expected; do echo "${part%:*}"; done | held "$day")
 for part in $expected; do
   name=${part%:*}
   size=$(printf '%s\n' "$listing" | awk -v name="$name" '$2 == name { print $1 }')
@@ -165,8 +196,8 @@ if [ -z "$archive_problem" ]; then
           END {
             n = split(ENVIRON["DBS"], db, "\n")
             for (name in size) {
-              if (name !~ ("^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z[.]txt[.]age$")) continue
-              s = substr(name, 10, 16)
+              if (name !~ ("^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][.]txt[.]age$")) continue
+              s = substr(name, 10, 25)
               ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&
                 big("storage-" s ".tar.age", 1024) && big("config-" s ".tar.age", 1024)
               for (i = 1; i <= n; i++) if (!big(db[i] "-" s ".dump.age", 1024)) ok = 0
@@ -180,7 +211,7 @@ if [ -z "$archive_problem" ]; then
       name=${part%:*}
       case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac
     done
-    rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"
+    rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"
     kept=", kept in monthly/ as the month's copy"
   fi
 fi
@@ -198,6 +229,6 @@ rclone delete --min-age 366d "$remote/monthly/"
 [ -z "$archive_problem" ] || fail "$archive_problem"
 
 summary=$(printf '%s\n' "$listing" | awk '{ n++; total += $1 } END { printf "%d parts, %.0f bytes", n, total }')
-echo "backup $stamp: $summary$kept"
+echo "backup $night: $summary$kept"
 # Last, so that a ping means every step above worked.
 notify.sh beat

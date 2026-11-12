@@ -1309,10 +1309,10 @@ const backupRules = (dockerfile: string, script: string) => [
     ? []
     : ['no size check of the archive']),
   ...(script.includes(
-    'expected="globals-$stamp.sql.age:256 storage-$stamp.tar.age:1024 manifest-$stamp.txt.age:256"',
+    'expected="globals-$night.sql.age:256 storage-$night.tar.age:1024 manifest-$night.txt.age:256"',
   ) &&
-  script.includes('expected="$expected $db-$stamp.dump.age:1024"') &&
-  script.includes('expected="$expected config-$stamp.tar.age:1024"')
+  script.includes('expected="$expected $db-$night.dump.age:1024"') &&
+  script.includes('expected="$expected config-$night.tar.age:1024"')
     ? []
     : ['the uploads’ size floors changed']),
 ];
@@ -1339,7 +1339,7 @@ const monthlyCopy = (script: string) => {
     'case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac',
   );
   const manifest = script.indexOf(
-    'rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"',
+    'rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"',
   );
   const archive = script.indexOf('[ -z "$archive_problem" ] || fail "$archive_problem"');
   return [
@@ -1354,15 +1354,54 @@ const monthlyCopy = (script: string) => {
       ? []
       : ['a 1st that failed leaves the month without a copy']),
     ...(script.includes(
-      String.raw`"^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z[.]txt[.]age$"`,
-    ) &&
-    script.includes('ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&') &&
+      String.raw`"^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][.]txt[.]age$"`,
+    ) && script.includes('s = substr(name, 10, 25)')
+      ? []
+      : ['a whole copy in monthly/ is not looked for under a night’s id']),
+    ...(script.includes('ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&') &&
     script.includes('big("storage-" s ".tar.age", 1024) && big("config-" s ".tar.age", 1024)') &&
     script.includes('if (!big(db[i] "-" s ".dump.age", 1024)) ok = 0')
       ? []
       : ['a copy in monthly/ counts as whole without every part past its floor']),
     ...(parts > check && manifest > parts ? [] : ['the manifest is not copied last']),
     ...(manifest < archive ? [] : ['the copy is not before the settings archive’s failure']),
+  ];
+};
+
+/**
+ * Each night's names end in its id, its stamp and 8 random hex characters from /dev/urandom, so no
+ * name of a night to come can be put in the bucket ahead of it, where the bucket's locks would
+ * refuse the night's own uploads for 29 days (review finding F1, VPS-40). The manifest's first
+ * line, the monthly copy, the journal line and the failure line carry the id, and none of tonight's
+ * names may be in either folder before the first upload: nobody could know them, so one that is
+ * there means someone else wrote to the bucket. The lookups ask for each name, listing nothing.
+ */
+const nightIds = (script: string) => {
+  const hex = script.indexOf(String.raw`hex=$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')`);
+  const id = script.indexOf(
+    '  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) night=$stamp-$hex ;;',
+  );
+  const check = script.indexOf('for folder in daily monthly; do');
+  const refused = script.indexOf(
+    `fail "someone else wrote to the bucket: $folder/ holds $there before tonight's first upload"`,
+  );
+  const first = script.indexOf('pg_dumpall --globals-only | put');
+  return [
+    ...(hex >= 0 && id > hex ? [] : ['a night’s names can be known before it runs']),
+    ...(/-\$stamp\./.test(script) ? ['a name ends in the stamp alone'] : []),
+    ...(script.includes('manifest="menumesh backup $night"') &&
+    script.includes('"backup $night: $summary$kept"') &&
+    script.includes('message="[menumesh] backup failed (exit $status) at $night: $reason"')
+      ? []
+      : ['the manifest’s first line or a journal line doesn’t name the night’s id']),
+    ...(check > id && refused > check && refused < first
+      ? []
+      : ['tonight’s names are not looked for in both folders before the first upload']),
+    ...(script.includes(
+      `rclone lsf --files-only --no-traverse --format sp --separator ' ' --files-from-raw - "$1/"`,
+    )
+      ? []
+      : ['tonight’s names are looked for by a listing of the folder']),
   ];
 };
 
@@ -1438,15 +1477,15 @@ const bareSettings = (composeText: string, bare: string) => {
 const restoreTrust = (script: string) => {
   const key = script.indexOf(String.raw`key=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')`);
   const restrict = script.indexOf(String.raw`printf '%srestrict %s\n' "\\" "$key"`);
-  const roles = script.indexOf('fetch "globals-$stamp.sql.age" |');
+  const roles = script.indexOf('fetch "globals-$night.sql.age" |');
   const piped = script.indexOf('} | sql -d template1 >/dev/null; then');
   return [
     ...(key >= 0 ? [] : ['no random key for the restricted mode']),
     ...(restrict > key && key >= 0 && restrict < roles && roles < piped
       ? []
       : ['the roles reach psql without \\restrict first']),
-    ...(script.split('fetch "globals-$stamp.sql.age"').length === 2 &&
-    script.includes('for part in "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do')
+    ...(script.split('fetch "globals-$night.sql.age"').length === 2 &&
+    script.includes('for part in "globals-$night.sql.age" "storage-$night.tar.age"; do')
       ? []
       : ['the roles file is read more than once, or not checked']),
     ...(script.includes(String.raw`sed -e '/^\\restrict /d' -e '/^\\unrestrict /d'`)
@@ -1458,9 +1497,8 @@ const restoreTrust = (script: string) => {
     script.includes('[ -z "$problem" ] || die')
       ? []
       : ['the manifest is not checked line by line']),
-    ...(script.includes(
-      `awk -v now="$now" -v lock="$daily_lock" '$0 != "" && $0 <= now && $0 > lock'`,
-    )
+    ...(script.includes('      substr($0, 1, 16) > now {\n') &&
+    script.includes('      substr($0, 1, 16) > lock && $0 > newest { newest = $0 }\n')
       ? []
       : ['a night stamped later than now can be taken unasked']),
     ...(script.includes('find /storage ! -type f ! -type d')
@@ -1481,9 +1519,11 @@ const restoreTrust = (script: string) => {
  * Every part comes from the night's folder, and the messages name it.
  */
 const restoreFolder = (script: string) => {
-  const unasked = script.indexOf('if [ -z "$stamp" ]; then');
-  const daily = script.indexOf('  daily=$(rclone lsf --files-only "$bucket/daily/")');
-  const checked = script.indexOf('case $stamp in');
+  const unasked = script.indexOf('if [ -z "$night" ]; then');
+  const daily = script.indexOf(
+    `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+  );
+  const checked = script.indexOf('case $night in');
   const choice = script.indexOf(
     [
       'if under "$daily_lock"; then',
@@ -1491,19 +1531,21 @@ const restoreFolder = (script: string) => {
       'elif under "$monthly_lock"; then',
       '  folder=monthly',
       'else',
-      '  die "the night of $stamp is 365 days old or more, so no folder is read for it:',
+      '  die "the night of $night is 365 days old or more, so no folder is read for it:',
     ].join('\n'),
   );
-  const listing = script.indexOf('\nnames=$(rclone lsf --files-only "$bucket/$folder/")\n');
+  const listing = script.indexOf(
+    `\nnames=$(printf '%s\\n' "manifest-$night.txt.age" "globals-$night.sql.age" "storage-$night.tar.age" "config-$night.tar.age" | held)\n`,
+  );
   const young = script.indexOf(
     [
-      'if ! listed "$names" "manifest-$stamp.txt.age"; then',
+      'if ! listed "$names" "manifest-$night.txt.age"; then',
       '  [ "$folder" = monthly ] ||',
-      '    die "the night of $stamp is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there',
+      '    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there',
     ].join('\n'),
   );
   const old = script.indexOf(
-    `  die "the night of $stamp is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night`,
+    `  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night`,
   );
   const set = (name: string) =>
     code(script).filter((line) => line.trimStart().startsWith(`${name}=`)).length;
@@ -1526,25 +1568,87 @@ const restoreFolder = (script: string) => {
       : ['the folder is not chosen by the night’s age alone']),
     ...(listing > choice && choice >= 0 && set('names') === 1 && set('folder') === 2
       ? []
-      : ['a folder is listed before the age chose it, or the night falls back to the other']),
+      : ['a folder is looked in before the age chose it, or the night falls back to the other']),
     ...(named.join() === 'daily/' && daily > unasked && unasked >= 0 && daily < checked
       ? []
       : ['a folder is read by its name, not as the night’s age chose it']),
-    ...(script.includes(
-      `awk -v now="$now" -v lock="$daily_lock" '$0 != "" && $0 <= now && $0 > lock'`,
-    )
+    ...(script.includes('      substr($0, 1, 16) > lock && $0 > newest { newest = $0 }\n')
       ? []
       : ['unasked, a night 29 days old or more can be taken']),
     ...(young > listing && old > young
       ? []
       : ['a night missing from its folder is refused without the rule that applied']),
-    ...(script.split('fetch "manifest-$stamp.txt.age"').length === 2
+    ...(script.split('fetch "manifest-$night.txt.age"').length === 2
       ? []
       : ['the night’s manifest is read twice, as to compare it across folders']),
-    ...(script.includes('rclone cat "$bucket/$folder/$1"')
+    ...(script.includes('rclone cat --no-traverse "$bucket/$folder/$1"')
       ? []
       : ['the parts are not read from the night’s folder']),
     ...(script.includes('is not in daily/') ? ['a message names daily/ for any night'] : []),
+  ];
+};
+
+/**
+ * RESTORE_STAMP is a night's id as the backup's journal line prints it, its stamp and 8 hex
+ * characters, checked whole before anything reads the bucket; the night's age comes from its stamp
+ * part. Unasked, only manifests named as backup.sh names one count (review finding F1).
+ */
+const restoreIds = (script: string) => {
+  const unasked = script.indexOf('if [ -z "$night" ]; then');
+  const shape = script.indexOf(
+    '  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;',
+  );
+  const stamp = script.indexOf('\nstamp=${night%-*}\n');
+  const choice = script.indexOf('if under "$daily_lock"; then');
+  return [
+    ...(script.split('${RESTORE_STAMP-}').length === 2 && shape > unasked && unasked >= 0
+      ? []
+      : ['RESTORE_STAMP is not checked whole as a night’s id']),
+    ...(stamp > shape && stamp < choice ? [] : ['the night’s age is not taken from its stamp']),
+    ...(script.includes(
+      String.raw`sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z-[0-9a-f]\{8\}\)\.txt\.age$/\1/p'`,
+    )
+      ? []
+      : ['unasked, a manifest not named as backup.sh names one counts']),
+    ...(script.includes('if ($0 != "menumesh backup " night) {')
+      ? []
+      : ['the manifest’s first line is not checked against the night’s id']),
+  ];
+};
+
+/**
+ * A restore looks for each part by its exact name and reads it by that name (rclone's
+ * --no-traverse: one request each), and never holds a folder's listing: a token holder can fill a
+ * folder with names, and a listing held in the shell got every restore killed in its 384m (review
+ * finding F2). Unasked, the restore test's one listing goes through a pipe that keeps only the
+ * newest manifest id; rclone still lists the folder, which naming the night avoids.
+ */
+const restoreLookups = (script: string) => {
+  const calls = code(script).filter((line) => /\brclone /.test(line));
+  const unasked = script.indexOf(
+    `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+  );
+  const pipe = script.slice(unasked, script.indexOf("\n      }')\n", unasked));
+  return [
+    ...(script.includes(
+      'held() {\n  rclone lsf --files-only --no-traverse --files-from-raw - "$bucket/$folder/"\n}',
+    )
+      ? []
+      : ['a part is looked for in a listing of its folder']),
+    ...(script.includes(
+      'fetch() {\n  rclone cat --no-traverse "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"\n}',
+    )
+      ? []
+      : ['a part is read after a listing of its folder']),
+    ...(/^\s*\w+=\$\(rclone (lsf|ls|lsjson)\b[^|]*$/m.test(script)
+      ? ['a folder’s listing is held in the shell']
+      : []),
+    ...(unasked >= 0 && !/\bsort\b/.test(pipe) && pipe.includes('$0 > newest { newest = $0 }')
+      ? []
+      : ['unasked, more than the newest manifest id is kept']),
+    ...(calls.length === 3
+      ? []
+      : [`${calls.length} rclone commands, not the 3 of lookups and reads`]),
   ];
 };
 
@@ -1574,7 +1678,7 @@ const restoreFilter = (script: string) => {
       ? []
       : ['the script can end before the filter passed everything on']),
     ...(script.includes('"$0"') ? ['the script runs itself again, under another process 1'] : []),
-    ...(script.includes('echo "restore test passed: the night of $stamp, from $folder/"')
+    ...(script.includes('echo "restore test passed: the night of $night, from $folder/"')
       ? []
       : ['the test’s last line doesn’t name the night']),
   ];
@@ -1587,7 +1691,7 @@ const restoreFilter = (script: string) => {
  */
 const rolesFailure = (script: string) => [
   ...(script.includes(
-    'die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"',
+    'die "the roles of $night (globals-$night.sql.age in $folder/) did not restore (see above)"',
   )
     ? []
     : ['no plain message for a roles step that failed']),
@@ -1627,10 +1731,10 @@ const partFailures = (script: string) => {
  */
 const storageFirst = (script: string) => {
   const listing = script.indexOf(
-    'listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |',
+    'listing=$(fetch "storage-$night.tar.age" | tar --list --verbose --numeric-owner --file=- |',
   );
   const refused = script.indexOf(
-    '[ "$others" -eq 0 ] ||\n  die "the Storage archive of $stamp holds',
+    '[ "$others" -eq 0 ] ||\n  die "the Storage archive of $night holds',
   );
   const writing = script.indexOf('[ "$mode" != --into ] || writing=yes');
   const roles = script.indexOf("echo 'restore: roles'");
@@ -1769,10 +1873,73 @@ describe('the migrate and backup images', () => {
       monthlyCopy,
       swap(
         backupSh,
-        '    rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"\n',
+        '    rclone copyto "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"\n',
         '',
       ),
       'not copied last',
+    );
+    // As before review finding F1: a whole copy looked for under the stamp alone.
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        'Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][.]txt[.]age$")) continue',
+        'Z[.]txt[.]age$")) continue',
+      ),
+      'not looked for under a night’s id',
+    );
+  });
+
+  it('names each night by its stamp and a random part, and stops if tonight’s names are there', () => {
+    expect(nightIds(backupSh)).toEqual([]);
+    // As before review finding F1: names anyone could write ahead of the night.
+    refuses(
+      nightIds,
+      swap(backupSh, ') night=$stamp-$hex ;;', ') night=$stamp ;;'),
+      'can be known before it runs',
+    );
+    refuses(
+      nightIds,
+      swap(backupSh, String.raw`hex=$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')`, 'hex=0badc0de'),
+      'can be known before it runs',
+    );
+    refuses(
+      nightIds,
+      swap(backupSh, 'put "globals-$night.sql.age"', 'put "globals-$stamp.sql.age"'),
+      'ends in the stamp alone',
+    );
+    refuses(
+      nightIds,
+      swap(backupSh, 'manifest="menumesh backup $night"', 'manifest="menumesh backup $stamp"'),
+      'doesn’t name the night’s id',
+    );
+    refuses(
+      nightIds,
+      swap(backupSh, 'for folder in daily monthly; do', 'for folder in daily; do'),
+      'not looked for in both folders',
+    );
+    // The check after the first upload: a planted name would stop the night halfway.
+    refuses(
+      nightIds,
+      swap(
+        swap(
+          backupSh,
+          'reason=\'the roles\'\npg_dumpall --globals-only | put "globals-$night.sql.age"\n',
+          '',
+        ),
+        '# None of tonight',
+        'reason=\'the roles\'\npg_dumpall --globals-only | put "globals-$night.sql.age"\n# None of tonight',
+      ),
+      'not looked for in both folders',
+    );
+    refuses(
+      nightIds,
+      swap(
+        backupSh,
+        'rclone lsf --files-only --no-traverse --format sp',
+        'rclone lsf --files-only --format sp',
+      ),
+      'by a listing of the folder',
     );
   });
 
@@ -1872,11 +2039,7 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       restoreTrust,
-      swap(
-        restoreSh,
-        `awk -v now="$now" -v lock="$daily_lock" '$0 != "" && $0 <= now && $0 > lock'`,
-        `awk '$0 != ""'`,
-      ),
+      swap(restoreSh, '      substr($0, 1, 16) > now {\n', '      substr($0, 1, 16) > "9999" {\n'),
       'later than now',
     );
     refuses(
@@ -1913,7 +2076,7 @@ describe('the migrate and backup images', () => {
         '# Only the lines backup.sh writes, in printable ASCII:',
         [
           'folder=monthly',
-          'copy=$(fetch "manifest-$stamp.txt.age")',
+          'copy=$(fetch "manifest-$night.txt.age")',
           'folder=daily',
           '# Only the lines backup.sh writes, in printable ASCII:',
         ].join('\n'),
@@ -1936,13 +2099,13 @@ describe('the migrate and backup images', () => {
       restoreFolder,
       swap(
         restoreSh,
-        'if ! listed "$names" "manifest-$stamp.txt.age"; then\n',
+        'if ! listed "$names" "manifest-$night.txt.age"; then\n',
         [
-          'if [ "$folder" = daily ] && ! listed "$names" "manifest-$stamp.txt.age"; then',
+          'if [ "$folder" = daily ] && ! listed "$names" "manifest-$night.txt.age"; then',
           '  folder=monthly',
-          '  names=$(rclone lsf --files-only "$bucket/$folder/")',
+          '  names=$(echo "manifest-$night.txt.age" | held)',
           'fi',
-          'if ! listed "$names" "manifest-$stamp.txt.age"; then',
+          'if ! listed "$names" "manifest-$night.txt.age"; then',
           '',
         ].join('\n'),
       ),
@@ -1954,7 +2117,7 @@ describe('the migrate and backup images', () => {
       swap(
         restoreSh,
         'if under "$daily_lock"; then\n  folder=daily\nelif under "$monthly_lock"; then',
-        'if listed "$(rclone lsf --files-only "$bucket/daily/")" "manifest-$stamp.txt.age"; then\n  folder=daily\nelif true; then',
+        'if listed "$(rclone lsf --files-only "$bucket/daily/")" "manifest-$night.txt.age"; then\n  folder=daily\nelif true; then',
       ),
       'not chosen by the night’s age alone',
     );
@@ -1971,18 +2134,105 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       restoreFolder,
-      swap(restoreSh, '$0 <= now && $0 > lock', '$0 <= now && $0 >= lock'),
+      swap(restoreSh, 'substr($0, 1, 16) > lock && $0', 'substr($0, 1, 16) >= lock && $0'),
       'unasked, a night 29 days old',
     );
     refuses(
       restoreFolder,
-      swap(restoreSh, 'rclone cat "$bucket/$folder/$1"', 'rclone cat "$bucket/daily/$1"'),
+      swap(
+        restoreSh,
+        'rclone cat --no-traverse "$bucket/$folder/$1"',
+        'rclone cat --no-traverse "$bucket/daily/$1"',
+      ),
       'night’s folder',
     );
     refuses(
       restoreFolder,
       swap(restoreSh, '"$part is not in $folder/"', '"$part is not in daily/"'),
       'names daily/',
+    );
+  });
+
+  it('takes RESTORE_STAMP as a whole night id, and the night’s age from its stamp', () => {
+    expect(restoreIds(restoreSh)).toEqual([]);
+    // As before review finding F1: a stamp alone named a night.
+    refuses(
+      restoreIds,
+      swap(
+        restoreSh,
+        '  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;',
+        '  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z*) ;;',
+      ),
+      'not checked whole',
+    );
+    refuses(
+      restoreIds,
+      swap(restoreSh, '\nstamp=${night%-*}\n', '\nstamp=$night\n'),
+      'age is not taken',
+    );
+    refuses(
+      restoreIds,
+      swap(
+        restoreSh,
+        String.raw`T[0-9]\{4\}Z-[0-9a-f]\{8\}\)\.txt`,
+        String.raw`T[0-9]\{4\}Z.*\)\.txt`,
+      ),
+      'not named as backup.sh names one',
+    );
+    refuses(
+      restoreIds,
+      swap(restoreSh, 'if ($0 != "menumesh backup " night) {', 'if ($0 !~ "^menumesh backup ") {'),
+      'first line is not checked',
+    );
+  });
+
+  it('looks for and reads each part by its name, and holds no folder’s listing', () => {
+    expect(restoreLookups(restoreSh)).toEqual([]);
+    // As before review finding F2: the folder's whole listing in the shell, and read through.
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        `names=$(printf '%s\\n' "manifest-$night.txt.age" "globals-$night.sql.age" "storage-$night.tar.age" "config-$night.tar.age" | held)`,
+        'names=$(rclone lsf --files-only "$bucket/$folder/")',
+      ),
+      'listing is held in the shell',
+    );
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        'rclone cat --no-traverse "$bucket/$folder/$1"',
+        'rclone cat "$bucket/$folder/$1"',
+      ),
+      'read after a listing',
+    );
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        'rclone lsf --files-only --no-traverse --files-from-raw - "$bucket/$folder/"',
+        'rclone lsf --files-only --files-from-raw - "$bucket/$folder/"',
+      ),
+      'looked for in a listing',
+    );
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+        `  daily=$(rclone lsf --files-only "$bucket/daily/")\n  night=$(printf '%s\\n' "$daily" |`,
+      ),
+      'listing is held in the shell',
+    );
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        '      substr($0, 1, 16) > lock && $0 > newest { newest = $0 }\n',
+        '      substr($0, 1, 16) > lock\n',
+      ),
+      'more than the newest manifest id is kept',
     );
   });
 
@@ -2015,7 +2265,7 @@ describe('the migrate and backup images', () => {
       restoreFilter,
       swap(
         restoreSh,
-        'echo "restore test passed: the night of $stamp, from $folder/"',
+        'echo "restore test passed: the night of $night, from $folder/"',
         "echo 'restore test passed'",
       ),
       'doesn’t name the night',
@@ -2029,8 +2279,8 @@ describe('the migrate and backup images', () => {
       rolesFailure,
       swap(
         restoreSh,
-        'die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"',
-        `die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"`,
+        'die "the roles of $night (globals-$night.sql.age in $folder/) did not restore (see above)"',
+        `die "the roles of $night did not restore (psql says why above): a backup's roles file holds SQL and no psql command"`,
       ),
       'blames psql',
     );
@@ -2043,19 +2293,19 @@ describe('the migrate and backup images', () => {
       partFailures,
       swap(
         restoreSh,
-        'manifest=$(fetch "manifest-$stamp.txt.age") ||\n  stop "the manifest of $stamp (manifest-$stamp.txt.age in $folder/) could not be read (see above)"\n',
-        'manifest=$(fetch "manifest-$stamp.txt.age")\n',
+        'manifest=$(fetch "manifest-$night.txt.age") ||\n  stop "the manifest of $night (manifest-$night.txt.age in $folder/) could not be read (see above)"\n',
+        'manifest=$(fetch "manifest-$night.txt.age")\n',
       ),
-      'manifest-$stamp.txt.age doesn’t name it',
+      'manifest-$night.txt.age doesn’t name it',
     );
     refuses(
       partFailures,
       swap(
         restoreSh,
-        ' ||\n    stop "the database $db of $stamp ($db-$stamp.dump.age in $folder/) did not restore (see above)"',
+        ' ||\n    stop "the database $db of $night ($db-$night.dump.age in $folder/) did not restore (see above)"',
         '',
       ),
-      '$db-$stamp.dump.age doesn’t name it',
+      '$db-$night.dump.age doesn’t name it',
     );
     refuses(
       partFailures,
@@ -2075,7 +2325,7 @@ describe('the migrate and backup images', () => {
       storageFirst,
       swap(
         restoreSh,
-        'listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |',
+        'listing=$(fetch "storage-$night.tar.age" | tar --list --verbose --numeric-owner --file=- |',
         'listing=$(printf "" |',
       ),
       'only after the databases',
