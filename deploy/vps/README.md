@@ -87,10 +87,11 @@ gitignored, with the throwaway values of `pnpm vps:secrets --rehearsal`) and
 its name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300),
 gives Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and
 sends every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the
-nightly backup into that S3 (with the month's copy in `monthly/`), the monthly restore test, planted
-nights the restore must refuse, a restore test of a night only `monthly/` still holds, and then the
-disaster recovery of that night: the rehearsal's own database and Storage volumes are made new and
-filled from the backup, and the stack starts on them. `pnpm vps:down` removes the project (its images too with `--images`), and
+nightly backup into that S3 (a night with a stale settings archive, then the month's copy in
+`monthly/`), the monthly restore test, planted nights the restore must refuse or not read, a
+restore test of a night only `monthly/` still holds, and then the disaster recovery of that night:
+the rehearsal's own database and Storage volumes are made new and filled from the backup, and the
+stack starts on them. `pnpm vps:down` removes the project (its images too with `--images`), and
 nothing else.
 
 ## Where the borrowed files come from

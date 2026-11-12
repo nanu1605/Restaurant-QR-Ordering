@@ -23,9 +23,11 @@
  *                    A rerun reuses the stack, the secrets and an image nothing changed for;
  *                    --fresh starts from new secrets and empty volumes, --rebuild builds every image.
  *   pnpm vps:backup-test
- *                    the nightly backup into a local S3, with the month's copy in monthly/; the
- *                    monthly restore test; planted nights the restore must refuse; and the disaster
- *                    recovery, from the monthly copy, on the rehearsal's own volumes.
+ *                    the nightly backup into a local S3: a night with a stale settings archive, then
+ *                    the month's copy in monthly/ past planted names, no second copy, and a 1st's
+ *                    copy; the monthly restore test; planted nights the restore must refuse or not
+ *                    read; and the disaster recovery, from the monthly copy, on the rehearsal's own
+ *                    volumes.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
@@ -2902,20 +2904,23 @@ const bucketNames = (folder: string) => {
 /**
  * A planted night under daily/, as whoever holds the bucket's token and the public key could
  * upload one (review finding S1): a manifest that passes restore.sh's rules, the given roles file,
- * and stand-ins for the dump and the Storage archive, each encrypted to the rehearsal's key.
+ * a stand-in for the dump, and a Storage archive of one file, or of one file and a link to
+ * /proc/self/environ (review finding N6), each encrypted to the rehearsal's key.
  */
-function plantNight(stamp: string, roles: string) {
+function plantNight(stamp: string, roles: string, storage: 'file' | 'link' = 'file') {
   // Encrypts stdin to the rehearsal's key into daily/<name>.
   const upload = (name: string) =>
     `age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "backups:$BACKUP_BUCKET/daily/${name}"`;
-  const manifest = `menumesh backup ${stamp}\\ndatabase postgres\\nstorage files 0\\nstorage bytes 0\\n`;
+  const manifest = `menumesh backup ${stamp}\\ndatabase postgres\\nstorage files 1\\nstorage bytes 8\\n`;
   const run = inBackup(
     [
       'set -e',
       `printf '${manifest}' | ${upload(`manifest-${stamp}.txt.age`)}`,
       upload(`globals-${stamp}.sql.age`),
       `printf 'planted\\n' | ${upload(`postgres-${stamp}.dump.age`)}`,
-      `printf 'planted\\n' | ${upload(`storage-${stamp}.tar.age`)}`,
+      "mkdir -p /tmp/planted/stub/b && printf 'planted\\n' >/tmp/planted/stub/b/a.txt",
+      ...(storage === 'link' ? ['ln -s /proc/self/environ /tmp/planted/stub/b/env'] : []),
+      `tar --create --file=- --directory=/tmp/planted . | ${upload(`storage-${stamp}.tar.age`)}`,
     ].join('\n'),
     roles,
   );
@@ -2926,9 +2931,11 @@ function plantNight(stamp: string, roles: string) {
  * The roles file of a planted night, shaped like pg_dumpall's (SQL between its own \restrict and
  * \unrestrict lines, which let the old restore lift psql's restricted mode), then psql commands
  * that, run, would read the owner's key (`\i`) or copy it into the bucket (`\!`, with the
- * container's own rclone and token).
+ * container's own rclone and token). With a notice, its SQL also has psql print that text after
+ * escape sequences that, on a terminal, would erase the restore's own line and put the text in its
+ * place (review finding N4).
  */
-const plantedRoles = (first: 'read' | 'copy') => {
+const plantedRoles = (first: 'read' | 'copy', notice?: string) => {
   const read = String.raw`\i /run/age/identity.txt`;
   const copy = String.raw`\! rclone copyto /run/age/identity.txt "backups:$BACKUP_BUCKET/stolen.txt"`;
   return [
@@ -2936,11 +2943,28 @@ const plantedRoles = (first: 'read' | 'copy') => {
     "SET client_encoding = 'UTF8';",
     'CREATE ROLE planted;',
     'ALTER ROLE planted WITH NOSUPERUSER NOINHERIT NOLOGIN;',
+    ...(notice
+      ? [String.raw`DO $$BEGIN RAISE NOTICE E'\r\033[2K\033[1A\033[2K` + `${notice}'; END$$;`]
+      : []),
     String.raw`\unrestrict planted`,
     ...(first === 'read' ? [read, copy] : [copy, read]),
     '',
   ].join('\n');
 };
+
+/** Whether text holds a byte that moves a terminal's cursor or rewrites a line: ESC, CR or BEL. */
+const terminalControls = (text: string) => /[\u001b\r\u0007]/.test(text);
+
+/**
+ * A stand-in for date that answers backup.sh's stamp (`date -u +%Y-%m-%dT%H%MZ`) with FAKE_STAMP,
+ * so that a night can be stamped the 1st on another day; every other call is BusyBox's own date.
+ */
+const DATE_STAND_IN = [
+  '#!/bin/sh',
+  `if [ -n "\${FAKE_STAMP:-}" ] && [ "$*" = '-u +%Y-%m-%dT%H%MZ' ]; then echo "$FAKE_STAMP"; exit 0; fi`,
+  'exec busybox date "$@"',
+  '',
+].join('\n');
 
 /** What a restore printed that only a read of the owner's key file could print. */
 const keyShown = (output: string) => /AGE-SECRET-KEY|# created:|# public key:/.test(output);
@@ -2967,8 +2991,10 @@ async function backupTest() {
   // A bare cluster left by a run that stopped would hold that run's restore: start without one.
   compose(['--profile', '*', 'rm', '--stop', '--force', 'restore-db', 'recover-db']);
   // The working tree's compose file, bare-postgres.sh and backup image, as vps:rehearse would
-  // install and build them.
+  // install and build them; and the stand-in date for a night stamped the 1st on another day.
   mirror(checks);
+  mkdirSync(join(MIRROR, 'test-bin'), { recursive: true });
+  writeFileSync(join(MIRROR, 'test-bin', 'date'), DATE_STAND_IN, { mode: 0o755 });
   const backupImage = REHEARSAL_IMAGES.BACKUP_IMAGE;
   const sha = git('rev-parse', 'HEAD').stdout.trim();
   const built = build(backupImage, ['--build-arg', `REVISION=${sha}`, join(KIT, 'backup')]);
@@ -3100,25 +3126,68 @@ async function backupTest() {
         .filter((name) => name.includes(`-${stamp}.`))
         .sort();
 
-    // monthly/ as before a month's first whole night: another month's copy only. Earlier runs'
-    // copies, planted nights and anything at the bucket's top go first.
-    const earlier = monthBefore(stampOf(daemonNow()));
+    // The bucket from empty: earlier runs' nights, planted ones and anything at its top go. Then
+    // monthly/ as before a month's first whole night: another month's copy, and names a token
+    // holder could plant for this month and for a 1st two months back, a stray name and a manifest
+    // alone, which must stop no copy (review finding N2).
+    const today = stampOf(daemonNow());
+    const earlier = monthBefore(today);
     const otherMonth = `manifest-${earlier}-28T2030Z.txt.age`;
-    const older = `${earlier}-15T2030Z`;
+    const oldFirst = `${monthBefore(`${earlier}-01T0000Z`)}-01T2030Z`;
+    const junk = [today, oldFirst].flatMap((stamp) => [
+      `manifest-${stamp.slice(0, 7)}-zz`,
+      `manifest-${stamp.slice(0, 7)}-05T0101Z.txt.age`,
+    ]);
     const cleared = inBackup(
       [
         'set -e',
-        'rclone delete "backups:$BACKUP_BUCKET/monthly/"',
-        `rclone delete --include '*-${FUTURE}.*' --include '*-${older}.*' "backups:$BACKUP_BUCKET/daily/"`,
-        'rclone delete --max-depth 1 "backups:$BACKUP_BUCKET/"',
-        `printf 'menumesh backup ${earlier}-28T2030Z\\n' | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "backups:$BACKUP_BUCKET/monthly/${otherMonth}"`,
+        'rclone delete "backups:$BACKUP_BUCKET/"',
+        ...[otherMonth, ...junk].map(
+          (name) =>
+            `printf 'menumesh backup ${earlier}-28T2030Z\\n' | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "backups:$BACKUP_BUCKET/monthly/${name}"`,
+        ),
       ].join('\n'),
     );
     if (cleared.status !== 0) fail(`Setting monthly/ up failed: ${cleared.stderr.trim()}`);
+    const planted0 = [otherMonth, ...junk].sort();
 
-    // The night as the service runs it, with a heartbeat URL in the sinkhole: the ping is the
-    // last step, after every upload was checked.
-    const fresh = archive(stampOf(daemonNow()));
+    // The month's first night here fails on a settings archive three hours old, after its other
+    // uploads, with the alert to a Telegram bot in the sinkhole; such a night is never the month's
+    // copy (review finding N3).
+    const stale = archive(today);
+    const hoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
+    utimesSync(stale, hoursAgo, hoursAgo);
+    const old = await measured(`${PROJECT}-backup-${process.pid}`, [
+      '--no-deps',
+      '-T',
+      '-e',
+      'TELEGRAM_BOT_TOKEN=rehearsal',
+      '-e',
+      'TELEGRAM_CHAT_ID=rehearsal',
+      'backup',
+      '/usr/local/bin/backup.sh',
+    ]);
+    const failedNight = /backup failed \(exit \d+\) at (\S+):/.exec(old.stderr)?.[1] ?? '';
+    const failedParts = failedNight ? nightOf(failedNight) : [];
+    checks.expect(
+      `backup.sh with the archive three hours old: exit ${old.status} after its ${failedParts.length} uploads (no settings archive), "${lines(old.stderr).find((line) => line.startsWith('[menumesh]')) ?? ''}", and the alert sent, into the sinkhole ("${tail(old.stderr, 1)}")`,
+      old.status === 1 &&
+        failedParts.join(' ') === nightParts(failedNight, false).join(' ') &&
+        /is more than 2 hours old/.test(old.stderr) &&
+        /notify: the Telegram alert failed \(curl exit 7\)/.test(old.stderr),
+      `${old.stdout}${old.stderr}`,
+    );
+    const monthlyFailed = bucketNames('monthly');
+    checks.expect(
+      `a night whose settings archive failed is not the month's copy: monthly/ still holds only its ${monthlyFailed.length} planted objects, none of ${failedNight || 'the failed night'}`,
+      failedNight !== '' && monthlyFailed.join(' ') === planted0.join(' '),
+      monthlyFailed.join('\n'),
+    );
+
+    // The next night as the service runs it, with a fresh settings archive and a heartbeat URL in
+    // the sinkhole: the ping is the last step, after every upload was checked.
+    while (stampOf(daemonNow()) === failedNight) await sleep(1000);
+    archive(stampOf(daemonNow()));
     const good = await measured(`${PROJECT}-backup-${process.pid}`, [
       '--no-deps',
       '-T',
@@ -3138,13 +3207,14 @@ async function backupTest() {
         /notify: the heartbeat ping failed \(curl exit 7\)/.test(good.stderr),
       `${good.stdout}${good.stderr}\n${objects.join('\n')}`,
     );
-    // The month's first whole night is its monthly copy, whatever its day (review finding B4).
+    // The month's first whole night is its copy, whatever its day, past the names planted for the
+    // month (review findings B4, N2 and N3).
     const monthly = bucketNames('monthly');
     checks.expect(
-      `the month's first whole night here, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, beside another month's (${otherMonth}): ${monthly.length} objects`,
+      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, past the names planted for its month (${junk.slice(0, 2).join(', ')}): ${monthly.length} objects`,
       night !== '' &&
         /, kept in monthly\/ as the month's copy$/.test(summary?.[0] ?? '') &&
-        monthly.join(' ') === [otherMonth, ...nightParts(night, true)].sort().join(' '),
+        monthly.join(' ') === [...planted0, ...nightParts(night, true)].sort().join(' '),
       monthly.join('\n'),
     );
     // Each object is age's: its first line is age's header, nothing of the data in plain text.
@@ -3161,42 +3231,63 @@ async function backupTest() {
       headers.join('\n'),
     );
 
-    // A new minute of the daemon's clock, so the next night has its own stamp; then the archive
-    // three hours old, and the alert to a Telegram bot in the sinkhole.
+    // A later whole night of the month makes no second copy.
     while (stampOf(daemonNow()) === night) await sleep(1000);
-    const hoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
-    utimesSync(fresh, hoursAgo, hoursAgo);
-    const old = await measured(`${PROJECT}-backup-${process.pid}`, [
+    archive(stampOf(daemonNow()));
+    const next = await measured(`${PROJECT}-backup-${process.pid}`, [
       '--no-deps',
       '-T',
-      '-e',
-      'TELEGRAM_BOT_TOKEN=rehearsal',
-      '-e',
-      'TELEGRAM_CHAT_ID=rehearsal',
       'backup',
       '/usr/local/bin/backup.sh',
     ]);
-    const failedNight = /backup failed \(exit \d+\) at (\S+):/.exec(old.stderr)?.[1] ?? '';
-    const later = failedNight ? nightOf(failedNight) : [];
+    const nextLine = /^backup (\S+): .*$/m.exec(next.stdout);
+    const nextSummary = nextLine?.[0] ?? tail(next.stdout, 1);
+    const nextNight = nextLine?.[1] ?? night;
+    const monthlyNext = bucketNames('monthly');
     checks.expect(
-      `backup.sh with the archive three hours old: exit ${old.status} after its ${later.length} uploads (no settings archive), "${lines(old.stderr).find((line) => line.startsWith('[menumesh]')) ?? ''}", and the alert sent, into the sinkhole ("${tail(old.stderr, 1)}")`,
-      old.status === 1 &&
-        failedNight !== night &&
-        later.join(' ') === nightParts(failedNight, false).join(' ') &&
-        /is more than 2 hours old/.test(old.stderr) &&
-        /notify: the Telegram alert failed \(curl exit 7\)/.test(old.stderr),
-      `${old.stdout}${old.stderr}`,
-    );
-    // That night reached the monthly copy's step, before the settings archive's failure.
-    const monthlyLater = bucketNames('monthly');
-    checks.expect(
-      `a later night of the same month makes no second monthly copy: monthly/ still holds its ${monthlyLater.length} objects, none of ${failedNight || 'the failed night'}`,
-      failedNight !== '' && monthlyLater.join(' ') === monthly.join(' '),
-      monthlyLater.join('\n'),
+      `a later whole night of the month makes no second copy: exit ${next.status}, "${nextSummary}", monthly/ still ${monthlyNext.length} objects`,
+      next.status === 0 &&
+        nextSummary.startsWith('backup ') &&
+        !nextSummary.includes('kept in monthly') &&
+        monthlyNext.join(' ') === monthly.join(' '),
+      `${next.stdout}${next.stderr}\n${monthlyNext.join('\n')}`,
     );
 
-    // The monthly restore test into restore-db, with the rehearsal's throwaway key on /run/age.
-    // The night is named: the newest one, the failed run's, has no settings archive.
+    // A whole 1st two months back, its stamp from a stand-in date (nothing else is faked): copied
+    // whatever monthly/ holds for its month (review finding N2). Then its daily copy goes, as the
+    // job removes one after 30 days, so that monthly/ alone holds the night.
+    const first = compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '--volume',
+      `${slash(join(MIRROR, 'test-bin'))}:/opt/menumesh-rehearsal:ro`,
+      '-e',
+      `FAKE_STAMP=${oldFirst}`,
+      '--entrypoint',
+      'sh',
+      'backup',
+      '-c',
+      'mkdir -p /tmp/bin && cp /opt/menumesh-rehearsal/date /tmp/bin/date && chmod 755 /tmp/bin/date && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
+    ]);
+    const firstSummary = /^backup (\S+): .*$/m.exec(first.stdout)?.[0] ?? tail(first.stdout, 1);
+    const firstKept = bucketNames('monthly').filter((name) => name.includes(`-${oldFirst}.`));
+    checks.expect(
+      `a whole 1st (${oldFirst}, stamped by a stand-in date) with names planted for its month in monthly/ (${junk.slice(2).join(', ')}): exit ${first.status}, "${firstSummary}", its ${firstKept.length} parts in monthly/`,
+      first.status === 0 &&
+        firstSummary.startsWith(`backup ${oldFirst}: `) &&
+        firstSummary.endsWith(", kept in monthly/ as the month's copy") &&
+        firstKept.join(' ') === nightParts(oldFirst, true).join(' '),
+      `${first.stdout}${first.stderr}`,
+    );
+    const aged = inBackup(
+      `rclone delete --include '*-${oldFirst}.*' "backups:$BACKUP_BUCKET/daily/"`,
+    );
+    if (aged.status !== 0) fail(`Removing ${oldFirst} from daily/ failed: ${aged.stderr.trim()}`);
+
+    // The monthly restore test into restore-db, with the rehearsal's throwaway key on /run/age, of
+    // the month's copy by name: both folders hold it, so their manifests must be the same.
     const age = ['--volume', `${slash(join(MIRROR, 'age'))}:/run/age:ro`];
     const test = await measured(
       `${PROJECT}-restore-test-${process.pid}`,
@@ -3225,7 +3316,7 @@ async function backupTest() {
         test.stdout.includes(`restore: the night of ${night}, from daily/, into restore-db\n`) &&
         /^restore: postgres has its \d+ tables as the manifest counted them$/m.test(test.stdout) &&
         /^restore: Storage holds \d+ files as the manifest counted$/m.test(test.stdout) &&
-        /^restore test passed$/m.test(test.stdout),
+        test.stdout.endsWith(`restore test passed: the night of ${night}, from daily/\n`),
       tail(`${test.stdout}${test.stderr}`),
     );
     if (test.status === 0) {
@@ -3244,19 +3335,31 @@ async function backupTest() {
       test.stdout,
     );
 
-    // Planted nights (review finding S1), as whoever holds the bucket's token and the public key
-    // could upload them. One stamped 9999-12-31 sorts last and is never taken unasked; one of this
-    // minute, the newest by name, is, and its roles file reads the owner's key with \i first; one
-    // named by RESTORE_STAMP would copy the key into the bucket with \! first. Each must stop at
-    // the roles with nothing run: no object at the bucket's top, no line of the key.
-    while (stampOf(daemonNow()) <= failedNight) await sleep(1000);
+    // Planted nights, as whoever holds the bucket's token and the public key could upload them.
+    // One stamped 9999-12-31 sorts last and is never taken unasked; one of this minute, the newest
+    // by name, is, and its roles file has psql print a notice made to erase the night's line and
+    // put the good night's in its place (N4), then reads the owner's key with \i; one named by
+    // RESTORE_STAMP would copy the key into the bucket with \! first (S1). Each must stop at the
+    // roles with nothing run: no object at the bucket's top, no line of the key, no escape. One
+    // has a link in its Storage archive (N6), and one is a copy of the 1st two months back, which
+    // monthly/ alone holds (N1).
+    while (stampOf(daemonNow()) <= nextNight) await sleep(1000);
     const planted = stampOf(daemonNow());
+    const daysAgo = (days: number) =>
+      stampOf(new Date(Date.parse(daemonNow()) - days * 86_400_000).toISOString());
+    const older = daysAgo(3);
+    const linked = daysAgo(4);
+    const fake = `restore: the night of ${night}, from daily/, into restore-db`;
     plantNight(FUTURE, plantedRoles('copy'));
-    plantNight(planted, plantedRoles('read'));
+    plantNight(planted, plantedRoles('read', fake));
     plantNight(older, plantedRoles('copy'));
-    // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ shows all three, each
+    plantNight(linked, 'CREATE ROLE planted_link;\n', 'link');
+    plantNight(oldFirst, plantedRoles('copy'));
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ shows all five, each
     // with the four parts of a night without its settings archive.
-    const plantedNames = [FUTURE, planted, older].flatMap((stamp) => nightParts(stamp, false));
+    const plantedNames = [FUTURE, planted, older, linked, oldFirst].flatMap((stamp) =>
+      nightParts(stamp, false),
+    );
     for (let tries = 0; tries < 20; tries++) {
       const listed = bucketNames('daily');
       if (plantedNames.every((name) => listed.includes(name))) break;
@@ -3276,23 +3379,74 @@ async function backupTest() {
       const output = `${run.stdout}\n${run.stderr}`;
       const top = bucketNames('');
       const refused = lines(output).find((line) => line.includes('restricted')) ?? '';
+      const notice = lines(output).find((line) => line.startsWith('NOTICE:')) ?? '';
       checks.expect(
-        `a planted night ${how} (${want}${extra.length ? '' : `, ${FUTURE} not taken`}): exit ${run.status} at the roles, "${refused.trim()}"; the bucket's top ${top.length ? `holds ${top.join(', ')}` : 'empty'}, and no line of the key printed`,
+        `a planted night ${how} (${want}${extra.length ? '' : `, ${FUTURE} not taken`}): exit ${run.status} at the roles, "${refused.trim()}"; the bucket's top ${top.length ? `holds ${top.join(', ')}` : 'empty'}, no line of the key printed${extra.length ? '' : `, and its notice without its escapes: "${notice}"`}`,
         run.status === 1 &&
-          output.includes(`restore: the night of ${want}, from daily/, into restore-db\n`) &&
+          (extra.length > 0 || output.includes(`restore: not taking the night of ${FUTURE}`)) &&
+          lines(output).find((line) => line.startsWith('restore: the night of ')) ===
+            `restore: the night of ${want}, from daily/, into restore-db` &&
           refused.includes('backslash commands are restricted') &&
-          output.includes(`restore: the roles of ${want} did not restore`) &&
-          (extra.length > 0 || output.includes(`not taking the night of ${FUTURE}`)) &&
+          output.includes(`restore: the roles of ${want} did not restore (see above)`) &&
+          (extra.length > 0 || (notice.endsWith(fake) && notice !== fake)) &&
+          !terminalControls(output) &&
           !keyShown(output) &&
           top.length === 0,
         tail(output),
       );
     }
+    // The Storage archive with a link, refused before anything is restored (N6).
+    const link = await measured(
+      `${PROJECT}-restore-test-${process.pid}`,
+      ['-T', '-e', `RESTORE_STAMP=${linked}`, ...age, 'restore-test'],
+      'restore-test',
+    );
+    const linkRole = sqlIn(
+      'restore-db',
+      "select count(*) from pg_roles where rolname = 'planted_link'",
+      'restore-test',
+    ).stdout.trim();
+    compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
+    const linkOutput = `${link.stdout}\n${link.stderr}`;
+    checks.expect(
+      `a planted night whose Storage archive holds a link, restore test (${linked}): exit ${link.status}, "${lines(linkOutput).find((line) => line.includes('links or special files')) ?? ''}"; nothing restored: no roles step, restore-db without its role (${linkRole})`,
+      link.status === 1 &&
+        link.stdout.startsWith(
+          `restore: the night of ${linked}, from daily/, into restore-db\nrestore: the Storage archive of ${linked} holds links or special files (1), which Storage never writes: nothing was restored\n`,
+        ) &&
+        !/^restore: roles$/m.test(linkOutput) &&
+        linkRole === '0',
+      tail(linkOutput),
+    );
+    // The 1st two months back, with the planted copy in daily/ under its name: monthly/ only (N1).
+    const past = await measured(
+      `${PROJECT}-restore-test-${process.pid}`,
+      ['-T', '-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${oldFirst}`, ...age, 'restore-test'],
+      'restore-test',
+    );
+    compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
+    const pastOutput = `${past.stdout}\n${past.stderr}`;
+    const pastTop = bucketNames('');
+    checks.expect(
+      `a night more than 31 days old (${oldFirst}), held by monthly/ and planted in daily/ under its name: exit ${past.status}, "${lines(pastOutput).find((line) => line.startsWith('restore: not reading')) ?? ''}", "${tail(past.stdout, 1)}"; the planted copy never read (no psql command refused), the bucket's top ${pastTop.length ? `holds ${pastTop.join(', ')}` : 'empty'}`,
+      past.status === 0 &&
+        past.stdout.includes(
+          `restore: not reading the copy of ${oldFirst} in daily/: daily/ keeps a night 30 days, and this one is more than 31 days old\n`,
+        ) &&
+        past.stdout.includes(
+          `restore: the night of ${oldFirst}, from monthly/, into restore-db\n`,
+        ) &&
+        past.stdout.endsWith(`restore test passed: the night of ${oldFirst}, from monthly/\n`) &&
+        !pastOutput.includes('restricted') &&
+        pastTop.length === 0,
+      tail(pastOutput),
+    );
 
-    // The planted nights go, and so does the good night's daily copy, as after its 30 days: from
-    // here on it is read from monthly/ (review finding B1), by the restore test and the recovery.
+    // The planted nights go but the one with a link, which the recovery is given first, and so
+    // does the good night's daily copy, as after its 30 days: from here on it is read from
+    // monthly/ (review finding B1), by the restore test and the recovery.
     const removed = inBackup(
-      `rclone delete --include '*-${FUTURE}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
+      `rclone delete --include '*-${FUTURE}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${oldFirst}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
     if (removed.status !== 0) fail(`Removing nights from daily/ failed: ${removed.stderr.trim()}`);
     // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ no longer shows them.
@@ -3312,12 +3466,12 @@ async function backupTest() {
         monthlyTest.stdout.includes(
           `restore: the night of ${night}, from monthly/, into restore-db\n`,
         ) &&
-        /^restore test passed$/m.test(monthlyTest.stdout),
+        monthlyTest.stdout.endsWith(`restore test passed: the night of ${night}, from monthly/\n`),
       tail(`${monthlyTest.stdout}${monthlyTest.stderr}`),
     );
 
     handedOver = true;
-    await recovery(checks, env, night, source, files, age);
+    await recovery(checks, env, night, source, files, age, linked);
   } finally {
     if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
   }
@@ -3384,8 +3538,10 @@ function vault(checks: Checks, service: string, profile?: string) {
  * new db-data, db-config and storage-data volumes, as on a new server, through recover-db's bare
  * cluster; then db starts on them, finds a cluster and skips its init, migrate finds nothing to
  * apply, and the rest follows. On the way, recover is refused while db runs, onto db's cluster once
- * it stopped, and onto Storage's old files. The night must be the source's; daily/ no longer holds
- * it, so it is read from its monthly copy.
+ * it stopped, and onto Storage's old files; and given a planted night whose Storage archive holds a
+ * link (`linked`), it stops before it writes anything (review finding N6), so the same new volumes
+ * then take the real night. That night must be the source's; daily/ no longer holds it, so it is
+ * read from its monthly copy.
  */
 async function recovery(
   checks: Checks,
@@ -3394,12 +3550,14 @@ async function recovery(
   source: string[],
   files: string[],
   age: string[],
+  linked: string,
 ) {
-  // Always the source's night: a refusal that failed would restore that one, not a newer one.
-  const recover = (extra: string[] = []) =>
+  // Always a named night, the source's but for the planted one: a refusal that failed would
+  // restore that one, not a newer one.
+  const recover = (extra: string[] = [], stamp = night) =>
     measured(
       `${PROJECT}-recover-${process.pid}`,
-      ['-T', '-e', `RESTORE_STAMP=${night}`, ...extra, ...age, 'recover'],
+      ['-T', '-e', `RESTORE_STAMP=${stamp}`, ...extra, ...age, 'recover'],
       'recover',
     );
   const recoverDbLog = () => logsOf(containerOf('recover-db') ?? '');
@@ -3435,7 +3593,7 @@ async function recovery(
   dropRecoverDb();
   checks.expect(
     `recover onto db's own cluster, db stopped: exit ${run.status}, "${said(run, /^restore: .*not a bare cluster/)}"`,
-    run.status === 1 && /is not a bare cluster/.test(run.stderr),
+    run.status === 1 && /is not a bare cluster/.test(`${run.stdout}${run.stderr}`),
     `${run.stdout}${run.stderr}`,
   );
   compose(['rm', '--force', 'db', 'storage']);
@@ -3444,12 +3602,26 @@ async function recovery(
   dropRecoverDb();
   checks.expect(
     `recover onto new db volumes with Storage's old files still there: exit ${run.status}, "${said(run, /^restore: \/storage is not empty/)}"`,
-    run.status === 1 && /\/storage is not empty/.test(run.stderr),
+    run.status === 1 && /\/storage is not empty/.test(`${run.stdout}${run.stderr}`),
     `${run.stdout}${run.stderr}`,
   );
 
-  // A new server's volumes: all three new.
+  // A new server's volumes: all three new. A night whose Storage archive holds a link is refused
+  // before the roles, so the same volumes stay as they were and take the real night next.
   removeVolumes(dbData, dbConfig, storageData);
+  run = await recover([], linked);
+  dropRecoverDb();
+  checks.expect(
+    `recover of a planted night whose Storage archive holds a link (${linked}), into the new volumes: exit ${run.status}, "${said(run, /links or special files/)}", and no roles step`,
+    run.status === 1 &&
+      run.stdout.startsWith(
+        `restore: the night of ${linked}, from daily/, into recover-db
+restore: the Storage archive of ${linked} holds links or special files (1), which Storage never writes: nothing was restored
+`,
+      ) &&
+      !/^restore: roles$/m.test(`${run.stdout}${run.stderr}`),
+    `${run.stdout}${run.stderr}`,
+  );
   run = await recover(['-e', 'RESTORE_EXACT=1']);
   const recoverDb = cgroupMemory('recover-db', 'recover', true);
   dropRecoverDb();
