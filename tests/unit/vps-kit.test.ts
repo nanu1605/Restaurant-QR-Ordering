@@ -1469,7 +1469,7 @@ const triggers = (text: string) => {
     .filter((name) => name !== undefined);
 };
 
-/** Every image build is labelled with the tag it pushes, which app-deploy checks (VPS-23). */
+/** Every image build is labelled with the tag it pushes, which app-deploy checks (VPS-41). */
 const labels = (text: string) => {
   const steps = text
     .split(/\n(?= {6}- )/)

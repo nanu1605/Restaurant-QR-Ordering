@@ -4372,7 +4372,8 @@ run by the Jainav side's scripts. Stop A prepares the app and ships the web imag
 are safe on Vercel today, plus the Docker image. Stop A2 makes the long background work restartable
 (VPS-25 to VPS-30): migrations that stay backward-compatible and app code that Vercel runs too.
 Compose, the gateway's Envoy config, the Caddy site file, the scheduler, backups, the image build in
-CI and the deploys come in later stops, and Vercel stays production until then. The server's
+CI and the deploys come in later stops: Stop B writes them and rehearses them on this machine
+(VPS-31 to VPS-42), and Vercel stays production until the cut-over. The server's
 contract arrived on 2026-11-08, with adjustments the same day, and wins over the first plans where
 they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale tap
 and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export size
@@ -5062,7 +5063,8 @@ that joins a running announcement is emailed within a minute (VPS-28).
   - **Scheduler.** A `scheduler` service (pinned Alpine `crond`, UTC, crontab mounted read-only)
     replaces Vercel Cron: `GET http://web:3000/api/cron/daily` at `30 21 * * *` (03:00 IST) and
     `/api/cron/digest` at `15 3 * * *` (08:45 IST) with the `CRON_SECRET` bearer and BusyBox
-    `wget -T 1800`, a second attempt about 30 minutes later, a heartbeat only on HTTP 200, and a
+    `wget -T 1800` (built with curl instead, which reads the bearer from its standard input:
+    VPS-38), a second attempt about 30 minutes later, a heartbeat only on HTTP 200, and a
     line every minute for `/api/cron/jobs` with `wget -T 25`, since the route answers at once, and a
     heartbeat of its own (VPS-22, VPS-29). Staging gets its own `scheduler-staging` on its network
     with its own `CRON_SECRET`, and its minute line calls `http://web-staging:3000`; one scheduler
@@ -5072,8 +5074,9 @@ that joins a running announcement is emailed within a minute (VPS-28).
     service has `cap_drop: ALL`, `no-new-privileges`, `mem_limit`, `memswap_limit`, `cpus`,
     `cpu_shares`, `pids_limit`, `oom_score_adj`, a healthcheck and (long-running)
     `restart: unless-stopped`, within 6,560 MiB: `web` 1536m and 1.5 CPUs, `web-staging` 768m and
-    1.0, `db` 1920m, `auth` 192m, `rest` 256m, `realtime` 768m, `storage` 512m, `api-gw` 256m,
-    `scheduler` 32m, `backup` 320m, a one-off `migrate` 512m. `NODE_OPTIONS=--max-old-space-size` at
+    1.0, `db` 1920m, `auth` 192m, `rest` 256m, `realtime` 768m, `storage` 512m, `api-gw` 256m
+    (224m in the kit, to make room for `scheduler-staging`: VPS-33), `scheduler` 32m, `backup`
+    320m, a one-off `migrate` 512m. `NODE_OPTIONS=--max-old-space-size` at
     about 65% of each Node container's limit (about 1000 for `web`, 500 for `web-staging`: VPS-6
     depends on it) and `stop_grace_period` at most 25 s on both.
   - **GoTrue and Envoy.** GoTrue sends no mail (the app uses Resend and nothing makes GoTrue send
@@ -5108,16 +5111,19 @@ that joins a running announcement is emailed within a minute (VPS-28).
     07:00 IST; releases avoid 12:00 to 15:30 and 19:00 to 23:30 IST. **No deploys, and no merges to
     `main` (every merge deploys staging), from 02:55 to 03:30 or 08:40 to 08:50 IST**, the daily and
     digest cron times (RUNBOOK).
-  - **For the deploy stop to check:** `NODE_OPTIONS` on `web` (VPS-6); the image's `CMD` kept, with
-    no compose `command:` (VPS-16); `api.menumesh.in` public inside the web containers (VPS-18);
-    Caddy and Cloudflare passing `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and
-    caching no HTML or RSC (VPS-7); the Caddy site file refusing `Upgrade` requests to the web
-    container, with a header matcher and a 400 (the app serves no WebSockets, and the preload
-    already ends the sockets of such requests at a stop, so this is defence in depth: VPS-16); old
-    static files in place before the swap, in a volume that uid 1000 owns (VPS-21); whether v0.8.4's
-    Auth signs user tokens asymmetrically, since with the legacy HS256 secret every `getClaims()`
-    (two or more a page) becomes a `GET /auth/v1/user` through the gateway; and whether Auth accepts
-    staff addresses on `<slug>.staff.<domain>`, which have no mail records.
+  - **For the deploy stop to check** (each done in Stop B where noted): `NODE_OPTIONS` on `web`
+    (VPS-6; done in VPS-33); the image's `CMD` kept, with no compose `command:` (VPS-16; done in
+    VPS-31); `api.menumesh.in` public inside the web containers (VPS-18; done in VPS-32); Caddy and
+    Cloudflare passing `x-nextjs-action-not-found` and `x-nextjs-deployment-id` and caching no HTML
+    or RSC (VPS-7; Caddy's part done in VPS-37, Cloudflare's cache rule is the cut-over's); the
+    Caddy site file refusing `Upgrade` requests to the web container, with a header matcher and a
+    400 (the app serves no WebSockets, and the preload already ends the sockets of such requests at
+    a stop, so this is defence in depth: VPS-16; done in VPS-37); old static files in place before
+    the swap, in a volume that uid 1000 owns (VPS-21; done in VPS-31); whether v0.8.4's Auth signs
+    user tokens asymmetrically, since with the legacy HS256 secret every `getClaims()` (two or more
+    a page) becomes a `GET /auth/v1/user` through the gateway (it signs them ES256: done in
+    VPS-34); and whether Auth accepts staff addresses on `<slug>.staff.<domain>`, which have no mail
+    records (it does: done in VPS-34).
   - **The server team's tightening (2026-11-08, later that day).** A review of their kit changed
     what this repo's files must do (their `docs/runbooks/edge.md` §5 and
     `docker/host/apps/app.conf.example`; their kit is merged to their main since,
@@ -6035,14 +6041,14 @@ review's fixes, and a second's, are listed after Tests.
     nearly all without a Hindi name, so its partial indexes are not small there. A database whose
     menus are filled in keeps few names in them.
   - **The scheduler.** The deploy stop's crontab has it called every minute, from the `scheduler`
-    container to the web container directly and never through Cloudflare (VPS-22): the line is
-    `* * * * * wget -q -O /dev/null -T 25 --header "Authorization: Bearer $CRON_SECRET"` followed,
-    on the same line, by
-    `http://web:3000/api/cron/jobs && wget -q -O /dev/null "$JOBS_HEARTBEAT_URL"`. `-T 25` is
-    plenty, as the route answers at once, and the heartbeat is pinged only after a 200.
-    `scheduler-staging` calls `http://web-staging:3000` with staging's own secret. The rehearsal
-    must check that the job's shell sees `$CRON_SECRET`. The heartbeat variable's name is the deploy
-    stop's to settle.
+    container to the web container directly and never through Cloudflare (VPS-22). The line was
+    planned as BusyBox `wget -T 25` with the bearer in its arguments; Stop B built it as
+    `* * * * * /bin/sh /opt/menumesh/cron-call jobs`, where curl gets the bearer on its standard
+    input and 25 s, plenty, as the route answers at once (VPS-38). The heartbeat is pinged only
+    after a 200, and its variable is `HEARTBEAT_JOBS_URL` (settled in Stop B; `.env` holds
+    staging's as `STAGING_HEARTBEAT_JOBS_URL`). `scheduler-staging` calls `http://web-staging:3000`
+    with staging's own secret. The rehearsal checked the job's shell: BusyBox crond passes its
+    environment to the jobs, and `cron-call` reads its values from a file whatever crond does.
   - **Callers.** A tick works the whole platform, so tests and runs by hand name a kind with
     `?kinds=`. Vercel has no minute cron (`vercel.json` is unchanged), and on a development machine
     nothing calls it: the `after()` paths do the work, and it is run by hand (README). The smoke
@@ -6567,3 +6573,677 @@ confirmed:
   already settled stays settled (its written names stored, the rest stamped) and the batches in
   flight are leased again; the fill's comment and the lease migration's two comments say a batch is
   settled once its calls end (outside the function bodies: the database is unchanged). (b0d644a)
+
+### The compose kit (VPS Stop B)
+
+Stop B (2026-11-11 and 12) writes every file the shared server needs from this repository, in
+`deploy/vps/`, and checks it on this machine, since the server is not bought yet: the compose
+project and its env templates, the gateway, the init SQL, the schedulers, the Caddy site and
+redaction files, the migrate and backup images, a secrets generator, the CI workflows and the local
+checks. Nothing is installed or deployed, and no new workflow runs until the owner turns two
+repository variables on (VPS-41). The server team's own `app-apply`, copied at their commit
+`66fe8b3`, checks the files (VPS-42), and a rehearsal ran the whole stack on Docker Desktop: the
+app's tests, the scheduler, the stops, the log volume, the nightly backup, the monthly restore test
+and a disaster recovery (Tests). What the rehearsal found was fixed in the kit, each fix with a unit
+pin where a text rule can catch it, and the entries below say what was built where it differs from
+the plan. The plan's three questions for the owner (the stop's scope, when CI may spend minutes, and
+staging's diner pages behind the password) were settled on its recommendations, which the owner can
+still change (VPS-37, VPS-41). WAL archiving and a point-in-time restore drill are Stop C, before
+the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Vercel and
+`CRON_SECRET` out, the old workflows deleted) is Stop D.
+
+- **VPS-31 · The kit is `deploy/vps/`, a mirror of `/srv/menumesh/`, checked with the server's own
+  code:** each file there has its place on the server, its owner and mode, and who puts it there
+  (`deploy/vps/README.md`; every step in RUNBOOK, The shared server (VPS)). Three parties, as the
+  contract has it. The server's admin (the `ops` account) writes `/etc/apps/menumesh.conf`, sets up
+  the edge's side (the `tls_menumesh` snippet, the Origin CA certificate, authenticated origin
+  pulls, the two `edge.env` lines), adds the 20:20 UTC drop-in of the settings archive timer, and
+  installs `config/` (the init SQL, the gateway, the crontabs and their scripts): the contract says
+  the admin installs `config/`, where the README first said the owner. The owner, through the same
+  `ops` account (`app-deploy`'s admin form takes only it or root), installs MenuMesh's env files,
+  the compose file, the site file and the redaction file through `app-apply`, starts the services
+  with `app-compose` and deploys production with `app-deploy`. CI builds the images and deploys
+  staging, once switched on.
+  - **The compose file** is project `menumesh` with only `name`, `services`, `networks`, `volumes`
+    and `x-*` at the top: 11 long-running services and 6 one-offs behind profiles (`migrate`,
+    `restore-test`, `recover`), 17 in all. A value from `.env` or `images.env` appears only in
+    `image`, `environment` and `healthcheck`, stricter than the server's rule (which also allows
+    `command`, `entrypoint` and `x-*`), so a later edit of an env file can change nothing else the
+    server approved. No ports, builds, `container_name`, socket or logging keys (journald is the
+    daemon's default). Three anchors give every service `cap_drop: ALL` and `no-new-privileges`, and
+    the long-running ones `restart: unless-stopped`. Third-party images are pinned
+    `tag@sha256:<index digest>`; this repository's (both webs, both migrates, backup, restore-test,
+    recover) come from `images.env` with `pull_policy: never`, so only `app-deploy` brings them, by
+    digest.
+  - **The two webs** have no `command` or `entrypoint`, so the image's `CMD` loads the drain preload
+    (VPS-16) and its `HEALTHCHECK` asks `/api/health` (VPS-17); 25 s to stop (VPS-22); a read-only
+    root with a 64 MiB `/tmp`; and named volumes on `/app/.next/static` and `/app/.next/cache`
+    (VPS-21, VPS-18) that Compose creates empty, so they take the image folder's owner, uid 1000.
+    `web` gets `SUPABASE_INTERNAL_URL=http://api-gw:8000` and `SUPABASE_FORWARD_CLIENT_IP=true`
+    (VPS-20, VPS-4), and `SUPABASE_SECRET_KEY` and `CRON_SECRET` from `.env`; `web-staging` gets
+    only its own cron secret from `.env` and its hosted project's secret key in
+    `env/web-staging.env`, with neither VPS-only setting (hosted Auth ignores the address). Every
+    name a web gets is read by `src/lib/env.server.ts` or is Node's `NODE_OPTIONS`, and comes from
+    one place: a unit pin checks both.
+  - **Checked with the server's code.** `pnpm vps:check` runs the vendored `app-apply` on the kit as
+    the server would (VPS-42). On the server, `app-apply menumesh compose` checks the file again,
+    with every mounted file on disk, creates the edge networks and pins the file's sha256;
+    `app-deploy` refuses to deploy while the installed file differs from the pin.
+- **VPS-32 · Six networks, and the web reaches Supabase only through Envoy:**
+  - `default`, the project's bridge with a way out: `web` (Razorpay, Resend, the menu readers,
+    Turnstile, Sentry, PostHog), the `scheduler` (which calls `web:3000` there), `backup` (the
+    bucket and its alerts), `restore-test` and `recover` (the bucket).
+  - `gateway`, internal: `web` and `api-gw` only. Server-side Supabase calls go to
+    `http://api-gw:8000` (VPS-20), and the web container can resolve no other Supabase service: from
+    it, `rest`, `db` and `auth` gave ENOTFOUND in the rehearsal.
+  - `data`, internal: `db`, `auth`, `rest`, `realtime`, `storage`, `api-gw`, `backup` and `migrate`.
+    No Supabase service needs a way out: GoTrue sends no mail, Storage keeps its files on a volume,
+    and `pg_net` has nowhere to go. Realtime has the alias `realtime-dev.supabase-realtime` here: it
+    takes the tenant from the host name's first label, and `container_name` is refused.
+  - `staging`, a bridge with a way out: `web-staging`, `scheduler-staging` and `migrate-staging`.
+    Staging talks to its hosted project over the internet and reaches no production container, and
+    one scheduler never joins both networks (the contract's adjustment).
+  - `restore`, internal: `restore-db`, `restore-test`, `recover-db` and `recover`, so decrypted data
+    is reachable only by the restore job.
+  - `edge-menumesh` (`web` as `menumesh-web`, `api-gw` as `menumesh-gw`) and `edge-menumesh-staging`
+    (`web-staging` as `menumesh-web-staging`): external and internal, made by `app-apply` when it
+    installs the compose file, joined by Caddy, with nothing else on them. `vps:check` holds the
+    contract's rules on them (exactly those three, one alias each, staging on staging's only).
+  - Docker's bridges have no IPv6 here (`app-apply` refuses `enable_ipv6`), so staging's migrations
+    use Supabase's IPv4 session pooler (VPS-39). `api.menumesh.in` resolves to its public address
+    inside the web containers, as `next/image` needs (VPS-18): the compose file has no
+    `extra_hosts`, a key `app-apply` refuses and a unit pin does too.
+  - The rehearsal measured that Docker publishes no port of a container that is only on internal
+    networks, so its override makes the edge networks plain bridges of its own (VPS-42). On the
+    server nothing is published: Caddy reaches the aliases over the edge networks.
+- **VPS-33 · Limits: 6,560 MiB with `scheduler-staging`, so `api-gw` gets 224m:** every service,
+  one-offs included, sets the six limits; the long-running ones add up to the contract's 6,560 MiB
+  of `mem_limit`. The contract's list came before `scheduler-staging` (its adjustment of the same
+  day), which needs 32m like the `scheduler`, so `api-gw` gives up 32 MiB (Envoy used 42 to 43 MiB
+  in the rehearsal). The server team is asked to confirm, or to grant 6,592 MiB instead.
+  - **The values** (the last six are the one-offs):
+
+    | Service             | mem_limit (swap) | cpus | cpu_shares | pids_limit | oom_score_adj |
+    | ------------------- | ---------------- | ---- | ---------- | ---------- | ------------- |
+    | `web`               | 1536m (1792m)    | 1.5  | 1024       | 512        | -300          |
+    | `web-staging`       | 768m (1024m)     | 1.0  | 256        | 512        | 500           |
+    | `db`                | 1920m            | 1.5  | 1024       | 512        | -900          |
+    | `auth`              | 192m             | 0.5  | 512        | 128        | -100          |
+    | `rest`              | 256m             | 0.5  | 512        | 128        | -100          |
+    | `realtime`          | 768m             | 1.0  | 512        | 512        | -100          |
+    | `storage`           | 512m             | 0.5  | 512        | 256        | 100           |
+    | `api-gw`            | 224m             | 0.5  | 768        | 256        | -200          |
+    | `scheduler`         | 32m              | 0.25 | 256        | 64         | 200           |
+    | `scheduler-staging` | 32m              | 0.25 | 128        | 64         | 500           |
+    | `backup`            | 320m             | 0.5  | 128        | 128        | 300           |
+    | `migrate`           | 512m             | 0.5  | 512        | 64         | 800           |
+    | `migrate-staging`   | 512m             | 0.5  | 256        | 64         | 800           |
+    | `restore-db`        | 1536m            | 1.0  | 256        | 256        | 600           |
+    | `restore-test`      | 384m             | 0.5  | 256        | 128        | 600           |
+    | `recover-db`        | 1920m            | 1.5  | 1024       | 512        | -800          |
+    | `recover`           | 384m             | 0.5  | 512        | 128        | 100           |
+
+  - Swap equals the limit everywhere but on the webs, which get the 256 MiB more the contract
+    allows; only `web` has a reservation (768m). `NODE_OPTIONS=--max-old-space-size` is 1000 on
+    `web` and 500 on `web-staging` (VPS-6), and both webs stop within 25 s; `db` stops on `SIGINT`
+    within 60 s, and the crond services run under Docker's init (VPS-38, VPS-40).
+  - **The server's sum.** `app-apply` adds the other projects' steady limits (Jainav 4,480 MiB, the
+    edge 256 MiB): 11,296 MiB, plus 1,536 MiB for the host, against the KVM 4's MemTotal, assumed to
+    be 15,990 MiB until it is read on the server. That leaves 3,158 MiB for one-offs, which
+    `app-compose` checks before each run: a migrate takes 512 MiB, a restore test 1,920 MiB
+    (`restore-db` and `restore-test`). The profiles keep the one-offs out of the steady sum and the
+    restart rule, and they still carry every limit.
+  - **Measured on Docker Desktop.** In use while idle: `db` 141 to 151 MiB, `realtime` 194,
+    `storage` 115, `web` 102 to 110, `rest` 39 to 53, `api-gw` 42, `auth` 22 to 24, `scheduler` 7:
+    about 665 MiB of the 6,560. After building a 360,014-row export the web process held 989 MiB of
+    its 1,536 (854 MiB 35 minutes later). The one-offs' peaks: `backup` 38 to 77 MiB of 320m,
+    `restore-test` 34 to 36 of 384m, `restore-db` 156 to 160 of 1536m (61 to 62 MB of its 1 GiB
+    tmpfs), `recover` 33 to 35 of 384m, `recover-db` 159 to 162 of 1920m. The limits stay as the
+    contract set them until the server's own peaks (hostwatch's daily report) say otherwise.
+- **VPS-34 · Self-hosted Supabase v0.8.4, slimmed to six services:**
+  - **Pins.** `supabase/postgres:17.6.1.136`, `supabase/gotrue:v2.197.0`,
+    `postgrest/postgrest:v14.18`, `supabase/realtime:v2.148.3`, `supabase/storage-api:v1.89.12` and
+    `envoyproxy/envoy:v1.39.6`: exactly the release's tags, each by its index digest, read on
+    2026-11-11. Storage passes the 14-day rule on 2026-11-18T23:31Z and the release on 2026-11-19
+    (VPS-24); nothing deploys before then.
+  - **Dropped:** Studio, meta, functions, imgproxy, analytics, vector and the pooler, with their
+    init SQL (`_supabase.sql`, `logs.sql`, `pooler.sql`). `realtime.sql`, `webhooks.sql`,
+    `roles.sql` and `jwt.sql` are copied byte for byte (`deploy/vps/config/SOURCES.md` lists their
+    hashes, and a unit pin checks them). `webhooks.sql` stays although nothing uses database
+    webhooks: `roles.sql` sets the password of `supabase_functions_admin`, which only `webhooks.sql`
+    creates. They run once, on the first start of an empty volume.
+  - **Asymmetric keys.** GoTrue signs user tokens ES256 with the EC key in `JWT_KEYS` (the HS256
+    secret stays for the legacy API keys), and PostgREST, Realtime and Storage check tokens against
+    `JWT_JWKS`. Measured: a sign-in through the gateway returns an ES256 token whose `kid` is in the
+    JWKS and whose signature checks against it, and the staff boards join Realtime channels with
+    such tokens. This answers VPS-24's question: `getClaims()` can check a token against the JWKS
+    instead of asking `/auth/v1/user`.
+  - **GoTrue** has upstream's settings without the SMTP lines (an empty number stops it at
+    start-up), set like the hosted projects: sign-ups off (accounts come from the Admin API),
+    password sign-in, TOTP enrolment and checks on, passwords of 8 or more, refresh-token rotation,
+    no phone, SMS or anonymous sign-in, logging at warn, and VPS-4's two settings
+    (`Sb-Forwarded-For` on, `X-Real-IP` as the rate-limit header). Staff addresses on
+    `<slug>.staff.<domain>`, which have no mail records, are created by the Admin API and sign in,
+    on the rehearsal's domain and on `menumesh.in` alike: VPS-24's other question. Sign-ins through
+    the app carried the visitor's address, and with one address GoTrue answered attempts 1 to 30
+    with 400 and 31 to 40 with 429, then allowed 15 more after a 20 s pause.
+  - **PostgREST** serves `public` and `graphql_public` with `public, extensions` on the search path
+    and 1,000 rows at most, as `supabase/config.toml` has it; it logs at error, which still writes
+    one line per schema-cache reload (about 400 over a fresh start, the migrations and the seed;
+    none when idle). The `authenticator` role's 8 s `statement_timeout` and `lock_timeout` cap every
+    call: a request held 9.5 s by a lock became a 500 at 8 s.
+  - **Realtime** reads `API_JWT_JWKS` when it seeds its tenant, so ES256 tokens join channels; its
+    own encryption key comes from `.env` (no insecure default), and `ERL_AFLAGS` give it one
+    scheduler thread with no busy waiting, so an idle Realtime leaves the shared CPU alone. It exits
+    when `db` goes away and Docker restarts it: expect hostwatch's restart line after database
+    maintenance.
+  - **Storage** keeps files on the `storage-data` volume with a 52,428,800-byte limit (the exports
+    bucket's 50 MiB), no image transformation (`next/image` resizes in the web container) and no S3
+    protocol. Its bucket, tenant and region names, `stub`, are part of every stored path and never
+    change. Measured: 50 MiB uploaded through `http://api-gw:8000` in 1.7 to 2.5 s and one byte more
+    refused (Storage's `statusCode` 413); an upsert keeps `created_at` with a new `updated_at` and
+    `version`, so VPS-26's 25-hour sweep holds on the server's own Storage; each object's content
+    type and cache control live in `user.supabase.*` xattrs (VPS-40 backs them up).
+  - **Postgres** runs the image's settings file, then the contract's sizes (`shared_buffers=480MB`,
+    `max_connections=100`, `max_slot_wal_keep_size=4GB`, `jit=off`), a 256 MiB `/dev/shm` and a 60 s
+    `SIGINT` stop. Its log keeps errors only, on one line each with no DETAIL (which can quote a
+    value such as a QR token) and no statement text: `log_min_messages=error`,
+    `log_min_error_statement=panic`, `log_error_verbosity=terse`, `log_checkpoints=off`, and since
+    the rehearsal `log_statement=none` (7614c1b) and `auto_explain.log_min_duration=-1` (1b7b6ac).
+    The image's settings file sets `log_statement = 'ddl'`, and those lines pass
+    `log_min_messages=error`: one migrate of the 80 files wrote 38,293 lines, function bodies and
+    all, about 85% of a day's budget in one deploy. And the image loads `auto_explain` with a 10 s
+    threshold on `db-config`, which logged a slow statement whole, literal values included. After
+    both, 0 lines; `pgaudit.log` is `none`. With them the database wrote nothing in the idle
+    stretches measured, boards open or not, so upstream's `fatal` was not needed (what writes, per
+    event: Tests).
+  - **The locale gate.** The image's own `POSTGRES_INITDB_ARGS` give ICU `en-US` (`en_US.UTF-8` for
+    collation and character type), the same as the CLI stack, and the compose file sets none, so the
+    server gets the image's. Hosted production's value is one read-only query for the owner
+    (RUNBOOK). If it differs, `db` gets `POSTGRES_INITDB_ARGS` before the server's first start (the
+    bare restore clusters follow the image's), since changing it later takes a dump and a restore.
+- **VPS-35 · The gateway: upstream's Envoy config with MenuMesh's changes marked:**
+  `deploy/vps/config/envoy/` starts from v0.8.4's four files; each change carries a `MenuMesh:`
+  comment and `SOURCES.md` has upstream's hashes, so a newer release can take the same changes.
+  - **Access log:** one line per answer of 500 or more, with the time, the method, the path, the
+    status, Envoy's flags, the duration and the cluster, and no query string, address, header or key
+    (upstream logs the peer, the query, Referer and User-Agent). Not none: the web container's calls
+    never pass Caddy, so their gateway errors would leave no line anywhere. Measured: a forced 503
+    gave exactly `GET /rest/v1/rehearsal_5xx_… 503 UF 5003ms rest`, the token in its query in no
+    line.
+  - **Routes:** Studio's catch-all, functions, GraphQL (`/graphql/v1`), meta (`/pg/`), MCP (`/mcp`,
+    `/api/mcp`) and the OAuth discovery path outside the four prefixes are gone; 17 of upstream's 23
+    routes stay, under their names, which the key checks use. Anything not routed gets a 404 that
+    keeps its route's RBAC `allow_all`, so the RBAC filter cannot answer 403 first: Caddy is the
+    first gate for browsers, this the second, and the only one for the web container.
+  - **Timeouts:** the storage route has no route timeout and a 60 s idle timeout (large downloads,
+    and the export's 50 MiB upload, VPS-24); the Realtime socket has no route timeout (the
+    connection manager's idle timeout stays, and realtime-js beats every 25 s). Since the rehearsal
+    each cluster closes its idle connections first: `idle_timeout` 20 s, 4 s for Realtime, with
+    HTTP/1.1 explicit (40bda9c). Envoy keeps an idle upstream connection an hour by default, while
+    PostgREST closes one after 30 to 60 s (54 s measured), Storage after about 62 s and Realtime
+    after 5 s, and a request sent on a connection the service is closing fails with a 503 `UC`. One
+    was seen in about 70 minutes of ticks and tests (a GET, which postgrest-js retried; a POST, such
+    as an order, is not retried). On the old config PostgREST closed 11 of 14 connections; on the
+    new one 0 of 37.
+  - **Gone:** Studio's basic auth (the filter and every per-route entry), the functions Lua filter,
+    and in the RBAC the `/pg/` policy and the `/graphql/v1` permission; in `cds.yaml` the functions,
+    meta and studio clusters.
+  - **Running it:** `envoy.yaml` reads the listeners from `/run/envoy/lds.yaml`, a tmpfs, so Envoy
+    runs as its own uid 101 with a read-only root. `start.sh` fills the six key placeholders with
+    `sed` reading a script that `printf`, a shell builtin, wrote to a file only Envoy's user can
+    read and that is deleted after: upstream puts the keys in `sed`'s arguments, which a process
+    list shows. All six keys must be set, or the `sb_` keys get 401. The health check is a TCP
+    connect through `bash` (the image has no curl or wget).
+  - **Kept as upstream:** the listener's hardening (32 KiB buffers, path normalising, escaped
+    slashes and underscore headers refused), CORS, `X-Forwarded-Host` and `-Port`, the `sb_` key
+    filters (an opaque key is swapped for its ES256 token by exact match) and the apikey RBAC. Envoy
+    passes `X-Real-IP` and `Sb-Forwarded-For` unchanged (VPS-4). `envoy --mode validate` passes on
+    the filled-in config (VPS-42).
+- **VPS-36 · Secrets: `.env` for Compose, `env/*.env` for the apps, made by `pnpm vps:secrets`:**
+  - **Where each lives.** `/srv/menumesh/.env` (root, 0600) holds only what the compose file
+    interpolates: the database password, the Supabase keys, the two public addresses, the cron
+    secrets and heartbeat addresses, the backup's bucket, key and alerts, and staging's pooler
+    login. `env/web.env` and `env/web-staging.env` (0600) hold the settings each web reads as its
+    `env_file`. `images.env` (0644) holds image references only, and after its first copy only
+    `app-deploy` writes it. No secret is in the compose file, in a process's arguments (VPS-35,
+    VPS-38) or in a log line. JSON values (`JWT_KEYS`, `JWT_JWKS`) go in single quotes, which
+    Compose and Node both read, and no line may start with `COMPOSE_` (`app-apply` and `app-deploy`
+    refuse the file).
+  - **The generator** (`scripts/vps-secrets.mts`, Node's crypto only). `--out <dir>` writes the
+    server's `.env`, `env/web.env` and `env/web-staging.env` from the committed templates, their
+    comments kept, under a dated header that gives the API keys' expiry date. Every value the stack
+    makes for itself is generated in the formats of upstream's own key scripts, proved byte for byte
+    with upstream's code: `JWT_KEYS`, `JWT_JWKS`, the HS256 and ES256 tokens' headers and claims,
+    and the opaque `sb_` keys with their checksum. The owner's own values (the bucket and its token,
+    the age public key, staging's pooler login, Razorpay, Resend, the readers, Turnstile, Sentry,
+    hosted staging's secret key) stay empty under `# FILL IN` lines, so Compose refuses to start
+    until they are filled. `--check <dir>` checks the files by name only: shapes, signatures, the
+    JWKS against the signing key, the checksums, bare origins, cron secrets and staging's cookie
+    secret and secret key that differ from production's, the age key's checksum, and nothing left to
+    fill. `--rehearsal` writes throwaway values and a throwaway age key pair for the rehearsal
+    (VPS-42). Files are 0600 in 0700 folders and written through a rename; existing ones are kept
+    unless `--force`; inside the repository it writes only where git ignores the file. It prints
+    names and paths, never a value. One command for every value, tested and with a validator, rather
+    than upstream's shell scripts and a hand-filled file.
+  - **Expiry and rotation.** The four API-key JWTs (`ANON_KEY`, `SERVICE_ROLE_KEY` and their ES256
+    twins) are valid five years from generation, as upstream makes them; the generator prints the
+    date and the RUNBOOK keeps it. The database password is read only when the volume is created,
+    and the generator writes whole new sets, so rotating the password or the keys is a planned
+    window that is not rehearsed: the RUNBOOK says which values go together. The other values rotate
+    by editing their file and recreating the services that read it (RUNBOOK).
+    `SUPABASE_PUBLISHABLE_KEY` is also the production image's
+    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, a GitHub variable (VPS-41), so changing it takes a
+    release.
+- **VPS-37 · The Caddy site file and the redaction file:** `deploy/vps/edge/menumesh.caddy`, which
+  the owner installs with `app-apply` and deploys never touch, has four blocks with literal hosts,
+  so `edge.env` holds only staging's basic-auth pair. Each block opens with `import site_common` and
+  `import tls_menumesh`, and each `reverse_proxy` names one alias and imports `upstream` (the
+  contract's rules, checked by `app-apply` on the text, on Caddy's adapted JSON and by Caddy's
+  validate).
+  - **`menumesh.in`** proxies to `menumesh-web:3000`; **`www.menumesh.in`** redirects to it with
+    308, keeping the path and the query; **`api.menumesh.in`** sends only `/auth/v1/*`,
+    `/rest/v1/*`, `/realtime/v1/*` and `/storage/v1/*` to `menumesh-gw:8000` and answers 404 for the
+    rest, with `stream_close_delay 5m` (Realtime sockets survive a Caddy reload for 5 minutes) and
+    `stream_timeout 24h`; **`staging.menumesh.in`** proxies to `menumesh-web-staging:3000` behind
+    basic auth.
+  - **Bodies:** at most 3 MB to the apps (Next.js caps a server action at 2 MiB and the app a
+    webhook at 1 MB) and 6 MB to the gateway (the largest browser upload is a 5 MiB support
+    screenshot). Caddy answers 413 from the `Content-Length` alone and cuts a chunked body at the
+    limit (proved by the edge test).
+  - **Upgrade requests** to the apps get 400 (a header matcher): the app serves no WebSockets, and
+    the preload already ends such sockets at a stop, so this is defence in depth (VPS-16).
+    Realtime's upgrade on `api.menumesh.in` passes.
+  - **Quiet successes.** `log_skip` keeps busy successful requests out of the shared log and its
+    45,000 lines a day: on the apps the static files, icons, install files and `/api/health`, the
+    diners' order poll (`GET /t/<token>/session`) and the alerts bell (`/super/alerts`); on the
+    gateway preflights, public objects (menu photos), the boards' RPCs (`staff_get_board`,
+    `admin_report_sales`, `admin_billing_sessions`, `admin_preview_bill`) and the staff screens'
+    menu reads (`menu_categories`, `menu_items`, `menu_addon_groups`). The names were read again
+    from the code, and `/apple-icon/*` was dropped: no such route exists.
+  - **Staging** asks for the password on everything but `GET` and `HEAD` of `/api/health` and the
+    install files (`/app.webmanifest`, `/sw.js`, `/icon/*`, `/apple-icon`, `/maskable-icon.png`,
+    `/favicon.ico`) and `POST` of the two webhooks. That includes the diners' pages: testers enter
+    the password once per device, and trials on real phones use production. That was the plan's
+    recommendation; the other option, open diner pages on staging, would also exempt `/t/*` and the
+    files those pages load, a public surface on a test site. The smoke tests send the credentials
+    (`SMOKE_BASIC_AUTH`, to that origin only) rather than widening the exemptions.
+  - **What Caddy leaves alone:** it sets no response header, so `x-nextjs-action-not-found` and
+    `x-nextjs-deployment-id` reach the browser (proved for the deployment ID), caches nothing and
+    adds no `X-Robots-Tag` (the app sends `noindex` on every host but `menumesh.in`). The client-IP
+    headers are the shared `upstream` snippet's: forged ones are replaced (proved). Cloudflare's
+    cache rule (only `/storage/v1/object/public/*`) is a zone setting for the cut-over. No pattern
+    holds `{...}`, which Caddy would read as a placeholder, there is no `expression` matcher, and
+    the only placeholders are `{$MENUMESH_STAGING_AUTH_USER}` and `{$MENUMESH_STAGING_AUTH_HASH}`.
+  - **The redaction file** is one line, `request>uri regexp ^/t/[A-Za-z0-9]+ /t/_`, installed with
+    `app-apply edge redact menumesh`: QR tokens are 16 of those characters (a database check), and
+    the edge's shared rule already drops query strings, where the app's other URL secrets travel.
+    `LOG_REDACT=1` in the conf makes hostwatch alert while the file is missing. Both edge files live
+    here because the edge keeps no copy after a server loss. For the admin, `tls_menumesh.caddy` is
+    the snippet (its `client_auth` block commented until origin pulls are on) and `edge.env.example`
+    the two names, with how to make the hash.
+- **VPS-38 · The scheduler: BusyBox crond from `curlimages/curl`, the bearer on curl's stdin:**
+  `scheduler` (on `default`, calling `http://web:3000`) and `scheduler-staging` (on `staging`,
+  calling `http://web-staging:3000` with staging's own secret) run `curlimages/curl:8.22.0` by
+  digest, Alpine with BusyBox's crond, with their crontab, `start.sh` and `cron-call` mounted
+  read-only from `config/scheduler/`. The contract named plain Alpine with `wget`, but BusyBox's
+  `wget` takes a header only in its arguments, which the host's process list shows; curl reads the
+  address and the header from its standard input (`--config -`), as the server's own hostwatch does.
+  8.22.0 because 8.23.0 was not yet 14 days old.
+  - **The lines, in UTC:** `daily` at 21:30 (03:00 IST) and `daily-retry` at 22:00, `digest` at
+    03:15 (08:45 IST) and `digest-retry` at 03:45, and `jobs` every minute (VPS-29). Staging's
+    crontab has the same lines today, in a file of its own so that they can differ without a compose
+    change.
+  - **`cron-call <job>`** gives curl 1,740 s for `daily` (so it ends before its retry starts),
+    1,800 s for `daily-retry`, 300 s for the digest and 25 s for `jobs`, whose route answers at
+    once. A 200 writes the day's marker, so the retry exits quietly, or touches `jobs.ok`, and then
+    pings the route's heartbeat (`HEARTBEAT_DAILY_URL`, `HEARTBEAT_DIGEST_URL`,
+    `HEARTBEAT_JOBS_URL`; for staging `.env` holds them as `STAGING_HEARTBEAT_*`); a failed ping
+    prints nothing, since the monitor notices a missing ping. One call of a route runs at a time
+    (`flock`): a daily or digest call still running makes the next one say it skipped. It prints one
+    line for each daily or digest call and for a minute call without a 200, never a value, and
+    nothing in a healthy minute.
+  - **`start.sh`** writes the address, the bearer and the heartbeat addresses from Compose's
+    environment to `/run/menumesh/cron.env` (0600, on a tmpfs only root can enter) with `printf`,
+    refusing a value with a quote, a backslash or a line break, then runs
+    `crond -f -c /etc/crontabs -L /dev/stderr -l 9` (no line per job start, its errors to the
+    journal). `cron-call` reads the file whether or not crond hands its environment to the jobs; the
+    rehearsal found that BusyBox crond does.
+  - **Under Docker's init** (`init: true`, a1e419d): crond as process 1 has no signal handlers, so
+    every stop waited out the grace period and ended in a kill (3.5 to 3.8 s on Docker Desktop,
+    whose default grace is 3 s; 10 s on a stock engine). Under init a stop takes about half a second
+    and ends with exit 143.
+  - **Health.** Each answered minute touches `jobs.ok`; the check fails once it is 10 minutes old,
+    and the third failing probe, 12 to 13 minutes after the last answer, makes the container
+    unhealthy (the comment was corrected in 6bd3468), which hostwatch alerts on, besides the jobs
+    heartbeat. Measured: `jobs.ok` touched every minute; 0 lines in healthy minutes; with a wrong
+    bearer one line a minute, `cron-call jobs: HTTP 401 in 0 s`, unhealthy 12 min 39 s after the
+    last answer and healthy again 3 s after the first 200; no process ever held the bearer, inside
+    the container (`/proc`) or from the host (`docker top`, 62 looks across a slowed tick).
+- **VPS-39 · Migrations: a psql runner that keeps the supabase CLI's history:** the migrate image
+  (`deploy/vps/migrate/`) is Postgres's own `postgres:17.10-alpine3.24` by digest (psql 17, the
+  server's major), `supabase/migrations/` and `migrate.sh`, run as `postgres` (425 MB). It is built
+  from the repository's root with its own ignore file, an allowlist of the migrations and its
+  folder, so no seed reaches it. The supabase CLI was not used: it is a large binary behind an npm
+  shim that checks for updates and sends telemetry (the `data` network has no way out), and it was
+  not proved in a locked-down container with a URL alone.
+  - **What it does.** It reads the applied versions, and refuses (exit 2) a version the image lacks
+    (an older image after a newer one) or a pending file older than the newest applied, as the CLI
+    does. Then one session, under an advisory lock with a 2-minute lock timeout: the CLI's own
+    statements for `supabase_migrations.schema_migrations`, a second look at the history, and for
+    each file `begin`, the file, its history row (version and name), `commit`. So hosted staging's
+    history, which the CLI wrote, carries on, and `supabase migration list` reads either database;
+    the rows' `statements` stay empty (only `supabase migration fetch` reads them). Exit 0 when it
+    applied files or had none to apply, 1 when a file failed (rolled back and not recorded; the
+    files before it stay), 2 when refused, 3 without a connection. psql runs terse (no DETAIL) and
+    nothing prints a value: one line per file and a summary. A unit pin keeps every migration free
+    of a top-level transaction statement, or one Postgres refuses inside a transaction, so that each
+    file stays one transaction with its row (all 80 pass).
+  - **Where it connects.** Production as `postgres` on `db:5432` (the migrations assume `postgres`
+    owns what they create); staging through hosted Supabase's IPv4 session pooler (the bridges have
+    no IPv6), port 5432 in session mode, which the advisory lock needs, checked `verify-full`
+    against Supabase's CA in `config/migrate/supabase-ca.crt`, which the owner downloads. libpq
+    variables, not a URL, so the password needs no encoding.
+  - **Install order.** Auth and Storage make their schemas at their first start, and the migrations
+    put buckets and policies into `storage`: on a database whose Storage never ran, the 9th file
+    stops on `storage.buckets`. So `db` comes first, then `auth`, `rest`, `realtime`, `storage` and
+    `api-gw`, then the first deploy, which runs the migrations.
+  - **Measured,** run as `app-deploy` runs it (`run --rm --no-deps -T migrate`): the 80 files in
+    2.5 s with 80 history rows; a second run "nothing to apply"; a broken extra file exit 1 with
+    nothing recorded; a fake newer row exit 2. `app-deploy` gives it 600 s and switches nothing
+    unless it exits 0, so migrations stay backward-compatible for one release (VPS-24).
+- **VPS-40 · Backups and restores: an age-encrypted night in the owner's bucket, restored into a
+  bare cluster:**
+  - **The image and the job.** `deploy/vps/backup/` is `postgres:17.10-alpine3.24` with age, rclone,
+    curl and GNU tar. Its crond runs `backup.sh` at 20:30 UTC (02:00 IST), ten minutes after the
+    host's settings archive (`app-config-archive@menumesh.timer` at 20:20 UTC, a drop-in the admin
+    adds). The `backup` service reads `storage-data` and `backup-out` read-only, runs under Docker's
+    init (a1e419d), has 320m and is healthy while crond runs.
+  - **A night** is five parts while there is one database, under `daily/` in the bucket, each
+    streamed through age to the owner's public key, so nothing decrypted is written: the roles with
+    their passwords (`pg_dumpall --globals-only`); each database whole, owners and grants included
+    (`pg_dump -Fc`); the Storage volume as a GNU tar with its `user.*` xattrs, where Storage keeps
+    each file's content type (BusyBox's tar drops them, and a restored photo would be served as
+    `application/octet-stream`); a manifest of exact row counts in the app's, Auth's and Storage's
+    tables, the newest migration and Storage's file count and bytes; and the host's settings
+    archive, copied as `config-<stamp>.tar.age`. The manifest goes up after the other parts, so a
+    manifest means a whole night. Every part must pass a size floor (1 KB for the dumps, the tar and
+    the archive, 256 bytes for the roles and the manifest).
+  - **Keeping and alerting.** On the 1st the night is also copied to `monthly/`; daily copies go
+    after 30 days and monthly ones after 366, and the bucket's own object lock or versioning, the
+    owner's setting, keeps a stolen token from deleting them sooner. A missing settings archive, or
+    one more than 2 hours old, fails the night once the other parts are safe. A failure sends one
+    Telegram line naming the step, never a value; a full success prints one line and then pings
+    `HEARTBEAT_BACKUP_URL`, whose monitor alerts after 26 hours without one. The job runs below
+    everything else in CPU and disk priority.
+  - **Restores go into a bare cluster.** A fresh `supabase/postgres` volume runs the image's own
+    init, and a full dump restored on top of it collides with its schemas, roles and extensions. So
+    `restore-db` and `recover-db` start the same image through `config/db/bare-postgres.sh`:
+    `initdb` with `supabase_admin` and the image's own arguments (its locale), then Postgres with
+    the image's settings file and its custom directory. `restore.sh` restores the roles (leaving out
+    the cluster's own superuser, so the job's password stays), drops each database and recreates it
+    with `pg_restore --create` straight from the stream (the whole custom-format dump is read from
+    the pipe, so no file is needed: proved), then compares the counts with the manifest. In the
+    rehearsal (`RESTORE_EXACT=1`) every count must match; on the server, writes during the backup
+    move counts, so differences are listed and only a missing table, an empty one or no Storage
+    files where there were some fail.
+  - **The monthly restore test** (`restore-test` with `restore-db`, profile `restore-test`) keeps
+    the data on a 1 GiB tmpfs, lists the Storage archive and the settings archive's file names, and
+    prints `restore test passed`; the owner's private key is on a ramfs for the run only. Since
+    b6024d9 only the data is on the tmpfs: `/etc/postgresql-custom` stays the image's, with
+    supautils' settings and extension scripts, because an empty one restored extensions unlike `db`
+    and a recovery (seen on pgsodium's `mask_role`). First before the first restaurant, then monthly
+    in the third week (the contract).
+  - **Disaster recovery** (`recover` with `recover-db`, profile `recover`) goes into new `db-data`,
+    `db-config` and `storage-data` volumes. It refuses a cluster that a server still runs on (since
+    6cce911 `bare-postgres.sh` starts an existing cluster only when `pg_controldata` says it was
+    shut down cleanly: without that a second Postgres ran crash recovery on `db`'s live files in a
+    test), `db`'s old cluster ("not a bare cluster") and Storage's old files ("/storage is not
+    empty"). Then `db` starts on the volumes and skips its init, the migrations find nothing to
+    apply, and the stack comes back (RUNBOOK). Since c813841 the bare clusters keep pg_cron's
+    launcher on `postgres` with no job running, so a backup holding pg_cron restores and no restored
+    job runs there, and the restore drops with `force`; since 3670a92 their health check asks
+    `template1` (a bare cluster has no `supabase_admin` database, and each probe logged a FATAL line
+    every 2 s).
+  - **What a restore cannot carry** (each restore was compared with its source object by object):
+    what Supabase's event triggers and supautils change on an extension's members after
+    `CREATE EXTENSION`, because `pg_dump` writes only the members' grants and `pg_restore` makes the
+    event triggers last. That is 8 known differences: `pg_net`'s two http functions without
+    `search_path=net`, `pg_graphql`'s `graphql_public.graphql` missing and the graphql schemas
+    without their usage grants, two pgsodium objects owned by `supabase_admin`, and `pg_graphql`'s
+    schema counter. MenuMesh uses none of them (no migration names them, and the gateway closes
+    `/graphql/v1`). Vault secrets come back but do not decrypt: pgsodium's root key on `db-config`
+    is in no part of the backup, and the app keeps nothing in vault. A project that starts using
+    them needs after-restore statements or a two-pass restore.
+  - **WAL archiving** and a point-in-time restore drill are Stop C, before the first live
+    restaurant: a nightly dump alone loses up to a day, and rewinds the invoice counters with it.
+- **VPS-41 · Images and deploys in CI, off until two repository variables are on:**
+  - **`vps-build.yml`** (called by CI and by VPS release) builds the web image for one target and
+    the migrate image of the same commit, and pushes them to `ghcr.io/nanu1605/menumesh` as
+    `staging-<sha>` or `prod-vX.Y.Z` and `migrate-<sha>`, each labelled
+    `org.opencontainers.image.version` with its own tag in build-push-action's `labels`, which
+    `app-deploy` checks. The tags are checked against the server's patterns before the build, a
+    `prod-` tag that exists is refused (release tags are immutable), and a commit's migrate image is
+    built once, so the release deploys the migrations staging ran. The build values come from
+    repository variables, the Sentry token is a BuildKit secret and `DEPLOYMENT_ID` is
+    `<sha12>-<run>-<attempt>`. The job summary prints each `<tag>@sha256:<digest>`, and for
+    production the exact `sudo app-deploy menumesh production …` line.
+  - **`vps-deploy-staging.yml`**: a deploy job with no third-party action, so the SSH key never
+    shares a runner with installed packages. It refuses inside the blackouts (02:55 to 03:30 and
+    08:40 to 08:50 IST; failing fast, since waiting bills minutes), checks the two image references
+    and the six `VPS_*` secrets, installs cloudflared 2026.9.3 checked by its sha256, and sends
+    `v1 deploy <web> <migrate>` and the job's registry token on stdin through the tunnel
+    (`ServerAliveInterval=30`, 45 minutes). The key's forced command runs `app-deploy staging`,
+    which pulls by digest, checks the labels, runs `migrate-staging` and waits for health. A smoke
+    job, holding no deploy secret, then runs `pnpm smoke` against staging with the basic-auth pair.
+  - **`vps-release.yml`**: a manual run by the repository owner, who types `production`, a `vX.Y.Z`
+    version and optionally a commit whose CI on `main` passed; it builds production and deploys
+    nothing, as the owner deploys on the server (VPS-23). A manual run rather than a pushed tag
+    keeps the Release habit and its checks, and a stray tag can't build production.
+    **`vps-backup-image.yml`** builds `backup-<sha>` on a push to `main` that changes
+    `deploy/vps/backup/`, or by hand on `main`; the admin form installs it. **`vps-ping.yml`**, by
+    hand only, expects `pong menumesh staging`.
+  - **Gates.** `ci.yml` runs VPS build after the tests on a push to `main` only when `VPS_IMAGES` is
+    `true`, and VPS deploy staging only when `VPS_DEPLOY_STAGING` is `true` as well; the Vercel
+    staging job is skipped once `VPS_DEPLOY_STAGING` is `true`. A job skipped by its `if:` bills
+    nothing, so until then the kit costs a few seconds of unit tests. The new workflows pin every
+    action by commit, because they hold deploy secrets, and their concurrency groups queue builds
+    and deploys rather than cancel one halfway.
+  - **Repository-level secrets** (a private repository on the free plan has no environment secrets):
+    any workflow here could read the staging key and the Access token, so the key's forced command
+    limits it to a digest-pinned image of this repository on staging.
+  - **Minutes, estimated** (nothing has run on GitHub): 8 to 10 billed minutes for a merge with both
+    variables on (build 4 to 6, deploy 2, smoke 2), 6 to 8 for a release, 2 to 3 for a backup image,
+    1 for a ping, against 2,000 a month and about 56 a pull request today. Unproved until the first
+    runs: the cache, and GHCR's answer for a tag or package that does not exist (the release's check
+    takes "not found", "unknown", 404 or "denied" for absent). actionlint 1.7.12 passes the new
+    workflows.
+- **VPS-42 · Checking the kit without a server:** the server is not bought, Actions minutes are
+  scarce, and the server team's rules are code, so their code runs on the kit here.
+  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 56 tests; `tests/unit/vps-secrets.test.ts`, 18):
+    each rule is a function, clean on the real file and refusing at least one copy with a mistake.
+  - **`pnpm vps:check`** runs the vendored `app-apply` (`deploy/vps/test/vendor/jainav-infotech/`,
+    byte for byte at `66fe8b3`, with `SOURCE`'s sha256s pinned) as root in a throwaway Ubuntu 24.04
+    container (`deploy/vps/test/Dockerfile.kitcheck`: the server's Docker CLI 29.9.3 and Compose
+    5.7.0, jq 1.7 and mawk, each download checked, built once and never pushed), with
+    `deploy/vps/test/kit-check.sh` laying out `/srv/menumesh` and `/etc/apps` as the server's (the
+    conf in `deploy/vps/test/menumesh.conf`, beside the vendored `jainav.conf` and `edge.conf`). It
+    runs `cmd_compose` itself, the contract's own rules on the same JSON, the edge files' text and
+    JSON checks, Caddy's adapt and validate of the server's edge tree with `caddy_run`'s exact
+    flags, Envoy's `--mode validate`, shellcheck of the nine scripts and a crontab lint; then copies
+    of each file with one mistake, each refused for its reason. Stubbed, because a container has no
+    daemon or journal: `check_edge_networks`, the other projects' installed limits (Jainav 4,480 MiB
+    and the edge 256, measured from their files at the vendored commit), MemTotal (15,990 MiB),
+    `journal` and `logger`, and `caddy_run` for the JSON check, which replays the host's run.
+  - **`pnpm vps:edge`** puts the server's Caddy tree with the site file in front of three stub
+    upstreams on `127.0.0.1:8443` and tests how it answers (Tests).
+  - **`pnpm vps:rehearse`, `vps:backup-test` and `vps:down`** run the stack as compose project
+    `menumesh-rehearsal`: the compose file in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
+    gitignored, with the values of `pnpm vps:secrets --rehearsal`) and
+    `deploy/vps/local/compose.rehearsal.yml` on top. That override is never installed (a pin keeps
+    every file the server or CI gets free of it): it publishes the app and the gateway on
+    `127.0.0.1` only (3300 and 8300), gives Postgres 128MB of buffers (the rest of `db`'s command is
+    pinned equal), keeps the staging services behind a profile nothing turns on, makes the edge
+    networks the project's own plain bridges, adds an S3 stand-in for the bucket (`rclone serve s3`,
+    pinned, on an internal network), and maps every third-party host the code can call to `0.0.0.0`
+    in the containers with a way out, so a call stays in its container and is refused in
+    milliseconds. The local Supabase stack is only read (selects and `pg_dump` in read-only
+    transactions), and the rehearsal needs 6 GiB available in Docker Desktop's VM. The app's checks
+    (smoke and a Playwright subset against `http://localhost:3300`) were run by hand.
+  - **Copied again before every install:** the server team's files change, and `vps:check` is only
+    as good as its copy (RUNBOOK, Checking the kit here). What only the server can prove is under
+    Tests.
+
+### Tests (VPS Stop B)
+
+- **Unit (1,032 to 1,106 tests, 66 to 68 files):** `vps-secrets` (18, new: the key shapes and the
+  order of their members, HS256 and ES256 signatures checked again with Node's crypto, public-only
+  JWKS, checksums, 13 broken forms refused by name, BIP 173 vectors and the age recipient against
+  its identity, the templates' names equal to the generator's, every required compose value
+  generated or the owner's, and the command: 0600 and 0700, no value in any output, no overwrite
+  without `--force`, no write under `deploy/vps/env/`); `vps-kit` (56, new): the compose file (the
+  server's keys, interpolation, limits, the webs, anchors, pins, the 6,560 MiB, env names, the
+  database's quiet log, init on the crond services), the gateway (timeouts, idle closes, no removed
+  routes, the access log, the 404, `start.sh`), the edge files, the scheduler, the migrate and
+  backup images (the per-file transaction rule, the backup's floors, pg_cron's restore, clean
+  clusters only, supautils' settings), the workflows (labels, tag patterns, the gates, cloudflared),
+  the copies against their hashes, the kit check's helpers and the conf, and the rehearsal's
+  override and helpers. Every rule refuses at least one broken copy; 6 came with the rehearsal's
+  fixes. Before each commit: `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm format:check`; at
+  the end also `pnpm audit --prod --audit-level=high` (exit 0: 2 low, 4 moderate).
+- **`pnpm vps:check` (53 checks, 0 failed, about 20 s):** 2 crontab lints, 4 Caddy runs (adapt,
+  validate, validate with the redaction file, a broken one refused), 43 in the checker and 3 for
+  Envoy (the key names, validate, a broken copy refused), and shellcheck. app-apply's `cmd_compose`
+  passed every check, installed the file and pinned it: "steady memory limits: 11296 MiB, plus
+  1536 MiB for the host, of 15990 MiB". Refused, each for its reason: another project name or
+  top-level key, `extends`, a published port, `privileged`, a missing limit, swap past 256m, a value
+  in `volumes`, a writable bind or one outside `/srv/menumesh`, the Docker socket, another
+  capability, a tmpfs without a size, no `restart`, an alias not in `UPSTREAMS`, the database on an
+  edge network, an external volume, IPv6, limits past MemTotal, and the contract's rules (no
+  `cpu_shares` or `oom_score_adj`, swap for `db`, no health check, a logging key, 6,592 MiB, staging
+  on a production network, a second alias); in the site file a host outside the zone, a handler off
+  the list, an `expression` matcher, a block without `import tls_menumesh`, an unlisted upstream,
+  another app's placeholder and a client-IP header; a quoted or foreign redaction line; an
+  `edge.env` name of no app or an unquoted hash; and a broken Envoy config. Seven real files broken
+  in place (and put back) failed the command too. The checker image builds in 46 s (231 MB).
+- **`pnpm vps:edge` (20 checks, about 10 s):** `www` gives 308 keeping the path and the query; an
+  upgrade gets 400 on `menumesh.in` and staging and reaches the gateway on `api`'s Realtime path,
+  the query kept; `api` passes the four prefixes and gives 404 for `/`, `/graphql/v1`, `/pg/`,
+  `/functions/v1/` and `/rest/v2/` without reaching the gateway; staging gives 401 without the
+  password and with a wrong one, also for `/t/<token>`, `/login`, `GET` of a webhook, the minute job
+  and `POST /api/health`, and 200 without it for the health check, the install files and `POST` of
+  both webhooks; 413 from the `Content-Length` alone (6.5 MB to the gateway, 3.5 MB to the apps) and
+  for chunked bodies past the limits, while 5 MiB and 2 MiB bodies arrive whole; forged client-IP
+  headers replaced or dropped, and, with this machine's ranges standing in for Cloudflare's, every
+  address header equal to `CF-Connecting-IP`; `x-nextjs-deployment-id` passes; the log has lines for
+  what it keeps and none for the quiet paths or preflights, `/t/_` for a token, and no query,
+  password, address or header in any line. Two broken copies of the site file failed it.
+- **The rehearsal** (`pnpm vps:rehearse`, 34 checks, 0 failed; from empty 2 min 51 s to 3 min 54 s,
+  a rerun about 2 min):
+  - Docker Desktop with 15.18 GiB and 16 CPUs, 8.49 GiB available in its VM. Secrets and the mirror
+    in place, `compose config` clean. Images built as CI builds them: web 42.6 s and 452 MB, migrate
+    1.4 s and 425 MB, backup 10.9 s and 612 MB, each labelled `version=rehearsal`, which
+    `app-deploy`'s label rule accepts and refuses for another tag.
+  - `db` healthy in 6.9 s, then the Supabase services in 14.2 s; the locale ICU `en-US`, as the CLI
+    stack's. The migrations as in VPS-39; the database log of a full migrate 38,293 lines before the
+    fixes, 0 after. The schema against the CLI stack's: 1,352 objects in `public` and `private` on
+    both sides, none only in one, differing only in line ends (31 CRLF function bodies in the CLI
+    stack from this Windows checkout, 4 the other way from the one CRLF migration file) and one
+    function edited by hand in the local database; the same Storage policies, buckets, Realtime
+    tables, `pg_trgm` and 80 versions.
+  - The pre-deploy dump exactly as `app-deploy` makes it: 1,616,987 bytes in 2.1 s, readable (2,134
+    entries). With the seed loaded by hand, `web` healthy in 4.4 s and the `scheduler` in 32 to 37 s
+    (the next minute's call; 65 to 70 s at worst), inside the 120 s gate. Ports on `127.0.0.1:3300`
+    and `:8300` only.
+  - Through the gateway: the ES256 sign-in (VPS-34); with the publishable key Auth, PostgREST,
+    Realtime's upgrade (101) and Storage answer, and `/graphql/v1`, `/pg/`, `/functions/v1/` and `/`
+    give 404; a key with one character changed gets 401; from the web container the same with the
+    secret key, and no Supabase service but the gateway; the sinkhole refuses in 4 to 12 ms; staff
+    addresses, the upsert and the 50 MiB upload as in VPS-34; a forced 5xx makes one Envoy line
+    (VPS-35).
+- **The app on the rehearsal, by hand:**
+  - `SMOKE_URL=http://localhost:3300 EXPECTED_VERSION=<sha> pnpm smoke` 10 passed (8.0 s).
+    `process.loadEnvFile` keeps variables already set, so the rehearsal's values win over
+    `.env.local`. Playwright with `E2E_PORT=3300`, through a copy of the config without its
+    `webServer` (which would start the mock APIs on 3190) and a dead proxy for any other host: on
+    desktop `auth`, `staff-board`, four `super-close-account` tests and the support screenshot test,
+    20 passed and 2 skipped; on mobile `customer-ordering`, 5 passed. The 2 skipped minute-job tests
+    use the bearer `playwright.config.ts` gives a server it starts, and passed with `web` on that
+    bearer for two minutes. After the gateway fix 20 and 5 passed again. Covered through the real
+    kit: TOTP enrolment and sign-in, the staff boards over Realtime with ES256 tokens (a reconnect
+    included), the ZIP export uploaded through `api-gw:8000` and downloaded from a signed link on
+    `127.0.0.1:8300`, and a signed browser upload. Left out: what needs the mock APIs, and photos
+    through `next/image`.
+  - Sign-ins through the app carry the visitor's address (VPS-4): GoTrue logged it and no "rate
+    limiting is not applied" warning, and the web logged no missing-address line; only direct calls
+    to `:8300`, which no Caddy fronts, lack it.
+  - The scheduler as in VPS-38.
+  - Stops (`docker stop -t 25`, a pooled keep-alive client in a container on the edge network, as
+    Caddy is): `web` idle 0.66 to 0.73 s; a diner page held 7.5 s by a lock, stopped 1.5 s in,
+    6.67 s with its 200 and `Connection: close`; one held 9.5 s, 8.66 s with a 500 at the 8 s cap;
+    each ended with exit 143. An export of 360,014 rows (6,970 ms, a 9,888,393-byte ZIP) stopped 3 s
+    and 1 s after its claim took 2.91 s and 0.69 s, went back to `queued` with `attempts` 0 and was
+    built by the next tick. Docker's init brought the crond stops from 3.5 to 3.8 s (exit 137) to
+    0.46 to 0.82 s. `api-gw` 0.89 s, `storage` and `rest` 0.54 s, `auth` 0.50 s, `realtime` 1.67 s
+    and `db` 0.62 s (healthy again in 6.0 s): none waited for a kill.
+  - Log volume: 0 lines from all eight services in idle stretches of 3 to 15 minutes, and 0 in 10
+    minutes with a staff board, `/admin/live` and `/admin` open and 5 orders placed. Lines come from
+    events only: a web start 5; a db stop and start 197; a Realtime tenant connecting after idle 10;
+    a failed password, code or 429 one auth line each; a QR code that doesn't work 2 database lines
+    per view; a business error or an anonymous request for a table anon can't read 1; a gateway 5xx
+    1 (8 in all for the 8 s case); an export built 1; a minute call without a 200 1. The whole
+    test-heavy 90 minutes wrote about 1,450 lines, against 45,000 a day; a plausible production day
+    is a few hundred.
+- **Backup, restore test and recovery** (`pnpm vps:backup-test`, 25 checks, 0 failed, 2 min 26 s
+  after a fresh rehearsal; 24 of 24 on the app tests' data):
+  - `backup.sh` as the service runs it: 5 parts, each starting with age's header, in 3.3 to 7 s and
+    38 to 58 MiB of 320m; the heartbeat last, into the sinkhole. With 300 MiB more of Storage:
+    316,525,765 bytes in 9.9 s and 77 MiB (rclone streams in 5 MiB parts). A settings archive 3
+    hours old failed the night after its 4 other uploads, with the alert ("the settings archive … is
+    more than 2 hours old"); an unreachable bucket failed it at once ("reaching the bucket").
+  - The restore test: `restore test passed` in 5.8 to 7.4 s, every table and file as the manifest
+    counted, the dump read from the pipe; `restore-db` 156 to 160 MiB and 61 to 62 MB of its tmpfs.
+  - Each restore against its source, by a catalog fingerprint and a hash of every table's rows:
+    roles, memberships, settings, extensions (pg_cron with a job, pg_net, pgsodium, vault,
+    pg_graphql and the rest, added for the test as a project would), event triggers, publications,
+    schemas, relations, functions and types with owners and grants, constraints, policies, triggers,
+    sequences and every row equal, but for the 8 known differences of VPS-40.
+  - The recovery: refused while `db` ran (`db` untouched, 0 lines in its log), onto `db`'s old
+    cluster and onto old Storage files; then into three new volumes in 11.3 to 15.1 s; `db` up on
+    them in 6.1 to 6.8 s, skipping its init; the migrations "nothing to apply"; the services, `web`
+    and the `scheduler` healthy; the seed's owner signs in, PostgREST and Realtime answer, and each
+    Storage file has its source's bytes, sha256 and xattrs and is served with its content type.
+  - `pnpm vps:down` (3 checks) removed the project's 8 containers, 6 networks and 6 volumes and
+    nothing else; `--images` (4 checks) only the three rehearsal images. Docker's containers,
+    volumes and networks then equalled by name the lists taken before the rehearsal began.
+- **Found and fixed by the rehearsal** (each with a unit pin): migration DDL in the database log
+  (7614c1b) and `auto_explain` logging slow statements with their values (1b7b6ac), VPS-34; crond
+  ignoring the stop signal (a1e419d), VPS-38; Envoy reusing connections the services close
+  (40bda9c), VPS-35; a backup with pg_cron that could not be restored (c813841), a recovery that
+  could start a second server on `db`'s files (6cce911) and a restore test without supautils'
+  settings (b6024d9), VPS-40. Before the rehearsal the bare clusters' probe (3670a92). The
+  rehearsal's own tooling: 234cfa4, 7ce658f, 97a65a5 and 3d6442f, and a corrected comment (6bd3468).
+- **Seen, no change:** GoTrue's lines for failed sign-ins, failed codes and 429s carry the visitor's
+  address, kept 180 to 187 days in the journal, which the privacy text must cover; internet-driven
+  database error lines (a QR code that doesn't work, an anonymous request for a table anon can't
+  read) are bounded only by Cloudflare, where a rate-limit rule on `menumesh.in/t/*` and
+  `api.menumesh.in/rest/v1/*` is worth adding; Realtime restarts after `db` stops; the steady
+  `backup` container gets an empty anonymous volume from its base image, which hostwatch ignores;
+  and the web process stays near 1 GiB after a very large export, which the memory guard does not
+  count.
+- **Not settled here:** hosted production's locale, before the server's first start (VPS-34);
+  `api-gw`'s 224m, and the KVM 4's real MemTotal (`MEMTOTAL_MIB` in `scripts/vps-kit.mts`), with the
+  server team (VPS-33); rotating the database password or the API keys, a planned window not yet
+  rehearsed (VPS-36); and what a restore cannot carry, should the app ever use pg_net, pg_graphql,
+  pgsodium or vault (VPS-40).
+- **What only the server can prove:** `app-apply` on the real host (its paths, MemTotal, Jainav's
+  installed project, `check_edge_networks`); `app-deploy` end to end (the pull with the job's token,
+  the label check, the pre-deploy dump, the migrate one-off, the health gate, a rollback, the
+  prune); the journal's real line counts and hostwatch's daily checks (budget, redaction,
+  recipients, timers, images); Cloudflare, origin pulls, the leak test, WebSockets and `next/image`
+  through Cloudflare, the `x-nextjs-*` headers at the browser and the cache rule; `docker stop` with
+  Hindi names and emails in flight, and Resend's real rate; sharp on the server's CPU; the bucket
+  and its locks, the 20:20 UTC archive timer, Telegram and the heartbeats; a production-sized night
+  and restore test under the server's memory (`restore-db`'s 1 GiB tmpfs against production's size);
+  staging's migrations over the pooler from the server; Envoy's `upstream_cx_destroy_remote` staying
+  near 0 and stop times on a stock engine; CPU and disk on the shared box.

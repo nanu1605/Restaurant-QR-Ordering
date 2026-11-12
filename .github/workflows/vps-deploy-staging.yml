@@ -1,7 +1,7 @@
 name: VPS deploy staging
 
 # Deploys the staging images to the shared server and smoke-tests the result (docs/DECISIONS.md
-# VPS-23, VPS-24). Called by CI after VPS build, when the repository variable VPS_DEPLOY_STAGING is
+# VPS-23, VPS-41). Called by CI after VPS build, when the repository variable VPS_DEPLOY_STAGING is
 # "true". The server's SSH port is closed to the internet: SSH goes through a Cloudflare Tunnel,
 # authorised by an Access service token. The key can only deploy a digest-pinned image of this
 # repository to staging (its forced command, on the server).

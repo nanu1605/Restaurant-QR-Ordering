@@ -1,6 +1,6 @@
 name: VPS build
 
-# Builds the images the shared server takes (docs/DECISIONS.md VPS-23, VPS-24): the web image for one
+# Builds the images the shared server takes (docs/DECISIONS.md VPS-23, VPS-41): the web image for one
 # target and the migrate image of the same commit, both pushed to ghcr.io/nanu1605/menumesh under the
 # tags the server's /etc/apps/menumesh.conf accepts (staging-<sha>, prod-vX.Y.Z, migrate-<sha>), each
 # labelled org.opencontainers.image.version with its own tag, which app-deploy checks. Called by CI

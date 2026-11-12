@@ -127,7 +127,7 @@ jobs:
       target: STAGING
     secrets: inherit
 
-  # The shared server's staging (docs/DECISIONS.md VPS-23, VPS-24). Both jobs are skipped, and bill
+  # The shared server's staging (docs/DECISIONS.md VPS-23, VPS-41). Both jobs are skipped, and bill
   # nothing, until the repository variables are "true": VPS_IMAGES builds and pushes the images,
   # VPS_DEPLOY_STAGING also deploys and smoke-tests them (and takes over from the Vercel job above).
   vps-build:
