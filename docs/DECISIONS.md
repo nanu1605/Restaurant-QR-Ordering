@@ -6828,11 +6828,11 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     than upstream's shell scripts and a hand-filled file.
   - **Expiry and rotation.** The four API-key JWTs (`ANON_KEY`, `SERVICE_ROLE_KEY` and their ES256
     twins) are valid five years from generation, as upstream makes them; the generator prints the
-    date and the RUNBOOK keeps it. The database password is read only when the volume is created,
-    and the generator writes whole new sets, so rotating the password or the keys is a planned
-    window that is not rehearsed: the RUNBOOK says which values go together. The other values rotate
-    by editing their file and recreating the services that read it (RUNBOOK).
-    `SUPABASE_PUBLISHABLE_KEY` is also the production image's
+    date and writes it into `.env`'s header, where the RUNBOOK points. The database password is read
+    only when the volume is created, and the generator writes whole new sets, so rotating the
+    password or the keys is a planned window that is not rehearsed: the RUNBOOK says which values go
+    together. The other values rotate by editing their file and recreating the services that read it
+    (RUNBOOK). `SUPABASE_PUBLISHABLE_KEY` is also the production image's
     `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, a GitHub variable (VPS-41), so changing it takes a
     release.
 - **VPS-37 · The Caddy site file and the redaction file:** `deploy/vps/edge/menumesh.caddy`, which
