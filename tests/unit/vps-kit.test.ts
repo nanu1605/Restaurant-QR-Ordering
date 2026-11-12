@@ -1436,6 +1436,34 @@ const beatNight = (backup: string, notify: string) => [
     : ['notify.sh beat sends no text']),
 ];
 
+/**
+ * Only locks that refuse overwrites (prefix-scoped bucket locks, such as R2's) keep what a restore
+ * reads: a retention date on each object (S3 Object Lock) keeps the old versions only, and a
+ * restore reads the current one (review finding F5). backup.sh's comment and the RUNBOOK's bucket
+ * step say so, and the step no longer counts per-object retention beside the locks.
+ */
+const retentionClaim = (backup: string, runbook: string) => {
+  const flat = (text: string) =>
+    text
+      .split('\n')
+      .map((line) => line.replace(/^\s*#?\s*/, ''))
+      .join(' ');
+  const step = flat(
+    runbook.slice(runbook.indexOf('2. **The bucket:**'), runbook.indexOf('3. **Alerts:**')),
+  );
+  return [
+    ...(flat(backup).includes('keeps the old versions only, and a restore reads the current one')
+      ? []
+      : ['backup.sh counts per-object retention as keeping what a restore reads']),
+    ...(step.includes('keeps the old versions only, and a restore reads the current one')
+      ? []
+      : ['the RUNBOOK’s bucket step doesn’t say what per-object retention keeps']),
+    ...(/or a retention date on each object, keep/.test(step)
+      ? ['the RUNBOOK’s bucket step counts per-object retention beside the locks']
+      : []),
+  ];
+};
+
 const barePostgres = kit('config/db/bare-postgres.sh');
 const restoreSh = kit('backup/restore.sh');
 /**
@@ -2032,6 +2060,39 @@ describe('the migrate and backup images', () => {
       (text) => beatNight(backupSh, text),
       swap(notify, '      [ -z "${2-}" ] || printf \'data-raw = %s\\n\' "$(quoted "$2")"\n', ''),
       'sends no text',
+    );
+  });
+
+  it('says only locks that refuse overwrites keep what a restore reads', () => {
+    const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
+    expect(retentionClaim(backupSh, runbook)).toEqual([]);
+    // As before review finding F5.
+    refuses(
+      (text) => retentionClaim(backupSh, text),
+      swap(
+        runbook,
+        'keeps the old\n   versions only, and a restore reads the current one',
+        'keeps them too',
+      ),
+      'doesn’t say what per-object retention keeps',
+    );
+    refuses(
+      (text) => retentionClaim(backupSh, text),
+      swap(
+        runbook,
+        '3. **Alerts:**',
+        'Only those locks, or a retention date on each object, keep a stolen token from replacing what a restore reads.\n\n3. **Alerts:**',
+      ),
+      'counts per-object retention beside the locks',
+    );
+    refuses(
+      (text) => retentionClaim(text, runbook),
+      swap(
+        backupSh,
+        'keeps the\n# old versions only, and a restore reads the current one.',
+        'keeps them\n# too.',
+      ),
+      'backup.sh counts per-object retention',
     );
   });
 
