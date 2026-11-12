@@ -635,6 +635,31 @@ const accessLog = (text: string) => {
   ];
 };
 
+/**
+ * How soon each service closes an idle keep-alive connection itself, in seconds (measured in the
+ * rehearsal: PostgREST 30 to 60, Storage about 60, Realtime 5; Auth keeps them). Envoy keeps idle
+ * upstream connections for an hour by default, so a request could go out on one the service was
+ * closing and fail with a 503 (UC), which postgrest-js retries only for GET and HEAD.
+ */
+const SERVICE_IDLE_CLOSE: Record<string, number> = { auth: 30, rest: 30, realtime: 5, storage: 30 };
+/** Every cluster closes its idle connections first, and still speaks HTTP/1.1 to its service. */
+const idleClose = (clusters: string) =>
+  clusters
+    .split("\n  - '@type': type.googleapis.com/envoy.config.cluster.v3.Cluster\n")
+    .slice(1)
+    .flatMap((block) => {
+      const name = /^ {4}name: (\S+)$/m.exec(block)?.[1] ?? '?';
+      const seconds = Number(/^ {10}idle_timeout: (\d+)s$/m.exec(block)?.[1] ?? NaN);
+      const limit = SERVICE_IDLE_CLOSE[name];
+      return [
+        ...(limit === undefined ? [`the ${name} cluster has no measured idle close`] : []),
+        ...(seconds < limit ? [] : [`the ${name} cluster keeps idle connections ${seconds} s`]),
+        ...(/^ {8}explicit_http_config:\n {10}http_protocol_options: \{\}$/m.test(block)
+          ? []
+          : [`the ${name} cluster does not say HTTP/1.1`]),
+      ];
+    });
+
 /** Anything not routed answers 404 from Envoy itself, as from Caddy. */
 const catchAll = (text: string) =>
   /- match:\n\s+prefix: \/\n\s+direct_response:\n\s+status: 404\n/.test(text)
@@ -684,6 +709,31 @@ describe('the Envoy gateway (deploy/vps/config/envoy)', () => {
       storageRoute,
       swap(lds, '                          idle_timeout: 60s\n', ''),
       'no 60 s idle timeout',
+    );
+  });
+
+  it('closes idle connections to each service before the service does', () => {
+    expect(idleClose(cds)).toEqual([]);
+    const realtime = cds.indexOf('    name: realtime\n');
+    refuses(
+      idleClose,
+      cds.slice(0, realtime) +
+        cds
+          .slice(realtime)
+          .replace('          idle_timeout: 4s\n', '          idle_timeout: 20s\n'),
+      'the realtime cluster keeps idle connections 20 s',
+    );
+    const rest = cds.indexOf('    name: rest\n');
+    refuses(
+      idleClose,
+      cds.slice(0, rest) +
+        cds.slice(rest).replace(/ {4}typed_extension_protocol_options:\n(?: {6}.*\n)+/, ''),
+      'the rest cluster keeps idle connections NaN s',
+    );
+    refuses(
+      idleClose,
+      swap(cds, '    name: storage\n', '    name: imgproxy\n'),
+      'the imgproxy cluster has no measured idle close',
     );
   });
 

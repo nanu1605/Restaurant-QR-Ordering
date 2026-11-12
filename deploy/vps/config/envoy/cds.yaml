@@ -1,7 +1,8 @@
 # Envoy's clusters for MenuMesh's gateway, from self-hosted Supabase v0.8.4 (supabase/supabase,
 # docker/volumes/api/envoy/cds.yaml, Apache-2.0; see deploy/vps/config/SOURCES.md). Changed
 # (docs/DECISIONS.md VPS-35): the functions, meta and studio clusters are gone, as those
-# services don't run here.
+# services don't run here, and each cluster closes its idle connections before its service
+# does.
 resources:
   - '@type': type.googleapis.com/envoy.config.cluster.v3.Cluster
     name: auth
@@ -12,6 +13,16 @@ resources:
       base_interval: 1s
       max_interval: 1s
     lb_policy: ROUND_ROBIN
+    # MenuMesh: an idle connection is closed by Envoy before the service closes it, so no
+    # request goes out on a connection the service is closing (a 503 with UC in the access
+    # log). Auth keeps them open.
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 20s
+        explicit_http_config:
+          http_protocol_options: {}
     load_assignment:
       cluster_name: auth
       endpoints:
@@ -45,6 +56,16 @@ resources:
       base_interval: 1s
       max_interval: 1s
     lb_policy: ROUND_ROBIN
+    # MenuMesh: an idle connection is closed by Envoy before the service closes it, so no
+    # request goes out on a connection the service is closing (a 503 with UC in the access
+    # log). PostgREST closes them after 30 to 60 s.
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 20s
+        explicit_http_config:
+          http_protocol_options: {}
     load_assignment:
       cluster_name: rest
       endpoints:
@@ -78,6 +99,16 @@ resources:
       base_interval: 1s
       max_interval: 1s
     lb_policy: ROUND_ROBIN
+    # MenuMesh: an idle connection is closed by Envoy before the service closes it, so no
+    # request goes out on a connection the service is closing (a 503 with UC in the access
+    # log). Realtime closes them after 5 s.
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 4s
+        explicit_http_config:
+          http_protocol_options: {}
     load_assignment:
       cluster_name: realtime
       endpoints:
@@ -111,6 +142,16 @@ resources:
       base_interval: 1s
       max_interval: 1s
     lb_policy: ROUND_ROBIN
+    # MenuMesh: an idle connection is closed by Envoy before the service closes it, so no
+    # request goes out on a connection the service is closing (a 503 with UC in the access
+    # log). Storage closes them after about 60 s.
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 20s
+        explicit_http_config:
+          http_protocol_options: {}
     load_assignment:
       cluster_name: storage
       endpoints:
