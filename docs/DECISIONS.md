@@ -7713,10 +7713,10 @@ the restore services' comments in `compose.yml` and the env template).
   `rclone serve s3` reports a file's modification time as its server time, so the local stand-in
   can't show the difference; a stub S3 bucket under prefix locks, each object with the bucket's time
   and an uploader's, a DELETE inside its lock refused with 403, did: fdd5dee's removal tried the
-  object planted an hour before with a 2020 mtime, three attempts, exit 1, in both folders on both
-  nights; the new one never tried it, removed the copies past 30 and 366 days by the bucket's clock,
-  exit 0, and sent no HEAD per object. R2 itself was not tried. (ee34369 "fix: age old copies by the
-  bucket's own upload time")
+  objects planted with a 2020 mtime (an hour before in `daily/`, a day in `monthly/`), three
+  attempts each, exit 1, in both folders on both nights; the new one never tried them, removed the
+  copies past 30 and 366 days by the bucket's clock, exit 0, and sent no HEAD per object. R2 itself
+  was not tried. (ee34369 "fix: age old copies by the bucket's own upload time")
 - **F4 · A recovery without `RESTORE_STAMP` took the newest name in `daily/` (VPS-40), low:** this
   entry said a recovery never does, but `restore.sh --into` took the unasked choice too, and a token
   holder can plant that newest name, a superuser in its roles. It now refuses to run without
