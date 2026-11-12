@@ -5,15 +5,18 @@
 #
 #   job           route             curl's limit  prints
 #   daily         /api/cron/daily   1740 s        one line: the status and the seconds
-#   daily-retry   /api/cron/daily   1800 s        nothing if today's call got a 200, else one line
+#   daily-retry   /api/cron/daily   1800 s        nothing if daily got a 200, else one line
 #   digest        /api/cron/digest  300 s         one line
-#   digest-retry  /api/cron/digest  300 s         nothing if today's call got a 200, else one line
+#   digest-retry  /api/cron/digest  300 s         nothing if digest got a 200, else one line
 #   jobs          /api/cron/jobs    25 s          nothing on a 200, else one line
 #
 # daily ends before its retry starts (1740 s from 21:30 UTC), so the two never overlap. A 200
 # leaves the day's marker (daily, digest) or touches jobs.ok, the healthcheck's file, then pings
-# the route's heartbeat. curl reads the URLs and the bearer from its standard input (--config -),
-# never from its arguments, so no process list shows them, and no line printed here holds one.
+# the route's heartbeat. A daily or digest call without a 200 takes the marker away, so its retry
+# runs even when a call by hand got a 200 earlier the same UTC day; a 200 by hand after the failed
+# call still stands for the retry. curl reads the URLs and the bearer from its standard input
+# (--config -), never from its arguments, so no process list shows them, and no line printed here
+# holds one.
 set -u
 
 run=/run/menumesh
@@ -45,7 +48,7 @@ digest) beat=${HEARTBEAT_DIGEST_URL:-} ;;
 *) beat=${HEARTBEAT_JOBS_URL:-} ;;
 esac
 
-# A retry does nothing once the day's first call got a 200.
+# A retry does nothing once a call of the day got a 200 and no daily or digest call failed since.
 marker=$run/$route.$(date -u +%Y-%m-%d)
 case $job in
 *-retry) if [ -e "$marker" ]; then exit 0; fi ;;
@@ -90,5 +93,10 @@ case $status in
 7) echo "cron-call $job: no answer in $seconds s (curl exit 7: could not connect)" ;;
 28) echo "cron-call $job: no answer in $seconds s (curl exit 28: timed out)" ;;
 *) echo "cron-call $job: no answer in $seconds s (curl exit $status)" ;;
+esac
+# The night's call failed: its retry runs, whatever an earlier call of the day got.
+case $job in
+daily | digest) rm -f "$marker" ;;
+*) ;;
 esac
 exit 1

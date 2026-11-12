@@ -1086,6 +1086,26 @@ const cronCallRules = (text: string) => {
   ];
 };
 
+/**
+ * A daily or digest call without a 200 takes the day's marker away, so its retry runs even after a
+ * 200 by hand earlier the same UTC day; a 200 still leaves the marker, and a retry still looks for
+ * it (review finding C1, VPS-38).
+ */
+const cronCallRetry = (text: string) => {
+  const lines = code(text).map((line) => line.trim());
+  const failure = lines.indexOf('case $status in');
+  const rearm = lines.indexOf('daily | digest) rm -f "$marker" ;;');
+  return [
+    ...(failure >= 0 && rearm > failure && lines.at(-1) === 'exit 1'
+      ? []
+      : ['a failed daily or digest call leaves the marker to its retry']),
+    ...(lines.includes('*-retry) if [ -e "$marker" ]; then exit 0; fi ;;')
+      ? []
+      : ['a retry does not look for the marker']),
+    ...(lines.includes('touch "$marker"') ? [] : ['a 200 leaves no marker']),
+  ];
+};
+
 /** start.sh writes the values only root can read, then runs crond in the foreground, quietly. */
 const schedulerStart = (text: string) => [
   ...(code(text).includes('umask 077') ? [] : ['cron.env is not written under umask 077']),
@@ -1133,6 +1153,21 @@ describe('the scheduler (deploy/vps/config/scheduler)', () => {
         'curl --silent --output /dev/null --max-time 10 "$beat"',
       ),
       'curl without --config -',
+    );
+  });
+
+  it('runs a retry after a failed call, even after a 200 by hand earlier that day', () => {
+    expect(cronCallRetry(cronCall)).toEqual([]);
+    // As before the review: the failure path kept the marker.
+    refuses(
+      cronCallRetry,
+      swap(cronCall, 'daily | digest) rm -f "$marker" ;;\n', ''),
+      'leaves the marker to its retry',
+    );
+    refuses(
+      cronCallRetry,
+      swap(cronCall, '*-retry) if [ -e "$marker" ]; then exit 0; fi ;;', '*-retry) ;;'),
+      'does not look for the marker',
     );
   });
 
