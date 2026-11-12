@@ -13,9 +13,9 @@
 #                              whole night
 #   config-<stamp>.tar.age     the host's newest settings archive, already encrypted by the host
 #
-# On the 1st (UTC) the night is also copied to monthly/; daily copies go after 30 days and monthly
-# ones after 366. A missing or stale settings archive fails the run once everything else is safe.
-# A failure goes to Telegram (notify.sh alert); a full success prints one line and pings
+# The month's first whole night (UTC) is also copied to monthly/; daily copies go after 30 days and
+# monthly ones after 366. A missing or stale settings archive fails the run once everything else is
+# safe. A failure goes to Telegram (notify.sh alert); a full success prints one line and pings
 # HEARTBEAT_URL. Nothing printed holds a value.
 set -eu -o pipefail
 
@@ -143,12 +143,21 @@ for part in $expected; do
   [ "$size" -gt "${part##*:}" ] || fail "$name is only $size bytes"
 done
 
-case $stamp in
-  ????-??-01T*)
-    reason='the monthly copy'
-    rclone copy --include "*-$stamp.*" "$day/" "$remote/monthly/"
-    ;;
-esac
+# The month's first whole night (UTC) is also kept in monthly/: tonight's, unless monthly/ holds a
+# manifest of this month already, so a 1st that failed leaves the copy to the next good night. Its
+# manifest goes last there too: a manifest in monthly/ means a whole night, and a copy cut short is
+# made again by the next one.
+reason='the monthly copy'
+month=${stamp%-??T*}
+kept=
+if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then
+  for part in $expected; do
+    name=${part%:*}
+    case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac
+  done
+  rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"
+  kept=", kept in monthly/ as the month's copy"
+fi
 # 30 daily and 12 monthly copies. The bucket's own retention (object lock or versioning, set by the
 # owner) keeps a stolen token from deleting them sooner.
 reason='the removal of old copies'
@@ -158,6 +167,6 @@ rclone delete --min-age 366d "$remote/monthly/"
 [ -z "$archive_problem" ] || fail "$archive_problem"
 
 summary=$(printf '%s\n' "$listing" | awk '{ n++; total += $1 } END { printf "%d parts, %.0f bytes", n, total }')
-echo "backup $stamp: $summary"
+echo "backup $stamp: $summary$kept"
 # Last, so that a ping means every step above worked.
 notify.sh beat

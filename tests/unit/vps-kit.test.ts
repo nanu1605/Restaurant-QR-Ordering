@@ -1237,6 +1237,36 @@ const backupRules = (dockerfile: string, script: string) => [
     : ['the uploads’ size floors changed']),
 ];
 
+/**
+ * The month's first whole night is its monthly copy, whatever its day, so a 1st whose run failed
+ * no longer leaves the month without one, and a later night of the month makes no second copy
+ * (review finding B4, VPS-40). The manifest goes last, as in daily/, and the copy still comes
+ * between the check of the uploads and the settings archive's failure.
+ */
+const monthlyCopy = (script: string) => {
+  const uploads = script.indexOf("reason='the check of the uploads'");
+  const check = script.indexOf(
+    'if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then',
+  );
+  const parts = script.indexOf(
+    'case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac',
+  );
+  const manifest = script.indexOf(
+    'rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"',
+  );
+  const archive = script.indexOf('[ -z "$archive_problem" ] || fail "$archive_problem"');
+  return [
+    ...(/\?\?\?\?-\?\?-01T/.test(script) ? ['the copy still waits for the 1st'] : []),
+    ...(script.includes('month=${stamp%-??T*}') && check >= 0
+      ? []
+      : ['the copy is not the month’s first whole night']),
+    ...(parts > check && manifest > parts ? [] : ['the manifest is not copied last']),
+    ...(check > uploads && uploads >= 0 && manifest < archive
+      ? []
+      : ['the copy is not between the upload check and the archive’s failure']),
+  ];
+};
+
 const barePostgres = kit('config/db/bare-postgres.sh');
 const restoreSh = kit('backup/restore.sh');
 /**
@@ -1429,6 +1459,29 @@ describe('the migrate and backup images', () => {
       (text) => backupRules(backupImage, text),
       swap(backupSh, '-le 1024 ]; then', '-le 0 ]; then'),
       'no size check',
+    );
+  });
+
+  it('keeps the month’s first whole night in monthly/, whatever its day, and only that one', () => {
+    expect(monthlyCopy(backupSh)).toEqual([]);
+    // As before the review: the 1st only.
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        'if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then',
+        'if case $stamp in ????-??-01T*) true ;; *) false ;; esac; then',
+      ),
+      'waits for the 1st',
+    );
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        '  rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"\n',
+        '',
+      ),
+      'not copied last',
     );
   });
 
