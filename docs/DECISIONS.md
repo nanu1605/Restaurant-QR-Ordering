@@ -6993,7 +6993,10 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     and settings archives and each database's dump, each past its floor). Before review finding B4
     only a good 1st made a copy; between B4 and N2, any name in `monthly/` stopped it, the 1st's
     too, and a night whose settings archive was stale could be the copy (N3). A planted whole set
-    can still stand in for the copy after a 1st that failed, never for the 1st's. Daily copies go
+    can still stand in for the copy after a 1st that failed, never for the 1st's. Each copy to the
+    bucket is written whatever the destination holds (`rclone copyto --no-check-dest`), so a
+    look-alike put where a part is about to go is never kept as the copy: the lock refuses the
+    write and the night fails with the alert (final verifier's finding V1). Daily copies go
     after 30 days and monthly ones after 366. Only the bucket can keep a stolen token from deleting
     them sooner, and the job sets nothing up for it: lock rules scoped to each prefix (as R2's
     bucket locks), or versioning with a token that may not delete versions or change the bucket's
@@ -7665,7 +7668,7 @@ With a7684fa's `restore.sh` these checks fail by construction: it reads the obje
 
 **The fourth round.** A whole-file review of `backup.sh` and `restore.sh` after the third round
 (fdd5dee) closed RV1, RV2 and N1 and found five more defects, F1 to F5, all from what a token holder
-can do to the bucket under the recommended locks. All five are fixed: F1 to F4 in the code, each
+can do to the bucket under the recommended locks, and the final verifier a sixth, V1. All six are fixed: F1 to F4 in the code, each
 with a unit pin that refuses the code as it was, proved in the pinned backup image (BusyBox 1.37,
 GNU tar 1.35, age 1.3.2, rclone 1.75.2) by the earlier harnesses, the working tree's scripts beside
 fdd5dee's (rclone's local backend, `rclone serve s3`, or a stub S3 bucket for F3; stand-ins for
@@ -7732,6 +7735,22 @@ the restore services' comments in `compose.yml` and the env template).
   prefix-scoped bucket locks such as R2's, keep what a restore reads. Not run here: the stand-in has
   no Object Lock. (`backup.sh` in ee34369 "fix: age old copies by the bucket's own upload time"; the
   RUNBOOK in 79cfb56 "docs: correct the vps runbook for night ids")
+- **V1 · The month's copy could be a look-alike the job never wrote (VPS-40), low:** the final
+  verifier found that `rclone copyto` skips a destination with the same size and modification
+  time as its source and attempts no write. A token holder who watched a 1st's run, read the id
+  from the first part, and put an object of the same size and mtime at `monthly/<part>` before
+  the job's copy had it kept as the month's copy: no write was tried, so no lock refused it, the
+  night reported "kept in monthly/", and from day 29 a restore read the planted part (its roles
+  file made a superuser). Every `rclone copyto` in `backup.sh` (the settings archive's to
+  `daily/`, the four parts and the manifest to `monthly/`) now carries `--no-check-dest`, which
+  rclone 1.75.2 has, with and without `--no-traverse`: a same-size, same-mtime destination was
+  overwritten with it and left alone without it. The upload through `rcat` always writes, and
+  `restore.sh` copies nothing, so neither needed it. A unit pin refuses any `rclone copyto`
+  without the flag. In the harness, under the simulated locks, the plant (same size and mtime, as
+  root's) was kept, with "kept in monthly/", by the old script; the new one failed at the copy
+  with the alert naming the night, the plant standing and the next night making the month's copy;
+  with no plant the month's copy was made as before (5 parts, the summary line with "kept in
+  monthly/", each part equal to `daily/`'s). (fix: make every monthly copy write)
 - **Changed beyond the findings:** the heartbeat ping carries the night's journal line as its body
   (`notify.sh beat "<line>"`, a POST): with random ids, the monitor's log (healthchecks.io keeps a
   ping's body) is the record of each whole night's id off the server and the bucket, which a
@@ -7777,7 +7796,9 @@ takes the newest name when none is given.
   names a night that old only when its line says `kept in monthly/`.
 - A token holder watching the bucket during a run can read its id from the first part up and put
   another of its names first, a later part in `daily/` or the month's copy in `monthly/`, failing
-  that night with the alert. It takes a live token, and ends with the rotation.
+  that night with the alert, whatever the plant's size and mtime (V1: the job's copies write
+  regardless, so the lock refuses and none is kept as the copy). Such a night's parts, listed by
+  its id, show the planted name. It takes a live token, and ends with the rotation.
 - A night's age comes from the server's clock, taken once when a restore starts. A clock a day
   behind reads `daily/` a day past its lock; one a day ahead reads a young night that is not a
   month's copy from `monthly/`, where a night planted under its id is restored (both shown in the

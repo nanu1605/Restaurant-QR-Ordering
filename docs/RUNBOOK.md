@@ -1058,8 +1058,9 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   `[menumesh] backup failed (exit 1) at <id>: <the step>`, which Telegram got too. The second lists
   that night's parts and their sizes, `<id>` from the first: five for a whole night. A failed night
   shows what got there: no manifest when it failed before the manifest went up, no `config-` part
-  when its settings archive was missing or stale, nothing when it stopped on a name someone else
-  wrote. The heartbeat monitor alerts after 26 hours without a whole night. One now, as the
+  when its settings archive was missing or stale, and, when it stopped on a name someone else
+  wrote, only that name (the listing is by the id, so a part planted in `daily/` under it shows
+  there, as the planter's, not the job's). The heartbeat monitor alerts after 26 hours without a whole night. One now, as the
   container runs it: `sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`.
 
 - **The monthly restore test**, in the third week of the month (the first one before the first
