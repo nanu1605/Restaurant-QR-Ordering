@@ -120,10 +120,11 @@ fetch "globals-$stamp.sql.age" |
   sql -d template1 >/dev/null
 
 # Each database whole, as the backup dumped it: created from template0 with its own locale and
-# settings, owners and grants included. initdb's empty postgres goes first.
+# settings, owners and grants included. initdb's empty postgres goes first, with pg_cron's
+# launcher (bare-postgres.sh) still connected to it.
 for db in $dbs; do
   echo "restore: database $db"
-  sql -d template1 -c "drop database if exists \"$db\""
+  sql -d template1 -c "drop database if exists \"$db\" with (force)"
   fetch "$db-$stamp.dump.age" | pg_restore --create --exit-on-error --dbname=template1
 done
 

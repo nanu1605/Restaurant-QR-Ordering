@@ -1236,6 +1236,25 @@ const backupRules = (dockerfile: string, script: string) => [
     : ['the uploads’ size floors changed']),
 ];
 
+const barePostgres = kit('config/db/bare-postgres.sh');
+const restoreSh = kit('backup/restore.sh');
+/**
+ * CREATE EXTENSION pg_cron works only in the database cron.database_name names, so the bare
+ * clusters keep pg_cron's launcher in postgres, as db does, and launch no restored job; restore.sh
+ * then drops initdb's postgres from under the launcher with FORCE (VPS-40).
+ */
+const restoreCron = (bare: string, restore: string) => [
+  ...(bare.includes('  -c cron.database_name=postgres \\\n')
+    ? []
+    : ['pg_cron’s launcher is not in postgres']),
+  ...(bare.includes('  -c cron.launch_active_jobs=off \\\n')
+    ? []
+    : ['a restored pg_cron job could run in the bare cluster']),
+  ...(restore.includes('drop database if exists \\"$db\\" with (force)"')
+    ? []
+    : ['the restore drops a database without FORCE']),
+];
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1307,6 +1326,25 @@ describe('the migrate and backup images', () => {
       (text) => backupRules(backupImage, text),
       swap(backupSh, '-le 1024 ]; then', '-le 0 ]; then'),
       'no size check',
+    );
+  });
+
+  it('restores pg_cron into the database its launcher reads, with no job run', () => {
+    expect(restoreCron(barePostgres, restoreSh)).toEqual([]);
+    refuses(
+      (text) => restoreCron(text, restoreSh),
+      swap(barePostgres, 'cron.database_name=postgres', 'cron.database_name=template1'),
+      'not in postgres',
+    );
+    refuses(
+      (text) => restoreCron(text, restoreSh),
+      swap(barePostgres, '  -c cron.launch_active_jobs=off \\\n', ''),
+      'could run',
+    );
+    refuses(
+      (text) => restoreCron(barePostgres, text),
+      swap(restoreSh, '\\"$db\\" with (force)"', '\\"$db\\""'),
+      'without FORCE',
     );
   });
 });

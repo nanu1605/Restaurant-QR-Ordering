@@ -66,8 +66,11 @@ done
 
 # The image's settings file: its preloaded libraries, its pg_hba.conf (passwords from other
 # containers). Logged: warnings and errors, on one line each, without statements or their values;
-# the image's own settings would log every DDL statement of the restore. pg_cron's and pg_net's
-# workers wait in template1, so the restore can drop and re-create the database they would sit in.
+# the image's own settings would log every DDL statement of the restore. pg_cron's launcher sits
+# in postgres, as on db (conf.d/pg_cron.conf): CREATE EXTENSION pg_cron refuses any database but
+# cron.database_name. It launches no job here, so a restored one runs only once db starts, and
+# restore.sh drops initdb's postgres WITH (FORCE) under it. pg_net's worker waits in template1,
+# so a restored request queue is never sent from here.
 set -- \
   -c config_file=/etc/postgresql/postgresql.conf \
   -c listen_addresses='*' \
@@ -78,7 +81,8 @@ set -- \
   -c log_checkpoints=off \
   -c auto_explain.log_min_duration=-1 \
   -c pgaudit.log=none \
-  -c cron.database_name=template1 \
+  -c cron.database_name=postgres \
+  -c cron.launch_active_jobs=off \
   -c pg_net.database_name=template1 \
   -c maintenance_work_mem=256MB
 if [ -n "$throwaway" ]; then
