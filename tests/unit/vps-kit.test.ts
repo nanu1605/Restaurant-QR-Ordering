@@ -1255,6 +1255,24 @@ const restoreCron = (bare: string, restore: string) => [
     : ['the restore drops a database without FORCE']),
 ];
 
+/**
+ * Postgres's lock file can't see a server in another container, so recover-db would start a second
+ * server on db's files if db still ran. bare-postgres.sh starts an existing cluster only when
+ * pg_controldata says it was shut down cleanly, and changes nothing in it before that (VPS-40).
+ */
+const cleanClustersOnly = (bare: string) => {
+  const branch = bare.indexOf('if [ -s "$data/PG_VERSION" ]; then');
+  const read = bare.indexOf('state=$(pg_controldata "$data"');
+  const check = bare.indexOf('if [ "$state" != \'shut down\' ]; then');
+  const owner = bare.indexOf('chown postgres:postgres "$data"');
+  return [
+    ...(branch >= 0 && read > branch && check > read
+      ? []
+      : ['an existing cluster starts without the check that it was shut down cleanly']),
+    ...(owner > check ? [] : ['the data directory changes before that check']),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1345,6 +1363,24 @@ describe('the migrate and backup images', () => {
       (text) => restoreCron(barePostgres, text),
       swap(restoreSh, '\\"$db\\" with (force)"', '\\"$db\\""'),
       'without FORCE',
+    );
+  });
+
+  it('starts an existing cluster in a bare one only once it was shut down cleanly', () => {
+    expect(cleanClustersOnly(barePostgres)).toEqual([]);
+    refuses(
+      cleanClustersOnly,
+      swap(barePostgres, 'if [ "$state" != \'shut down\' ]; then', 'if false; then'),
+      'without the check',
+    );
+    refuses(
+      cleanClustersOnly,
+      swap(
+        barePostgres,
+        'chown postgres:postgres /var/run/postgresql\n',
+        'chown postgres:postgres "$data" /var/run/postgresql\n',
+      ),
+      'changes before',
     );
   });
 });

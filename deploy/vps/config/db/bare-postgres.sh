@@ -7,7 +7,8 @@
 #
 # As root: an empty data directory gets initdb as postgres, with supabase_admin as its superuser
 # (password POSTGRES_PASSWORD) and the image's own initdb arguments (its locale), as db's first start
-# had; a directory that already holds a cluster is started as it is; anything else is refused. Then
+# had; a directory holding a cluster that was shut down cleanly is started as it is, so restore.sh
+# can refuse it by name; anything else is refused here, a cluster another server runs on too. Then
 # postgres runs with the image's settings file, so the same libraries are preloaded and every
 # extension a backup holds can be created. --throwaway (restore-db, data in memory) also turns off
 # fsync and full-page writes. Never prints the password.
@@ -35,13 +36,22 @@ if [ -z "${POSTGRES_PASSWORD:-}" ]; then
 fi
 
 mkdir -p "$data" /var/run/postgresql
-chown postgres:postgres "$data" /var/run/postgresql
+chown postgres:postgres /var/run/postgresql
 if [ -s "$data/PG_VERSION" ]; then
-  echo "bare-postgres: $data holds a cluster already; starting it as it is"
+  # Postgres's own lock (postmaster.pid) can't see a server in another container, so a second
+  # one would start on the same files, db's among them. Only a cluster shut down cleanly is
+  # started, and nothing in it is touched before this check.
+  state=$(pg_controldata "$data" 2>/dev/null | sed -n 's/^Database cluster state: *//p')
+  if [ "$state" != 'shut down' ]; then
+    echo "bare-postgres: $data holds a cluster that was not shut down cleanly (${state:-unreadable}): db or another server may be running on it. Stop it first, and recover only into new volumes" >&2
+    exit 1
+  fi
+  echo "bare-postgres: $data holds a cluster already, shut down cleanly; starting it as it is"
 elif [ -n "$(ls -A "$data")" ]; then
   echo "bare-postgres: $data is not empty and holds no cluster: refusing to touch it" >&2
   exit 1
 else
+  chown postgres:postgres "$data"
   chmod 0700 "$data"
   # The password reaches initdb through a pipe made by postgres's own shell, never an argument.
   # POSTGRES_INITDB_ARGS is the image's (the locale), split into its arguments on purpose. The
