@@ -6991,8 +6991,10 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     them sooner, and the job sets nothing up for it: lock rules scoped to each prefix (as R2's
     bucket locks), or versioning with a token that may not delete versions or change the bucket's
     settings, plus a lifecycle rule for the old versions, are the owner's choice when the bucket is
-    picked (RUNBOOK, First install; review finding B5). A retention date on each object at upload
-    is left for Stop C. A missing settings archive, or one more than 2 hours old, fails the night
+    picked (RUNBOOK, First install; review finding B5). Only the locks, or a retention date on each
+    object, also keep a token from replacing a part a restore reads: with versioning, a new version
+    is the one read (The night, below). A retention date on each object at upload is left for
+    Stop C. A missing settings archive, or one more than 2 hours old, fails the night
     once the other parts are safe. A failure sends one Telegram line naming the step, never a
     value; a full success prints one line and then pings `HEARTBEAT_BACKUP_URL`, whose monitor
     alerts after 26 hours without one. The job runs below everything else in CPU and disk
@@ -7008,15 +7010,20 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     rehearsal (`RESTORE_EXACT=1`) every count must match; on the server, writes during the backup
     move counts, so differences are listed and only a missing table, an empty one or no Storage
     files where there were some fail.
-  - **The night** is the newest of `daily/` with a manifest, of the last 31 days and never one
-    stamped later than now, or the one `RESTORE_STAMP` names. A night more than 31 days old comes
-    from `monthly/` only, whatever `daily/` holds under its name, with a line saying a copy there
-    is not read (since review finding N1: once the job had removed its own daily copy, a copy a
-    token holder put there was read first); a younger one from `daily/`, or from `monthly/` once
-    `daily/` no longer holds it (since B1; before, no monthly copy could be restored), and when
-    both folders hold it, as they do the month's copy for 30 days, their manifests must be the same.
-    The 31 days are `daily/`'s 30 and the day until the next night's run removes a copy. The
-    messages name the folder used, the first line and a test's last line the night.
+  - **The night** is the newest of `daily/` with a manifest, younger than 29 days and never one
+    stamped later than now, or the one `RESTORE_STAMP` names. Its folder hangs on its age alone,
+    from its stamp and the server's clock, never on what the bucket holds, which anyone holding the
+    token can add to under new names (since review findings RV1 and RV2): younger than 29 days,
+    `daily/` only, where the recommended lock keeps the backup's own parts that long; from 29 to
+    365 days, `monthly/` only, which keeps each month's copy under its lock; older, neither. The
+    other folder is never listed or read, nothing falls back, no manifest is compared across
+    folders, and a night missing from its folder is refused with the rule that applied. So from 29
+    days on a night that is not the month's copy can't be restored, a day or two before the job
+    removes it, and the RUNBOOK names a night that old only when its journal line says it was kept
+    in `monthly/`. Before, a night younger than 31 days was read from `daily/`, or from `monthly/`
+    once `daily/` lacked it (B1; before that, no monthly copy could be restored), the two folders'
+    manifests compared when both held it (N1). The messages name the folder used, and a part that
+    can't be read its object too; the first line and a test's last line name the night.
   - **Nothing from a night runs as code** (since review finding S1): age proves nothing about who
     encrypted a part, so whoever holds the bucket's token and the public key can plant a night.
     psql reads the roles in its restricted mode, under a random key the file can't know, with the
@@ -7108,7 +7115,7 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     workflows.
 - **VPS-42 · Checking the kit without a server:** the server is not bought, Actions minutes are
   scarce, and the server team's rules are code, so their code runs on the kit here.
-  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 65 tests since the re-review's fixes;
+  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 66 tests since the third round's fixes;
     `tests/unit/vps-secrets.test.ts`, 18): each rule is a function, clean on the real file and
     refusing at least one copy with a mistake.
   - **`pnpm vps:check`** runs the vendored `app-apply` (`deploy/vps/test/vendor/jainav-infotech/`,
@@ -7269,7 +7276,10 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     must refuse, and restore-tests and recovers a night that only `monthly/` holds; since the
     re-review, a night with a stale settings archive before the month's copy, names planted in
     `monthly/`, a 1st's copy, a notice built from escape sequences, a Storage link in both modes
-    and a planted copy of a night past 31 days (Review fixes (VPS Stop B), below).
+    and a planted copy of a night past 31 days; since the third round, a manifest planted in
+    `monthly/` under a night of `daily/`, a young night that only `monthly/` holds (refused), and
+    the recovery of a month's copy two months old from `monthly/` (Review fixes (VPS Stop B),
+    below).
 - **Found and fixed by the rehearsal** (each with a unit pin): migration DDL in the database log
   (7614c1b) and `auto_explain` logging slow statements with their values (1b7b6ac), VPS-34; crond
   ignoring the stop signal (a1e419d), VPS-38; Envoy reusing connections the services close
@@ -7552,18 +7562,96 @@ under `deploy/vps/edge` changed. The unit tests are 1,115 in 68 files (`vps-kit`
 stale night, the planted September night read from `daily/`, and a link passed by the test and
 refused by a recovery only after the databases.
 
-**Left open after the re-review:** a night 29 to 31 days old, past the 29 days the recommended lock
-keeps a daily object, is still read from `daily/`, where its parts could have been replaced (only
-its manifest is checked against a monthly copy); a planted whole set in `monthly/` stands in for
-the month's copy after a 1st that failed, and objects planted under the 1st's own names make its
-copy fail, with the alert; a manifest planted in `monthly/` under a night of `daily/` stops that
-night's restore, though it can't make it restore another; and for about a day after a month's
-copy turns 30, the job's removal can leave it in `daily/` without some parts, so a restore that
-names it then stops with "… is not in daily/" until the 31 days are past. Hashes of each part
-kept where the bucket's token can't reach (Stop C, below) would let a restore and the monthly copy
-tell a planted part from the backup's.
+**The third round.** A verifier's pass over the re-review's fixes (6ecbf69 to a7684fa) closed N2 to
+N6 and found N1 still open, through two new findings, RV1 and RV2, both in how `restore.sh` chose a
+night's folder. Each round had chosen it from what the bucket held: whether `daily/` had a manifest
+of the night, then also whether `monthly/` had one and whether the two were the same. Anyone holding
+the bucket's token can add objects under new names, which the recommended prefix locks allow and
+then keep, so a choice made from what is there can be steered, toward a planted night or away from
+every real one. The folder now hangs on the night's age alone. Both are fixed, each with a unit pin
+that refuses the code as it was, proved in the pinned backup image by the re-review's harness (its
+paths moved, the working tree's scripts beside a7684fa's, a stand-in `date` giving a night's stamp
+and the restore's clock) and on the rehearsal (below). The entries above that the fixes changed were
+corrected in place (VPS-40, VPS-42, Tests, the RUNBOOK, `deploy/vps/README.md` and `backup.sh`'s
+retention comment).
 
-**Left open, for Stop C:** a token holder can still replace a night's parts, so a recovery is only
-as good as the night it is given, and nothing yet proves a night came from the backup (a hash of
-each part kept where the bucket's token can't reach would); and the bucket's protection waits for
-the owner's choice of bucket (B5).
+- **RV1 · A manifest planted in `monthly/` stopped any night of `daily/` (VPS-40, RUNBOOK),
+  medium:** since N1 the manifests of a night both folders held were compared, so a token holder who
+  put a `monthly/manifest-<stamp>.txt.age` beside each night of `daily/`, and beside nights to come,
+  as crond stamps them T2030Z, left every one of them unrestorable while they still backed up: the
+  restore test and a recovery named from the journal stopped with "the manifests … differ", or, for
+  an object that is not age, with age's own lines and none of the script's. The monthly lock then
+  kept the names a year. A night younger than 29 days is now read from `daily/` only, and `monthly/`
+  is never listed or read for it. In the harness a manifest of another night under one stamp and an
+  object that is not age under another stopped nothing: the restore test of each, named and unasked,
+  and the recovery of each passed from `daily/` with only the source's roles, where a7684fa's script
+  refused all five; so did nights whose names were planted before they ran; and a whole planted
+  night in `monthly/` under a young night's stamp, a superuser in its roles, was never read. A part
+  that can't be read now also ends the run with a line naming it and its folder, such as "the
+  manifest of <stamp> (manifest-<stamp>.txt.age in daily/) could not be read (see above)", and with
+  the exit status the failed command gave: in the harness eight unreadable parts (a manifest that is
+  not age or is for another key, roles, Storage, a dump that is not age or is cut short, a settings
+  archive, and a Storage member named `../escape.txt` met by a recovery) each ended with that line
+  and a7684fa's status, and 23 ways the script ends kept theirs. (ac1f341 "fix: read a night from
+  one folder by its age alone"; 4bfd8c3 "fix: name the part and folder when a restore fails"; the
+  RUNBOOK, for both, in 5dc31a0 "docs: correct the vps runbook for the folder rule")
+- **RV2 · A planted night in `daily/` was still read 29 to 31 days on (VPS-40, RUNBOOK), low:** N1
+  read `daily/` for a night up to 31 days and 59 seconds old (its line was cut to the minute), past
+  `daily/`'s 29-day lock: once the job had removed a month's copy from `daily/`, a byte copy of
+  `monthly/`'s own manifest beside the token holder's other parts passed the comparison, and from 29
+  days `daily/`'s own parts could be replaced too. A night 29 days old or more is now read from
+  `monthly/` only, whose lock keeps the month's copy as the backup wrote it, and the line is exact
+  to the second: a stamp is a whole minute, so it sorts after the stamp 29 days back, to the minute,
+  exactly when it is younger than 29 days (`date -u -d @N` and awk's string order, proved in
+  BusyBox). Past 365 days no folder is read, as `monthly/`'s lock ends there too: the same flaw one
+  folder up, added in this round. In the harness, at 29 days, 30 days 12 hours, 31 days, 31 days 59
+  and 60 seconds and 45 days, the month's copy came from `monthly/` with only the source's roles, by
+  the restore test and by a recovery, where a7684fa's script restored the planted superuser at 30
+  days 12 hours and at 31 days 59 seconds; at 29 days 12 hours, with `daily/`'s own roles, dump and
+  Storage replaced, the same; a second under 29 days read `daily/` and 29 days `monthly/`; a second
+  under 365 days read `monthly/` and 365 days nothing. A night of `daily/` alone is refused from 29
+  days, though the job removes it only a day or two later, and a night younger than 29 days that
+  only `monthly/` holds is refused. (ac1f341 "fix: read a night from one folder by its age alone")
+- **Dropped with the rule:** the comparison of the two folders' manifests, the listing of both
+  folders before the night was known, `fetch`'s second folder, and the line "not reading the copy of
+  <stamp> in daily/": `daily/` is no longer listed for a night 29 days old or more, and until the
+  job removes a night its own copy is still there, so the line would no longer have meant a planted
+  one. The partial removal the re-reviewer noted, a month's copy left in `daily/` without some parts
+  for about a day after it turned 30, stops nothing now, as such a night is read from `monthly/`.
+  `backup.sh` keeps its ages, a daily copy 30 days and a monthly one 366, a day or two past what a
+  restore reads (its retention comment says so): a shorter `daily/` would race the 29-day lock.
+
+**On the rehearsal, after the third round** (`pnpm vps:rehearse --fresh`, 34 checks, 0 failed, 2 min
+57 s; then `pnpm vps:backup-test`, 36 checks where it had 35, 0 failed, 5 min 15 s; c570970 "test:
+prove the folder rule on the rehearsal"): the month's copy, younger than 29 days, was read from
+`daily/` though `monthly/` held it too; a manifest planted in `monthly/` under the later night of
+the month, not even age's, stopped nothing, that night's restore test passing from `daily/` (RV1);
+the 1st two months back, with a planted copy in `daily/` under its name, was read from `monthly/`,
+nothing in its output naming `daily/` (RV2); with its `daily/` copy removed, the month's copy was
+refused by name, saying `daily/` keeps every night of the last 29 days; and the disaster recovery
+took the 1st's copy from `monthly/`, past the planted copy, into three new volumes, after which
+`db`, the services, `web` and the scheduler came back on the source's data. The planted nights were
+refused as before, the roles' line naming `globals-<stamp>.sql.age in daily/`.
+`pnpm vps:down --images` then removed the project and its three images and nothing else, and
+`pnpm vps:check` passed (53 checks, 0 failed). The unit tests are 1,116 in 68 files (`vps-kit` 66).
+With a7684fa's `restore.sh` these checks fail by construction: it refuses the night with the planted
+`monthly/` manifest ("the manifests … differ"), restores the young night from `monthly/`, and prints
+"not reading the copy" for the 1st two months back.
+
+**Left open after the third round:** a restore trusts a night's parts only while the bucket's prefix
+locks, or a retention date on each object, keep them as the backup wrote them; without them,
+versioning included, a token holder can replace the parts of recent nights in `daily/` (a new
+version is what a restore reads), which only hashes of each part kept where the token can't reach
+would catch (Stop C, below). The rule takes a night's age from the server's clock, so a clock a day
+behind reads `daily/` a day past its lock (shown in the harness); the RUNBOOK has the owner check
+that it is synchronized. A night 29 days old or more is read from `monthly/` whether or not the
+backup copied it there, so a night a token holder put in `monthly/` under the stamp of a night that
+is not the month's copy is read once that stamp is 29 days old (shown in the harness): the RUNBOOK
+names a night that old only when its journal line says `kept in monthly/`. A planted whole set in
+`monthly/` stands in for the month's copy after a 1st that failed, and objects planted under the
+1st's own names make its copy fail, with the alert.
+
+**Left open, for Stop C:** a token holder can still plant nights under new names and replace the
+parts of any night no lock holds, so a recovery is only as good as the night it is given, and
+nothing yet proves a night came from the backup (a hash of each part kept where the bucket's token
+can't reach would); and the bucket's protection waits for the owner's choice of bucket (B5).
