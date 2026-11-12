@@ -1545,6 +1545,20 @@ const restoreFilter = (script: string) => {
   ];
 };
 
+/**
+ * The roles step's failure says only that it failed: rclone, age or psql says why above it, and
+ * only psql's "backslash commands are restricted" means a planted psql command (review finding N5,
+ * RUNBOOK).
+ */
+const rolesFailure = (script: string) => [
+  ...(script.includes('die "the roles of $stamp did not restore (see above)"')
+    ? []
+    : ['no plain message for a roles step that failed']),
+  ...(/psql says why|holds SQL and no psql command/.test(script)
+    ? ['the roles’ failure blames psql or a planted command whatever failed']
+    : []),
+];
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1854,6 +1868,20 @@ describe('the migrate and backup images', () => {
         "echo 'restore test passed'",
       ),
       'doesn’t name the night',
+    );
+  });
+
+  it('says only that the roles failed, whatever failed', () => {
+    expect(rolesFailure(restoreSh)).toEqual([]);
+    // As before review finding N5.
+    refuses(
+      rolesFailure,
+      swap(
+        restoreSh,
+        'die "the roles of $stamp did not restore (see above)"',
+        `die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"`,
+      ),
+      'blames psql',
     );
   });
 });

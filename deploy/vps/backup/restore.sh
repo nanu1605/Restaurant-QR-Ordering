@@ -223,7 +223,7 @@ if ! {
     sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' \
       -e "/^CREATE ROLE $PGUSER;\$/d" -e "/^ALTER ROLE $PGUSER WITH /d"
 } | sql -d template1 >/dev/null; then
-  die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"
+  die "the roles of $stamp did not restore (see above)"
 fi
 
 # Each database whole, as the backup dumped it: created from template0 with its own locale and
