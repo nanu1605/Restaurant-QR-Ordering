@@ -1438,7 +1438,9 @@ const restoreTrust = (script: string) => {
     script.includes('[ -z "$problem" ] || die')
       ? []
       : ['the manifest is not checked line by line']),
-    ...(script.includes(`awk -v now="$now" '$0 != "" && $0 <= now'`)
+    ...(script.includes(
+      `awk -v now="$now" -v oldest="$oldest" '$0 != "" && $0 <= now && $0 >= oldest'`,
+    )
       ? []
       : ['a night stamped later than now can be taken unasked']),
     ...(script.includes('find /storage ! -type f ! -type d')
@@ -1448,25 +1450,49 @@ const restoreTrust = (script: string) => {
 };
 
 /**
- * Daily copies go after 30 days and the monthly ones stay a year, so a night named by
- * RESTORE_STAMP that daily/ no longer holds is restored, test or recovery, from monthly/, every
- * part from there, and the messages name that folder (review finding B1, VPS-40).
+ * daily/ keeps a night 30 days and monthly/ each month's first whole night a year. A night more
+ * than 31 days old is read from monthly/ only, as anyone holding the bucket's token can put a copy
+ * in daily/ under its name once the backup removed its own (review finding N1); a younger one from
+ * daily/, or from monthly/ once daily/ no longer holds it (B1), and when both folders hold it their
+ * manifests must be the same. Every part comes from the night's folder, and the messages name it
+ * (VPS-40).
  */
-const restoreMonthly = (script: string) => [
-  ...(script.includes(
+const restoreFolders = (script: string) => {
+  const past = script.indexOf(
+    `if [ "$(awk -v stamp="$stamp" -v oldest="$oldest" 'BEGIN { print (stamp < oldest) }')" = 1 ]; then`,
+  );
+  const monthlyOnly = script.indexOf(
     [
-      'if ! present "manifest-$stamp.txt.age"; then',
       '  folder=monthly',
-      '  names=$(rclone lsf --files-only "$bucket/monthly/")',
+      '  listed "$monthly" "manifest-$stamp.txt.age" ||',
+      '    die "the night of $stamp has no manifest in monthly/, the only folder read',
     ].join('\n'),
-  )
-    ? []
-    : ['a named night is looked for in daily/ only']),
-  ...(script.includes('rclone cat "$bucket/$folder/$1"')
-    ? []
-    : ['the parts are not read from the night’s folder']),
-  ...(script.includes('is not in daily/') ? ['a message names daily/ for any night'] : []),
-];
+  );
+  const younger = script.indexOf(
+    'elif ! listed "$daily" "manifest-$stamp.txt.age"; then\n  folder=monthly',
+  );
+  const both = script.indexOf(
+    [
+      'if [ "$folder" = daily ] && listed "$monthly" "manifest-$stamp.txt.age"; then',
+      '  copy=$(fetch "manifest-$stamp.txt.age" monthly)',
+      '  [ "$copy" = "$manifest" ] ||',
+    ].join('\n'),
+  );
+  return [
+    ...(script.includes('oldest=$(date -u -d "@$((seconds - 31 * 86400))" +%Y-%m-%dT%H%MZ)')
+      ? []
+      : ['no line 31 days back for daily/']),
+    ...(past >= 0 && monthlyOnly > past && younger > monthlyOnly
+      ? []
+      : ['a night more than 31 days old can come from daily/']),
+    ...(younger > 0 ? [] : ['a named night is looked for in daily/ only']),
+    ...(both > younger ? [] : ['a night in both folders is not checked against its monthly copy']),
+    ...(script.includes('rclone cat "$bucket/${2:-$folder}/$1"')
+      ? []
+      : ['the parts are not read from the night’s folder']),
+    ...(script.includes('is not in daily/') ? ['a message names daily/ for any night'] : []),
+  ];
+};
 
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
@@ -1661,7 +1687,11 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       restoreTrust,
-      swap(restoreSh, `awk -v now="$now" '$0 != "" && $0 <= now'`, `awk '$0 != ""'`),
+      swap(
+        restoreSh,
+        `awk -v now="$now" -v oldest="$oldest" '$0 != "" && $0 <= now && $0 >= oldest'`,
+        `awk '$0 != ""'`,
+      ),
       'later than now',
     );
     refuses(
@@ -1671,17 +1701,45 @@ describe('the migrate and backup images', () => {
     );
   });
 
-  it('restores a named night from monthly/ once daily/ no longer holds it', () => {
-    expect(restoreMonthly(restoreSh)).toEqual([]);
-    // As before the review: daily/ only.
-    refuses(restoreMonthly, swap(restoreSh, '  folder=monthly\n', ''), 'looked for in daily/ only');
+  it('reads a night past 31 days from monthly/ only, and checks one both folders hold', () => {
+    expect(restoreFolders(restoreSh)).toEqual([]);
+    // As after review finding B1: daily/ first, whatever the night's age (N1).
     refuses(
-      restoreMonthly,
-      swap(restoreSh, 'rclone cat "$bucket/$folder/$1"', 'rclone cat "$bucket/daily/$1"'),
+      restoreFolders,
+      swap(
+        restoreSh,
+        `if [ "$(awk -v stamp="$stamp" -v oldest="$oldest" 'BEGIN { print (stamp < oldest) }')" = 1 ]; then`,
+        'if false; then',
+      ),
+      'more than 31 days old can come from daily/',
+    );
+    refuses(
+      restoreFolders,
+      swap(restoreSh, '  [ "$copy" = "$manifest" ] ||\n', '  true ||\n'),
+      'not checked against its monthly copy',
+    );
+    refuses(
+      restoreFolders,
+      swap(restoreSh, '$((seconds - 31 * 86400))', '$((seconds - 400 * 86400))'),
+      'no line 31 days back',
+    );
+    // As before B1: daily/ only.
+    refuses(
+      restoreFolders,
+      swap(
+        restoreSh,
+        'elif ! listed "$daily" "manifest-$stamp.txt.age"; then\n  folder=monthly',
+        'elif ! listed "$daily" "manifest-$stamp.txt.age"; then\n  folder=daily',
+      ),
+      'looked for in daily/ only',
+    );
+    refuses(
+      restoreFolders,
+      swap(restoreSh, 'rclone cat "$bucket/${2:-$folder}/$1"', 'rclone cat "$bucket/daily/$1"'),
       'night’s folder',
     );
     refuses(
-      restoreMonthly,
+      restoreFolders,
       swap(restoreSh, '"$part is not in $folder/"', '"$part is not in daily/"'),
       'names daily/',
     );
