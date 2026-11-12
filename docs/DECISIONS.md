@@ -6976,9 +6976,16 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     each file's content type (BusyBox's tar drops them, and a restored photo would be served as
     `application/octet-stream`); a manifest of exact row counts in the app's, Auth's and Storage's
     tables, the newest migration and Storage's file count and bytes; and the host's settings
-    archive, copied as `config-<stamp>.tar.age`. The manifest goes up after the other parts, so a
-    manifest means a whole night. Every part must pass a size floor (1 KB for the dumps, the tar and
-    the archive, 256 bytes for the roles and the manifest).
+    archive, copied as `config-<id>.tar.age`. Every name ends in the night's id, its stamp and 8
+    random hex characters from `/dev/urandom` (`2026-11-13T2030Z-3f9c0a1b`), which the manifest's
+    first line, the month's copy and the journal's lines carry too: nobody can know it before the
+    night runs, so nobody can put an object under one of its names ahead of it, where the prefix
+    locks would refuse the night's own uploads (since review finding F1; before, every name was
+    `<part>-<date>T2030Z`). Before its first upload the job looks each of its names up in both
+    folders, one request each, and stops if one is there: someone else wrote to the bucket. The
+    manifest goes up after the other parts, so a manifest means a whole night. Every part must pass
+    a size floor (1 KB for the dumps, the tar and the archive, 256 bytes for the roles and the
+    manifest), read by exact name too.
   - **Keeping and alerting.** A whole night, its uploads checked and its settings archive fresh, is
     also copied to `monthly/`, its manifest last: one stamped the 1st (UTC) whatever `monthly/`
     holds, or, when the 1st's night failed, the next whole night, while `monthly/` holds no whole
@@ -6991,14 +6998,21 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     them sooner, and the job sets nothing up for it: lock rules scoped to each prefix (as R2's
     bucket locks), or versioning with a token that may not delete versions or change the bucket's
     settings, plus a lifecycle rule for the old versions, are the owner's choice when the bucket is
-    picked (RUNBOOK, First install; review finding B5). Only the locks, or a retention date on each
-    object, also keep a token from replacing a part a restore reads: with versioning, a new version
-    is the one read (The night, below). A retention date on each object at upload is left for
-    Stop C. A missing settings archive, or one more than 2 hours old, fails the night
-    once the other parts are safe. A failure sends one Telegram line naming the step, never a
-    value; a full success prints one line and then pings `HEARTBEAT_BACKUP_URL`, whose monitor
-    alerts after 26 hours without one. The job runs below everything else in CPU and disk
-    priority.
+    picked (RUNBOOK, First install; review finding B5). Only locks that refuse overwrites
+    (prefix-scoped bucket locks, as R2's) also keep a token from replacing a part a restore reads:
+    a retention date on each object (S3 Object Lock) keeps the old versions only, and a restore
+    reads the current one, as with versioning (since review finding F5; before, the RUNBOOK and
+    this entry counted per-object retention beside the locks). A retention date on each object at
+    upload, which would keep the old versions from deletion, is left for Stop C. The removal of old
+    copies takes an object's age from the bucket's own time of its upload (`--use-server-modtime`),
+    never from the modification time its uploader set (since review finding F3: one locked object
+    with a 2020 mtime failed every night's removal). A missing settings archive, or one more than 2
+    hours old, fails the night once the other parts are safe. A failure sends one Telegram line
+    naming the step and the night's id, never a value; a full success prints one line,
+    `backup <id>: …`, and then pings `HEARTBEAT_BACKUP_URL` with that line as the ping's body, so the
+    monitor's log keeps each whole night's id where the bucket's token can't reach (a recovery on a
+    new server names its night from it); the monitor alerts after 26 hours without one. The job
+    runs below everything else in CPU and disk priority.
   - **Restores go into a bare cluster.** A fresh `supabase/postgres` volume runs the image's own
     init, and a full dump restored on top of it collides with its schemas, roles and extensions. So
     `restore-db` and `recover-db` start the same image through `config/db/bare-postgres.sh`:
@@ -7010,20 +7024,27 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     rehearsal (`RESTORE_EXACT=1`) every count must match; on the server, writes during the backup
     move counts, so differences are listed and only a missing table, an empty one or no Storage
     files where there were some fail.
-  - **The night** is the newest of `daily/` with a manifest, younger than 29 days and never one
-    stamped later than now, or the one `RESTORE_STAMP` names. Its folder hangs on its age alone,
-    from its stamp and the server's clock, never on what the bucket holds, which anyone holding the
-    token can add to under new names (since review findings RV1 and RV2): younger than 29 days,
-    `daily/` only, where the recommended lock keeps the backup's own parts that long; from 29 to
-    365 days, `monthly/` only, which keeps each month's copy under its lock; older, neither. The
-    other folder is never listed or read, nothing falls back, no manifest is compared across
-    folders, and a night missing from its folder is refused with the rule that applied. So from 29
-    days on a night that is not the month's copy can't be restored, a day or two before the job
-    removes it, and the RUNBOOK names a night that old only when its journal line says it was kept
-    in `monthly/`. Before, a night younger than 31 days was read from `daily/`, or from `monthly/`
-    once `daily/` lacked it (B1; before that, no monthly copy could be restored), the two folders'
-    manifests compared when both held it (N1). The messages name the folder used, and a part that
-    can't be read its object too; the first line and a test's last line name the night.
+  - **The night** is the one `RESTORE_STAMP` names by its id, as the journal line prints it (a stamp
+    alone is refused), or, for the restore test only, the newest id of a manifest in `daily/`,
+    younger than 29 days and never stamped later than now; a recovery takes only a named night
+    (since review finding F4). Its folder hangs on its age alone, from the stamp in its id and the
+    server's clock, never on what the bucket holds, which anyone holding the token can add to under
+    new names (since review findings RV1 and RV2): younger than 29 days, `daily/` only, where the
+    recommended lock keeps the backup's own parts that long; from 29 to 365 days, `monthly/` only,
+    which keeps each month's copy under its lock; older, neither. The other folder is never listed
+    or read, nothing falls back, no manifest is compared across folders, and a night missing from
+    its folder is refused with the rule that applied. So from 29 days on a night that is not the
+    month's copy can't be restored, a day or two before the job removes it, and the RUNBOOK names a
+    night that old only when its journal line says it was kept in `monthly/`. Before, a night
+    younger than 31 days was read from `daily/`, or from `monthly/` once `daily/` lacked it (B1;
+    before that, no monthly copy could be restored), the two folders' manifests compared when both
+    held it (N1). A named night's parts are looked for and read by their exact names (rclone's
+    `--no-traverse`: one request each), so no folder is listed and no listing is held (since review
+    finding F2: the whole listing in the shell got every restore killed in its 384m by a flood of
+    long names); the unasked choice streams `daily/`'s manifest names through a pipe that keeps only
+    the newest id, and rclone's own listing of the folder is what a flood still costs it. The
+    messages name the folder used, and a part that can't be read its object too; the first line and
+    a test's last line name the night.
   - **Nothing from a night runs as code** (since review finding S1): age proves nothing about who
     encrypted a part, so whoever holds the bucket's token and the public key can plant a night.
     psql reads the roles in its restricted mode, under a random key the file can't know, with the
@@ -7037,29 +7058,31 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     container's process 1 and writes into a FIFO that a `tr` reads, so its exit status and how a
     Ctrl-C or a signal stops it are as before. A planted night's SQL runs only in
     `restore-db` or `recover-db`, on the internal `restore` network, which hold neither the key nor
-    the token. A recovery still restores whatever night it is given, so the RUNBOOK names it from
-    the backup's own records, never from the newest name in the bucket.
+    the token. A recovery restores only the night `RESTORE_STAMP` names, and the RUNBOOK takes it
+    from the backup's own records, the journal's lines or the heartbeat monitor's log, never from
+    the bucket's names (since F4; before, a recovery without one took the newest name in
+    `daily/`).
   - **The monthly restore test** (`restore-test` with `restore-db`, profile `restore-test`) keeps
     the data on a 1 GiB tmpfs, lists the Storage archive and the settings archive's file names, and
-    prints `restore test passed: the night of <stamp>, from <folder>/` (since N4 its last line
+    prints `restore test passed: the night of <id>, from <folder>/` (since N4 its last line
     names the night, after anything a night's text could add); the owner's private key is on a
     ramfs for the run only. Since b6024d9 only the data is on the tmpfs: `/etc/postgresql-custom`
     stays the image's, with supautils' settings and extension scripts, because an empty one
     restored extensions unlike `db` and a recovery (seen on pgsodium's `mask_role`). First before
     the first restaurant, then monthly in the third week (the contract).
   - **Disaster recovery** (`recover` with `recover-db`, profile `recover`) goes into new `db-data`,
-    `db-config` and `storage-data` volumes. It refuses a cluster that a server still runs on (since
-    6cce911 `bare-postgres.sh` starts an existing cluster only when `pg_controldata` says it was
-    shut down cleanly: without that a second Postgres ran crash recovery on `db`'s live files in a
-    test), `db`'s old cluster ("not a bare cluster") and Storage's old files ("/storage is not
-    empty"); one that stops after it began to write says to make all three volumes new. Then `db`
-    starts on the volumes and skips its init, the migrations find nothing to apply, and the stack
-    comes back, `backup` too (RUNBOOK; on the same server its container goes with the old volumes,
-    since it reads `storage-data`: review finding B3). Since c813841 the bare clusters keep
-    pg_cron's launcher on `postgres` with no job running, so a backup holding pg_cron restores and
-    no restored job runs there, and the restore drops with `force`; since 3670a92 their health check
-    asks `template1` (a bare cluster has no `supabase_admin` database, and each probe logged a FATAL
-    line every 2 s).
+    `db-config` and `storage-data` volumes, for the night `RESTORE_STAMP` names. It refuses a
+    cluster that a server still runs on (since 6cce911 `bare-postgres.sh` starts an existing cluster
+    only when `pg_controldata` says it was shut down cleanly: without that a second Postgres ran
+    crash recovery on `db`'s live files in a test), `db`'s old cluster ("not a bare cluster") and
+    Storage's old files ("/storage is not empty"); one that stops after it began to write says to
+    make all three volumes new. Then `db` starts on the volumes and skips its init, the migrations
+    find nothing to apply, and the stack comes back, `backup` too (RUNBOOK; on the same server its
+    container goes with the old volumes, since it reads `storage-data`: review finding B3). Since
+    c813841 the bare clusters keep pg_cron's launcher on `postgres` with no job running, so a backup
+    holding pg_cron restores and no restored job runs there, and the restore drops with `force`;
+    since 3670a92 their health check asks `template1` (a bare cluster has no `supabase_admin`
+    database, and each probe logged a FATAL line every 2 s).
   - **What a restore cannot carry** (each restore was compared with its source object by object):
     what Supabase's event triggers and supautils change on an extension's members after
     `CREATE EXTENSION`, because `pg_dump` writes only the members' grants and `pg_restore` makes the
@@ -7115,7 +7138,7 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     workflows.
 - **VPS-42 · Checking the kit without a server:** the server is not bought, Actions minutes are
   scarce, and the server team's rules are code, so their code runs on the kit here.
-  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 66 tests since the third round's fixes;
+  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 73 tests since the fourth round's fixes;
     `tests/unit/vps-secrets.test.ts`, 18): each rule is a function, clean on the real file and
     refusing at least one copy with a mistake.
   - **`pnpm vps:check`** runs the vendored `app-apply` (`deploy/vps/test/vendor/jainav-infotech/`,
@@ -7278,7 +7301,9 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     `monthly/`, a 1st's copy, a notice built from escape sequences, a Storage link in both modes
     and a planted copy of a night past 31 days; since the third round, a manifest planted in
     `monthly/` under a night of `daily/`, a young night that only `monthly/` holds (refused), and
-    the recovery of a month's copy two months old from `monthly/` (Review fixes (VPS Stop B),
+    the recovery of a month's copy two months old from `monthly/`; since the fourth round, every
+    night named by its id, a night whose id someone else wrote a name of first (stopped before its
+    first upload), and a recovery without `RESTORE_STAMP` (refused) (Review fixes (VPS Stop B),
     below).
 - **Found and fixed by the rehearsal** (each with a unit pin): migration DDL in the database log
   (7614c1b) and `auto_explain` logging slow statements with their values (1b7b6ac), VPS-34; crond
@@ -7638,20 +7663,141 @@ With a7684fa's `restore.sh` these checks fail by construction: it reads the obje
 `monthly/` to compare manifests and stops at age's "unexpected intro", restores the young night from
 `monthly/`, and prints "not reading the copy" for the 1st two months back.
 
-**Left open after the third round:** a restore trusts a night's parts only while the bucket's prefix
-locks, or a retention date on each object, keep them as the backup wrote them; without them,
-versioning included, a token holder can replace the parts of recent nights in `daily/` (a new
-version is what a restore reads), which only hashes of each part kept where the token can't reach
-would catch (Stop C, below). The rule takes a night's age from the server's clock, so a clock a day
-behind reads `daily/` a day past its lock (shown in the harness); the RUNBOOK has the owner check
-that it is synchronized. A night 29 days old or more is read from `monthly/` whether or not the
-backup copied it there, so a night a token holder put in `monthly/` under the stamp of a night that
-is not the month's copy is read once that stamp is 29 days old (shown in the harness): the RUNBOOK
-names a night that old only when its journal line says `kept in monthly/`. A planted whole set in
-`monthly/` stands in for the month's copy after a 1st that failed, and objects planted under the
-1st's own names make its copy fail, with the alert.
+**The fourth round.** A whole-file review of `backup.sh` and `restore.sh` after the third round
+(fdd5dee) closed RV1, RV2 and N1 and found five more defects, F1 to F5, all from what a token holder
+can do to the bucket under the recommended locks. All five are fixed: F1 to F4 in the code, each
+with a unit pin that refuses the code as it was, proved in the pinned backup image (BusyBox 1.37,
+GNU tar 1.35, age 1.3.2, rclone 1.75.2) by the earlier harnesses, the working tree's scripts beside
+fdd5dee's (rclone's local backend, `rclone serve s3`, or a stub S3 bucket for F3; stand-ins for
+`date` and now `od`), and on the rehearsal (below); F5 in the documents. The entries above that the
+fixes changed were corrected in place (VPS-40, VPS-42, Tests, the RUNBOOK, `deploy/vps/README.md`,
+the restore services' comments in `compose.yml` and the env template).
 
-**Left open, for Stop C:** a token holder can still plant nights under new names and replace the
-parts of any night no lock holds, so a recovery is only as good as the night it is given, and
-nothing yet proves a night came from the backup (a hash of each part kept where the bucket's token
-can't reach would); and the bucket's protection waits for the owner's choice of bucket (B5).
+- **F1 · A name planted for a night to come stopped that night's backup, for up to 29 days after the
+  token's rotation (VPS-40, RUNBOOK), medium:** every name was `<part>-<date>T2030Z`, so a token
+  holder could upload `daily/globals-<date>T2030Z.sql.age` for each night ahead; under the prefix
+  locks the job could not write over it, and each such night failed at that upload, with no way out
+  but the admin lifting the lock. Each night is now named by its id, its stamp and 8 hex characters
+  from `/dev/urandom` (`2026-11-13T2030Z-3f9c0a1b`), in every part's name, the manifest's first
+  line, the month's copy, the journal line and the failure line, and `RESTORE_STAMP` is that whole
+  id (a stamp alone is refused). Before its first upload the job looks each of the night's names up
+  in both folders: one that is there means someone else wrote to the bucket, and the night stops
+  ("someone else wrote to the bucket: daily/ holds <name> before tonight's first upload"). In the
+  harness, under the simulated locks (the job as postgres, a token holder's objects root's, as the
+  reviewer had them), the reviewer's plants and id-shaped guesses stopped nothing, where fdd5dee's
+  nights failed at the roles and at the Storage archive; a name of a night's id put in `daily/`
+  (roles, Storage, manifest, settings archive) or `monthly/` before it ran, a stand-in `od` giving
+  the id's random part, stopped the night before anything was uploaded; two runs stamped the same
+  minute made two whole nights; and twelve malformed `RESTORE_STAMP` values were refused before the
+  bucket was read. (58c4bb7 "fix: name each night by an id with a random part")
+- **F2 · A restore held a folder's whole listing in the shell (VPS-40, RUNBOOK), medium:**
+  `names=$(rclone lsf …)` held it and each `listed` call copied it, so a flood of long names (a few
+  dollars of uploads, which the lock then keeps) grew every restore of a young night past its 384m.
+  Now each part is looked up by its exact name (`rclone lsf --no-traverse --files-from-raw -`, one
+  HEAD a name) and read by it (`rclone cat --no-traverse`): rclone 1.75.2 lists the whole folder
+  before each read without it, as its own request log over S3 showed. A named restore lists nothing
+  (over the S3 stand-in 15 lookups and 5 reads, where fdd5dee's listed `daily/` six times); the
+  restore test's unasked choice streams `daily/`'s manifest names through a pipe that keeps only the
+  newest id, and names at most three nights stamped later than now. With the reviewer's flood
+  (250,000 objects with 240-character names in `daily/`) on rclone's local backend, fdd5dee's
+  restore was killed at 128m both ways and at 384m unasked (named, it peaked at 377 MiB), while the
+  new one peaked at 55 to 62 MiB either way, and a whole named restore test passed in 111 MiB. Over
+  S3, with 100,000 such names, a named run peaked at 45 MiB and the unasked one at 129 MiB, its
+  rclone holding the folder's listing (Left open, below). (58c4bb7 "fix: name each night by an id
+  with a random part")
+- **F3 · One locked object with an old modification time failed every night's removal (VPS-40),
+  low:** `rclone delete --min-age` took an S3 object's age from the X-Amz-Meta-Mtime its uploader
+  set, so an object put in with a 2020 mtime was tried every night while its lock refused, and the
+  job failed after its uploads, every night for up to a year. Both removals now carry
+  `--use-server-modtime`, the bucket's own time of the upload, which no token sets.
+  `rclone serve s3` reports a file's modification time as its server time, so the local stand-in
+  can't show the difference; a stub S3 bucket under prefix locks, each object with the bucket's time
+  and an uploader's, a DELETE inside its lock refused with 403, did: fdd5dee's removal tried the
+  object planted an hour before with a 2020 mtime, three attempts, exit 1, in both folders on both
+  nights; the new one never tried it, removed the copies past 30 and 366 days by the bucket's clock,
+  exit 0, and sent no HEAD per object. R2 itself was not tried. (ee34369 "fix: age old copies by the
+  bucket's own upload time")
+- **F4 · A recovery without `RESTORE_STAMP` took the newest name in `daily/` (VPS-40), low:** this
+  entry said a recovery never does, but `restore.sh --into` took the unasked choice too, and a token
+  holder can plant that newest name, a superuser in its roles. It now refuses to run without
+  `RESTORE_STAMP`, before it reads the bucket, and `compose.yml`'s recover service says so where it
+  said "Empty: the newest night"; the RUNBOOK's recovery already named the night. In the harness
+  fdd5dee's unnamed recovery restored the planted superuser; the new one refused, unset or empty,
+  the bare cluster and `/storage` untouched, then recovered the genuine night by its id. (a1c98c1
+  "fix: refuse a recovery without a named night")
+- **F5 · Per-object retention was counted as keeping what a restore reads (RUNBOOK, VPS-40,
+  `backup.sh`), low:** a retention date on an object (S3 Object Lock) protects a version, and a PUT
+  under the same name still makes a new current version, which `rclone cat` reads. The RUNBOOK's
+  bucket step, `backup.sh`'s comment and VPS-40 now say that only locks that refuse overwrites,
+  prefix-scoped bucket locks such as R2's, keep what a restore reads. Not run here: the stand-in has
+  no Object Lock. (`backup.sh` in ee34369 "fix: age old copies by the bucket's own upload time"; the
+  RUNBOOK in 79cfb56 "docs: correct the vps runbook for night ids")
+- **Changed beyond the findings:** the heartbeat ping carries the night's journal line as its body
+  (`notify.sh beat "<line>"`, a POST): with random ids, the monitor's log (healthchecks.io keeps a
+  ping's body) is the record of each whole night's id off the server and the bucket, which a
+  recovery on a new server names its night from (d3a48b4 "feat: carry the night's line in the backup
+  heartbeat"). `backup.sh`'s own checks look names up one request each too (the upload check had
+  listed `daily/`). The RUNBOOK gains "A stolen or leaked bucket token (VPS)": rotate the token,
+  check the last nights against the journal's lines, remove what the token holder wrote with the
+  admin login (the lock rule lifted, then put back), then a restore test of a named night (79cfb56
+  "docs: correct the vps runbook for night ids").
+
+**On the rehearsal, after the fourth round** (`pnpm vps:rehearse --fresh`, 34 checks, 0 failed, 2
+min 32 s; then `pnpm vps:backup-test`, 38 checks where it had 36, 0 failed, 4 min 51 s; 8eac6f4
+"test: prove night ids on the rehearsal"): every night was named by its id. The night with a stale
+settings archive failed as `2026-11-12T2112Z-a5060467`, its four parts under that id; the month's
+copy was `2026-11-12T2113Z-394f3eeb` (5 parts, 1,703,174 bytes, "kept in monthly/ as the month's
+copy"), restored by that id; and the 1st two months back was `2026-09-01T2030Z-2e7cdfd7`, its stamp
+from the stand-in `date`, its random part backup.sh's own. A name of a night's id put in `daily/`
+first, the id from stand-ins for `date` and `od`, stopped that night before its first upload
+("someone else wrote to the bucket: daily/ holds storage-… before tonight's first upload"), nothing
+more of it uploaded and `monthly/` unchanged (F1). The planted nights, under ids of the planter's
+making, were refused as before, the one stamped 9999 named as not taken, and the 1st's planted copy
+in `daily/` was never read. The recovery without `RESTORE_STAMP` was refused before it read the
+bucket (F4); the same new volumes then refused the night with a link and took the 1st's copy from
+`monthly/`, and `db`, the services, `web` and the scheduler came back on the source's data.
+`pnpm vps:down --images` then removed the project and its three images and nothing else, and
+`pnpm vps:check` passed (53 checks, 0 failed). The unit tests are 1,123 in 68 files (`vps-kit` 73).
+With fdd5dee's scripts these checks fail by construction: its names carry no id and its restore
+refuses one in `RESTORE_STAMP`, its backup writes over a name put there first, and its recovery
+takes the newest name when none is given.
+
+**Left open:** what still holds of the reviewer's accepted residuals and this round's.
+
+- A restore trusts a night's parts only while locks that refuse overwrites hold them (R2's prefix
+  locks, not tried against R2 here). With versioning, or per-object retention, a token holder can
+  write new versions over a recent night's parts, and a restore reads them.
+- Nothing proves a night came from the backup. Unasked, the restore test takes a night planted in
+  `daily/` under an id stamped between the newest real night and now; a night that failed on its
+  settings archive can be completed with a planted `config-` part, after which its restore test
+  passes; a night 29 days old or more is read from `monthly/` whether or not it was the month's
+  copy, so one planted there under its id is restored; and a planted whole set in `monthly/` stands
+  in for the month's copy after a 1st that failed. The guard until then is the id: a restore names
+  its night first, to be checked against the journal line or the monitor's log, and the RUNBOOK
+  names a night that old only when its line says `kept in monthly/`.
+- A token holder watching the bucket during a run can read its id from the first part up and put
+  another of its names first, a later part in `daily/` or the month's copy in `monthly/`, failing
+  that night with the alert. It takes a live token, and ends with the rotation.
+- A night's age comes from the server's clock, taken once when a restore starts. A clock a day
+  behind reads `daily/` a day past its lock; one a day ahead reads a young night that is not a
+  month's copy from `monthly/`, where a night planted under its id is restored (both shown in the
+  harness). A restore begun just before the 29-day or 365-day line reads its later parts, the
+  Storage archive last in a recovery, minutes to hours after, possibly past the lock. The owner
+  keeps the clock synchronized (`timedatectl`) and doesn't name a night that close to a line.
+- From 29 days on, a night that is not a month's copy can't be restored, though `daily/` keeps it a
+  day or two more (and, with the job stopped on a dead server, until someone removes it): a recovery
+  begun more than 29 days after the last night has only month's copies. By design.
+- Floods: the unasked restore test's rclone holds `daily/`'s listing (over S3 about 0.85 KB a name
+  of 240 characters, 129 MiB at 100,000), so some 400,000 such names, fewer if longer, would kill it
+  in its 384m; naming the night lists nothing. `backup.sh`'s check for the month's copy holds every
+  name of the month in `monthly/` (about 1.4 KB a name, 171 MiB at 100,000), so some 200,000 would
+  kill it after the night's uploads, losing the month's copy, the removal, the journal line and the
+  heartbeat, with the alert, each night until the names go. The removal streams (35 MiB at 100,000).
+  Floods are cleared by the RUNBOOK's stolen-token steps.
+- Not proved here: R2's locks and its LastModified, which `--use-server-modtime` reads, and the
+  heartbeat monitor keeping a ping's body.
+
+The trust items share one answer, Stop C's hash of each part kept where the bucket's token can't
+reach: a restore would then refuse any part the backup did not write, whatever the folder, the clock
+or the bucket's protection. The bucket's protection still waits for the owner's choice of bucket
+(B5).
