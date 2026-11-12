@@ -1669,6 +1669,29 @@ const restoreLookups = (script: string) => {
 };
 
 /**
+ * A recovery restores only the night RESTORE_STAMP names, which the RUNBOOK takes from the
+ * backup's own records: the newest name in the bucket is one anyone holding its token can add, and
+ * a planted night recovered would land its roles, a superuser among them, in production (review
+ * finding F4). compose.yml's recover service says it is needed.
+ */
+const recoveryNamed = (script: string, composeText: string) => {
+  const check = script.indexOf(
+    '[ -n "$night" ] || [ "$mode" = --test ] ||\n  die "a recovery needs RESTORE_STAMP',
+  );
+  const recover =
+    /\n {2}recover:\n([\s\S]*?)\n(?: {2}[a-z0-9-]+:\n|\S)/.exec(composeText)?.[1] ?? '';
+  return [
+    ...(check >= 0 && check < script.indexOf('if [ -z "$night" ]; then')
+      ? []
+      : ['a recovery can take the newest name in the bucket']),
+    ...(/the newest night/.test(recover) ||
+    !/restore\.sh --into refuses to run without it/.test(recover)
+      ? ['compose.yml’s recover service doesn’t say the night must be named']
+      : []),
+  ];
+};
+
+/**
  * Everything restore.sh prints, psql's, pg_restore's, tar's, age's and rclone's lines too, goes
  * through one filter that keeps tab and newline and drops every other control character, so a
  * night's text can't move the cursor or rewrite a line (review finding N4). The script stays the
@@ -2272,6 +2295,30 @@ describe('the migrate and backup images', () => {
         '      substr($0, 1, 16) > lock\n',
       ),
       'more than the newest manifest id is kept',
+    );
+  });
+
+  it('recovers only a night RESTORE_STAMP names', () => {
+    expect(recoveryNamed(restoreSh, compose)).toEqual([]);
+    // As before review finding F4: an unnamed recovery took the newest name in daily/.
+    refuses(
+      (text) => recoveryNamed(text, compose),
+      swap(
+        restoreSh,
+        '[ -n "$night" ] || [ "$mode" = --test ] ||\n  die "a recovery needs',
+        '[ -n "$night" ] || true ||\n  die "a needs',
+      ),
+      'can take the newest name',
+    );
+    refuses(
+      (text) => recoveryNamed(restoreSh, text),
+      swapIn(
+        compose,
+        'recover',
+        '      # The night to recover, as the backup',
+        '      # Empty: the newest night. The night to recover, as the backup',
+      ),
+      'must be named',
     );
   });
 

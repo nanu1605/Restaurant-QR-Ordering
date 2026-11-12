@@ -9,22 +9,23 @@
 #                       bare cluster on the real, empty volumes, and the Storage files into /storage
 #
 # The night is RESTORE_STAMP: its id, as the backup's journal line prints it and every name of the
-# night ends, its stamp and 8 random hex characters (2026-11-13T2030Z-3f9c0a1b); else the newest
-# night of daily/ with a manifest, which the backup uploads after every other part, younger than 29
-# days and never one stamped later than now. The folder a night is read from hangs on its age alone,
-# from its stamp and this clock, never on what the bucket holds: anyone holding the bucket's token
-# can add objects under new names, so a folder chosen from what is there can be steered. The
-# bucket's prefix locks (docs/RUNBOOK.md, First install) keep each object as the backup wrote it 29
-# days in daily/ and 365 in monthly/. So a night younger than 29 days is read from daily/ only,
-# which keeps every night that long; one from 29 to 365 days old from monthly/ only, which keeps
-# each month's copy; an older one from neither. Nothing falls back to the other folder, and no
-# manifest is compared across them. Each part is looked for and read by its exact name, one request
-# each, and no folder's listing is held here, as a token holder can fill a folder with names. The
-# owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams from the
-# bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the restored
-# data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the server,
-# writes during the backup can move a count, so differences are listed and only a missing table, a
-# table restored empty, or no Storage files where there were some fail the test.
+# night ends, its stamp and 8 random hex characters (2026-11-13T2030Z-3f9c0a1b). A recovery takes
+# only a night named so. The restore test, unnamed, takes the newest night of daily/ with a
+# manifest, which the backup uploads after every other part, younger than 29 days and never one
+# stamped later than now. The folder a night is read from hangs on its age alone, from its stamp and
+# this clock, never on what the bucket holds: anyone holding the bucket's token can add objects
+# under new names, so a folder chosen from what is there can be steered. The bucket's prefix locks
+# (docs/RUNBOOK.md, First install) keep each object as the backup wrote it 29 days in daily/ and 365
+# in monthly/. So a night younger than 29 days is read from daily/ only, which keeps every night
+# that long; one from 29 to 365 days old from monthly/ only, which keeps each month's copy; an older
+# one from neither. Nothing falls back to the other folder, and no manifest is compared across
+# them. Each part is looked for and read by its exact name, one request each, and no folder's
+# listing is held here, as a token holder can fill a folder with names. The owner's age key is
+# AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams from the bucket through age
+# into psql, pg_restore or tar, so nothing decrypted is written but the restored data itself. With
+# RESTORE_EXACT=1 (the local rehearsal) every count must match; on the server, writes during the
+# backup can move a count, so differences are listed and only a missing table, a table restored
+# empty, or no Storage files where there were some fail the test.
 #
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
@@ -144,7 +145,12 @@ compare() {
     }'
 }
 
+# A recovery takes only the night it is given (review finding F4): the RUNBOOK names it from the
+# backup's own records, and the newest name in the bucket is one that anyone holding its token can
+# add.
 night=${RESTORE_STAMP-}
+[ -n "$night" ] || [ "$mode" = --test ] ||
+  die "a recovery needs RESTORE_STAMP, the id of the night to recover as the backup's own records name it (docs/RUNBOOK.md, Disaster recovery): it never takes the newest name in the bucket"
 
 # A night's age against the lines 29 and 365 days back, to the minute, from this clock: a night
 # stamped later than a line is younger than its days. Stamps sort as they are written, and every
@@ -154,7 +160,7 @@ now=$(date -u -d "@$seconds" +%Y-%m-%dT%H%MZ)
 daily_lock=$(date -u -d "@$((seconds - 29 * 86400))" +%Y-%m-%dT%H%MZ)
 monthly_lock=$(date -u -d "@$((seconds - 365 * 86400))" +%Y-%m-%dT%H%MZ)
 if [ -z "$night" ]; then
-  # The night when none is named: the newest id of a manifest in daily/ as backup.sh
+  # The restore test's night when none is named: the newest id of a manifest in daily/ as backup.sh
   # names one, younger than 29 days and stamped no later than now (a planted
   # 9999-12-31T2359Z-... would always sort last), which a few lines name as not taken. Only those
   # ids pass the pipe and only the newest is kept, so other names in daily/ cost this shell

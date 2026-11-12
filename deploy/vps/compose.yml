@@ -629,7 +629,8 @@ services:
       RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
       RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
       AGE_IDENTITY_FILE: /run/age/identity.txt
-      # Empty: the newest night.
+      # A night's id, as the backup's journal line prints it; empty: the newest night of daily/
+      # younger than 29 days.
       RESTORE_STAMP: ${RESTORE_STAMP:-}
     networks: [default, restore]
     depends_on:
@@ -670,7 +671,7 @@ services:
     pids_limit: 512
     oom_score_adj: -800
 
-  # sudo app-compose menumesh --profile recover run --rm -v /run/age:/run/age:ro recover
+  # sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<id> -v /run/age:/run/age:ro recover
   recover:
     <<: *oneoff
     image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
@@ -690,7 +691,8 @@ services:
       RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
       RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
       AGE_IDENTITY_FILE: /run/age/identity.txt
-      # Empty: the newest night.
+      # The night to recover, as the backup's own records print its id (docs/RUNBOOK.md, Disaster
+      # recovery): restore.sh --into refuses to run without it.
       RESTORE_STAMP: ${RESTORE_STAMP:-}
     volumes:
       # Writable here only: the restore fills it.
