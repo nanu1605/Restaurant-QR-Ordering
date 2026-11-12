@@ -87,6 +87,12 @@ export RCLONE_LOG_LEVEL=ERROR
 fetch() {
   rclone cat "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
 }
+# Stops after a command that failed, with a line naming what it was reading, and its exit status.
+stop() {
+  status=$?
+  echo "restore: $*" >&2
+  exit "$status"
+}
 sql() {
   psql -X -q -At -v ON_ERROR_STOP=1 "$@"
 }
@@ -174,7 +180,8 @@ for part in "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do
   listed "$names" "$part" || die "$part is not in $folder/"
 done
 
-manifest=$(fetch "manifest-$stamp.txt.age")
+manifest=$(fetch "manifest-$stamp.txt.age") ||
+  stop "the manifest of $stamp (manifest-$stamp.txt.age in $folder/) could not be read (see above)"
 # Only the lines backup.sh writes, in printable ASCII: the night's stamp first, then plain database
 # names (they reach SQL and psql's arguments), and counts.
 problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
@@ -220,7 +227,7 @@ listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner 
     /^d/ { next }
     { others++ }
     END { printf "storage files %d\nstorage bytes %.0f\nothers %d\n", files, bytes, others }') ||
-  die "the Storage archive of $stamp could not be listed (see above)"
+  die "the Storage archive of $stamp (storage-$stamp.tar.age in $folder/) could not be listed (see above)"
 others=$(printf '%s\n' "$listing" | awk '$1 == "others" { print $2 }')
 [ "$others" -eq 0 ] ||
   die "the Storage archive of $stamp holds links or special files ($others), which Storage never writes: nothing was restored"
@@ -241,7 +248,7 @@ if ! {
     sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' \
       -e "/^CREATE ROLE $PGUSER;\$/d" -e "/^ALTER ROLE $PGUSER WITH /d"
 } | sql -d template1 >/dev/null; then
-  die "the roles of $stamp did not restore (see above)"
+  die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"
 fi
 
 # Each database whole, as the backup dumped it: created from template0 with its own locale and
@@ -250,7 +257,8 @@ fi
 for db in $dbs; do
   echo "restore: database $db"
   sql -d template1 -c "drop database if exists \"$db\" with (force)"
-  fetch "$db-$stamp.dump.age" | pg_restore --create --exit-on-error --dbname=template1
+  fetch "$db-$stamp.dump.age" | pg_restore --create --exit-on-error --dbname=template1 ||
+    stop "the database $db of $stamp ($db-$stamp.dump.age in $folder/) did not restore (see above)"
 done
 
 failed=0
@@ -273,7 +281,8 @@ done
 if [ "$mode" = --into ]; then
   echo 'restore: Storage files into /storage'
   fetch "storage-$stamp.tar.age" |
-    tar --extract --file=- --directory=/storage --no-same-owner --xattrs --xattrs-include='user.*'
+    tar --extract --file=- --directory=/storage --no-same-owner --xattrs --xattrs-include='user.*' ||
+    stop "the Storage files of $stamp (storage-$stamp.tar.age in $folder/) did not restore (see above)"
   others=$(find /storage ! -type f ! -type d | wc -l)
   [ "$others" -eq 0 ] ||
     die "the Storage archive of $stamp held links or special files when extracted ($((others))), which Storage never writes"
@@ -297,7 +306,8 @@ if [ "$mode" = --test ]; then
   # The settings archive holds every secret of the server: only the names of its files are shown.
   listed "$names" "config-$stamp.tar.age" ||
     die "the night of $stamp has no settings archive (config-$stamp.tar.age)"
-  files=$(fetch "config-$stamp.tar.age" | tar --list --file=-)
+  files=$(fetch "config-$stamp.tar.age" | tar --list --file=-) ||
+    stop "the settings archive of $stamp (config-$stamp.tar.age in $folder/) could not be listed (see above)"
   [ -n "$files" ] || die "the settings archive of $stamp is empty"
   echo "restore: the settings archive holds $(printf '%s\n' "$files" | tr '\n' ' ')"
 fi

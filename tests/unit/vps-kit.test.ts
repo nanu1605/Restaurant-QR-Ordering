@@ -1445,7 +1445,8 @@ const restoreTrust = (script: string) => {
     ...(restrict > key && key >= 0 && restrict < roles && roles < piped
       ? []
       : ['the roles reach psql without \\restrict first']),
-    ...(script.split('globals-$stamp.sql.age').length === 3
+    ...(script.split('fetch "globals-$stamp.sql.age"').length === 2 &&
+    script.includes('for part in "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do')
       ? []
       : ['the roles file is read more than once, or not checked']),
     ...(script.includes(String.raw`sed -e '/^\\restrict /d' -e '/^\\unrestrict /d'`)
@@ -1580,18 +1581,43 @@ const restoreFilter = (script: string) => {
 };
 
 /**
- * The roles step's failure says only that it failed: rclone, age or psql says why above it, and
- * only psql's "backslash commands are restricted" means a planted psql command (review finding N5,
- * RUNBOOK).
+ * The roles step's failure says only that it failed, and which object of which folder it read:
+ * rclone, age or psql says why above it, and only psql's "backslash commands are restricted" means
+ * a planted psql command (review findings N5 and RV1, RUNBOOK).
  */
 const rolesFailure = (script: string) => [
-  ...(script.includes('die "the roles of $stamp did not restore (see above)"')
+  ...(script.includes(
+    'die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"',
+  )
     ? []
     : ['no plain message for a roles step that failed']),
   ...(/psql says why|holds SQL and no psql command/.test(script)
     ? ['the roles’ failure blames psql or a planted command whatever failed']
     : []),
 ];
+
+/**
+ * A part that can't be read, decrypted or restored ends the run with a line naming the object and
+ * its folder, under what rclone, age, psql, pg_restore or tar said, and with the exit status the
+ * failed command gave, as before (review finding RV1: a manifest planted where a restore read it
+ * ended the run with age's lines alone).
+ */
+const partFailures = (script: string) => {
+  const fetches = [...script.matchAll(/fetch "([^"]+)"/g)];
+  return [
+    ...(script.includes('stop() {\n  status=$?\n  echo "restore: $*" >&2\n  exit "$status"\n}')
+      ? []
+      : ['a failed part’s line changes the run’s exit status']),
+    ...(fetches.length === 6 ? [] : [`${fetches.length} parts fetched, not 6`]),
+    ...fetches.flatMap((match, n) =>
+      script
+        .slice(match.index, fetches[n + 1]?.index ?? script.length)
+        .includes(`(${match[1]} in $folder/)`)
+        ? []
+        : [`a failure of ${match[1]} doesn’t name it and its folder`],
+    ),
+  ];
+};
 
 /**
  * Storage writes only files and folders, so the archive's members are checked, in both modes,
@@ -2003,10 +2029,42 @@ describe('the migrate and backup images', () => {
       rolesFailure,
       swap(
         restoreSh,
-        'die "the roles of $stamp did not restore (see above)"',
+        'die "the roles of $stamp (globals-$stamp.sql.age in $folder/) did not restore (see above)"',
         `die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"`,
       ),
       'blames psql',
+    );
+  });
+
+  it('names the object and its folder when a part fails, with the exit status as before', () => {
+    expect(partFailures(restoreSh)).toEqual([]);
+    // As before review finding RV1: a manifest age couldn't read ended the run with age's lines.
+    refuses(
+      partFailures,
+      swap(
+        restoreSh,
+        'manifest=$(fetch "manifest-$stamp.txt.age") ||\n  stop "the manifest of $stamp (manifest-$stamp.txt.age in $folder/) could not be read (see above)"\n',
+        'manifest=$(fetch "manifest-$stamp.txt.age")\n',
+      ),
+      'manifest-$stamp.txt.age doesn’t name it',
+    );
+    refuses(
+      partFailures,
+      swap(
+        restoreSh,
+        ' ||\n    stop "the database $db of $stamp ($db-$stamp.dump.age in $folder/) did not restore (see above)"',
+        '',
+      ),
+      '$db-$stamp.dump.age doesn’t name it',
+    );
+    refuses(
+      partFailures,
+      swap(
+        restoreSh,
+        '  echo "restore: $*" >&2\n  exit "$status"\n}',
+        '  echo "restore: $*" >&2\n  exit 1\n}',
+      ),
+      'changes the run’s exit status',
     );
   });
 
