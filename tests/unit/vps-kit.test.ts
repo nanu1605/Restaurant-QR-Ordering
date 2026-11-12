@@ -1513,6 +1513,38 @@ const restoreFolders = (script: string) => {
   ];
 };
 
+/**
+ * Everything restore.sh prints, psql's, pg_restore's, tar's, age's and rclone's lines too, goes
+ * through one filter that keeps tab and newline and drops every other control character, so a
+ * night's text can't move the cursor or rewrite a line (review finding N4). The script stays the
+ * container's process 1 and writes into a FIFO the filter reads, so its exit status and how a
+ * Ctrl-C or a signal stops it are as before (run again through a pipeline, a signal to the
+ * container would have let the whole restore go on); it waits for the filter on exit. The line a
+ * test ends with names the night, after anything a night's text could add.
+ */
+const restoreFilter = (script: string) => {
+  const filter = script.indexOf(
+    String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`,
+  );
+  const redirect = script.indexOf('exec >"$fifo" 2>&1');
+  const finish = script.indexOf('  exec >&- 2>&-\n  wait "$filter" || true\n  exit "$status"\n}');
+  return [
+    ...(script.includes('mkfifo -m 600 "$fifo"') && filter >= 0
+      ? []
+      : ['no filter that drops control characters but tab and newline']),
+    ...(redirect > filter && redirect < script.indexOf('mode=${1-}')
+      ? []
+      : ['the run’s output and errors don’t all go through the filter']),
+    ...(finish > redirect && script.includes('trap finish EXIT')
+      ? []
+      : ['the script can end before the filter passed everything on']),
+    ...(script.includes('"$0"') ? ['the script runs itself again, under another process 1'] : []),
+    ...(script.includes('echo "restore test passed: the night of $stamp, from $folder/"')
+      ? []
+      : ['the test’s last line doesn’t name the night']),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1786,6 +1818,42 @@ describe('the migrate and backup images', () => {
       restoreFolders,
       swap(restoreSh, '"$part is not in $folder/"', '"$part is not in daily/"'),
       'names daily/',
+    );
+  });
+
+  it('filters everything a restore prints, as process 1, and ends a test with the night', () => {
+    expect(restoreFilter(restoreSh)).toEqual([]);
+    // As before review finding N4: only restore.sh's own lines were filtered.
+    refuses(restoreFilter, swap(restoreSh, 'exec >"$fifo" 2>&1\n', ''), 'don’t all go through');
+    refuses(
+      restoreFilter,
+      swap(
+        restoreSh,
+        String.raw`tr -d '\000-\010\013-\037\177-\377' <"$fifo"`,
+        String.raw`tr -d '\000-\010\177-\377' <"$fifo"`,
+      ),
+      'no filter',
+    );
+    refuses(restoreFilter, swap(restoreSh, '  wait "$filter" || true\n', ''), 'can end before');
+    // The first version of the fix: the run again through a pipeline, under a new process 1.
+    refuses(
+      restoreFilter,
+      swap(
+        restoreSh,
+        'exec >"$fifo" 2>&1\n',
+        '[ -n "$RESTORE_FILTERED" ] || { RESTORE_FILTERED=1 /bin/sh "$0" "$@" 2>&1 | tr -d x; exit; }\n' +
+          'exec >"$fifo" 2>&1\n',
+      ),
+      'runs itself again',
+    );
+    refuses(
+      restoreFilter,
+      swap(
+        restoreSh,
+        'echo "restore test passed: the night of $stamp, from $folder/"',
+        "echo 'restore test passed'",
+      ),
+      'doesn’t name the night',
     );
   });
 });

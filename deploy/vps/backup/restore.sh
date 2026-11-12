@@ -24,11 +24,32 @@
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
 # mode, which runs their SQL and no psql command; the manifest must hold only the lines a backup
-# writes, so its database names are plain before they reach SQL; a recovery refuses Storage links
-# and special files; and what this prints from a night loses its control characters. A planted
-# night's SQL runs only in restore-db or recover-db, on the internal restore network, which hold
-# no key and no token.
+# writes, so its database names are plain before they reach SQL; and a recovery refuses Storage
+# links and special files. Everything the run prints loses its control characters but tab and
+# newline (below), and the line a success ends with names the night, after anything a night's text
+# could add. A planted night's SQL runs only in restore-db or recover-db, on the internal restore
+# network, which hold no key and no token.
 set -eu -o pipefail
+
+# Everything the run prints, its own lines and those of psql, pg_restore, tar, age and rclone, goes
+# through one filter, so that no text from a night can move the cursor or rewrite a line: tab and
+# newline stay, every other control character and every byte past ASCII go. This shell stays the
+# container's process 1 and writes into a FIFO that the filter reads, so its exit status, and how
+# a terminal's Ctrl-C or a signal to the container stops it, are as they were without the filter.
+# On exit it waits until the filter has passed everything on.
+fifo=$(mktemp -u /tmp/restore.XXXXXX)
+mkfifo -m 600 "$fifo"
+LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &
+filter=$!
+exec >"$fifo" 2>&1
+rm -f "$fifo"
+finish() {
+  status=$?
+  exec >&- 2>&-
+  wait "$filter" || true
+  exit "$status"
+}
+trap finish EXIT
 # Nothing from a night is ever globbed.
 set -f
 
@@ -71,10 +92,6 @@ nl='
 listed() {
   case "$nl$1$nl" in *"$nl$2$nl"*) return 0 ;; esac
   return 1
-}
-# Text from a night, fit for a terminal: control characters and bytes past ASCII left out.
-printable() {
-  LC_ALL=C tr -d '\000-\010\013-\037\177-\377'
 }
 # One "<kind> <db> <name>... <value>" line per table and the migration, as the backup counted.
 counts() {
@@ -229,7 +246,7 @@ for db in $dbs; do
     echo "restore: $db differs from the manifest:"
     failed=1
   fi
-  [ -z "$differences" ] || printf '%s\n' "$differences" | printable
+  [ -z "$differences" ] || printf '%s\n' "$differences"
 done
 
 # The Storage files: extracted for a recovery, only listed for a test. GNU tar keeps every member
@@ -258,20 +275,21 @@ else
   echo 'restore: Storage differs from the manifest:'
   failed=1
 fi
-[ -z "$differences" ] || printf '%s\n' "$differences" | printable
+[ -z "$differences" ] || printf '%s\n' "$differences"
 
 if [ "$mode" = --test ]; then
   # The settings archive holds every secret of the server: only the names of its files are shown.
   listed "$names" "config-$stamp.tar.age" ||
     die "the night of $stamp has no settings archive (config-$stamp.tar.age)"
-  files=$(fetch "config-$stamp.tar.age" | tar --list --file=- | printable)
+  files=$(fetch "config-$stamp.tar.age" | tar --list --file=-)
   [ -n "$files" ] || die "the settings archive of $stamp is empty"
   echo "restore: the settings archive holds $(printf '%s\n' "$files" | tr '\n' ' ')"
 fi
 
 [ "$failed" -eq 0 ] || die "the restore of $stamp does not match its manifest"
+# The last line names the night: whatever a night's text added above, nothing of it comes after.
 if [ "$mode" = --test ]; then
-  echo 'restore test passed'
+  echo "restore test passed: the night of $stamp, from $folder/"
 else
   echo "recovery of $stamp done: stop recover-db, then start db, auth, rest, realtime, storage, api-gw and backup (docs/RUNBOOK.md)"
 fi
