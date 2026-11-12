@@ -1274,6 +1274,30 @@ const cleanClustersOnly = (bare: string) => {
   ];
 };
 
+/**
+ * The bare clusters run with the image's custom directory, supautils' settings and extension
+ * scripts in it, as db does: restore-db mounts nothing over it (an empty tmpfs there made the
+ * monthly test restore extensions unlike a recovery), recover-db mounts db-config, and
+ * bare-postgres.sh refuses a directory without supautils.conf before it makes a cluster (VPS-40).
+ */
+const bareSettings = (composeText: string, bare: string) => {
+  const all = services(composeText);
+  const over = (name: string) =>
+    [...(key(all.get(name) ?? [], 'volumes') ?? []), ...(key(all.get(name) ?? [], 'tmpfs') ?? [])]
+      .filter((line) => line.includes('/etc/postgresql-custom'))
+      .map((line) => line.trim());
+  const check = bare.indexOf('if [ ! -s "$custom/supautils.conf" ]; then');
+  const made = bare.indexOf('initdb --username=supabase_admin');
+  return [
+    ...(over('restore-db').length ? ['restore-db hides the image’s /etc/postgresql-custom'] : []),
+    ...(over('recover-db').join() === '- db-config:/etc/postgresql-custom'
+      ? []
+      : ['recover-db runs without db-config']),
+    ...(check >= 0 && check < made ? [] : ['a bare cluster starts without supautils.conf']),
+    ...(/: >"\$custom\//.test(bare) ? ['bare-postgres.sh makes empty settings files'] : []),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1382,6 +1406,35 @@ describe('the migrate and backup images', () => {
         'chown postgres:postgres "$data" /var/run/postgresql\n',
       ),
       'changes before',
+    );
+  });
+
+  it('restores into bare clusters that have the image’s supautils settings, as db has', () => {
+    expect(bareSettings(compose, barePostgres)).toEqual([]);
+    refuses(
+      (text) => bareSettings(text, barePostgres),
+      swapIn(
+        compose,
+        'restore-db',
+        '      - /var/lib/postgresql/data:size=1g\n',
+        '      - /var/lib/postgresql/data:size=1g\n      - /etc/postgresql-custom:size=16m\n',
+      ),
+      'hides',
+    );
+    refuses(
+      (text) => bareSettings(text, barePostgres),
+      swapIn(compose, 'recover-db', '      - db-config:/etc/postgresql-custom\n', ''),
+      'without db-config',
+    );
+    refuses(
+      (text) => bareSettings(compose, text),
+      swap(barePostgres, 'if [ ! -s "$custom/supautils.conf" ]; then', 'if false; then'),
+      'without supautils.conf',
+    );
+    refuses(
+      (text) => bareSettings(compose, text),
+      swap(barePostgres, '\nmkdir -p "$data"', '\n: >"$custom/supautils.conf"\nmkdir -p "$data"'),
+      'empty settings files',
     );
   });
 });

@@ -9,9 +9,10 @@
 # (password POSTGRES_PASSWORD) and the image's own initdb arguments (its locale), as db's first start
 # had; a directory holding a cluster that was shut down cleanly is started as it is, so restore.sh
 # can refuse it by name; anything else is refused here, a cluster another server runs on too. Then
-# postgres runs with the image's settings file, so the same libraries are preloaded and every
-# extension a backup holds can be created. --throwaway (restore-db, data in memory) also turns off
-# fsync and full-page writes. Never prints the password.
+# postgres runs with the image's settings file and its custom directory (supautils' settings and
+# extension scripts), so the same libraries are preloaded and every extension a backup holds is
+# made as on db. --throwaway (restore-db, data in memory) also turns off fsync and full-page
+# writes. Never prints the password.
 set -eu
 
 throwaway=
@@ -32,6 +33,13 @@ if [ "$(id -u)" != 0 ]; then
 fi
 if [ -z "${POSTGRES_PASSWORD:-}" ]; then
   echo 'bare-postgres: POSTGRES_PASSWORD is empty' >&2
+  exit 1
+fi
+# The settings file includes supautils.conf and the rest of the custom directory: the image's own
+# (restore-db), or their copies in db-config (recover-db). Without them a restore would make the
+# extensions without supautils' scripts, unlike db: refused before anything is made.
+if [ ! -s "$custom/supautils.conf" ]; then
+  echo "bare-postgres: $custom has no supautils.conf: mount the image's own directory, or a volume Docker filled from it" >&2
   exit 1
 fi
 
@@ -65,14 +73,6 @@ else
   ' bare-postgres "$data"
   echo "bare-postgres: made a bare cluster in $data"
 fi
-
-# The settings file includes these from the custom directory: a tmpfs there (restore-db) starts
-# empty, a new volume (recover-db) gets the image's copies.
-chown postgres:postgres "$custom"
-mkdir -p "$custom/conf.d"
-for file in wal-g.conf read-replica.conf supautils.conf; do
-  [ -e "$custom/$file" ] || : >"$custom/$file"
-done
 
 # The image's settings file: its preloaded libraries, its pg_hba.conf (passwords from other
 # containers). Logged: warnings and errors, on one line each, without statements or their values;

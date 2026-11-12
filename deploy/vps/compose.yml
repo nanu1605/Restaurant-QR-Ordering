@@ -588,9 +588,11 @@ services:
       POSTGRES_PASSWORD: restore-test
     volumes:
       - ./config/db/bare-postgres.sh:/opt/menumesh/bare-postgres.sh:ro
+    # Only the data is in memory: /etc/postgresql-custom stays the image's own, with supautils'
+    # settings and extension scripts, as db-config holds them for db and recover-db. Without them
+    # the restore makes extensions differently from a recovery.
     tmpfs:
       - /var/lib/postgresql/data:size=1g
-      - /etc/postgresql-custom:size=16m
     networks: [restore]
     healthcheck:
       # On template1: a bare cluster has no database named after supabase_admin, and probing one
