@@ -1337,6 +1337,27 @@ const restoreTrust = (script: string) => {
   ];
 };
 
+/**
+ * Daily copies go after 30 days and the monthly ones stay a year, so a night named by
+ * RESTORE_STAMP that daily/ no longer holds is restored, test or recovery, from monthly/, every
+ * part from there, and the messages name that folder (review finding B1, VPS-40).
+ */
+const restoreMonthly = (script: string) => [
+  ...(script.includes(
+    [
+      'if ! present "manifest-$stamp.txt.age"; then',
+      '  folder=monthly',
+      '  names=$(rclone lsf --files-only "$bucket/monthly/")',
+    ].join('\n'),
+  )
+    ? []
+    : ['a named night is looked for in daily/ only']),
+  ...(script.includes('rclone cat "$bucket/$folder/$1"')
+    ? []
+    : ['the parts are not read from the night’s folder']),
+  ...(script.includes('is not in daily/') ? ['a message names daily/ for any night'] : []),
+];
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1514,6 +1535,22 @@ describe('the migrate and backup images', () => {
       restoreTrust,
       swap(restoreSh, 'find /storage ! -type f ! -type d', 'find /storage -type l'),
       'links and special files',
+    );
+  });
+
+  it('restores a named night from monthly/ once daily/ no longer holds it', () => {
+    expect(restoreMonthly(restoreSh)).toEqual([]);
+    // As before the review: daily/ only.
+    refuses(restoreMonthly, swap(restoreSh, '  folder=monthly\n', ''), 'looked for in daily/ only');
+    refuses(
+      restoreMonthly,
+      swap(restoreSh, 'rclone cat "$bucket/$folder/$1"', 'rclone cat "$bucket/daily/$1"'),
+      'night’s folder',
+    );
+    refuses(
+      restoreMonthly,
+      swap(restoreSh, '"$part is not in $folder/"', '"$part is not in daily/"'),
+      'names daily/',
     );
   });
 });

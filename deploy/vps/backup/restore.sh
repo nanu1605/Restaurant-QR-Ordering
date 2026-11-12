@@ -8,13 +8,14 @@
 #   restore.sh --into   disaster recovery (the recover service): restores a night into recover-db's
 #                       bare cluster on the real, empty volumes, and the Storage files into /storage
 #
-# The night is RESTORE_STAMP, as in the object names, or else the newest with a manifest, which the
-# backup uploads after every other part; unasked, a night stamped later than now is never taken.
-# The owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams from the
-# bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the restored
-# data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the server,
-# writes during the backup can move a count, so differences are listed and only a missing table, a
-# table restored empty, or no Storage files where there were some fail the test.
+# The night is RESTORE_STAMP, as in the object names, from daily/ or, once daily/ no longer holds it
+# (after 30 days), from its copy in monthly/. Else it is the newest night of daily/ with a manifest,
+# which the backup uploads after every other part; unasked, a night stamped later than now is never
+# taken. The owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams
+# from the bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the
+# restored data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the
+# server, writes during the backup can move a count, so differences are listed and only a missing
+# table, a table restored empty, or no Storage files where there were some fail the test.
 #
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
@@ -47,12 +48,14 @@ done
   die "no age key at $AGE_IDENTITY_FILE: mount the owner's key on a ramfs (-v /run/age:/run/age:ro)"
 case $PGUSER in '' | *[!a-z0-9_]*) die 'PGUSER must be a plain role name' ;; esac
 exact=${RESTORE_EXACT:-0}
-day="backups:$BACKUP_BUCKET/daily"
+bucket="backups:$BACKUP_BUCKET"
+# The night's folder: daily, or monthly for a named night past daily's 30 days.
+folder=daily
 export RCLONE_LOG_LEVEL=ERROR
 
 # A part of the night, decrypted, on stdout.
 fetch() {
-  rclone cat "$day/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
+  rclone cat "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
 }
 sql() {
   psql -X -q -At -v ON_ERROR_STOP=1 "$@"
@@ -91,7 +94,8 @@ compare() {
     }'
 }
 
-names=$(rclone lsf --files-only "$day/")
+names=$(rclone lsf --files-only "$bucket/daily/")
+present() { printf '%s\n' "$names" | grep -qxF "$1"; }
 stamp=${RESTORE_STAMP-}
 if [ -z "$stamp" ]; then
   # The newest stamp as backup.sh writes them, but none later than now: a planted 9999-12-31
@@ -103,15 +107,20 @@ if [ -z "$stamp" ]; then
     echo "restore: not taking the night of $later, stamped later than now ($now)"
   done
   stamp=$(printf '%s\n' "$stamps" | awk -v now="$now" '$0 != "" && $0 <= now' | tail -n 1)
-  [ -n "$stamp" ] || die "no night with a manifest in daily/ of the bucket"
+  [ -n "$stamp" ] || die "no night with a manifest in daily/ of the bucket (one of monthly/ needs RESTORE_STAMP)"
 fi
 case $stamp in
   [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z) ;;
   *) die 'RESTORE_STAMP must be a stamp as in the object names, like 2026-11-11T2030Z' ;;
 esac
-present() { printf '%s\n' "$names" | grep -qxF "$1"; }
+# A named night that daily/ no longer holds: its monthly copy, every part from there.
+if ! present "manifest-$stamp.txt.age"; then
+  folder=monthly
+  names=$(rclone lsf --files-only "$bucket/monthly/")
+  present "manifest-$stamp.txt.age" || die "the night of $stamp has no manifest in daily/ or monthly/"
+fi
 for part in "manifest-$stamp.txt.age" "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do
-  present "$part" || die "$part is not in daily/"
+  present "$part" || die "$part is not in $folder/"
 done
 
 # Only the lines backup.sh writes, in printable ASCII: the night's stamp first, then plain database
@@ -135,7 +144,7 @@ problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
 dbs=$(printf '%s\n' "$manifest" | awk '$1 == "database" { print $2 }')
 [ -n "$dbs" ] || die "the manifest of $stamp names no database"
 for db in $dbs; do
-  present "$db-$stamp.dump.age" || die "$db-$stamp.dump.age is not in daily/"
+  present "$db-$stamp.dump.age" || die "$db-$stamp.dump.age is not in $folder/"
 done
 
 # Only into a bare cluster (bare-postgres.sh): no roles but its superuser, no databases but
@@ -148,7 +157,7 @@ fi
 if [ "$mode" = --into ] && [ -n "$(ls -A /storage)" ]; then
   die '/storage is not empty: recover only into a new storage-data volume'
 fi
-echo "restore: the night of $stamp into $PGHOST"
+echo "restore: the night of $stamp, from $folder/, into $PGHOST"
 
 # The roles, with their passwords, but the cluster's own superuser as bare-postgres.sh made it: its
 # password stays the one this job connects with. psql reads them in its restricted mode, under a
