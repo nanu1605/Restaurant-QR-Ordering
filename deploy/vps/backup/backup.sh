@@ -158,8 +158,10 @@ if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthl
   rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"
   kept=", kept in monthly/ as the month's copy"
 fi
-# 30 daily and 12 monthly copies. The bucket's own retention (object lock or versioning, set by the
-# owner) keeps a stolen token from deleting them sooner.
+# 30 daily and 12 monthly copies. Only the bucket can keep a stolen token from deleting them sooner,
+# and nothing here sets that up: the owner picks, with the bucket (docs/RUNBOOK.md, First install),
+# lock rules scoped to each prefix, or versioning with a token that can't delete versions or change
+# the bucket's settings. No object gets a retention date of its own at upload yet.
 reason='the removal of old copies'
 rclone delete --min-age 30d "$day/"
 rclone delete --min-age 366d "$remote/monthly/"

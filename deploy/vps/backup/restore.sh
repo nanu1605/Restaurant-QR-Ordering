@@ -238,5 +238,5 @@ fi
 if [ "$mode" = --test ]; then
   echo 'restore test passed'
 else
-  echo "recovery of $stamp done: stop recover-db, then start db, auth, rest, realtime, storage and api-gw (docs/RUNBOOK.md)"
+  echo "recovery of $stamp done: stop recover-db, then start db, auth, rest, realtime, storage, api-gw and backup (docs/RUNBOOK.md)"
 fi

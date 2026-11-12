@@ -950,6 +950,25 @@ const redaction = (text: string) =>
     ? []
     : ['not exactly the one line for the QR tokens'];
 
+/**
+ * Staging's basic-auth hash is made off the server, Caddy reading the password from the terminal:
+ * never with --plaintext, which leaves it in a shell's history and a process list (review finding
+ * S2, VPS-37). edge.env.example and the RUNBOOK give the same command.
+ */
+const stagingHash = (example: string, runbook: string) => {
+  const commands = (text: string) =>
+    [...text.matchAll(/^[#\s]*(.*\bhash-password\b.*)$/gm)].map((match) => match[1].trim());
+  const all = [...commands(example), ...commands(runbook)];
+  return [
+    ...(commands(example).length ? [] : ['edge.env.example gives no hash-password command']),
+    ...(commands(runbook).length ? [] : ['the RUNBOOK gives no hash-password command']),
+    ...all
+      .filter((line) => !/^docker run --rm -it caddy:[\w.-]+ caddy hash-password$/.test(line))
+      .map((line) => `a hash-password command that does not read from the terminal: ${line}`),
+    ...(new Set(all).size > 1 ? ['edge.env.example and the RUNBOOK give different commands'] : []),
+  ];
+};
+
 describe('the edge files (deploy/vps/edge)', () => {
   it('has the four hosts, each opening with site_common and tls_menumesh', () => {
     expect(siteImports(site)).toEqual([]);
@@ -1043,6 +1062,32 @@ describe('the edge files (deploy/vps/edge)', () => {
     expect(redaction(redact)).toEqual([]);
     refuses(redaction, `${redact}request>uri regexp ^/k/[a-z]+ /k/_\n`, 'not exactly the one');
     refuses(redaction, swap(redact, ' /t/_', ' /t/x'), 'not exactly the one');
+  });
+
+  it('has staging’s hash made off the server, the password never in a command line', () => {
+    const example = kit('edge/edge.env.example');
+    const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
+    expect(stagingHash(example, runbook)).toEqual([]);
+    // As before the review: the password in the command's arguments.
+    refuses(
+      (text) => stagingHash(text, runbook),
+      swap(example, 'caddy hash-password\n', "caddy hash-password --plaintext '<password>'\n"),
+      'does not read from the terminal',
+    );
+    refuses(
+      (text) => stagingHash(example, text),
+      swap(
+        runbook,
+        '    docker run --rm -it caddy:2.11.9-alpine caddy hash-password\n',
+        '    docker run --rm caddy:2.11.9-alpine caddy hash-password\n',
+      ),
+      'does not read from the terminal',
+    );
+    refuses(
+      (text) => stagingHash(text, runbook),
+      swap(example, 'caddy:2.11.9-alpine', 'caddy:2.11.8-alpine'),
+      'different commands',
+    );
   });
 });
 

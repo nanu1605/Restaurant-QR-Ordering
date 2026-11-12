@@ -681,9 +681,19 @@ by anyone else, or `app-apply` refuses the compose file.
    key goes into the password manager and on paper, then off that machine: it never stays on the
    server, and without it no backup can be restored.
 
-2. **The bucket:** an India-region, S3-compatible bucket, with object lock or versioning that keeps
-   objects just under the job's own ages (29 days for `daily/`, 365 for `monthly/`), set with an
-   admin login that never goes on the server, and an API token for this bucket only.
+2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes
+   on the server, and an API token for this bucket only. How it keeps a stolen token from deleting
+   the nights is the owner's choice when the bucket is picked (docs/DECISIONS.md VPS-40):
+   - **Retention just under the job's own ages** (29 days for `daily/`, 365 for `monthly/`) needs
+     lock rules scoped to a prefix, which some providers have (R2's bucket locks, as the server
+     team's own bucket uses), or a retention date on each object at upload, which the job does not
+     set yet. An S3 Object Lock default is one period for the whole bucket: 29 days would leave the
+     monthly copies unlocked after a month, 365 would keep every night a year.
+   - **Versioning** protects only if the server's token can't delete object versions or change the
+     bucket's settings: on S3, a policy for its user that allows listing, reading, writing and
+     deleting objects only (no `s3:DeleteObjectVersion`, and nothing that changes the bucket's
+     versioning, lifecycle or policy). The old versions then need a lifecycle rule for each prefix
+     that removes them after those ages.
 3. **Alerts:** a Telegram bot and chat for the backup's failures, and heartbeat monitors: the backup
    (a ping a night, alerting after 26 hours), the daily and the digest calls (a ping a day each),
    the minute job (a ping a minute), and the same three for staging. Each is optional; an empty
@@ -718,11 +728,13 @@ by anyone else, or `app-apply` refuses the compose file.
     (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
     MenuMesh container runs**. Then the two lines of `deploy/vps/edge/edge.env.example` in
     `/srv/edge/edge.env`, installed with `sudo app-apply edge env edge.env` and
-    `sudo app-compose edge up -d`. The hash comes from staging's password and the edge's Caddy
-    image:
+    `sudo app-compose edge up -d`. The hash comes from the owner, who makes it on their own machine
+    with the edge's Caddy image, never on the server: there staging's password would stay in the
+    shell's history and show in the process list. Without `--plaintext`, Caddy reads the password
+    from the terminal without echoing it, and the admin gets only the hash:
 
     ```sh
-    docker run --rm caddy:2.11.9-alpine caddy hash-password --plaintext '<password>'
+    docker run --rm -it caddy:2.11.9-alpine caddy hash-password
     ```
 
 12. `/srv/menumesh` and `config/`:
@@ -766,20 +778,25 @@ by anyone else, or `app-apply` refuses the compose file.
     healthy (`sudo app-compose menumesh ps`),
     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`. Auth and Storage make their
     own schemas at their first start, and the first migration needs them (VPS-39).
-17. The backup image: Actions → **VPS backup image** → Run workflow on `main`, then, with a GitHub
+17. **GitHub** (Secrets (VPS), below): the variables, `VPS_IMAGES` set to `true`, and the secrets;
+    then Actions → **VPS ping**. While `VPS_IMAGES` is off, the backup image's and the release's
+    workflows skip their job and push nothing; once it is on, each merge to `main` also builds the
+    staging and migrate images (a few billed minutes). `VPS_DEPLOY_STAGING` can wait: it moves
+    staging's deploys off Vercel.
+18. The backup image: Actions → **VPS backup image** → Run workflow on `main`, then, with a GitHub
     token that can read packages typed at the prompt:
 
     ```sh
     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh backup backup-<sha>@sha256:<digest>
     ```
 
-18. The first deploys, which run the migrations: staging from CI or by hand, production by a release
+19. The first deploys, which run the migrations: staging from CI or by hand, production by a release
     (Deploys on the VPS).
-19. The schedulers: `sudo app-compose menumesh up -d scheduler scheduler-staging`. Each turns
+20. The schedulers: `sudo app-compose menumesh up -d scheduler scheduler-staging`. Each turns
     healthy at its first answered minute call.
-20. A first restore test once a night has run, before the first restaurant (Backups and restore
+21. A first restore test once a night has run, before the first restaurant (Backups and restore
     (VPS)).
-21. Last, after the server rehearsal (below):
+22. Last, after the server rehearsal (below):
     `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
     `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`; then the admin's leak test
     (the server team's `edge.md` §6, with a made-up 16-character `/t/` token, which the log must
@@ -809,7 +826,7 @@ ones are for a new install or a planned rotation.
   `app-deploy`'s.
 - The admin's: `BACKUP_RECIPIENT` in `/etc/apps/menumesh.conf` (the backup key's public half), and
   `MENUMESH_STAGING_AUTH_USER` and `MENUMESH_STAGING_AUTH_HASH` in `/srv/edge/edge.env` (the hash of
-  staging's password).
+  staging's password, which the owner makes off the server: First install, step 11).
 
 Never on the server: the backup key's private half, the bucket's admin login, staging's password
 itself (in the password manager; testers get it from the owner) and the GitHub secrets.
@@ -849,8 +866,9 @@ recreates them; a `restart` keeps the old values.
 - The backup key: a new pair, the admin's `BACKUP_RECIPIENT` and the owner's `BACKUP_AGE_RECIPIENT`
   changed the same day, then `up -d backup`. Keep the old private key while its backups (366 days)
   can be needed.
-- Staging's password: the admin's new hash in `edge.env` (`app-apply edge env`, then recreate
-  Caddy), the GitHub secret `STAGING_SMOKE_BASIC_AUTH`, and the testers.
+- Staging's password: a new hash, made off the server as in First install, step 11, which the admin
+  puts in `edge.env` (`app-apply edge env`, then recreate Caddy); the GitHub secret
+  `STAGING_SMOKE_BASIC_AUTH`; and the testers.
 - The deploy key or the Access token: a new key pair (the admin swaps the public half) or token,
   then the GitHub secrets.
 
@@ -876,7 +894,7 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 An outline; Stop D details it. The contract's order: rehearse with the limits and no site file, then
 install the site file, then change DNS last.
 
-1. The first install up to step 20, with the limits on and no site file, so nothing is public.
+1. The first install up to step 21, with the limits on and no site file, so nothing is public.
 2. On the server: `sudo hostwatch check` clean; the services healthy; a staging and a production
    deploy, with its pre-deploy dump and a rollback; the night's backup and a restore test; the
    schedulers' first minutes and a day of `jobs.ok`; `docker stop` of the scheduler and `backup`
@@ -965,13 +983,19 @@ through Cloudflare (VPS-38). Times are UTC:
   hostwatch alerts on, and healthy again at the next one.
 - **A call by hand**, with the scheduler's own values, so the bearer is never typed:
   `sudo app-compose menumesh exec scheduler /bin/sh /opt/menumesh/cron-call jobs` (or `daily`,
-  `digest`; `scheduler-staging` for staging). A `daily` by hand that gets a 200 writes the day's
-  marker, so the 03:30 retry then does nothing. The minute job also answers through Cloudflare
-  (Incidents, Run the minute job by hand).
-- **After a change:** a crontab or a script under `config/scheduler/` is installed by the admin,
-  then `sudo app-compose menumesh restart scheduler` (crond reads its crontab when it starts); a new
-  cron secret or heartbeat address in `.env` needs `sudo app-compose menumesh up -d scheduler`,
-  since `start.sh` writes the values when the container is made.
+  `digest`; `scheduler-staging` for staging). A `daily` or `digest` by hand that gets a 200 writes
+  the day's marker (the UTC day's), so a retry after it does nothing; a daily or digest call
+  without a 200 takes the marker away, so after a failed 03:00 call the 03:30 retry runs, whatever
+  an earlier call that day got. The minute job also answers through Cloudflare (Incidents, Run the
+  minute job by hand).
+- **After a change:** the admin installs the file, then the schedulers that mount it restart, since
+  `install` writes a new file, which a running container never sees:
+  `sudo app-compose menumesh restart scheduler scheduler-staging` for `start.sh` or `cron-call`,
+  which both mount, `scheduler` alone for `production.crontab` and `scheduler-staging` alone for
+  `staging.crontab`. A new cron secret or heartbeat address in `.env` needs `up -d` of the scheduler
+  that reads it, since `start.sh` writes the values when the container is made: `scheduler` for
+  production's, `scheduler-staging` for the `STAGING_*` ones, each with its web container for a
+  cron secret (Rotation).
 
 ### Backups and restore (VPS)
 
@@ -982,26 +1006,33 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   `globals-<stamp>.sql.age` (the roles), `postgres-<stamp>.dump.age` (the database),
   `storage-<stamp>.tar.age` (the Storage files, with their content types),
   `manifest-<stamp>.txt.age` (row counts and the Storage files' count, which a restore compares) and
-  `config-<stamp>.tar.age` (the settings archive). The night of the 1st is also copied to
-  `monthly/`; daily copies go after 30 days and monthly ones after 366, and the bucket's lock keeps
-  anyone from deleting them sooner.
+  `config-<stamp>.tar.age` (the settings archive). The month's first whole night (UTC) is also
+  copied to `monthly/`, whatever its day, so a 1st that failed leaves the copy to the next good
+  night. Daily copies go after 30 days and monthly ones after 366; only the bucket's own
+  protection, the owner's choice (First install, step 2), keeps a stolen token from deleting them
+  sooner.
 - **The settings archive**, `/srv/menumesh/backup-out/config-<stamp>.tar.age`, holds `.env`,
   `images.env`, `env/`, `config/` and `deploys.log`, encrypted to `BACKUP_RECIPIENT`. A night whose
   archive is missing or more than 2 hours old fails, with an alert, after its other parts are up.
   `systemctl list-timers 'app-config-archive@*'`,
-  `sudo journalctl -t app-config-archive --since yesterday` and `ls -l /srv/menumesh/backup-out`
-  show it, and `sudo systemctl start app-config-archive@menumesh.service` makes one now.
+  `sudo journalctl -t app-config-archive --since yesterday` and
+  `sudo ls -l /srv/menumesh/backup-out` show it, and
+  `sudo systemctl start app-config-archive@menumesh.service` makes one now.
 - **Last night's backup:**
 
   ```sh
   sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since yesterday -o cat
-  sudo app-compose menumesh exec backup sh -c 'rclone lsf --format sp "backups:$BACKUP_BUCKET/daily/" | tail -5'
+  sudo app-compose menumesh exec backup sh -c 'd="backups:$BACKUP_BUCKET/daily"
+    s=$(rclone lsf --files-only "$d/" | sed -n "s/^[a-z0-9_]*-\([0-9-]*T[0-9]*Z\)\..*/\1/p" | sort | tail -n 1)
+    rclone lsf --format sp --separator " " --include "*-$s.*" "$d/"'
   ```
 
-  The first shows `backup <stamp>: 5 parts, N bytes`, or
-  `[menumesh] backup failed (exit 1) at <stamp>: <the step>`, which Telegram got too; the second
-  lists the newest parts and their sizes. The heartbeat monitor alerts after 26 hours without a
-  whole night. One now, as the container runs it:
+  The first shows `backup <stamp>: 5 parts, N bytes` (with `, kept in monthly/ as the month's copy`
+  on the month's first whole night), or `[menumesh] backup failed (exit 1) at <stamp>: <the step>`,
+  which Telegram got too. The second lists the newest night's parts and their sizes: five for a
+  whole night. A failed night shows what got there: no manifest when it failed before the manifest
+  went up, no `config-` part when its settings archive was missing or stale. The heartbeat monitor
+  alerts after 26 hours without a whole night. One now, as the container runs it:
   `sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`.
 
 - **The monthly restore test**, in the third week of the month (the first one before the first
@@ -1021,40 +1052,66 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   It restores the night into a throwaway database in memory, compares it with the manifest, lists
   the Storage archive and the settings archive's file names, and ends with `restore test passed`.
   Counts that moved during the night are listed; only a missing table, an empty one or missing
-  Storage files fail it. `app-compose` first checks that the server has the memory. For another
-  night add `-e RESTORE_STAMP=<stamp>` (as in the object names, for example `2026-12-17T2030Z`):
-  name the night before when the newest one failed, as a failed night may lack its settings archive.
-  Record the date, the night and the result.
+  Storage files fail it. `app-compose` first checks that the server has the memory. It names the
+  night it takes (`restore: the night of <stamp>, from daily/, …`): unasked, the newest of
+  `daily/`, but never one stamped later than now, which it names as not taken. Check it against
+  the backup's own journal line (Last night's backup), since anyone holding the bucket's token can
+  add a night. For another night add `-e RESTORE_STAMP=<stamp>` (as in the object names, for
+  example `2026-12-17T2030Z`): name the night before when the newest one failed, as a failed night
+  may lack its settings archive. A night older than 30 days is read from `monthly/`, which keeps
+  each month's first whole night. A roles file with a psql command other than pg_dumpall's own
+  `\restrict` and `\unrestrict` lines stops the test (`backslash commands are restricted`): no
+  backup writes one, so take the bucket's token as stolen and rotate it (Rotation). Record the
+  date, the night and the result.
 
 - **Disaster recovery**, whose database and Storage steps `pnpm vps:backup-test` rehearses on this
   machine (docs/DECISIONS.md, Tests (VPS Stop B)):
   1. A new server: the admin's part of First install, with new deploy keys and the new host key in
      `VPS_KNOWN_HOSTS`. If the old server may still run, stop its `cloudflared` first.
-  2. The private key on a ramfs (as above). The newest `daily/config-<stamp>.tar.age`, downloaded
-     with the bucket provider's dashboard or a new read-only token (the token on the server is
-     inside the archive), unpacked into `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
+  2. The night, named from the backup's own records and never taken as the newest name in the
+     bucket, since anyone holding the bucket's token can add a night: the journal's
+     `backup <stamp>: …` lines if the old server still runs, else the backup monitor's pings (one a
+     few minutes after each whole night's stamp) and Telegram's failure lines. Its `<stamp>` names
+     the settings archive here and the recovery in step 5. The private key on a ramfs (as above).
+     The night's `daily/config-<stamp>.tar.age` (`monthly/` once it is older than 30 days),
+     downloaded with the bucket provider's dashboard or a new read-only token (the token on the
+     server is inside the archive), listed first: only `.env`, `images.env`, `env/`, `config/` and
+     `deploys.log`, each entry a file (`-`) or a folder (`d`). Then it is unpacked into
+     `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
 
      ```sh
-     age --decrypt --identity /run/age/identity.txt config-<stamp>.tar.age | sudo tar -x -C /srv/menumesh
+     sudo age --decrypt --identity /run/age/identity.txt config-<stamp>.tar.age | tar -tv
+     sudo age --decrypt --identity /run/age/identity.txt config-<stamp>.tar.age | sudo tar -x -C /srv/menumesh
      ```
 
   3. `sudo app-apply menumesh compose ~/incoming/compose.yml`, from the commit the server last had.
   4. The backup image that `images.env` names, by the admin form with a token on stdin as in First
-     install, step 17: `sudo app-deploy menumesh backup <its tag@digest>`.
-  5. The recovery, into new volumes. On a new server they are new; on the same server the old
-     `db-data`, `db-config` and `storage-data` must go first, once no container uses them, and
-     recovering onto a new server instead keeps them.
+     install, step 18: `sudo app-deploy menumesh backup <its tag@digest>`.
+  5. The recovery of that night, into new volumes, from `daily/` or, past 30 days, `monthly/`. On a
+     new server they are new. On the same server the old `db-data`, `db-config` and `storage-data`
+     go first, with everything stopped, once the containers that hold them are gone, `backup`
+     included (it reads `storage-data`); recovering onto a new server instead keeps them:
+
+     ```sh
+     sudo app-compose menumesh stop
+     sudo app-compose menumesh rm -sf db storage backup
+     sudo docker volume rm menumesh_db-data menumesh_db-config menumesh_storage-data
+     ```
+
+     Then, on either server:
 
      ```sh
      sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<stamp> -v /run/age:/run/age:ro recover
      sudo app-compose menumesh --profile recover rm -sf recover-db
      ```
 
-     It refuses while `db` runs, onto `db`'s old cluster and onto old Storage files, and ends with
-     `recovery of <stamp> done`.
+     It refuses while `db` runs, onto `db`'s old cluster and onto old Storage files, and stops at a
+     night no backup made (a psql command in its roles, a manifest line a backup doesn't write, a
+     link in its Storage archive); it ends with `recovery of <stamp> done`.
 
   6. `sudo app-compose menumesh up -d db`, which finds the cluster and skips its init, then
-     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`.
+     `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup` (`backup` was
+     already running on a new server).
   7. The images `images.env` names, by the admin form: production with its migrate image (the
      migrations find nothing to apply), and staging; then
      `sudo app-compose menumesh up -d scheduler scheduler-staging`.
@@ -1138,8 +1195,10 @@ Supabase stack is only ever read.
   environment, through a copy of `playwright.config.ts` without its `webServer`; specs that need the
   mock APIs can't run against it.
 
-- `pnpm vps:backup-test` (about 2.5 minutes, on a running rehearsal) runs the nightly backup into a
-  local S3, the monthly restore test, and a disaster recovery on the rehearsal's own volumes.
+- `pnpm vps:backup-test` (about 4 minutes, on a running rehearsal) runs the nightly backup into a
+  local S3, with the month's copy in `monthly/`; the monthly restore test; planted nights the
+  restore must refuse; a restore test of a night only `monthly/` still holds; and a disaster
+  recovery of that night on the rehearsal's own volumes.
 - `pnpm vps:down [--images]` removes the rehearsal's containers, networks and volumes (and its three
   images with `--images`), and nothing else. `.vps-rehearsal/` stays for the next run.
 - **Copying the server team's files again**, whenever they change `app-apply`, the edge's
