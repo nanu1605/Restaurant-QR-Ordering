@@ -187,7 +187,10 @@ fi
 # 30 daily and 12 monthly copies. Only the bucket can keep a stolen token from deleting them sooner,
 # and nothing here sets that up: the owner picks, with the bucket (docs/RUNBOOK.md, First install),
 # lock rules scoped to each prefix, or versioning with a token that can't delete versions or change
-# the bucket's settings. No object gets a retention date of its own at upload yet.
+# the bucket's settings. No object gets a retention date of its own at upload yet. restore.sh reads
+# a night only while the recommended locks hold it, from daily/ under 29 days and from monthly/ to
+# 365, so from 29 days until this removal a night that is not the month's copy is kept but no
+# longer restored.
 reason='the removal of old copies'
 rclone delete --min-age 30d "$day/"
 rclone delete --min-age 366d "$remote/monthly/"

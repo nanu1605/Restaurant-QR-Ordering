@@ -694,6 +694,14 @@ by anyone else, or `app-apply` refuses the compose file.
      deleting objects only (no `s3:DeleteObjectVersion`, and nothing that changes the bucket's
      versioning, lifecycle or policy). The old versions then need a lifecycle rule for each prefix
      that removes them after those ages.
+
+   A restore reads a night from the one folder whose lock still holds it: `daily/` while the night
+   is younger than 29 days, `monthly/` from then to 365 days (Backups and restore (VPS)). So only
+   those prefix locks, or a retention date on each object, keep a stolen token from replacing what
+   a restore reads. Without them, versioning included, the token can put its own parts over a
+   recent night's in `daily/`, and a restore reads the newest version; only a hash of each part
+   kept off the bucket, which Stop C brings, would tell them apart (docs/DECISIONS.md VPS-40).
+
 3. **Alerts:** a Telegram bot and chat for the backup's failures, and heartbeat monitors: the backup
    (a ping a night, alerting after 26 hours), the daily and the digest calls (a ping a day each),
    the minute job (a ping a minute), and the same three for staging. Each is optional; an empty
@@ -1015,7 +1023,10 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   whole night is, while `monthly/` holds no whole copy of the month. A night whose settings
   archive was missing or stale is never the month's copy. Daily copies go after 30 days and
   monthly ones after 366; only the bucket's own protection, the owner's choice (First install,
-  step 2), keeps a stolen token from deleting them sooner.
+  step 2), keeps a stolen token from deleting them sooner. A restore reads a night from `daily/`
+  until it is 29 days old, then only the month's copy, from `monthly/`, until 365 days, as long as
+  the bucket's locks hold them: from 29 days on, a night that is not a month's copy can't be
+  restored, though `daily/` keeps it until the job removes it a day or two later.
 - **The settings archive**, `/srv/menumesh/backup-out/config-<stamp>.tar.age`, holds `.env`,
   `images.env`, `env/`, `config/` and `deploys.log`, encrypted to `BACKUP_RECIPIENT`. A night whose
   archive is missing or more than 2 hours old fails, with an alert, after its other parts are up.
@@ -1060,25 +1071,35 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   `restore test passed: the night of <stamp>, from <folder>/`. Counts that moved during the night
   are listed; only a missing table, an empty one or missing Storage files fail it. `app-compose`
   first checks that the server has the memory. It names the night it takes first
-  (`restore: the night of <stamp>, from daily/, …`): unasked, the newest of `daily/` of the last
-  31 days, but never one stamped later than now, which it names as not taken. Check that night,
+  (`restore: the night of <stamp>, from daily/, …`): unasked, the newest of `daily/` younger than
+  29 days, but never one stamped later than now, which it names as not taken. Check that night,
   and the one its last line names, against the backup's own journal line (Last night's backup),
   since anyone holding the bucket's token can add a night. Everything it prints loses its control
   characters, so a night's own text (psql's notices, for one) can add a line but not erase or
   rewrite one, and nothing of it comes after the last line. For another night add
   `-e RESTORE_STAMP=<stamp>` (as in the object names, for example `2026-12-17T2030Z`): name the
-  night before when the newest one failed, as a failed night may lack its settings archive. A
-  night more than 31 days old is read from `monthly/` only, which keeps each month's copy: it must
-  show `from monthly/`, and its journal line must say it was kept in `monthly/`. Each of these
-  lines means a night, or part of one, that no backup wrote:
+  night before when the newest one failed, as a failed night may lack its settings archive. The
+  folder a night is read from hangs on its age alone, from its stamp and the server's clock
+  (`timedatectl` says whether it is synchronized), never on what the bucket holds, which a stolen
+  token can add to:
+  - **Younger than 29 days**, `daily/` only, whose lock keeps every night that long: it shows
+    `from daily/`. A night `daily/` has no manifest of is refused, whatever `monthly/` holds, as
+    no backup finished it (one that failed, or a stamp no backup wrote):
+    `daily/ keeps every night of the last 29 days under its lock; this one has no manifest there`.
+  - **29 days old or more**, `monthly/` only, which keeps the month's copies a year: it shows
+    `from monthly/`. Name such a night only when its journal line says `kept in monthly/`. One
+    that isn't a month's copy is refused (`only the month's copy is kept past 29 days`), unless
+    someone put a night in `monthly/` under its stamp, which is then read.
+  - **365 days old or more**, none: past `monthly/`'s lock its parts could have been replaced.
+
+  A part that can't be read or restored ends the run with a line naming it and its folder, under
+  what rclone, age, psql, pg_restore or tar said, such as
+  `the manifest of <stamp> (manifest-<stamp>.txt.age in daily/) could not be read (see above)`.
+  Each of these lines means a night, or part of one, that no backup wrote:
   - `backslash commands are restricted`: a roles file with a psql command other than pg_dumpall's
     own `\restrict` and `\unrestrict` lines, which no backup writes;
-  - `the manifests of <stamp> in daily/ and monthly/ differ`: the month's copy, in both folders
-    for its first 30 days, is copied unchanged, so one of the two was put there;
   - `holds links or special files`: Storage writes only files and folders (refused before
-    anything is restored);
-  - `not reading the copy of <stamp> in daily/`: a copy of a night past 31 days, which `daily/`
-    keeps 30, unless the backup's runs have failed for days (its journal and Telegram say so).
+    anything is restored).
 
   Someone else wrote to the bucket: take its token as stolen and rotate it (Rotation). Record the
   date, the night and the result.
@@ -1092,11 +1113,12 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
      `backup <stamp>: …` lines if the old server still runs, else the backup monitor's pings (one a
      few minutes after each whole night's stamp) and Telegram's failure lines. Its `<stamp>` names
      the settings archive here and the recovery in step 5. The private key on a ramfs (as above).
-     The night's `daily/config-<stamp>.tar.age` (`monthly/`'s only, once it is more than 31 days
-     old), downloaded with the bucket provider's dashboard or a new read-only token (the token on
-     the server is inside the archive), listed first: only `.env`, `images.env`, `env/`, `config/`
-     and `deploys.log`, each entry a file (`-`) or a folder (`d`). Then it is unpacked into
-     `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
+     The night's `daily/config-<stamp>.tar.age` while it is younger than 29 days, else `monthly/`'s,
+     for a month's copy only (its journal line says `kept in monthly/`), downloaded with the bucket
+     provider's dashboard or a new read-only token (the token on the server is inside the archive),
+     listed first: only `.env`, `images.env`, `env/`, `config/` and `deploys.log`, each entry a file
+     (`-`) or a folder (`d`). Then it is unpacked into `/srv/menumesh`; `.env` and `env/` come back
+     root's, 0600:
 
      ```sh
      sudo age --decrypt --identity /run/age/identity.txt config-<stamp>.tar.age | tar -tv
@@ -1106,7 +1128,8 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   3. `sudo app-apply menumesh compose ~/incoming/compose.yml`, from the commit the server last had.
   4. The backup image that `images.env` names, by the admin form with a token on stdin as in First
      install, step 18: `sudo app-deploy menumesh backup <its tag@digest>`.
-  5. The recovery of that night, into new volumes, from `daily/` or, past 31 days, `monthly/` only.
+  5. The recovery of that night, into new volumes, from the one folder its age gives, as in the
+     restore test: `daily/` while it is younger than 29 days, `monthly/` from then on.
      On a new server they are new. On the same server the old `db-data`, `db-config` and
      `storage-data` go first, with everything stopped, once the containers that hold them are gone,
      `backup` included (it reads `storage-data`); recovering onto a new server instead keeps them:
@@ -1220,8 +1243,10 @@ Supabase stack is only ever read.
 - `pnpm vps:backup-test` (about 5 minutes, on a running rehearsal) runs the nightly backup into a
   local S3: a night whose settings archive is stale, then the month's copy in `monthly/` past names
   planted there, no second copy, and a 1st's copy (stamped by a stand-in `date`); the monthly
-  restore test; planted nights the restore must refuse, or not read; a restore test of a night
-  only `monthly/` still holds; and a disaster recovery of that night on the rehearsal's own volumes.
+  restore test; planted nights and names the restore must refuse, or not read, each night read
+  from the one folder its age gives (a night younger than 29 days that only `monthly/` holds is
+  refused); and a disaster recovery of the 1st's copy, two months old, from `monthly/`, on the
+  rehearsal's own volumes.
 - `pnpm vps:down [--images]` removes the rehearsal's containers, networks and volumes (and its three
   images with `--images`), and nothing else. `.vps-rehearsal/` stays for the next run.
 - **Copying the server team's files again**, whenever they change `app-apply`, the edge's
