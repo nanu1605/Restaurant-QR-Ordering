@@ -9,13 +9,23 @@
 #                       bare cluster on the real, empty volumes, and the Storage files into /storage
 #
 # The night is RESTORE_STAMP, as in the object names, or else the newest with a manifest, which the
-# backup uploads after every other part. The owner's age key is AGE_IDENTITY_FILE, on a ramfs
-# mounted read-only. Each part streams from the bucket through age into psql, pg_restore or tar, so
-# nothing decrypted is written but the restored data itself. With RESTORE_EXACT=1 (the local
-# rehearsal) every count must match; on the server, writes during the backup can move a count, so
-# differences are listed and only a missing table, a table restored empty, or no Storage files where
-# there were some fail the test.
+# backup uploads after every other part; unasked, a night stamped later than now is never taken.
+# The owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams from the
+# bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the restored
+# data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the server,
+# writes during the backup can move a count, so differences are listed and only a missing table, a
+# table restored empty, or no Storage files where there were some fail the test.
+#
+# age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
+# can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
+# mode, which runs their SQL and no psql command; the manifest must hold only the lines a backup
+# writes, so its database names are plain before they reach SQL; a recovery refuses Storage links
+# and special files; and what this prints from a night loses its control characters. A planted
+# night's SQL runs only in restore-db or recover-db, on the internal restore network, which hold
+# no key and no token.
 set -eu -o pipefail
+# Nothing from a night is ever globbed.
+set -f
 
 mode=${1-}
 case $mode in
@@ -46,6 +56,10 @@ fetch() {
 }
 sql() {
   psql -X -q -At -v ON_ERROR_STOP=1 "$@"
+}
+# Text from a night, fit for a terminal: control characters and bytes past ASCII left out.
+printable() {
+  LC_ALL=C tr -d '\000-\010\013-\037\177-\377'
 }
 # One "<kind> <db> <name>... <value>" line per table and the migration, as the backup counted.
 counts() {
@@ -80,7 +94,15 @@ compare() {
 names=$(rclone lsf --files-only "$day/")
 stamp=${RESTORE_STAMP-}
 if [ -z "$stamp" ]; then
-  stamp=$(printf '%s\n' "$names" | sed -n 's/^manifest-\(.*\)\.txt\.age$/\1/p' | sort | tail -n 1)
+  # The newest stamp as backup.sh writes them, but none later than now: a planted 9999-12-31
+  # would always sort last.
+  now=$(date -u +%Y-%m-%dT%H%MZ)
+  stamps=$(printf '%s\n' "$names" |
+    sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z\)\.txt\.age$/\1/p' | sort)
+  for later in $(printf '%s\n' "$stamps" | awk -v now="$now" '$0 > now'); do
+    echo "restore: not taking the night of $later, stamped later than now ($now)"
+  done
+  stamp=$(printf '%s\n' "$stamps" | awk -v now="$now" '$0 != "" && $0 <= now' | tail -n 1)
   [ -n "$stamp" ] || die "no night with a manifest in daily/ of the bucket"
 fi
 case $stamp in
@@ -92,11 +114,27 @@ for part in "manifest-$stamp.txt.age" "globals-$stamp.sql.age" "storage-$stamp.t
   present "$part" || die "$part is not in daily/"
 done
 
+# Only the lines backup.sh writes, in printable ASCII: the night's stamp first, then plain database
+# names (they reach SQL and psql's arguments), and counts.
 manifest=$(fetch "manifest-$stamp.txt.age")
+problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
+  /[^ -~]/ { print "line " NR " holds a control character or a byte past ASCII"; exit }
+  NR == 1 {
+    if ($0 != "menumesh backup " stamp) { print "its first line is not \"menumesh backup " stamp "\""; exit }
+    next
+  }
+  $1 == "database" && NF == 2 && $2 ~ /^[a-z_][a-z0-9_]*$/ && length($2) < 64 && $2 !~ /^template[01]$/ {
+    if (seen[$2]++) { print "it names the database " $2 " twice"; exit }
+    next
+  }
+  $1 == "table" && NF >= 4 && $NF ~ /^[0-9]+$/ { next }
+  $1 == "migration" && NF == 3 && ($3 ~ /^[0-9]+$/ || $3 == "none") { next }
+  $1 == "storage" && NF == 3 && ($2 == "files" || $2 == "bytes") && $3 ~ /^[0-9]+$/ { next }
+  { print "line " NR " is not one a backup writes"; exit }')
+[ -z "$problem" ] || die "the manifest of $stamp is not a backup's: $problem"
 dbs=$(printf '%s\n' "$manifest" | awk '$1 == "database" { print $2 }')
 [ -n "$dbs" ] || die "the manifest of $stamp names no database"
 for db in $dbs; do
-  case $db in *[!a-z0-9_]*) die "the manifest names a database that is not plain: $db" ;; esac
   present "$db-$stamp.dump.age" || die "$db-$stamp.dump.age is not in daily/"
 done
 
@@ -113,11 +151,20 @@ fi
 echo "restore: the night of $stamp into $PGHOST"
 
 # The roles, with their passwords, but the cluster's own superuser as bare-postgres.sh made it: its
-# password stays the one this job connects with.
+# password stays the one this job connects with. psql reads them in its restricted mode, under a
+# key the file can't know (16 random bytes), so the file runs SQL only: a \! or any other psql
+# command stops the restore. pg_dumpall's own \restrict and \unrestrict lines are left out.
 echo 'restore: roles'
-fetch "globals-$stamp.sql.age" |
-  sed -e "/^CREATE ROLE $PGUSER;\$/d" -e "/^ALTER ROLE $PGUSER WITH /d" |
-  sql -d template1 >/dev/null
+key=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+[ "${#key}" -eq 32 ] || die "no random key for psql's restricted mode"
+if ! {
+  printf '%srestrict %s\n' "\\" "$key"
+  fetch "globals-$stamp.sql.age" |
+    sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' \
+      -e "/^CREATE ROLE $PGUSER;\$/d" -e "/^ALTER ROLE $PGUSER WITH /d"
+} | sql -d template1 >/dev/null; then
+  die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"
+fi
 
 # Each database whole, as the backup dumped it: created from template0 with its own locale and
 # settings, owners and grants included. initdb's empty postgres goes first, with pg_cron's
@@ -139,14 +186,20 @@ for db in $dbs; do
     echo "restore: $db differs from the manifest:"
     failed=1
   fi
-  [ -z "$differences" ] || printf '%s\n' "$differences"
+  [ -z "$differences" ] || printf '%s\n' "$differences" | printable
 done
 
-# The Storage files: extracted for a recovery, only listed for a test.
+# The Storage files: extracted for a recovery, only listed for a test. GNU tar keeps every member
+# under /storage (no absolute names, no .., no writing through a link).
 if [ "$mode" = --into ]; then
   echo 'restore: Storage files into /storage'
   fetch "storage-$stamp.tar.age" |
     tar --extract --file=- --directory=/storage --no-same-owner --xattrs --xattrs-include='user.*'
+  # Storage writes only files and folders. A link would be served, once the stack runs on the
+  # volume, from the storage container's own files (its environment, for one).
+  others=$(find /storage ! -type f ! -type d | wc -l)
+  [ "$others" -eq 0 ] ||
+    die "the Storage archive of $stamp holds links or special files ($((others))), which Storage never writes: make storage-data new and recover another night"
   files=$(find /storage -type f | wc -l)
   bytes=$(find /storage -type f -exec stat -c %s {} + | awk '{ n += $1 } END { printf "%.0f", n }')
   storage="storage files $((files))
@@ -162,12 +215,12 @@ else
   echo 'restore: Storage differs from the manifest:'
   failed=1
 fi
-[ -z "$differences" ] || printf '%s\n' "$differences"
+[ -z "$differences" ] || printf '%s\n' "$differences" | printable
 
 if [ "$mode" = --test ]; then
   # The settings archive holds every secret of the server: only the names of its files are shown.
   present "config-$stamp.tar.age" || die "the night of $stamp has no settings archive (config-$stamp.tar.age)"
-  files=$(fetch "config-$stamp.tar.age" | tar --list --file=-)
+  files=$(fetch "config-$stamp.tar.age" | tar --list --file=- | printable)
   [ -n "$files" ] || die "the settings archive of $stamp is empty"
   echo "restore: the settings archive holds $(printf '%s\n' "$files" | tr '\n' ' ')"
 fi

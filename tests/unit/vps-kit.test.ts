@@ -1298,6 +1298,45 @@ const bareSettings = (composeText: string, bare: string) => {
   ];
 };
 
+/**
+ * Whoever can write to the bucket and knows the public key can plant a night, so restore.sh runs
+ * nothing from one as code (review finding S1, VPS-40). The roles go to psql in its restricted
+ * mode, under a random key, with the file's own \restrict and \unrestrict lines left out, so a \!
+ * stops the restore; the manifest's database names must be plain before they reach SQL; nothing is
+ * globbed; a night stamped later than now is never taken unasked; and a recovery refuses Storage
+ * links and special files.
+ */
+const restoreTrust = (script: string) => {
+  const key = script.indexOf(String.raw`key=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')`);
+  const restrict = script.indexOf(String.raw`printf '%srestrict %s\n' "\\" "$key"`);
+  const roles = script.indexOf('fetch "globals-$stamp.sql.age" |');
+  const piped = script.indexOf('} | sql -d template1 >/dev/null; then');
+  return [
+    ...(key >= 0 ? [] : ['no random key for the restricted mode']),
+    ...(restrict > key && key >= 0 && restrict < roles && roles < piped
+      ? []
+      : ['the roles reach psql without \\restrict first']),
+    ...(script.split('globals-$stamp.sql.age').length === 3
+      ? []
+      : ['the roles file is read more than once, or not checked']),
+    ...(script.includes(String.raw`sed -e '/^\\restrict /d' -e '/^\\unrestrict /d'`)
+      ? []
+      : ['the file’s own \\restrict or \\unrestrict lines reach psql']),
+    ...(code(script).includes('set -f') ? [] : ['names from a night can be globbed']),
+    ...(script.includes(String.raw`$1 == "database" && NF == 2 && $2 ~ /^[a-z_][a-z0-9_]*$/`) &&
+    script.includes('/[^ -~]/ {') &&
+    script.includes('[ -z "$problem" ] || die')
+      ? []
+      : ['the manifest is not checked line by line']),
+    ...(script.includes(`awk -v now="$now" '$0 != "" && $0 <= now'`)
+      ? []
+      : ['a night stamped later than now can be taken unasked']),
+    ...(script.includes('find /storage ! -type f ! -type d')
+      ? []
+      : ['a recovery keeps Storage links and special files']),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1435,6 +1474,46 @@ describe('the migrate and backup images', () => {
       (text) => bareSettings(compose, text),
       swap(barePostgres, '\nmkdir -p "$data"', '\n: >"$custom/supautils.conf"\nmkdir -p "$data"'),
       'empty settings files',
+    );
+  });
+
+  it('runs nothing from a night as code: the roles in psql’s restricted mode, a checked manifest', () => {
+    expect(restoreTrust(restoreSh)).toEqual([]);
+    // As before the review: the roles straight into psql.
+    refuses(
+      restoreTrust,
+      swap(restoreSh, String.raw`  printf '%srestrict %s\n' "\\" "$key"` + '\n', ''),
+      'without \\restrict first',
+    );
+    refuses(
+      restoreTrust,
+      swap(
+        restoreSh,
+        String.raw`key=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')`,
+        'key=menumesh',
+      ),
+      'no random key',
+    );
+    refuses(
+      restoreTrust,
+      swap(restoreSh, String.raw` -e '/^\\unrestrict /d'`, ''),
+      'own \\restrict or \\unrestrict',
+    );
+    refuses(restoreTrust, swap(restoreSh, '\nset -f\n', '\n'), 'globbed');
+    refuses(
+      restoreTrust,
+      swap(restoreSh, '$2 ~ /^[a-z_][a-z0-9_]*$/ && length($2) < 64', 'length($2) < 64'),
+      'line by line',
+    );
+    refuses(
+      restoreTrust,
+      swap(restoreSh, `awk -v now="$now" '$0 != "" && $0 <= now'`, `awk '$0 != ""'`),
+      'later than now',
+    );
+    refuses(
+      restoreTrust,
+      swap(restoreSh, 'find /storage ! -type f ! -type d', 'find /storage -type l'),
+      'links and special files',
     );
   });
 });
