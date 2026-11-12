@@ -7634,9 +7634,9 @@ took the 1st's copy from `monthly/`, past the planted copy, into three new volum
 refused as before, the roles' line naming `globals-<stamp>.sql.age in daily/`.
 `pnpm vps:down --images` then removed the project and its three images and nothing else, and
 `pnpm vps:check` passed (53 checks, 0 failed). The unit tests are 1,116 in 68 files (`vps-kit` 66).
-With a7684fa's `restore.sh` these checks fail by construction: it refuses the night with the planted
-`monthly/` manifest ("the manifests … differ"), restores the young night from `monthly/`, and prints
-"not reading the copy" for the 1st two months back.
+With a7684fa's `restore.sh` these checks fail by construction: it reads the object planted in
+`monthly/` to compare manifests and stops at age's "unexpected intro", restores the young night from
+`monthly/`, and prints "not reading the copy" for the 1st two months back.
 
 **Left open after the third round:** a restore trusts a night's parts only while the bucket's prefix
 locks, or a retention date on each object, keep them as the backup wrote them; without them,
