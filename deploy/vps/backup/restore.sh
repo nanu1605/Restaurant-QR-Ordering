@@ -24,11 +24,11 @@
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
 # mode, which runs their SQL and no psql command; the manifest must hold only the lines a backup
-# writes, so its database names are plain before they reach SQL; and a recovery refuses Storage
-# links and special files. Everything the run prints loses its control characters but tab and
-# newline (below), and the line a success ends with names the night, after anything a night's text
-# could add. A planted night's SQL runs only in restore-db or recover-db, on the internal restore
-# network, which hold no key and no token.
+# writes, so its database names are plain before they reach SQL; and the Storage archive may hold
+# only files and folders, checked before anything is restored. Everything the run prints loses its
+# control characters but tab and newline (below), and the line a success ends with names the night,
+# after anything a night's text could add. A planted night's SQL runs only in restore-db or
+# recover-db, on the internal restore network, which hold no key and no token.
 set -eu -o pipefail
 
 # Everything the run prints, its own lines and those of psql, pg_restore, tar, age and rclone, goes
@@ -43,8 +43,13 @@ LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &
 filter=$!
 exec >"$fifo" 2>&1
 rm -f "$fifo"
+# Set once a recovery has begun to write to the new volumes (below).
+writing=
 finish() {
   status=$?
+  if [ "$status" -ne 0 ] && [ -n "$writing" ]; then
+    echo "restore: the recovery of $stamp stopped after it began to write: make db-data, db-config and storage-data new (docs/RUNBOOK.md, Disaster recovery) before recovering a night"
+  fi
   exec >&- 2>&-
   wait "$filter" || true
   exit "$status"
@@ -210,6 +215,24 @@ if [ "$mode" = --into ] && [ -n "$(ls -A /storage)" ]; then
 fi
 echo "restore: the night of $stamp, from $folder/, into $PGHOST"
 
+# Storage writes only files and folders. A link or a special file would be served, once the stack
+# runs on the volume, from the storage container's own files (its environment, for one), so every
+# member of the archive is checked before anything is restored; the test counts the files from the
+# same listing. GNU tar escapes the control characters of a name: one line per member.
+listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |
+  LC_ALL=C awk '
+    /^-/ { files++; bytes += $3; next }
+    /^d/ { next }
+    { others++ }
+    END { printf "storage files %d\nstorage bytes %.0f\nothers %d\n", files, bytes, others }') ||
+  die "the Storage archive of $stamp could not be listed (see above)"
+others=$(printf '%s\n' "$listing" | awk '$1 == "others" { print $2 }')
+[ "$others" -eq 0 ] ||
+  die "the Storage archive of $stamp holds links or special files ($others), which Storage never writes: nothing was restored"
+
+# From here on a recovery writes to the new volumes: one that stops leaves part of a night there.
+[ "$mode" != --into ] || writing=yes
+
 # The roles, with their passwords, but the cluster's own superuser as bare-postgres.sh made it: its
 # password stays the one this job connects with. psql reads them in its restricted mode, under a
 # key the file can't know (16 random bytes), so the file runs SQL only: a \! or any other psql
@@ -249,24 +272,22 @@ for db in $dbs; do
   [ -z "$differences" ] || printf '%s\n' "$differences"
 done
 
-# The Storage files: extracted for a recovery, only listed for a test. GNU tar keeps every member
-# under /storage (no absolute names, no .., no writing through a link).
+# The Storage files: extracted for a recovery, and checked again as they landed; for a test, the
+# listing's count. GNU tar keeps every member under /storage (no absolute names, no .., no writing
+# through a link).
 if [ "$mode" = --into ]; then
   echo 'restore: Storage files into /storage'
   fetch "storage-$stamp.tar.age" |
     tar --extract --file=- --directory=/storage --no-same-owner --xattrs --xattrs-include='user.*'
-  # Storage writes only files and folders. A link would be served, once the stack runs on the
-  # volume, from the storage container's own files (its environment, for one).
   others=$(find /storage ! -type f ! -type d | wc -l)
   [ "$others" -eq 0 ] ||
-    die "the Storage archive of $stamp holds links or special files ($((others))), which Storage never writes: make storage-data new and recover another night"
+    die "the Storage archive of $stamp held links or special files when extracted ($((others))), which Storage never writes"
   files=$(find /storage -type f | wc -l)
   bytes=$(find /storage -type f -exec stat -c %s {} + | awk '{ n += $1 } END { printf "%.0f", n }')
   storage="storage files $((files))
 storage bytes $bytes"
 else
-  storage=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --file=- |
-    awk '/^-/ { n++; total += $3 } END { printf "storage files %d\nstorage bytes %.0f\n", n, total }')
+  storage=$(printf '%s\n' "$listing" | awk '$1 == "storage"')
 fi
 wanted=$(printf '%s\n' "$manifest" | awk '$1 == "storage"')
 if differences=$(compare "$wanted" "$storage"); then

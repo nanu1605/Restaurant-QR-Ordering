@@ -1559,6 +1559,41 @@ const rolesFailure = (script: string) => [
     : []),
 ];
 
+/**
+ * Storage writes only files and folders, so the archive's members are checked, in both modes,
+ * before anything is restored: a link refused after the database restore left a recovery's
+ * volumes half written (review finding N6). A recovery that stops after it began to write says to
+ * make all three volumes new.
+ */
+const storageFirst = (script: string) => {
+  const listing = script.indexOf(
+    'listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |',
+  );
+  const refused = script.indexOf(
+    '[ "$others" -eq 0 ] ||\n  die "the Storage archive of $stamp holds',
+  );
+  const writing = script.indexOf('[ "$mode" != --into ] || writing=yes');
+  const roles = script.indexOf("echo 'restore: roles'");
+  return [
+    ...(listing >= 0 && refused > listing && refused < roles
+      ? []
+      : ['the Storage archive is checked only after the databases']),
+    ...(script.includes(
+      '    /^-/ { files++; bytes += $3; next }\n    /^d/ { next }\n    { others++ }',
+    )
+      ? []
+      : ['the Storage archive may hold more than files and folders']),
+    ...(script.includes(`storage=$(printf '%s\\n' "$listing" | awk '$1 == "storage"')`)
+      ? []
+      : ['the test counts the Storage files from another read of the archive']),
+    ...(writing > refused &&
+    writing < roles &&
+    script.includes('make db-data, db-config and storage-data new')
+      ? []
+      : ['a recovery that stops after it began to write doesn’t say to make the volumes new']),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1882,6 +1917,30 @@ describe('the migrate and backup images', () => {
         `die "the roles of $stamp did not restore (psql says why above): a backup's roles file holds SQL and no psql command"`,
       ),
       'blames psql',
+    );
+  });
+
+  it('checks the Storage archive’s members in both modes before anything is restored', () => {
+    expect(storageFirst(restoreSh)).toEqual([]);
+    // As before review finding N6: the members were checked only once a recovery extracted them.
+    refuses(
+      storageFirst,
+      swap(
+        restoreSh,
+        'listing=$(fetch "storage-$stamp.tar.age" | tar --list --verbose --numeric-owner --file=- |',
+        'listing=$(printf "" |',
+      ),
+      'only after the databases',
+    );
+    refuses(
+      storageFirst,
+      swap(restoreSh, '    /^d/ { next }\n', '    /^[dl]/ { next }\n'),
+      'more than files and folders',
+    );
+    refuses(
+      storageFirst,
+      swap(restoreSh, '[ "$mode" != --into ] || writing=yes\n', ''),
+      'make the volumes new',
     );
   });
 });
