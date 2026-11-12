@@ -2943,6 +2943,31 @@ async function backupTest() {
     `the local S3 (rclone serve s3) is up, bucket ${env.BACKUP_BUCKET}; in the backup container ${sunk.join(' and ')} resolve to the sinkhole (0.0.0.0)`,
   );
 
+  // Storage files of two types to back up, as the app writes them (a support screenshot, an
+  // export ZIP): a fresh rehearsal has none. The same names each run, never written over, so no
+  // old version is removed while the night is taken.
+  const stored = [
+    { bucket: 'support-screenshots', name: 'rehearsal/backup-test.png', type: 'image/png' },
+    { bucket: 'restaurant-exports', name: 'rehearsal/backup-test.zip', type: 'application/zip' },
+  ];
+  const put = inWeb<{ status: number; body: string }[]>(
+    [
+      'const out = [];',
+      'for (const { bucket, name, type } of input) {',
+      "  const res = await fetch(gw + '/storage/v1/object/' + bucket + '/' + name, { method: 'POST', headers: { apikey: key, 'Content-Type': type, 'Cache-Control': 'max-age=3600' }, body: Buffer.from('menumesh rehearsal: ' + name) });",
+      '  out.push({ status: res.status, body: (await res.text()).slice(0, 200) });',
+      '}',
+      'console.log(JSON.stringify(out));',
+    ].join('\n'),
+    stored,
+  );
+  checks.expect(
+    `Storage objects of two types put in through the gateway, as the app does: ${put.map((answer, n) => `${stored[n].type} ${answer.status === 200 ? 200 : 'there already'}`).join(', ')}`,
+    put.length === stored.length &&
+      put.every((answer) => answer.status === 200 || /"statusCode":"409"/.test(answer.body)),
+    JSON.stringify(put),
+  );
+
   // The source: nothing writes while the night is taken and compared (web and the scheduler stop;
   // the recovery at the end starts them again, or the finally below if the run stops before it).
   compose(['stop', 'web', 'scheduler']);
@@ -3194,8 +3219,13 @@ async function recovery(
   files: string[],
   age: string[],
 ) {
+  // Always the source's night: a refusal that failed would restore that one, not a newer one.
   const recover = (extra: string[] = []) =>
-    measured(`${PROJECT}-recover-${process.pid}`, ['-T', ...extra, ...age, 'recover'], 'recover');
+    measured(
+      `${PROJECT}-recover-${process.pid}`,
+      ['-T', '-e', `RESTORE_STAMP=${night}`, ...extra, ...age, 'recover'],
+      'recover',
+    );
   const recoverDbLog = () => logsOf(containerOf('recover-db') ?? '');
   const dropRecoverDb = () =>
     compose(['--profile', 'recover', 'rm', '--stop', '--force', 'recover-db']);
@@ -3244,7 +3274,7 @@ async function recovery(
 
   // A new server's volumes: all three new.
   removeVolumes(dbData, dbConfig, storageData);
-  run = await recover(['-e', 'RESTORE_EXACT=1', '-e', `RESTORE_STAMP=${night}`]);
+  run = await recover(['-e', 'RESTORE_EXACT=1']);
   const recoverDb = cgroupMemory('recover-db', 'recover', true);
   dropRecoverDb();
   checks.expect(
