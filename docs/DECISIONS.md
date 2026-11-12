@@ -6807,7 +6807,8 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     login. `env/web.env` and `env/web-staging.env` (0600) hold the settings each web reads as its
     `env_file`. `images.env` (0644) holds image references only, and after its first copy only
     `app-deploy` writes it. No secret is in the compose file, in a process's arguments (VPS-35,
-    VPS-38) or in a log line. JSON values (`JWT_KEYS`, `JWT_JWKS`) go in single quotes, which
+    VPS-38; nor staging's password, which the owner hashes off the server since review finding
+    S2, VPS-37) or in a log line. JSON values (`JWT_KEYS`, `JWT_JWKS`) go in single quotes, which
     Compose and Node both read, and no line may start with `COMPOSE_` (`app-apply` and `app-deploy`
     refuse the file).
   - **The generator** (`scripts/vps-secrets.mts`, Node's crypto only). `--out <dir>` writes the
@@ -6881,7 +6882,9 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     `LOG_REDACT=1` in the conf makes hostwatch alert while the file is missing. Both edge files live
     here because the edge keeps no copy after a server loss. For the admin, `tls_menumesh.caddy` is
     the snippet (its `client_auth` block commented until origin pulls are on) and `edge.env.example`
-    the two names, with how to make the hash.
+    the two names, with how the owner makes the hash: on their own machine, never on the server,
+    with `caddy hash-password` reading the password from the terminal (since review finding S2; it
+    said `--plaintext` on the server before), so the admin gets only the hash.
 - **VPS-38 · The scheduler: BusyBox crond from `curlimages/curl`, the bearer on curl's stdin:**
   `scheduler` (on `default`, calling `http://web:3000`) and `scheduler-staging` (on `staging`,
   calling `http://web-staging:3000` with staging's own secret) run `curlimages/curl:8.22.0` by
@@ -6896,13 +6899,15 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     change.
   - **`cron-call <job>`** gives curl 1,740 s for `daily` (so it ends before its retry starts),
     1,800 s for `daily-retry`, 300 s for the digest and 25 s for `jobs`, whose route answers at
-    once. A 200 writes the day's marker, so the retry exits quietly, or touches `jobs.ok`, and then
-    pings the route's heartbeat (`HEARTBEAT_DAILY_URL`, `HEARTBEAT_DIGEST_URL`,
-    `HEARTBEAT_JOBS_URL`; for staging `.env` holds them as `STAGING_HEARTBEAT_*`); a failed ping
-    prints nothing, since the monitor notices a missing ping. One call of a route runs at a time
-    (`flock`): a daily or digest call still running makes the next one say it skipped. It prints one
-    line for each daily or digest call and for a minute call without a 200, never a value, and
-    nothing in a healthy minute.
+    once. A 200 writes the day's marker (named after the UTC day), so the retry exits quietly, or
+    touches `jobs.ok`, and then pings the route's heartbeat (`HEARTBEAT_DAILY_URL`,
+    `HEARTBEAT_DIGEST_URL`, `HEARTBEAT_JOBS_URL`; for staging `.env` holds them as
+    `STAGING_HEARTBEAT_*`); a failed ping prints nothing, since the monitor notices a missing ping.
+    A daily or digest call without a 200 takes the marker away, so its retry runs even after a call
+    by hand got a 200 earlier that UTC day (since review finding C1). One call of a route runs at a
+    time (`flock`): a daily or digest call still running makes the next one say it skipped. It
+    prints one line for each daily or digest call and for a minute call without a 200, never a
+    value, and nothing in a healthy minute.
   - **`start.sh`** writes the address, the bearer and the heartbeat addresses from Compose's
     environment to `/run/menumesh/cron.env` (0600, on a tmpfs only root can enter) with `printf`,
     refusing a value with a quote, a backslash or a line break, then runs
@@ -6969,9 +6974,14 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     archive, copied as `config-<stamp>.tar.age`. The manifest goes up after the other parts, so a
     manifest means a whole night. Every part must pass a size floor (1 KB for the dumps, the tar and
     the archive, 256 bytes for the roles and the manifest).
-  - **Keeping and alerting.** On the 1st the night is also copied to `monthly/`; daily copies go
-    after 30 days and monthly ones after 366, and the bucket's own object lock or versioning, the
-    owner's setting, keeps a stolen token from deleting them sooner. A missing settings archive, or
+  - **Keeping and alerting.** The month's first whole night (UTC) is also copied to `monthly/`,
+    whatever its day, its manifest last (since review finding B4: before, only a good night stamped
+    on the 1st made one); daily copies go after 30 days and monthly ones after 366. Only the bucket
+    can keep a stolen token from deleting them sooner, and the job sets nothing up for it: lock
+    rules scoped to each prefix (as R2's bucket locks), or versioning with a token that may not
+    delete versions or change the bucket's settings, plus a lifecycle rule for the old versions,
+    are the owner's choice when the bucket is picked (RUNBOOK, First install; review finding B5). A
+    retention date on each object at upload is left for Stop C. A missing settings archive, or
     one more than 2 hours old, fails the night once the other parts are safe. A failure sends one
     Telegram line naming the step, never a value; a full success prints one line and then pings
     `HEARTBEAT_BACKUP_URL`, whose monitor alerts after 26 hours without one. The job runs below
@@ -6987,6 +6997,19 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     rehearsal (`RESTORE_EXACT=1`) every count must match; on the server, writes during the backup
     move counts, so differences are listed and only a missing table, an empty one or no Storage
     files where there were some fail.
+  - **The night** is the newest of `daily/` with a manifest, never one stamped later than now, or
+    the one `RESTORE_STAMP` names, from `monthly/` once `daily/` no longer holds it (since review
+    finding B1; before, no monthly copy could be restored). The messages name the folder used.
+  - **Nothing from a night runs as code** (since review finding S1): age proves nothing about who
+    encrypted a part, so whoever holds the bucket's token and the public key can plant a night.
+    psql reads the roles in its restricted mode, under a random key the file can't know, with the
+    file's own `\restrict` and `\unrestrict` lines left out, so the file runs SQL and no psql
+    command; the manifest must hold only the lines a backup writes, its database names plain;
+    nothing is globbed; what the script prints from a night loses its control characters; and a
+    recovery stops at Storage links and special files. A planted night's SQL runs only in
+    `restore-db` or `recover-db`, on the internal `restore` network, which hold neither the key nor
+    the token. A recovery still restores whatever night it is given, so the RUNBOOK names it from
+    the backup's own records, never from the newest name in the bucket.
   - **The monthly restore test** (`restore-test` with `restore-db`, profile `restore-test`) keeps
     the data on a 1 GiB tmpfs, lists the Storage archive and the settings archive's file names, and
     prints `restore test passed`; the owner's private key is on a ramfs for the run only. Since
@@ -7000,11 +7023,12 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     shut down cleanly: without that a second Postgres ran crash recovery on `db`'s live files in a
     test), `db`'s old cluster ("not a bare cluster") and Storage's old files ("/storage is not
     empty"). Then `db` starts on the volumes and skips its init, the migrations find nothing to
-    apply, and the stack comes back (RUNBOOK). Since c813841 the bare clusters keep pg_cron's
-    launcher on `postgres` with no job running, so a backup holding pg_cron restores and no restored
-    job runs there, and the restore drops with `force`; since 3670a92 their health check asks
-    `template1` (a bare cluster has no `supabase_admin` database, and each probe logged a FATAL line
-    every 2 s).
+    apply, and the stack comes back, `backup` too (RUNBOOK; on the same server its container goes
+    with the old volumes, since it reads `storage-data`: review finding B3). Since c813841 the bare
+    clusters keep pg_cron's launcher on `postgres` with no job running, so a backup holding pg_cron
+    restores and no restored job runs there, and the restore drops with `force`; since 3670a92
+    their health check asks `template1` (a bare cluster has no `supabase_admin` database, and each
+    probe logged a FATAL line every 2 s).
   - **What a restore cannot carry** (each restore was compared with its source object by object):
     what Supabase's event triggers and supautils change on an extension's members after
     `CREATE EXTENSION`, because `pg_dump` writes only the members' grants and `pg_restore` makes the
@@ -7060,8 +7084,9 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     workflows.
 - **VPS-42 · Checking the kit without a server:** the server is not bought, Actions minutes are
   scarce, and the server team's rules are code, so their code runs on the kit here.
-  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 56 tests; `tests/unit/vps-secrets.test.ts`, 18):
-    each rule is a function, clean on the real file and refusing at least one copy with a mistake.
+  - **Unit pins** (`tests/unit/vps-kit.test.ts`, 62 tests since the review fixes;
+    `tests/unit/vps-secrets.test.ts`, 18): each rule is a function, clean on the real file and
+    refusing at least one copy with a mistake.
   - **`pnpm vps:check`** runs the vendored `app-apply` (`deploy/vps/test/vendor/jainav-infotech/`,
     byte for byte at `66fe8b3`, with `SOURCE`'s sha256s pinned) as root in a throwaway Ubuntu 24.04
     container (`deploy/vps/test/Dockerfile.kitcheck`: the server's Docker CLI 29.9.3 and Compose
@@ -7216,6 +7241,9 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
   - `pnpm vps:down` (3 checks) removed the project's 8 containers, 6 networks and 6 volumes and
     nothing else; `--images` (4 checks) only the three rehearsal images. Docker's containers,
     volumes and networks then equalled by name the lists taken before the rehearsal began.
+  - Since the review fixes it also checks the month's copy in `monthly/`, plants nights the restore
+    must refuse, and restore-tests and recovers a night that only `monthly/` holds (Review fixes
+    (VPS Stop B), below).
 - **Found and fixed by the rehearsal** (each with a unit pin): migration DDL in the database log
   (7614c1b) and `auto_explain` logging slow statements with their values (1b7b6ac), VPS-34; crond
   ignoring the stop signal (a1e419d), VPS-38; Envoy reusing connections the services close
@@ -7247,3 +7275,155 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
   and restore test under the server's memory (`restore-db`'s 1 GiB tmpfs against production's size);
   staging's migrations over the pooler from the server; Envoy's `upstream_cx_destroy_remote` staying
   near 0 and stop times on a stock engine; CPU and disk on the shared box.
+
+### Review fixes (VPS Stop B)
+
+A review of the Stop B branch at `9cb11fc` gave eleven findings from three reviewers (security,
+the server's contract, and the backups with their documents): S1 and S2, C1 and C2, and B1 to B7.
+A verifier confirmed all eleven. All are fixed: S1, C1, B1 and B4 in the code, each with a unit pin
+that refuses the code as it was and a proof in the pinned images; the other seven in the RUNBOOK,
+with the comments, the edge file and the recovery's last line that said the same, and a pin for
+S2. `pnpm vps:backup-test` now proves S1, B1 and B4 on the rehearsal (below). The entries above
+that a fix changed were corrected in place (VPS-36 to VPS-38, VPS-40, VPS-42, Tests, the RUNBOOK
+and `deploy/vps/README.md`).
+
+- **S1 · A planted night could run commands in the restore and send the owner's key away (VPS-40,
+  RUNBOOK), high:** age proves nothing about who encrypted a part and the public key is no secret,
+  so whoever holds the bucket's token can upload a night. `restore.sh` took the newest manifest by
+  name and piped the night's roles file into psql, which ran its psql commands. In a harness of the
+  working tree's scripts and a local S3, a night stamped 9999-12-31 whose roles held
+  `\! rclone copyto /run/age/identity.txt …` was taken unasked and put the owner's key into the
+  bucket from the restore job (root, the key mounted, the token in its environment; `recover` runs
+  the same code), and naming another night did not help, as a token can also replace a night's
+  parts. psql now reads the roles in its restricted mode, under a key of 32 hex characters from
+  `/dev/urandom`, with the file's own `\restrict` and `\unrestrict` lines (a pg_dumpall of 17.10
+  writes the pair) left out, so the file runs SQL and no psql command. In the backup image's psql
+  17.10, 27 planted files (`\!`, backticks, `\i` of the key, `\copy`, `\o |`, `\gexec`,
+  `\lo_import`, `\if` and the like, and ways out of the mode: no key, a guess, the file's own key
+  indented or after SQL, a variable, a quote that flips when its line is dropped, the file's own
+  pair) ran a command 11 times and showed or stored the key 5 ways through the old pipeline, and
+  none through the new one, which stops at the command (exit 3); a real pg_dumpall 17.10 roles file
+  still restores, its SCRAM hashes equal. The rest of the script was audited for anything else taken
+  from a night: the manifest must hold only the lines a backup writes, in printable ASCII, its first
+  line naming the night and its database names plain (`[a-z_][a-z0-9_]*`, under 64 characters, no
+  template, none twice) before any reaches SQL or a command; nothing is globbed; what the script
+  prints from a night loses its control characters (psql's, pg_restore's and tar's own error
+  messages still reach the terminal as they are); unasked, a night stamped later than now is
+  skipped, with a line; and a recovery stops at Storage links and special files, which GNU tar
+  extracts though it refuses `..`, absolute names and writing through a link (a link to
+  `/proc/self/environ` would have been served by the storage container). counts.sql needs no change:
+  `\gexec` sends its strings to the server, not through psql, and `\gset` cannot set psql's own
+  variables. A planted night's SQL runs as superuser only in `restore-db` or `recover-db`, which sit
+  on the internal `restore` network alone, with only the restore job's client there, and hold
+  neither the key nor the token: `restore-db` has a literal password and a tmpfs, while `recover-db`
+  has the database password and writes the new volumes, so a planted night recovered would own the
+  data. So the RUNBOOK has the owner check the restore test's night against the backup's own journal
+  line, name a recovery's night from the backup's records (that line, the monitor's pings,
+  Telegram's failures), take a refused roles file for a stolen token, and list the settings archive
+  before unpacking it as root. (13971f2 "fix: run restored globals in psql's restricted mode"; the
+  RUNBOOK in 40c705d "docs: correct the vps runbook after review")
+- **S2 · Staging's password on a command line on the server (RUNBOOK, VPS-36, VPS-37):** the
+  admin's step 11 and `edge.env.example` ran `caddy hash-password --plaintext '<password>'` on the
+  server, which leaves the password in `ops`'s shell history and shows it in the process list,
+  against VPS-36 and the RUNBOOK's own "never on the server". The owner now makes the hash on their
+  own machine with `docker run --rm -it caddy:2.11.9-alpine caddy hash-password`, which reads the
+  password from the terminal without echoing it, and the admin gets only the hash; Secrets and
+  Rotation say so. From stdin the pinned image gives the same `$2a$14$` bcrypt hash, and
+  `vps:check` and `vps:edge` now hash their throwaway password that way (staging's basic auth
+  passed with it). A pin keeps both texts on the one command. (40c705d "docs: correct the vps
+  runbook after review"; the kit's own hash in e8c52e8 "test: prove the stop b review fixes on the
+  rehearsal")
+- **C1 · A call by hand cancelled the night's retry (VPS-38, RUNBOOK), medium:** the retry's marker
+  is named after the UTC day (05:30 to 05:29 IST) and a failed call never removed it, so a `daily`
+  or `digest` by hand that got a 200 earlier that UTC day made the retry after a failed scheduled
+  call exit without a request: a day's snapshot, reminders and clean-ups skipped, with only the
+  heartbeat to notice. A daily or digest call without a 200 now takes the marker away, and a 200 by
+  hand between the failed call and its retry still stops the retry. In the pinned curl image with a
+  stub curl, after a 200 by hand and a 500 the old script's retry sent nothing (2 requests) and the
+  new one sent (3), for daily and digest; a 200 the first time, a 500 then a 200 by hand, a 500
+  alone, the minute job and a held lock behave as before. (1a117c9 "fix: re-arm the daily retry
+  after a failed call"; the RUNBOOK's call by hand in 40c705d "docs: correct the vps runbook after
+  review")
+- **C2 · The scheduler's change steps restarted only `scheduler` (RUNBOOK):** `start.sh` and
+  `cron-call` are mounted into both schedulers and `staging.crontab` into `scheduler-staging` only,
+  and `install` writes a new file that a running container never sees, so a changed script reached
+  `scheduler-staging` only at its next restart, and a changed staging crontab restarted the wrong
+  container. The RUNBOOK now restarts both schedulers for the scripts and the one that mounts each
+  crontab, and recreates the scheduler that reads a changed `.env` value, with its web for a cron
+  secret. (40c705d "docs: correct the vps runbook after review")
+- **B1 · No monthly copy could be restored (VPS-40, RUNBOOK), medium:** `restore.sh` read only
+  `daily/`, so the monthly copies older than 30 days, 11 of the 12 VPS-40 keeps, could be neither
+  tested nor recovered without copying them back by hand. A night named by `RESTORE_STAMP` that
+  `daily/` no longer holds is now read, every part, from `monthly/`, and the messages name the
+  folder used (`restore: the night of <stamp>, from monthly/, into …`); unasked, the night is still
+  the newest of `daily/`. In the harness a night kept only in `monthly/` passed the test and a
+  recovery, and one in neither folder, or a monthly night missing a part, was refused by name. The
+  RUNBOOK says nights older than 30 days come from `monthly/`. (20630d2 "fix: restore nights kept
+  only in monthly"; the RUNBOOK in 40c705d "docs: correct the vps runbook after review")
+- **B2 · Two commands lacked sudo (RUNBOOK):** the recovery's decrypt read the key, which sits on a
+  root-only ramfs, as `ops`, so `sudo tar` got nothing and the next step found no `.env`; and the
+  settings archive's listing read the root-only `/srv/menumesh`. Both run with `sudo` now.
+  (40c705d "docs: correct the vps runbook after review")
+- **B3 · A recovery on the same server never started `backup` again (RUNBOOK, VPS-40):** `backup`
+  mounts `storage-data`, so its container had to go before the old volumes could, and no later step
+  started it: no nightly backup until the heartbeat alerted 26 hours on, while the next restore
+  test could pass on a night from before. Step 5 now stops everything and removes `db`, `storage`
+  and `backup` before the three volumes, with the commands, and step 6 starts `backup` with the
+  Supabase services; `restore.sh`'s last line names it too. (40c705d "docs: correct the vps
+  runbook after review")
+- **B4 · Only a good night stamped on the 1st made the month's copy (VPS-40, RUNBOOK), low:** a 1st
+  whose run failed before its uploads were checked, then run again by hand after 05:30 IST (stamped
+  the 2nd in UTC), left that month without a copy for good. The copy is now the month's first night
+  whose uploads passed, whatever its day: while `monthly/` holds no manifest of the month, each of
+  the night's parts is copied there, the manifest last, still before a stale settings archive
+  fails the run, and the summary line ends `, kept in monthly/ as the month's copy`. In the harness
+  a night that failed at the database made no copy, the next good one (the 12th) did, and a later
+  one of the month did not. (cf6e43c "fix: copy the first good night of each month"; the RUNBOOK
+  in 40c705d "docs: correct the vps runbook after review")
+- **B5 · The bucket's protection could not be set as written, and was wrong for versioning
+  (VPS-40, RUNBOOK, `backup.sh`), low:** the RUNBOOK asked for object lock or versioning keeping
+  objects just under 29 days in `daily/` and 365 in `monthly/`, but an S3 Object Lock default is
+  one period for the whole bucket and the job sets no retention per object, and with versioning
+  alone a token that may delete versions purges every night. Step 2 now gives what works: lock
+  rules scoped to a prefix (R2's bucket locks, as the server team's bucket has), or versioning with
+  a token allowed only to list, read, write and delete objects, plus a lifecycle rule for each
+  prefix's old versions; `backup.sh`'s comment and VPS-40 say the same. A retention date on each
+  object at upload (rclone's `--s3-object-lock-mode` and `--s3-object-lock-retain-until-date`) was
+  not added: it fails on a bucket without Object Lock and can't be tried on the local S3. The owner
+  decides when the bucket is picked, and Stop C takes it up again. (40c705d "docs: correct the vps
+  runbook after review")
+- **B6 · The first install built the backup image before anything set `VPS_IMAGES` (RUNBOOK):**
+  the backup image's workflow skips its job while the variable is off, so the step pushed nothing
+  and printed no digest for its `app-deploy`. A new step 17 sets the GitHub variables and secrets
+  (`VPS_IMAGES` on, then VPS ping) before the backup image, now step 18; it says each merge then
+  builds images, and the later steps and the two references to them moved by one. (40c705d "docs:
+  correct the vps runbook after review")
+- **B7 · "Last night's backup" listed five names, not the newest night (RUNBOOK):**
+  `rclone lsf … | tail -5` lists by name, so it showed `postgres-` and `storage-` parts of several
+  nights and never last night's roles, manifest or settings archive. The command now takes the
+  newest stamp of `daily/` and lists that night's parts with their sizes. The RUNBOOK's own text,
+  run in the backup image (rclone 1.75.2), listed a night that failed after its roles as its one
+  part, one whose settings archive was stale as four parts with its manifest, and a whole night as
+  its five; the text says what a failed night shows. (40c705d "docs: correct the vps runbook after
+  review")
+
+**On the rehearsal** (`pnpm vps:rehearse --fresh`, 34 checks, 0 failed, 2 min 49 s; then
+`pnpm vps:backup-test`, 30 checks where it had 25, 0 failed, 4 min 5 s; e8c52e8): the night of the
+12th was kept whole in `monthly/` beside a planted manifest of October, and the next night, which
+failed on a settings archive 3 hours old after its other uploads, made no second copy (B4). Two
+planted nights, each a roles file shaped like pg_dumpall's (`\restrict` and `\unrestrict` around
+its SQL, which let the old script lift the mode) followed by `\i` of the key and `\!` copying it
+into the bucket: unasked, the night of that minute was taken and one stamped 9999-12-31 was named
+as not taken; by `RESTORE_STAMP`, one of October. Each stopped at the roles ("backslash commands
+are restricted"), with nothing at the bucket's top and no line of the key in the output (S1). With
+the good night's daily copy removed, the restore test by `RESTORE_STAMP` passed "from monthly/",
+and so did the disaster recovery into three new volumes, after which `db`, the services, `web` and
+the scheduler came back on the source's data as before (B1). The old `restore.sh` fails these
+checks by construction: it takes the 9999 night unasked and runs its `\!`. `pnpm vps:down --images`
+then removed the project and its three images, and nothing else. `pnpm vps:check` (53 checks) and
+`pnpm vps:edge` (20) passed with 0 failed; the unit tests are 1,112 in 68 files (`vps-kit` 62).
+
+**Left open, for Stop C:** a token holder can still replace a night's parts, so a recovery is only
+as good as the night it is given, and nothing yet proves a night came from the backup (a hash of
+each part kept where the bucket's token can't reach would); and the bucket's protection waits for
+the owner's choice of bucket (B5).
