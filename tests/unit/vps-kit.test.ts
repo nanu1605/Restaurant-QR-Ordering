@@ -1405,6 +1405,22 @@ const nightIds = (script: string) => {
   ];
 };
 
+/**
+ * The removal of old copies takes an object's age from the bucket's own time of its upload
+ * (--use-server-modtime), never from the modification time its uploader set, which a token holder
+ * can set to 2020 on an object the bucket's lock then keeps: every night's removal would try it
+ * and fail (review finding F3, VPS-40).
+ */
+const serverTime = (script: string) => {
+  const removals = code(script).filter((line) => line.includes('rclone delete'));
+  return [
+    ...(removals.length === 2 ? [] : [`${removals.length} removals, not 2`]),
+    ...removals
+      .filter((line) => !line.includes(' --use-server-modtime '))
+      .map((line) => `a removal reads the uploader’s time: ${line.trim()}`),
+  ];
+};
+
 const barePostgres = kit('config/db/bare-postgres.sh');
 const restoreSh = kit('backup/restore.sh');
 /**
@@ -1940,6 +1956,29 @@ describe('the migrate and backup images', () => {
         'rclone lsf --files-only --format sp',
       ),
       'by a listing of the folder',
+    );
+  });
+
+  it('removes old copies by the bucket’s own time of upload', () => {
+    expect(serverTime(backupSh)).toEqual([]);
+    // As before review finding F3: the uploader's modification time.
+    refuses(
+      serverTime,
+      swap(
+        backupSh,
+        'rclone delete --use-server-modtime --min-age 366d',
+        'rclone delete --min-age 366d',
+      ),
+      'reads the uploader’s time',
+    );
+    refuses(
+      serverTime,
+      swap(
+        backupSh,
+        'rclone delete --use-server-modtime --min-age 30d',
+        'rclone delete --min-age 30d',
+      ),
+      'reads the uploader’s time',
     );
   });
 

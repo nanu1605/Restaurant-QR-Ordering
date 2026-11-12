@@ -218,13 +218,17 @@ fi
 # 30 daily and 12 monthly copies. Only the bucket can keep a stolen token from deleting them sooner,
 # and nothing here sets that up: the owner picks, with the bucket (docs/RUNBOOK.md, First install),
 # lock rules scoped to each prefix, or versioning with a token that can't delete versions or change
-# the bucket's settings. No object gets a retention date of its own at upload yet. restore.sh reads
-# a night only while the recommended locks hold it, from daily/ under 29 days and from monthly/ to
-# 365, so from 29 days until this removal a night that is not the month's copy is kept but no
-# longer restored.
+# the bucket's settings. Only locks that refuse overwrites (prefix-scoped bucket locks, such as
+# R2's) also keep what a restore reads: a retention date on each object (S3 Object Lock) keeps the
+# old versions only, and a restore reads the current one. restore.sh reads a night only while the
+# recommended locks hold it, from daily/ under 29 days and from monthly/ to 365, so from 29 days
+# until this removal a night that is not the month's copy is kept but no longer restored. An
+# object's age here is the bucket's own time of its upload (--use-server-modtime), never the
+# modification time its uploader set, so an object someone else put in with an old one is tried
+# only once its lock has ended, not every night (review finding F3).
 reason='the removal of old copies'
-rclone delete --min-age 30d "$day/"
-rclone delete --min-age 366d "$remote/monthly/"
+rclone delete --use-server-modtime --min-age 30d "$day/"
+rclone delete --use-server-modtime --min-age 366d "$remote/monthly/"
 
 [ -z "$archive_problem" ] || fail "$archive_problem"
 
