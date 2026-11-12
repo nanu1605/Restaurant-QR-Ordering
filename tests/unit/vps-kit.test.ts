@@ -1421,6 +1421,21 @@ const serverTime = (script: string) => {
   ];
 };
 
+/**
+ * The heartbeat carries the night's journal line: with the server and its journal gone, the
+ * monitor's log still names each whole night's id, which a recovery needs and the bucket's token
+ * can't reach (VPS-40, RUNBOOK, Disaster recovery).
+ */
+const beatNight = (backup: string, notify: string) => [
+  ...(backup.includes('line="backup $night: $summary$kept"') &&
+  backup.includes('notify.sh beat "$line"')
+    ? []
+    : ['the heartbeat doesn’t carry the night’s line']),
+  ...(notify.includes('[ -z "${2-}" ] || printf \'data-raw = %s\\n\' "$(quoted "$2")"')
+    ? []
+    : ['notify.sh beat sends no text']),
+];
+
 const barePostgres = kit('config/db/bare-postgres.sh');
 const restoreSh = kit('backup/restore.sh');
 /**
@@ -2002,6 +2017,21 @@ describe('the migrate and backup images', () => {
         'rclone delete --min-age 30d',
       ),
       'reads the uploader’s time',
+    );
+  });
+
+  it('pings the heartbeat with the night’s line', () => {
+    const notify = kit('backup/notify.sh');
+    expect(beatNight(backupSh, notify)).toEqual([]);
+    refuses(
+      (text) => beatNight(text, notify),
+      swap(backupSh, 'notify.sh beat "$line"', 'notify.sh beat'),
+      'doesn’t carry the night’s line',
+    );
+    refuses(
+      (text) => beatNight(backupSh, text),
+      swap(notify, '      [ -z "${2-}" ] || printf \'data-raw = %s\\n\' "$(quoted "$2")"\n', ''),
+      'sends no text',
     );
   });
 

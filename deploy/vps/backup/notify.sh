@@ -2,7 +2,8 @@
 # The backup's alert and heartbeat (docs/DECISIONS.md VPS-40), for backup.sh and restore.sh:
 #
 #   notify.sh alert <text>   sends <text> to TELEGRAM_CHAT_ID from the bot of TELEGRAM_BOT_TOKEN
-#   notify.sh beat           pings HEARTBEAT_URL
+#   notify.sh beat [<text>]  pings HEARTBEAT_URL, with <text> as the ping's body (a POST), which
+#                            the monitor keeps in its log
 #
 # The token and the URL come from the environment and reach curl on its stdin (--config -), never
 # in its arguments, so the host's process list never shows them. An empty value sends nothing. A
@@ -44,11 +45,14 @@ case ${1-} in
   beat)
     [ -n "${HEARTBEAT_URL-}" ] || exit 0
     rc=0
-    code=$(printf 'url = %s\n' "$(quoted "$HEARTBEAT_URL")" | send --max-time 10 --retry 3) || rc=$?
+    code=$({
+      printf 'url = %s\n' "$(quoted "$HEARTBEAT_URL")"
+      [ -z "${2-}" ] || printf 'data-raw = %s\n' "$(quoted "$2")"
+    } | send --max-time 10 --retry 3) || rc=$?
     report 'the heartbeat ping' "$code" "$([ "$rc" -eq 0 ] && echo "HTTP $code" || echo "curl exit $rc")"
     ;;
   *)
-    echo 'usage: notify.sh alert <text> | notify.sh beat' >&2
+    echo 'usage: notify.sh alert <text> | notify.sh beat [<text>]' >&2
     exit 2
     ;;
 esac

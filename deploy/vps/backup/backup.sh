@@ -18,8 +18,9 @@
 # A whole night stamped the 1st (UTC) is also copied to monthly/, or the next whole night when the
 # 1st's wasn't; daily copies go after 30 days and monthly ones after 366. A missing or stale
 # settings archive fails the run once everything else is safe, and such a night is never the
-# month's copy. A failure goes to Telegram (notify.sh alert); a full success prints one line and
-# pings HEARTBEAT_URL. Nothing printed holds a value.
+# month's copy. A failure goes to Telegram (notify.sh alert); a full success prints one line,
+# `backup <night>: ...`, and pings HEARTBEAT_URL with it, so the monitor keeps each whole night's id
+# where the bucket's token can't reach. Nothing printed holds a value.
 set -eu -o pipefail
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
@@ -233,6 +234,8 @@ rclone delete --use-server-modtime --min-age 366d "$remote/monthly/"
 [ -z "$archive_problem" ] || fail "$archive_problem"
 
 summary=$(printf '%s\n' "$listing" | awk '{ n++; total += $1 } END { printf "%d parts, %.0f bytes", n, total }')
-echo "backup $night: $summary$kept"
-# Last, so that a ping means every step above worked.
-notify.sh beat
+line="backup $night: $summary$kept"
+echo "$line"
+# Last, so that a ping means every step above worked. It carries the line: with the server gone,
+# the monitor's log still names each whole night's id (docs/RUNBOOK.md, Disaster recovery).
+notify.sh beat "$line"
