@@ -986,8 +986,12 @@ through Cloudflare (VPS-38). Times are UTC:
   `digest`; `scheduler-staging` for staging). A `daily` or `digest` by hand that gets a 200 writes
   the day's marker (the UTC day's), so a retry after it does nothing; a daily or digest call
   without a 200 takes the marker away, so after a failed 03:00 call the 03:30 retry runs, whatever
-  an earlier call that day got. The minute job also answers through Cloudflare (Incidents, Run the
-  minute job by hand).
+  an earlier call that day got. So a failed call by hand after a good 03:00 call makes the 03:30
+  retry run the route a second time that day, which is safe: `daily`'s reminders and announcements
+  skip what their logs say went out (and each goes under Resend's idempotency key), its snapshot
+  keeps the day's first, its usage counts are rebuilt and the rest are clean-ups of what is due;
+  `digest` skips a day already sent. The minute job also answers through Cloudflare (Incidents,
+  Run the minute job by hand).
 - **After a change:** the admin installs the file, then the schedulers that mount it restart, since
   `install` writes a new file, which a running container never sees:
   `sudo app-compose menumesh restart scheduler scheduler-staging` for `start.sh` or `cron-call`,
@@ -1006,11 +1010,12 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   `globals-<stamp>.sql.age` (the roles), `postgres-<stamp>.dump.age` (the database),
   `storage-<stamp>.tar.age` (the Storage files, with their content types),
   `manifest-<stamp>.txt.age` (row counts and the Storage files' count, which a restore compares) and
-  `config-<stamp>.tar.age` (the settings archive). The month's first whole night (UTC) is also
-  copied to `monthly/`, whatever its day, so a 1st that failed leaves the copy to the next good
-  night. Daily copies go after 30 days and monthly ones after 366; only the bucket's own
-  protection, the owner's choice (First install, step 2), keeps a stolen token from deleting them
-  sooner.
+  `config-<stamp>.tar.age` (the settings archive). A whole night stamped the 1st (UTC) is also
+  copied to `monthly/`, whatever `monthly/` already holds; when the 1st's night failed, the next
+  whole night is, while `monthly/` holds no whole copy of the month. A night whose settings
+  archive was missing or stale is never the month's copy. Daily copies go after 30 days and
+  monthly ones after 366; only the bucket's own protection, the owner's choice (First install,
+  step 2), keeps a stolen token from deleting them sooner.
 - **The settings archive**, `/srv/menumesh/backup-out/config-<stamp>.tar.age`, holds `.env`,
   `images.env`, `env/`, `config/` and `deploys.log`, encrypted to `BACKUP_RECIPIENT`. A night whose
   archive is missing or more than 2 hours old fails, with an alert, after its other parts are up.
@@ -1028,11 +1033,12 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   ```
 
   The first shows `backup <stamp>: 5 parts, N bytes` (with `, kept in monthly/ as the month's copy`
-  on the month's first whole night), or `[menumesh] backup failed (exit 1) at <stamp>: <the step>`,
-  which Telegram got too. The second lists the newest night's parts and their sizes: five for a
-  whole night. A failed night shows what got there: no manifest when it failed before the manifest
-  went up, no `config-` part when its settings archive was missing or stale. The heartbeat monitor
-  alerts after 26 hours without a whole night. One now, as the container runs it:
+  on the night that made the month's copy), or
+  `[menumesh] backup failed (exit 1) at <stamp>: <the step>`, which Telegram got too. The second
+  lists the newest night's parts and their sizes: five for a whole night. A failed night shows what
+  got there: no manifest when it failed before the manifest went up, no `config-` part when its
+  settings archive was missing or stale. The heartbeat monitor alerts after 26 hours without a
+  whole night. One now, as the container runs it:
   `sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`.
 
 - **The monthly restore test**, in the third week of the month (the first one before the first
@@ -1050,18 +1056,31 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   ```
 
   It restores the night into a throwaway database in memory, compares it with the manifest, lists
-  the Storage archive and the settings archive's file names, and ends with `restore test passed`.
-  Counts that moved during the night are listed; only a missing table, an empty one or missing
-  Storage files fail it. `app-compose` first checks that the server has the memory. It names the
-  night it takes (`restore: the night of <stamp>, from daily/, …`): unasked, the newest of
-  `daily/`, but never one stamped later than now, which it names as not taken. Check it against
-  the backup's own journal line (Last night's backup), since anyone holding the bucket's token can
-  add a night. For another night add `-e RESTORE_STAMP=<stamp>` (as in the object names, for
-  example `2026-12-17T2030Z`): name the night before when the newest one failed, as a failed night
-  may lack its settings archive. A night older than 30 days is read from `monthly/`, which keeps
-  each month's first whole night. A roles file with a psql command other than pg_dumpall's own
-  `\restrict` and `\unrestrict` lines stops the test (`backslash commands are restricted`): no
-  backup writes one, so take the bucket's token as stolen and rotate it (Rotation). Record the
+  the Storage archive and the settings archive's file names, and ends with
+  `restore test passed: the night of <stamp>, from <folder>/`. Counts that moved during the night
+  are listed; only a missing table, an empty one or missing Storage files fail it. `app-compose`
+  first checks that the server has the memory. It names the night it takes first
+  (`restore: the night of <stamp>, from daily/, …`): unasked, the newest of `daily/` of the last
+  31 days, but never one stamped later than now, which it names as not taken. Check that night,
+  and the one its last line names, against the backup's own journal line (Last night's backup),
+  since anyone holding the bucket's token can add a night. Everything it prints loses its control
+  characters, so a night's own text (psql's notices, for one) can add a line but not erase or
+  rewrite one, and nothing of it comes after the last line. For another night add
+  `-e RESTORE_STAMP=<stamp>` (as in the object names, for example `2026-12-17T2030Z`): name the
+  night before when the newest one failed, as a failed night may lack its settings archive. A
+  night more than 31 days old is read from `monthly/` only, which keeps each month's copy: it must
+  show `from monthly/`, and its journal line must say it was kept in `monthly/`. Each of these
+  lines means a night, or part of one, that no backup wrote:
+  - `backslash commands are restricted`: a roles file with a psql command other than pg_dumpall's
+    own `\restrict` and `\unrestrict` lines, which no backup writes;
+  - `the manifests of <stamp> in daily/ and monthly/ differ`: the month's copy, in both folders
+    for its first 30 days, is copied unchanged, so one of the two was put there;
+  - `holds links or special files`: Storage writes only files and folders (refused before
+    anything is restored);
+  - `not reading the copy of <stamp> in daily/`: a copy of a night past 31 days, which `daily/`
+    keeps 30, unless the backup's runs have failed for days (its journal and Telegram say so).
+
+  Someone else wrote to the bucket: take its token as stolen and rotate it (Rotation). Record the
   date, the night and the result.
 
 - **Disaster recovery**, whose database and Storage steps `pnpm vps:backup-test` rehearses on this
@@ -1073,10 +1092,10 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
      `backup <stamp>: …` lines if the old server still runs, else the backup monitor's pings (one a
      few minutes after each whole night's stamp) and Telegram's failure lines. Its `<stamp>` names
      the settings archive here and the recovery in step 5. The private key on a ramfs (as above).
-     The night's `daily/config-<stamp>.tar.age` (`monthly/` once it is older than 30 days),
-     downloaded with the bucket provider's dashboard or a new read-only token (the token on the
-     server is inside the archive), listed first: only `.env`, `images.env`, `env/`, `config/` and
-     `deploys.log`, each entry a file (`-`) or a folder (`d`). Then it is unpacked into
+     The night's `daily/config-<stamp>.tar.age` (`monthly/`'s only, once it is more than 31 days
+     old), downloaded with the bucket provider's dashboard or a new read-only token (the token on
+     the server is inside the archive), listed first: only `.env`, `images.env`, `env/`, `config/`
+     and `deploys.log`, each entry a file (`-`) or a folder (`d`). Then it is unpacked into
      `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
 
      ```sh
@@ -1087,10 +1106,10 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
   3. `sudo app-apply menumesh compose ~/incoming/compose.yml`, from the commit the server last had.
   4. The backup image that `images.env` names, by the admin form with a token on stdin as in First
      install, step 18: `sudo app-deploy menumesh backup <its tag@digest>`.
-  5. The recovery of that night, into new volumes, from `daily/` or, past 30 days, `monthly/`. On a
-     new server they are new. On the same server the old `db-data`, `db-config` and `storage-data`
-     go first, with everything stopped, once the containers that hold them are gone, `backup`
-     included (it reads `storage-data`); recovering onto a new server instead keeps them:
+  5. The recovery of that night, into new volumes, from `daily/` or, past 31 days, `monthly/` only.
+     On a new server they are new. On the same server the old `db-data`, `db-config` and
+     `storage-data` go first, with everything stopped, once the containers that hold them are gone,
+     `backup` included (it reads `storage-data`); recovering onto a new server instead keeps them:
 
      ```sh
      sudo app-compose menumesh stop
@@ -1107,7 +1126,10 @@ archive runs at 20:20 UTC, ten minutes before (VPS-40).
 
      It refuses while `db` runs, onto `db`'s old cluster and onto old Storage files, and stops at a
      night no backup made (a psql command in its roles, a manifest line a backup doesn't write, a
-     link in its Storage archive); it ends with `recovery of <stamp> done`.
+     link in its Storage archive, this one before anything is written); it ends with
+     `recovery of <stamp> done`. One that stops after `restore: roles` says
+     `stopped after it began to write`: part of the night is in the volumes, so all three go again,
+     as above, before another night is recovered.
 
   6. `sudo app-compose menumesh up -d db`, which finds the cluster and skips its init, then
      `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup` (`backup` was
@@ -1195,10 +1217,11 @@ Supabase stack is only ever read.
   environment, through a copy of `playwright.config.ts` without its `webServer`; specs that need the
   mock APIs can't run against it.
 
-- `pnpm vps:backup-test` (about 4 minutes, on a running rehearsal) runs the nightly backup into a
-  local S3, with the month's copy in `monthly/`; the monthly restore test; planted nights the
-  restore must refuse; a restore test of a night only `monthly/` still holds; and a disaster
-  recovery of that night on the rehearsal's own volumes.
+- `pnpm vps:backup-test` (about 5 minutes, on a running rehearsal) runs the nightly backup into a
+  local S3: a night whose settings archive is stale, then the month's copy in `monthly/` past names
+  planted there, no second copy, and a 1st's copy (stamped by a stand-in `date`); the monthly
+  restore test; planted nights the restore must refuse, or not read; a restore test of a night
+  only `monthly/` still holds; and a disaster recovery of that night on the rehearsal's own volumes.
 - `pnpm vps:down [--images]` removes the rehearsal's containers, networks and volumes (and its three
   images with `--images`), and nothing else. `.vps-rehearsal/` stays for the next run.
 - **Copying the server team's files again**, whenever they change `app-apply`, the edge's
