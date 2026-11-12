@@ -9,17 +9,19 @@
 #                       bare cluster on the real, empty volumes, and the Storage files into /storage
 #
 # The night is RESTORE_STAMP, as in the object names; else the newest night of daily/ with a
-# manifest, which the backup uploads after every other part, of the last 31 days and never one
-# stamped later than now. daily/ keeps a night 30 days and monthly/ each month's first whole night a
-# year. A night more than 31 days old is read from monthly/ only: once the backup has removed its
-# own copy from daily/, anyone holding the bucket's token can put another there under its name. A
-# younger night is read from daily/, or from monthly/ once daily/ no longer holds it, and when both
-# hold it their manifests must be the same. The owner's age key is AGE_IDENTITY_FILE, on a ramfs
-# mounted read-only. Each part streams from the bucket through age into psql, pg_restore or tar, so
-# nothing decrypted is written but the restored data itself. With RESTORE_EXACT=1 (the local
-# rehearsal) every count must match; on the server, writes during the backup can move a count, so
-# differences are listed and only a missing table, a table restored empty, or no Storage files
-# where there were some fail the test.
+# manifest, which the backup uploads after every other part, younger than 29 days and never one
+# stamped later than now. The folder a night is read from hangs on its age alone, from its stamp and
+# this clock, never on what the bucket holds: anyone holding the bucket's token can add objects
+# under new names, so a folder chosen from what is there can be steered. The bucket's prefix locks
+# (docs/RUNBOOK.md, First install) keep each object as the backup wrote it 29 days in daily/ and 365
+# in monthly/. So a night younger than 29 days is read from daily/ only, which keeps every night
+# that long; one from 29 to 365 days old from monthly/ only, which keeps each month's copy; an older
+# one from neither. Nothing falls back to the other folder, and no manifest is compared across
+# them. The owner's age key is AGE_IDENTITY_FILE, on a ramfs mounted read-only. Each part streams
+# from the bucket through age into psql, pg_restore or tar, so nothing decrypted is written but the
+# restored data itself. With RESTORE_EXACT=1 (the local rehearsal) every count must match; on the
+# server, writes during the backup can move a count, so differences are listed and only a missing
+# table, a table restored empty, or no Storage files where there were some fail the test.
 #
 # age proves nothing about who encrypted a part: whoever holds the bucket's token and the public key
 # can plant a night. So nothing decrypted runs here as code. The roles go through psql's restricted
@@ -79,13 +81,11 @@ done
 case $PGUSER in '' | *[!a-z0-9_]*) die 'PGUSER must be a plain role name' ;; esac
 exact=${RESTORE_EXACT:-0}
 bucket="backups:$BACKUP_BUCKET"
-# The night's folder: daily, or monthly (below).
-folder=daily
 export RCLONE_LOG_LEVEL=ERROR
 
-# A part of the night, decrypted, on stdout: from the night's folder, or from the one named second.
+# A part of the night, decrypted, on stdout, from the night's folder (below).
 fetch() {
-  rclone cat "$bucket/${2:-$folder}/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
+  rclone cat "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"
 }
 sql() {
   psql -X -q -At -v ON_ERROR_STOP=1 "$@"
@@ -128,58 +128,53 @@ compare() {
     }'
 }
 
-# Stamps sort as they are written. backup.sh removes a daily copy at the first night's run past its
-# 30 days, so a night counts as monthly/'s alone one day later: older than 31 days.
+# A night's age against the lines 29 and 365 days back, to the minute, from this clock: a night
+# stamped later than a line is younger than its days. Stamps sort as they are written, and every
+# part goes up after its night's stamp, so its folder's lock holds it at least that long.
 seconds=$(date -u +%s)
 now=$(date -u -d "@$seconds" +%Y-%m-%dT%H%MZ)
-oldest=$(date -u -d "@$((seconds - 31 * 86400))" +%Y-%m-%dT%H%MZ)
-daily=$(rclone lsf --files-only "$bucket/daily/")
-monthly=$(rclone lsf --files-only "$bucket/monthly/")
+daily_lock=$(date -u -d "@$((seconds - 29 * 86400))" +%Y-%m-%dT%H%MZ)
+monthly_lock=$(date -u -d "@$((seconds - 365 * 86400))" +%Y-%m-%dT%H%MZ)
 stamp=${RESTORE_STAMP-}
 if [ -z "$stamp" ]; then
-  # The newest stamp as backup.sh writes them, of the last 31 days and none later than now: a
-  # planted 9999-12-31 would always sort last.
+  # The newest stamp of daily/ as backup.sh writes them, younger than 29 days and none later than
+  # now: a planted 9999-12-31 would always sort last.
+  daily=$(rclone lsf --files-only "$bucket/daily/")
   stamps=$(printf '%s\n' "$daily" |
     sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z\)\.txt\.age$/\1/p' | sort)
   for later in $(printf '%s\n' "$stamps" | awk -v now="$now" '$0 > now'); do
     echo "restore: not taking the night of $later, stamped later than now ($now)"
   done
   stamp=$(printf '%s\n' "$stamps" |
-    awk -v now="$now" -v oldest="$oldest" '$0 != "" && $0 <= now && $0 >= oldest' | tail -n 1)
+    awk -v now="$now" -v lock="$daily_lock" '$0 != "" && $0 <= now && $0 > lock' | tail -n 1)
   [ -n "$stamp" ] ||
-    die "no night of the last 31 days with a manifest in daily/ of the bucket (one of monthly/ needs RESTORE_STAMP)"
+    die "no night of the last 29 days with a manifest in daily/ of the bucket (one of monthly/ needs RESTORE_STAMP)"
 fi
 case $stamp in
   [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z) ;;
   *) die 'RESTORE_STAMP must be a stamp as in the object names, like 2026-11-11T2030Z' ;;
 esac
-# A night more than 31 days old comes from monthly/ only, whatever daily/ holds under its name; a
-# younger one from daily/, or from monthly/ once daily/ no longer holds it.
-if [ "$(awk -v stamp="$stamp" -v oldest="$oldest" 'BEGIN { print (stamp < oldest) }')" = 1 ]; then
-  if listed "$daily" "manifest-$stamp.txt.age"; then
-    echo "restore: not reading the copy of $stamp in daily/: daily/ keeps a night 30 days, and this one is more than 31 days old"
-  fi
+# The night's one folder, from its age alone: whatever the other folder holds under its name is
+# never listed or read.
+under() { [ "$(awk -v stamp="$stamp" -v line="$1" 'BEGIN { print (stamp > line) }')" = 1 ]; }
+if under "$daily_lock"; then
+  folder=daily
+elif under "$monthly_lock"; then
   folder=monthly
-  listed "$monthly" "manifest-$stamp.txt.age" ||
-    die "the night of $stamp has no manifest in monthly/, the only folder read for a night more than 31 days old"
-elif ! listed "$daily" "manifest-$stamp.txt.age"; then
-  folder=monthly
-  listed "$monthly" "manifest-$stamp.txt.age" ||
-    die "the night of $stamp has no manifest in daily/ or monthly/"
+else
+  die "the night of $stamp is 365 days old or more, so no folder is read for it: monthly/ keeps the month's copy under its lock 365 days, and past that anyone holding the bucket's token could have replaced its parts"
 fi
-if [ "$folder" = daily ]; then names=$daily; else names=$monthly; fi
-for part in "manifest-$stamp.txt.age" "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do
+names=$(rclone lsf --files-only "$bucket/$folder/")
+if ! listed "$names" "manifest-$stamp.txt.age"; then
+  [ "$folder" = monthly ] ||
+    die "the night of $stamp is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there, so no backup finished it (the backup's journal names the nights that did)"
+  die "the night of $stamp is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no manifest there"
+fi
+for part in "globals-$stamp.sql.age" "storage-$stamp.tar.age"; do
   listed "$names" "$part" || die "$part is not in $folder/"
 done
 
 manifest=$(fetch "manifest-$stamp.txt.age")
-# The month's copy is the same night in both folders, which backup.sh copies unchanged: two
-# different manifests mean that one of them was put there by someone else.
-if [ "$folder" = daily ] && listed "$monthly" "manifest-$stamp.txt.age"; then
-  copy=$(fetch "manifest-$stamp.txt.age" monthly)
-  [ "$copy" = "$manifest" ] ||
-    die "the manifests of $stamp in daily/ and monthly/ differ, though backup.sh copies a night unchanged: one of them is not the backup's"
-fi
 # Only the lines backup.sh writes, in printable ASCII: the night's stamp first, then plain database
 # names (they reach SQL and psql's arguments), and counts.
 problem=$(printf '%s\n' "$manifest" | LC_ALL=C awk -v stamp="$stamp" '
