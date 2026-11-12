@@ -1318,16 +1318,23 @@ const backupRules = (dockerfile: string, script: string) => [
 ];
 
 /**
- * The month's first whole night is its monthly copy, whatever its day, so a 1st whose run failed
- * no longer leaves the month without one, and a later night of the month makes no second copy
- * (review finding B4, VPS-40). The manifest goes last, as in daily/, and the copy still comes
- * between the check of the uploads and the settings archive's failure.
+ * The month's copy in monthly/ is a whole night, its uploads checked and its settings archive
+ * fresh: the 1st's, whatever monthly/ holds, or the next whole night's while monthly/ holds no
+ * whole copy of the month, a manifest named as backup.sh names one with that night's roles, Storage
+ * and settings archives and a dump of each database, each past its floor (review findings B4, N2
+ * and N3, VPS-40). So names planted in monthly/ can't stop the 1st's copy, a night whose settings
+ * archive failed is never the copy, and a 1st that failed leaves it to the next whole night. The
+ * manifest goes last, and the copy still comes between the check of the uploads and the settings
+ * archive's failure.
  */
 const monthlyCopy = (script: string) => {
   const uploads = script.indexOf("reason='the check of the uploads'");
-  const check = script.indexOf(
-    'if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then',
+  const whole = script.indexOf('if [ -z "$archive_problem" ]; then\n  case $stamp in');
+  const first = script.indexOf('    ????-??-01T*) whole= ;;');
+  const listed = script.indexOf(
+    `      whole=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
   );
+  const check = script.indexOf('  if [ -z "$whole" ]; then');
   const parts = script.indexOf(
     'case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac',
   );
@@ -1336,14 +1343,26 @@ const monthlyCopy = (script: string) => {
   );
   const archive = script.indexOf('[ -z "$archive_problem" ] || fail "$archive_problem"');
   return [
-    ...(/\?\?\?\?-\?\?-01T/.test(script) ? ['the copy still waits for the 1st'] : []),
-    ...(script.includes('month=${stamp%-??T*}') && check >= 0
+    ...(script.includes('--include "manifest-$month-*"')
+      ? ['any name in monthly/ stops the month’s copy']
+      : []),
+    ...(whole > uploads && uploads >= 0
       ? []
-      : ['the copy is not the month’s first whole night']),
+      : ['a night whose settings archive failed can be the month’s copy']),
+    ...(first > whole && first < check ? [] : ['the 1st’s copy waits on what monthly/ holds']),
+    ...(listed > first && listed < check
+      ? []
+      : ['a 1st that failed leaves the month without a copy']),
+    ...(script.includes(
+      String.raw`"^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z[.]txt[.]age$"`,
+    ) &&
+    script.includes('ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&') &&
+    script.includes('big("storage-" s ".tar.age", 1024) && big("config-" s ".tar.age", 1024)') &&
+    script.includes('if (!big(db[i] "-" s ".dump.age", 1024)) ok = 0')
+      ? []
+      : ['a copy in monthly/ counts as whole without every part past its floor']),
     ...(parts > check && manifest > parts ? [] : ['the manifest is not copied last']),
-    ...(check > uploads && uploads >= 0 && manifest < archive
-      ? []
-      : ['the copy is not between the upload check and the archive’s failure']),
+    ...(manifest < archive ? [] : ['the copy is not before the settings archive’s failure']),
   ];
 };
 
@@ -1568,23 +1587,48 @@ describe('the migrate and backup images', () => {
     );
   });
 
-  it('keeps the month’s first whole night in monthly/, whatever its day, and only that one', () => {
+  it('keeps a whole 1st in monthly/, or the next whole night when no whole copy is there', () => {
     expect(monthlyCopy(backupSh)).toEqual([]);
-    // As before the review: the 1st only.
+    // As after review finding B4: any manifest-<month>-* name stopped the copy (N2).
     refuses(
       monthlyCopy,
       swap(
         backupSh,
-        'if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then',
-        'if case $stamp in ????-??-01T*) true ;; *) false ;; esac; then',
+        '  if [ -z "$whole" ]; then',
+        '  if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then',
       ),
-      'waits for the 1st',
+      'any name in monthly/',
+    );
+    // As after B4 too: a night whose settings archive failed could be the copy (N3).
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        'if [ -z "$archive_problem" ]; then\n  case $stamp in',
+        'if true; then\n  case $stamp in',
+      ),
+      'settings archive failed',
+    );
+    // As before B4: the 1st only.
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        `      whole=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
+        `      whole=never; : $(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
+      ),
+      'without a copy',
+    );
+    refuses(
+      monthlyCopy,
+      swap(backupSh, 'big("config-" s ".tar.age", 1024)', 'big("config-" s ".tar.age", 0)'),
+      'past its floor',
     );
     refuses(
       monthlyCopy,
       swap(
         backupSh,
-        '  rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"\n',
+        '    rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"\n',
         '',
       ),
       'not copied last',

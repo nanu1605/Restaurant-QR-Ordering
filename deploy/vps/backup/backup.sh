@@ -13,10 +13,11 @@
 #                              whole night
 #   config-<stamp>.tar.age     the host's newest settings archive, already encrypted by the host
 #
-# The month's first whole night (UTC) is also copied to monthly/; daily copies go after 30 days and
-# monthly ones after 366. A missing or stale settings archive fails the run once everything else is
-# safe. A failure goes to Telegram (notify.sh alert); a full success prints one line and pings
-# HEARTBEAT_URL. Nothing printed holds a value.
+# A whole night stamped the 1st (UTC) is also copied to monthly/, or the next whole night when the
+# 1st's wasn't; daily copies go after 30 days and monthly ones after 366. A missing or stale
+# settings archive fails the run once everything else is safe, and such a night is never the
+# month's copy. A failure goes to Telegram (notify.sh alert); a full success prints one line and
+# pings HEARTBEAT_URL. Nothing printed holds a value.
 set -eu -o pipefail
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
@@ -143,20 +144,45 @@ for part in $expected; do
   [ "$size" -gt "${part##*:}" ] || fail "$name is only $size bytes"
 done
 
-# The month's first whole night (UTC) is also kept in monthly/: tonight's, unless monthly/ holds a
-# manifest of this month already, so a 1st that failed leaves the copy to the next good night. Its
-# manifest goes last there too: a manifest in monthly/ means a whole night, and a copy cut short is
-# made again by the next one.
+# The month's copy in monthly/: only a whole night, every upload above checked and its settings
+# archive fresh, and one stamped the 1st (UTC) or, while monthly/ holds no whole copy of the month,
+# the next whole night, so a 1st that failed leaves the copy to it. A whole copy is a manifest
+# named as this script names one, with that night's roles, Storage archive, settings archive and a
+# dump of each of tonight's databases, each past its floor: names someone else put in monthly/
+# can't stop the 1st's copy, nor stand in for one unless they are a whole night's. The manifest
+# goes last there too, so a copy cut short is no whole copy.
 reason='the monthly copy'
 month=${stamp%-??T*}
 kept=
-if [ -z "$(rclone lsf --files-only --include "manifest-$month-*" "$remote/monthly/")" ]; then
-  for part in $expected; do
-    name=${part%:*}
-    case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac
-  done
-  rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"
-  kept=", kept in monthly/ as the month's copy"
+if [ -z "$archive_problem" ]; then
+  case $stamp in
+    ????-??-01T*) whole= ;;
+    *)
+      whole=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |
+        DBS="$dbs" LC_ALL=C awk -v month="$month" '
+          function big(name, floor) { return (name in size) && size[name] > floor }
+          { size[substr($0, index($0, " ") + 1)] = $1 + 0 }
+          END {
+            n = split(ENVIRON["DBS"], db, "\n")
+            for (name in size) {
+              if (name !~ ("^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z[.]txt[.]age$")) continue
+              s = substr(name, 10, 16)
+              ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&
+                big("storage-" s ".tar.age", 1024) && big("config-" s ".tar.age", 1024)
+              for (i = 1; i <= n; i++) if (!big(db[i] "-" s ".dump.age", 1024)) ok = 0
+              if (ok) { print s; exit }
+            }
+          }')
+      ;;
+  esac
+  if [ -z "$whole" ]; then
+    for part in $expected; do
+      name=${part%:*}
+      case $name in manifest-*) ;; *) rclone copyto "$day/$name" "$remote/monthly/$name" ;; esac
+    done
+    rclone copyto "$day/manifest-$stamp.txt.age" "$remote/monthly/manifest-$stamp.txt.age"
+    kept=", kept in monthly/ as the month's copy"
+  fi
 fi
 # 30 daily and 12 monthly copies. Only the bucket can keep a stolen token from deleting them sooner,
 # and nothing here sets that up: the owner picks, with the bucket (docs/RUNBOOK.md, First install),
