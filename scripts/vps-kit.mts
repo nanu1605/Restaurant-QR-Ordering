@@ -3669,10 +3669,11 @@ async function backupTest() {
         .filter((name) => name.includes(`-${stamp}.`))
         .sort();
 
-    // The bucket from empty: earlier runs' nights, planted ones and anything at its top go. Then
-    // monthly/ as before a month's first whole night: another month's copy, and names a token
-    // holder could plant for this month and for a 1st two months back, a stray name and a manifest
-    // alone, named as backup.sh names one, which must stop no copy (review finding N2).
+    // The bucket from empty but for wal/, where the backup service keeps shipping db's WAL: earlier
+    // runs' nights, planted ones and anything at its top go. Then monthly/ as before a month's
+    // first whole night: another month's copy, and names a token holder could plant for this month
+    // and for a 1st two months back, a stray name and a manifest alone, named as backup.sh names
+    // one, which must stop no copy (review finding N2).
     const today = stampOf(daemonNow());
     const earlier = monthBefore(today);
     const otherNight = idOf(`${earlier}-28T2030Z`);
@@ -3685,7 +3686,7 @@ async function backupTest() {
     const cleared = inBackup(
       [
         'set -e',
-        'rclone delete "backups:$BACKUP_BUCKET/"',
+        `rclone delete --exclude '/wal/**' "backups:$BACKUP_BUCKET/"`,
         ...[otherMonth, ...junk].map(
           (name) =>
             `printf 'menumesh backup ${otherNight}\\n' | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "backups:$BACKUP_BUCKET/monthly/${name}"`,
