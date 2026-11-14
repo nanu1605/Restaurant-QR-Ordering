@@ -174,7 +174,7 @@ if [ -z "$problem" ]; then
   elif [ -z "$id" ] && [ -n "$(outbox | sed -n 1p)" ]; then
     stopped 'the outbox holds WAL files, but no system identifier is kept with them: nothing ships (docs/RUNBOOK.md)'
   elif [ -n "$id" ] && [ "$waiting" -gt 0 ]; then
-    stopped "db's system identifier is now $current, and $waiting WAL files of $id wait: nothing ships, so two clusters' WAL never mix (docs/RUNBOOK.md: after a recovery, wal-spool is made new)"
+    stopped "db's system identifier is now $current, not the $id kept, and $waiting WAL files wait: nothing ships, so two clusters' WAL never mix (docs/RUNBOOK.md: after a recovery, wal-spool is made new)"
   else
     printf '%s\n' "$current" >"$state/system-identifier.new"
     fsync "$state/system-identifier.new"
