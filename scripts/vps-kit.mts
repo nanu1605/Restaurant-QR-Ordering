@@ -24,10 +24,12 @@
  *                    logs). A rerun reuses the stack, the secrets and an image nothing changed for;
  *                    --fresh starts from new secrets and empty volumes, --rebuild builds every image.
  *   pnpm vps:backup-test
- *                    db's WAL shipped and signed, and an outage of the shipper alerted and ended;
- *                    the nightly backup into the local S3, each night named by its id (its stamp
- *                    and 8 random hex characters): a night with a stale settings archive, then the
- *                    month's copy in monthly/ past planted names, no second copy, and a 1st's copy;
+ *                    the signing helpers against Node's crypto; db's WAL shipped and signed, an
+ *                    outage of the shipper alerted and ended, and the shipper's other failures on a
+ *                    spool and a bucket of their own; the nightly backup into the local S3, each
+ *                    night named by its id (its stamp and 8 random hex characters): a night with a
+ *                    stale settings archive, then the month's copy in monthly/ past planted names,
+ *                    no second copy, and a 1st's copy;
  *                    a night whose id someone else wrote a name of first, stopped before its first
  *                    upload; the monthly restore test; planted nights and names the restore must
  *                    refuse or not read, each night read from the one folder its age gives; and the
@@ -2829,14 +2831,21 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
   if (s3.status !== 0) fail(`s3 did not start:\n${tail(s3.stderr)}`);
   const since = daemonNow();
   const started = Date.now();
+  const running = () => {
+    const id = containerOf('backup');
+    const state = id && docker(['inspect', '--format', '{{.State.Running}}', id]).stdout.trim();
+    return state === 'true' ? id : undefined;
+  };
+  const before = running();
   const backup = compose(['up', '-d', 'backup']);
   if (backup.status !== 0) fail(`backup did not start:\n${tail(backup.stderr)}`);
+  const fresh = running() !== before;
   const cluster = clusterId();
   const walfile = writeWal();
   const shipped = await walShipped(cluster, [walfile], 200);
   const waiting = walWaiting();
   checks.expect(
-    `the backup service ships db's WAL to the local S3: ${walfile}, archived by a switch after about 8 MiB of WAL, is under wal/${cluster}/ ${seconds(started)} s after the service started (${shipped.names.length} objects there); the spool holds ${waiting.spool.length} WAL files and the outbox ${waiting.outbox.length}`,
+    `the backup service ships db's WAL to the local S3: ${walfile}, archived by a switch after about 8 MiB of WAL, is under wal/${cluster}/ ${shipped.took} s after the switch (the service ${fresh ? 'just started' : 'already up'}; ${shipped.names.length} objects there); the spool holds ${waiting.spool.length} WAL files and the outbox ${waiting.outbox.length}`,
     shipped.found.every((name) => name !== undefined) &&
       !waiting.spool.includes(walfile) &&
       !waiting.outbox.includes(`${walfile}.zst.age`),
@@ -2972,6 +2981,416 @@ function sealProof(checks: Checks, env: Record<string, string>) {
           .join('\n')
       : tail(output),
   );
+}
+
+/**
+ * wal-ship.sh's ways of failing, apart from the rehearsal's own spool and bucket: the backup
+ * image's script, run as crond runs it (uid 100, gid 101, no capability), against a Postgres 17 of
+ * its own (the backup image's base), rclone's S3 server and a spool volume of its own, with the
+ * rehearsal's throwaway keys and Telegram and the heartbeat in the sinkhole. Segments are 16 MiB
+ * stand-ins whose long page header names a cluster; a file is made to look older to wait. Every
+ * object carries the project's label, so vps:down removes what a run that stopped left.
+ */
+async function shipperPaths(checks: Checks, env: Record<string, string>) {
+  const tag = `menumesh-rehearsal-walship-${process.pid}`;
+  const [net, pg, s3, spool, tmp] = ['net', 'pg', 's3', 'spool', 'tmp'].map(
+    (part) => `${tag}-${part}`,
+  );
+  const label = ['--label', `com.docker.compose.project=${PROJECT}`];
+  const image = REHEARSAL_IMAGES.BACKUP_IMAGE;
+  const postgres =
+    /^FROM (postgres:\S+@sha256:[0-9a-f]{64})$/m.exec(read('backup', 'Dockerfile'))?.[1] ??
+    fail("The backup image's Dockerfile has no pinned postgres base");
+  const rclone =
+    /^ {4}image: (rclone\/rclone:\S+)$/m.exec(readFileSync(OVERRIDE, 'utf8'))?.[1] ??
+    fail('The rehearsal override has no rclone image');
+  const password = randomBytes(12).toString('hex');
+  const cleanup = () => {
+    docker(['rm', '--force', pg, s3, `${tag}-lock`]);
+    docker(['volume', 'rm', '--force', spool, tmp]);
+    docker(['network', 'rm', net]);
+  };
+  // Postgres once its image's init is over: Postgres itself is then process 1.
+  const startPostgres = async (archiving: boolean) => {
+    const run = docker(
+      [
+        'run',
+        '--detach',
+        '--name',
+        pg,
+        ...label,
+        '--network',
+        net,
+        '--env',
+        'POSTGRES_PASSWORD',
+        postgres,
+        ...(archiving ? ['-c', 'archive_mode=on', '-c', 'archive_command=/bin/true'] : []),
+      ],
+      undefined,
+      { POSTGRES_PASSWORD: password },
+    );
+    if (run.status !== 0) fail(`The shipper's test Postgres did not start: ${run.stderr.trim()}`);
+    for (let tries = 0; tries < 60; tries++) {
+      const ready = docker([
+        'exec',
+        pg,
+        'sh',
+        '-c',
+        '[ "$(cat /proc/1/comm)" = postgres ] && psql -X -At -U postgres -c "select 1"',
+      ]);
+      if (ready.stdout.trim() === '1') break;
+      await sleep(1000);
+    }
+    const id = docker([
+      'exec',
+      pg,
+      'psql',
+      '-X',
+      '-At',
+      '-U',
+      'postgres',
+      '-c',
+      'select system_identifier from pg_control_system()',
+    ]).stdout.trim();
+    return /^\d+$/.test(id) ? id : fail(`The shipper's test Postgres has no identifier: ${id}`);
+  };
+  // The shipper's environment, its values handed to the docker client's own (never its arguments).
+  const settings = (extra: Record<string, string> = {}) => ({
+    PGHOST: pg,
+    PGUSER: 'postgres',
+    PGPASSWORD: password,
+    BACKUP_AGE_RECIPIENT: env.BACKUP_AGE_RECIPIENT,
+    BACKUP_BUCKET: env.BACKUP_BUCKET,
+    RCLONE_CONFIG_BACKUPS_TYPE: 's3',
+    RCLONE_CONFIG_BACKUPS_PROVIDER: 'Other',
+    RCLONE_CONFIG_BACKUPS_ENDPOINT: 'http://s3:9000',
+    RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: env.BACKUP_S3_ACCESS_KEY_ID,
+    RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: env.BACKUP_S3_SECRET_ACCESS_KEY,
+    RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true',
+    BACKUP_SIGNING_KEY: env.BACKUP_SIGNING_KEY,
+    BACKUP_SIGNING_PUBLIC_KEY: env.BACKUP_SIGNING_PUBLIC_KEY,
+    TELEGRAM_BOT_TOKEN: 'rehearsal',
+    TELEGRAM_CHAT_ID: 'rehearsal',
+    HEARTBEAT_WAL_URL: 'https://hc-ping.com/menumesh-rehearsal-wal',
+    ...extra,
+  });
+  const named = (values: Record<string, string>) =>
+    Object.keys(values).flatMap((name) => ['--env', name]);
+  // One run of the shipper as crond starts it; /tmp is a volume, as the service's outlives a run.
+  const ship = (extra: Record<string, string> = {}) => {
+    const values = settings(extra);
+    const run = docker(
+      [
+        'run',
+        '--rm',
+        ...label,
+        '--network',
+        net,
+        '--user',
+        '100:101',
+        '--cap-drop',
+        'ALL',
+        '--security-opt',
+        'no-new-privileges:true',
+        '--add-host',
+        'api.telegram.org:0.0.0.0',
+        '--add-host',
+        'hc-ping.com:0.0.0.0',
+        '--volume',
+        `${spool}:/wal-spool`,
+        '--volume',
+        `${tmp}:/tmp`,
+        ...named(values),
+        '--entrypoint',
+        '/usr/local/bin/wal-ship.sh',
+        image,
+      ],
+      undefined,
+      values,
+    );
+    return lines(`${run.stdout}${run.stderr}`);
+  };
+  const inSpool = (script: string, user = '100:101') =>
+    docker([
+      'run',
+      '--rm',
+      ...label,
+      '--user',
+      user,
+      '--volume',
+      `${spool}:/wal-spool`,
+      '--entrypoint',
+      'sh',
+      image,
+      '-c',
+      script,
+    ]);
+  // A segment's stand-in: 16 MiB whose long page header names the cluster (offset 24, as the
+  // machine's uint64), the rest random; `ago` seconds old.
+  const segment = (name: string, cluster: string, ago = 0) => {
+    const header = Buffer.alloc(8);
+    header.writeBigUInt64LE(BigInt(cluster));
+    const octal = [...header].map((byte) => `\\${byte.toString(8).padStart(3, '0')}`).join('');
+    const made = inSpool(
+      `cd /wal-spool && { head -c 24 /dev/zero; printf '${octal}'; head -c ${16 * 1048576 - 32} /dev/urandom; } >.made && mv .made ${name} && touch -d @$(($(date +%s) - ${ago})) ${name}`,
+    );
+    if (made.status !== 0) fail(`Making the segment ${name} failed: ${made.stderr.trim()}`);
+  };
+  const objects = () =>
+    lines(
+      docker(
+        [
+          'run',
+          '--rm',
+          ...label,
+          '--network',
+          net,
+          ...named(settings()),
+          '--entrypoint',
+          'sh',
+          image,
+          '-c',
+          'rclone lsf -R --files-only "backups:$BACKUP_BUCKET/wal/"',
+        ],
+        undefined,
+        settings(),
+      ).stdout,
+    );
+  const shipped = (walfile: string) => objects().some((name) => name.includes(`/${walfile}.`));
+  const listing = (folder: string) => lines(inSpool(`ls -A ${folder}`).stdout);
+  const kept = () => inSpool('cat /wal-spool/.ship/system-identifier').stdout.trim();
+  // As after a long quiet: no alert in the last hour and no heartbeat in the last 5 minutes.
+  const quiet = () =>
+    inSpool('rm -f /wal-spool/.ship/alert-sent /wal-spool/.ship/alerting /wal-spool/.ship/beat');
+  const says = (log: string[], text: string) => log.some((line) => line.includes(text));
+  const alerts = (log: string[]) =>
+    log.filter((line) => line.startsWith('wal-ship: [menumesh] WAL is not reaching the bucket'));
+  const heartbeat = 'notify: the heartbeat ping failed (curl exit 7)';
+  const resumed = 'wal-ship: [menumesh] WAL shipping resumed';
+
+  cleanup();
+  try {
+    docker(['network', 'create', ...label, net]);
+    for (const volume of [spool, tmp]) docker(['volume', 'create', ...label, volume]);
+    docker([
+      'run',
+      '--rm',
+      ...label,
+      '--volume',
+      `${tmp}:/tmp`,
+      '--entrypoint',
+      'chmod',
+      image,
+      '1777',
+      '/tmp',
+    ]);
+    const started = docker(
+      [
+        'run',
+        '--detach',
+        '--name',
+        s3,
+        ...label,
+        '--network',
+        net,
+        '--network-alias',
+        's3',
+        '--env',
+        'RCLONE_AUTH_KEY',
+        '--entrypoint',
+        'sh',
+        rclone,
+        '-c',
+        `mkdir -p /data/${env.BACKUP_BUCKET} && exec rclone serve s3 /data --addr :9000`,
+      ],
+      undefined,
+      {
+        RCLONE_AUTH_KEY: `"${env.BACKUP_S3_ACCESS_KEY_ID},${env.BACKUP_S3_SECRET_ACCESS_KEY}"`,
+      },
+    );
+    if (started.status !== 0) fail(`The shipper's test S3 did not start: ${started.stderr.trim()}`);
+    const cluster = await startPostgres(true);
+
+    // A spool still root's and 0755, as Docker makes a volume, then made postgres's as db's
+    // wal-spool.sh makes it.
+    const broken = ship();
+    inSpool('chown 100:101 /wal-spool && chmod 0700 /wal-spool', '0:0');
+    segment('000000010000000000000001', cluster);
+    const fixed = ship();
+    const healthy = ship();
+    checks.expect(
+      `the shipper on a spool that is not yet postgres's: one alert at once ("${alerts(broken)[0]?.slice(10) ?? ''}"); made postgres's, the next run ships, says it resumed and pings the heartbeat; a healthy run prints nothing`,
+      alerts(broken).length === 1 &&
+        says(broken, "is not db's postgres's to write") &&
+        shipped('000000010000000000000001') &&
+        says(fixed, resumed) &&
+        fixed.includes(heartbeat) &&
+        !healthy.length,
+      [...broken, '--', ...fixed, '--', ...healthy].join('\n'),
+    );
+
+    // Another run while one holds the lock.
+    const lock = docker([
+      'run',
+      '--detach',
+      '--name',
+      `${tag}-lock`,
+      ...label,
+      '--user',
+      '100:101',
+      '--volume',
+      `${spool}:/wal-spool`,
+      '--entrypoint',
+      'sh',
+      image,
+      '-c',
+      'exec 9>>/wal-spool/.ship/lock && flock 9 && sleep 60',
+    ]);
+    await sleep(2000);
+    segment('000000010000000000000002', cluster);
+    const locked = ship();
+    const waited = listing('/wal-spool').includes('000000010000000000000002');
+    docker(['rm', '--force', `${tag}-lock`]);
+    checks.expect(
+      'a run while another holds the spool leaves at once, silently, and ships nothing',
+      lock.status === 0 && !locked.length && waited && !shipped('000000010000000000000002'),
+      locked.join('\n'),
+    );
+    ship();
+
+    // A private key that is not the pair of the first public key.
+    const other = generateKeyPairSync('ed25519')
+      .publicKey.export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    const wrong = { BACKUP_SIGNING_PUBLIC_KEY: `${other} ${env.BACKUP_SIGNING_PUBLIC_KEY}` };
+    quiet();
+    segment('000000010000000000000003', cluster, 11 * 60);
+    const refused = ship(wrong);
+    const outbox = listing('/wal-spool/.ship/out');
+    const again = ship(wrong);
+    const right = ship();
+    const after = ship();
+    checks.expect(
+      `a signing key that is not the pair of BACKUP_SIGNING_PUBLIC_KEY's first key: nothing uploaded, the file kept in the outbox, one alert ("${alerts(refused)[0]?.split(': ').slice(2).join(': ') ?? ''}") and none more within the hour; with the right key it ships, and the next run says it resumed`,
+      alerts(refused).length === 1 &&
+        says(
+          refused,
+          "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks",
+        ) &&
+        says(refused, 'waited 11 minutes') &&
+        outbox.includes('000000010000000000000003.zst.age') &&
+        !again.length &&
+        !right.length &&
+        shipped('000000010000000000000003') &&
+        says(after, resumed),
+      [...refused, '--', ...again, '--', ...right, '--', ...after].join('\n'),
+    );
+
+    // The bucket out of reach.
+    docker(['stop', s3]);
+    quiet();
+    segment('000000010000000000000004', cluster, 12 * 60);
+    const begun = Date.now();
+    const unreachable = ship();
+    const took = seconds(begun);
+    const held = listing('/wal-spool/.ship/out').includes('000000010000000000000004.zst.age');
+    const raw = listing('/wal-spool').includes('000000010000000000000004');
+    docker(['start', s3]);
+    await sleep(3000);
+    ship();
+    const back = ship();
+    checks.expect(
+      `the bucket out of reach: the raw file still goes to the outbox, and one alert with rclone's first lines, control characters dropped (the run took ${took} s); back, it ships, then says it resumed`,
+      alerts(unreachable).length === 1 &&
+        says(unreachable, 'the upload of 000000010000000000000004 to the bucket failed (rclone)') &&
+        unreachable.some((line) => line.startsWith('wal-ship: | ')) &&
+        held &&
+        !raw &&
+        shipped('000000010000000000000004') &&
+        says(back, resumed),
+      [...unreachable, '--', ...back].join('\n'),
+    );
+
+    // A segment of another cluster in the spool.
+    quiet();
+    segment('000000010000000000000005', '7000000000000000001', 11 * 60);
+    const foreign = ship();
+    checks.expect(
+      'a segment whose header names another cluster: nothing more ships, and one alert naming both',
+      alerts(foreign).length === 1 &&
+        says(
+          foreign,
+          `the WAL file 000000010000000000000005 names the cluster 7000000000000000001, not ${cluster}`,
+        ) &&
+        !shipped('000000010000000000000005'),
+      foreign.join('\n'),
+    );
+    inSpool('rm -f /wal-spool/000000010000000000000005');
+    ship();
+
+    // A kept identifier of another cluster, as after a recovery onto the old spool.
+    quiet();
+    inSpool("printf '7000000000000000001\\n' >/wal-spool/.ship/system-identifier");
+    segment('000000010000000000000006', cluster, 11 * 60);
+    const changed = ship();
+    const keptThen = kept();
+    inSpool('rm -f /wal-spool/000000010000000000000006');
+    const taken = ship();
+    checks.expect(
+      `a kept identifier of another cluster while a file waits: nothing ships, and one alert ("…${alerts(changed)[0]?.split('): ').slice(1).join('): ').slice(0, 70) ?? ''}…"); with nothing waiting the new identifier is taken, and the run says it resumed`,
+      alerts(changed).length === 1 &&
+        says(
+          changed,
+          `db's system identifier is now ${cluster}, not the 7000000000000000001 kept, and 1 WAL files wait`,
+        ) &&
+        keptThen === '7000000000000000001' &&
+        !shipped('000000010000000000000006') &&
+        kept() === cluster &&
+        says(taken, resumed),
+      [...changed, '--', ...taken].join('\n'),
+    );
+
+    // Names basic_archive never writes, an old temporary copy of its own, and a history file.
+    inSpool(
+      "cd /wal-spool && echo x >notes.txt && echo x >000000010000000000000007.tmp && echo x >archtemp.000000010000000000000007.1.2 && touch -d @$(($(date +%s) - 7200)) archtemp.000000010000000000000007.1.2 && printf '1\\t0/3000000\\tno recovery target specified\\n' >00000002.history",
+    );
+    const others = ship();
+    const left = listing('/wal-spool');
+    const names = objects();
+    checks.expect(
+      'names basic_archive never writes stay in the spool and never ship; its temporary copy over an hour old goes; a history file ships under wal/<cluster>/history/',
+      !others.length &&
+        left.includes('notes.txt') &&
+        left.includes('000000010000000000000007.tmp') &&
+        !left.includes('archtemp.000000010000000000000007.1.2') &&
+        !left.includes('00000002.history') &&
+        names.some((name) => name.startsWith(`${cluster}/history/00000002.history.`)) &&
+        !names.some((name) => /notes|\.tmp\./.test(name)),
+      [...others, '--', ...left, '--', ...names].join('\n'),
+    );
+
+    // A db that archives nothing, then no db at all.
+    docker(['rm', '--force', pg]);
+    const second = await startPostgres(false);
+    quiet();
+    const idle = ship();
+    docker(['stop', pg]);
+    segment('000000010000000000000008', second);
+    quiet();
+    const down = ship();
+    checks.expect(
+      'a db that archives nothing (archive_mode off): one alert at once and no heartbeat; with db down, a segment of the kept cluster still ships under it, silently',
+      alerts(idle).length === 1 &&
+        says(idle, 'db archives no WAL (archive_mode is off)') &&
+        !idle.includes(heartbeat) &&
+        kept() === second &&
+        objects().some((name) => name.startsWith(`${second}/00000000/000000010000000000000008.`)) &&
+        !down.length,
+      [...idle, '--', ...down].join('\n'),
+    );
+  } finally {
+    cleanup();
+  }
 }
 
 /**
@@ -3581,6 +4000,7 @@ async function backupTest() {
   );
   sealProof(checks, env);
   await walProof(checks, env);
+  await shipperPaths(checks, env);
 
   // Storage files of two types to back up, as the app writes them (a support screenshot, an
   // export ZIP): a fresh rehearsal has none. The same names each run, never written over, so no
