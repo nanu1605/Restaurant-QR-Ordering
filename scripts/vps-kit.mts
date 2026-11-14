@@ -2673,7 +2673,7 @@ const clusterId = () =>
 function writeWal(): string {
   const rows = dbSql(
     [
-      "select count(pg_logical_emit_message(false, 'menumesh-rehearsal', (select string_agg(md5(random()::text || g), '') from generate_series(1, 32768)))) from generate_series(1, 8) g;",
+      "select count(pg_logical_emit_message(false, 'menumesh-rehearsal', (select string_agg(md5(random()::text || i || g), '') from generate_series(1, 32768) i))) from generate_series(1, 8) g;",
       'select pg_walfile_name(pg_current_wal_lsn());',
       'select pg_switch_wal();',
     ].join('\n'),
