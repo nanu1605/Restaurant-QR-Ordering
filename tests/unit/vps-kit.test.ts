@@ -2068,8 +2068,9 @@ const walShipImage = (dockerfile: string) => [
  * raw file goes only once its encrypted copy is synced and renamed into the outbox; each name
  * signs the cluster, the WAL file and the ciphertext's sha256, under the cluster db names and each
  * segment's header confirms; one upload by its exact name, which writes nothing when the same bytes
- * are there, and nothing else in the bucket; the alert after 10 minutes, at most hourly; the
- * heartbeat every 5 minutes, to HEARTBEAT_WAL_URL.
+ * are there, and nothing else in the bucket; the alert after 10 minutes, or at once for what no
+ * wait mends (another cluster, a signing key that is not the public key's pair), at most hourly;
+ * the heartbeat every 5 minutes, to HEARTBEAT_WAL_URL.
  */
 const walShipper = (script: string) => {
   const outboxed = script.indexOf('mv -f "$tmp" "$dest" && fsync "$out"');
@@ -2107,6 +2108,16 @@ const walShipper = (script: string) => {
     script.includes('[ $((now - last)) -ge 3600 ]')
       ? []
       : ['the alert is not after 10 minutes, at most hourly']),
+    ...(script.includes(
+      'if [ -n "$behind" ] || [ -n "$stuck" ] || [ -n "$idle" ] || [ -n "$urgent" ]; then',
+    ) &&
+    [
+      `halted "db's system identifier is now $current`,
+      'halted "the WAL file $name names the cluster',
+      `halted "BACKUP_SIGNING_KEY does not sign`,
+    ].every((line) => script.includes(line))
+      ? []
+      : ['another cluster or a wrong signing key does not alert at once']),
     ...(script.includes('[ $((now - last)) -ge 290 ]') &&
     script.includes('HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat')
       ? []
@@ -2325,6 +2336,16 @@ describe('the migrate and backup images', () => {
       swap(walShipSh, '[ $((now - last)) -ge 3600 ]', '[ $((now - last)) -ge 60 ]'),
       'at most hourly',
     );
+    refuses(
+      walShipper,
+      swap(
+        walShipSh,
+        'halted "the WAL file $name names the cluster',
+        'stopped "the WAL file $name names the cluster',
+      ),
+      'alert at once',
+    );
+    refuses(walShipper, swap(walShipSh, ' || [ -n "$urgent" ]; then', '; then'), 'alert at once');
     refuses(
       walShipper,
       swap(walShipSh, 'HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat', 'notify.sh beat'),

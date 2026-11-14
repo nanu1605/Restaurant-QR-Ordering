@@ -3258,31 +3258,32 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     );
     ship();
 
-    // A private key that is not the pair of the first public key.
+    // A private key that is not the pair of the first public key: no wait mends it, so the alert
+    // comes at once, with the file just archived.
     const other = generateKeyPairSync('ed25519')
       .publicKey.export({ format: 'der', type: 'spki' })
       .toString('base64');
     const wrong = { BACKUP_SIGNING_PUBLIC_KEY: `${other} ${env.BACKUP_SIGNING_PUBLIC_KEY}` };
     quiet();
-    segment('000000010000000000000003', cluster, 11 * 60);
+    segment('000000010000000000000003', cluster);
     const refused = ship(wrong);
     const outbox = listing('/wal-spool/.ship/out');
     const again = ship(wrong);
     const right = ship();
     const after = ship();
     checks.expect(
-      `a signing key that is not the pair of BACKUP_SIGNING_PUBLIC_KEY's first key: nothing uploaded, the file kept in the outbox, one alert ("${alerts(refused)[0]?.split(': ').slice(2).join(': ') ?? ''}") and none more within the hour; with the right key it ships, and the next run says it resumed`,
+      `a signing key that is not the pair of BACKUP_SIGNING_PUBLIC_KEY's first key: nothing uploaded, the file kept in the outbox, one alert at once ("${alerts(refused)[0]?.split(': ').slice(2).join(': ') ?? ''}") and none more within the hour; with the right key it ships and says it resumed, and the next run prints nothing`,
       alerts(refused).length === 1 &&
         says(
           refused,
           "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks",
         ) &&
-        says(refused, 'waited 11 minutes') &&
+        !says(refused, 'waited') &&
         outbox.includes('000000010000000000000003.zst.age') &&
         !again.length &&
-        !right.length &&
+        says(right, resumed) &&
         shipped('000000010000000000000003') &&
-        says(after, resumed),
+        !after.length,
       [...refused, '--', ...again, '--', ...right, '--', ...after].join('\n'),
     );
 
@@ -3300,8 +3301,9 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     ship();
     const back = ship();
     checks.expect(
-      `the bucket out of reach: the raw file still goes to the outbox, and one alert with rclone's first lines, control characters dropped (the run took ${took} s); back, it ships, then says it resumed`,
+      `the bucket out of reach, with a file 12 minutes old: the raw file still goes to the outbox, and one alert with rclone's first lines, control characters dropped (the run took ${took} s); back, it ships, then says it resumed`,
       alerts(unreachable).length === 1 &&
+        says(unreachable, 'the oldest WAL file waited 12 minutes') &&
         says(unreachable, 'the upload of 000000010000000000000004 to the bucket failed (rclone)') &&
         unreachable.some((line) => line.startsWith('wal-ship: | ')) &&
         held &&
@@ -3311,17 +3313,18 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
       [...unreachable, '--', ...back].join('\n'),
     );
 
-    // A segment of another cluster in the spool.
+    // A segment of another cluster in the spool, just archived.
     quiet();
-    segment('000000010000000000000005', '7000000000000000001', 11 * 60);
+    segment('000000010000000000000005', '7000000000000000001');
     const foreign = ship();
     checks.expect(
-      'a segment whose header names another cluster: nothing more ships, and one alert naming both',
+      'a segment whose header names another cluster: nothing more ships, and one alert at once, naming both',
       alerts(foreign).length === 1 &&
         says(
           foreign,
           `the WAL file 000000010000000000000005 names the cluster 7000000000000000001, not ${cluster}`,
         ) &&
+        !says(foreign, 'waited') &&
         !shipped('000000010000000000000005'),
       foreign.join('\n'),
     );
@@ -3331,18 +3334,19 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     // A kept identifier of another cluster, as after a recovery onto the old spool.
     quiet();
     inSpool("printf '7000000000000000001\\n' >/wal-spool/.ship/system-identifier");
-    segment('000000010000000000000006', cluster, 11 * 60);
+    segment('000000010000000000000006', cluster);
     const changed = ship();
     const keptThen = kept();
     inSpool('rm -f /wal-spool/000000010000000000000006');
     const taken = ship();
     checks.expect(
-      `a kept identifier of another cluster while a file waits: nothing ships, and one alert ("…${alerts(changed)[0]?.split('): ').slice(1).join('): ').slice(0, 70) ?? ''}…"); with nothing waiting the new identifier is taken, and the run says it resumed`,
+      `a kept identifier of another cluster while a file waits: nothing ships, and one alert at once ("…${alerts(changed)[0]?.split('): ').slice(1).join('): ').slice(0, 70) ?? ''}…"); with nothing waiting the new identifier is taken, and the run says it resumed`,
       alerts(changed).length === 1 &&
         says(
           changed,
           `db's system identifier is now ${cluster}, not the 7000000000000000001 kept, and 1 WAL files wait`,
         ) &&
+        !says(changed, 'waited') &&
         keptThen === '7000000000000000001' &&
         !shipped('000000010000000000000006') &&
         kept() === cluster &&

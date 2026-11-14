@@ -29,13 +29,15 @@
 # their headers name. A WAL file db archives again after a crash, once its first copy had gone up,
 # goes up again under a name of its own: the same bytes inside, so a restore may take either.
 #
-# Health, each run: a WAL file waiting more than 10 minutes (in the spool or the outbox), db's
+# Health, each run: a WAL file waiting more than 10 minutes (in the spool or the outbox), or db's
 # archiver failing for 10 minutes (pg_stat_archiver: db's log keeps nothing of a WAL file that
-# waits), db not archiving at all, or a spool this user can't write sends one alert (notify.sh) at
-# most hourly, and one "resumed" line once it is over. While all is well, HEARTBEAT_WAL_URL is
-# pinged every 5 minutes with the cluster and the last WAL file sent, and the run prints nothing.
-# Its own lines, with an alert and its end, are all it prints, and the failing tool's first lines
-# with them; nothing printed holds a value.
+# waits), sends one alert (notify.sh) at most hourly, and one "resumed" line once it is over. What
+# no wait mends alerts at once, as often: db not archiving at all, a spool this user can't write,
+# a changed identifier while files wait or a segment of another cluster, a signing key that is not
+# the public key's pair, a setting missing. While all is well, HEARTBEAT_WAL_URL is pinged every 5
+# minutes with the cluster and the last WAL file sent, and the run prints nothing. Its own lines,
+# with an alert and its end, are all it prints, and the failing tool's first lines with them;
+# nothing printed holds a value.
 set -eu -o pipefail
 
 spool=/wal-spool
@@ -51,8 +53,15 @@ started=$(date -u +%s)
 # What stopped this run's shipping, in a few words, and the file with what the tool said.
 problem=
 detail=
+# Set when what stopped it is nothing a wait mends, which alerts at once.
+urgent=
 # One more reason for the record, after any already there.
 stopped() { problem="${problem:+$problem; }$1"; }
+# The same, for what only the owner can mend.
+halted() {
+  stopped "$1"
+  urgent=yes
+}
 
 work=
 finish() {
@@ -102,7 +111,7 @@ late() { [ $(($(date -u +%s) - started)) -ge 240 ]; }
 
 for name in PGHOST PGUSER PGPASSWORD BACKUP_AGE_RECIPIENT BACKUP_BUCKET RCLONE_CONFIG_BACKUPS_TYPE BACKUP_SIGNING_KEY BACKUP_SIGNING_PUBLIC_KEY; do
   eval "set -- \"\${$name-}\""
-  [ -n "$1" ] || { stopped "$name is not set"; break; }
+  [ -n "$1" ] || { halted "$name is not set"; break; }
 done
 # The signing helpers, which also keep BACKUP_SIGNING_KEY from every program this script runs.
 # shellcheck source=/dev/null
@@ -112,12 +121,10 @@ done
 # the spool is not this user's to write (db makes it postgres's as it starts), the container's
 # /tmp keeps it instead, and nothing ships.
 book=$state
-broken=
 if ! mkdir -p "$out" 2>/dev/null || [ ! -w "$state" ] || [ ! -w "$spool" ]; then
   book=$spare
   mkdir -p "$book"
-  broken=yes
-  stopped "the WAL spool, /wal-spool, is not db's postgres's to write: db makes it so as it starts"
+  halted "the WAL spool, /wal-spool, is not db's postgres's to write: db makes it so as it starts"
 fi
 exec 9>>"$book/lock"
 # A run still going (a long backlog) keeps the spool to itself; this minute's run leaves it.
@@ -172,9 +179,9 @@ if [ -z "$problem" ]; then
   elif [ "$id" = "$current" ]; then
     :
   elif [ -z "$id" ] && [ -n "$(outbox | sed -n 1p)" ]; then
-    stopped 'the outbox holds WAL files, but no system identifier is kept with them: nothing ships (docs/RUNBOOK.md)'
+    halted 'the outbox holds WAL files, but no system identifier is kept with them: nothing ships (docs/RUNBOOK.md)'
   elif [ -n "$id" ] && [ "$waiting" -gt 0 ]; then
-    stopped "db's system identifier is now $current, not the $id kept, and $waiting WAL files wait: nothing ships, so two clusters' WAL never mix (docs/RUNBOOK.md: after a recovery, wal-spool is made new)"
+    halted "db's system identifier is now $current, not the $id kept, and $waiting WAL files wait: nothing ships, so two clusters' WAL never mix (docs/RUNBOOK.md: after a recovery, wal-spool is made new)"
   else
     printf '%s\n' "$current" >"$state/system-identifier.new"
     fsync "$state/system-identifier.new"
@@ -197,7 +204,7 @@ if [ -z "$problem" ]; then
         # XLogLongPageHeaderData: the system identifier, 8 bytes at offset 24 of the first page.
         sysid=$(od -An -tu8 -j24 -N8 "$src" 2>/dev/null | tr -d ' \n' || true)
         if [ "$sysid" != "$id" ]; then
-          stopped "the WAL file $name names the cluster ${sysid:-(none)}, not $id: nothing more ships, so two clusters' WAL never mix (docs/RUNBOOK.md)"
+          halted "the WAL file $name names the cluster ${sysid:-(none)}, not $id: nothing more ships, so two clusters' WAL never mix (docs/RUNBOOK.md)"
           break
         fi
         ;;
@@ -227,7 +234,7 @@ fi
 # public key the restores check. rclone looks up the one name it writes (--no-traverse) and gives
 # up within minutes; the next minute's run tries again.
 if [ -z "$problem" ] && [ -n "$(outbox | sed -n 1p)" ] && ! seal_self_check 2>"$work/tool"; then
-  stopped "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks: nothing was uploaded"
+  halted "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks: nothing was uploaded"
   detail=$work/tool
 fi
 if [ -z "$problem" ]; then
@@ -281,9 +288,9 @@ elif [ -n "$current" ]; then
   rm -f "$book/archiver-failing"
 fi
 
-# A spool this user can't write, or a db that archives nothing, alerts at once.
+# What no wait mends, and a db that archives nothing, alert at once.
 cluster=${id:-(unknown)}
-if [ -n "$behind" ] || [ -n "$stuck" ] || [ -n "$broken" ] || [ -n "$idle" ]; then
+if [ -n "$behind" ] || [ -n "$stuck" ] || [ -n "$idle" ] || [ -n "$urgent" ]; then
   last=$(kept "$book/alert-sent")
   if [ -z "$last" ] || [ $((now - last)) -ge 3600 ]; then
     reasons=
