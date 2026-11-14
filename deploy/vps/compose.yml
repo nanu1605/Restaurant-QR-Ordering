@@ -94,8 +94,10 @@ services:
     <<: *steady
     image: supabase/postgres:17.6.1.136@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00
     # The entrypoint fixes the data directory's owner and drops to postgres, as the server's own
-    # Postgres does.
+    # Postgres does. wal-spool.sh first makes the WAL spool postgres's own, then runs the image's
+    # entrypoint with the command below (VPS-43).
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    entrypoint: ['/bin/sh', '/opt/menumesh/wal-spool.sh']
     # Upstream's settings file, then the contract's sizes. The log keeps errors only, each on one
     # line with no DETAIL (which can quote a value such as a QR token) and no statement text; the
     # rehearsal counts its lines an hour, and upstream's fatal is the fallback if Realtime's
@@ -103,10 +105,17 @@ services:
     # (log_statement = 'ddl'), which LOG passes at log_min_messages=error: one migrate run of the
     # 80 files wrote 38,293 lines, function bodies and all. And auto_explain, which the image
     # loads, logs the plan of every statement over 10 s with its text and literal values.
+    #
+    # WAL archiving (VPS-43): each finished WAL file is copied into /wal-spool by basic_archive
+    # (synced, then renamed), at least once a minute while anything is written, and the backup
+    # service ships it to the bucket. The host rules are the image's own file with one line more,
+    # for the backup's pg_basebackup (config/SOURCES.md).
     command:
       - postgres
       - -c
       - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - hba_file=/etc/postgresql-menumesh/pg_hba.conf
       - -c
       - shared_buffers=480MB
       - -c
@@ -127,6 +136,14 @@ services:
       - log_statement=none
       - -c
       - auto_explain.log_min_duration=-1
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_library=basic_archive
+      - -c
+      - basic_archive.archive_directory=/wal-spool
+      - -c
+      - archive_timeout=60
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: '5432'
@@ -146,8 +163,12 @@ services:
       - ./config/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
       - ./config/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
       - ./config/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./config/db/wal-spool.sh:/opt/menumesh/wal-spool.sh:ro
+      - ./config/db/pg_hba.conf:/etc/postgresql-menumesh/pg_hba.conf:ro
       - db-data:/var/lib/postgresql/data
       - db-config:/etc/postgresql-custom
+      # Shared with the backup service alone.
+      - wal-spool:/wal-spool
     networks: [data]
     shm_size: 256m
     stop_signal: SIGINT
@@ -475,12 +496,15 @@ services:
 
   # Nightly backups (VPS-40): the image's crond runs backup.sh at 20:30 UTC (02:00 IST). Each part
   # is age-encrypted to the owner's key and streamed to the bucket; nothing decrypted is written.
+  # Every minute it also runs wal-ship.sh, which moves db's archived WAL from the spool to the
+  # bucket, encrypted the same way and signed (VPS-43).
   backup:
     <<: *steady
     image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
     pull_policy: never
     # crond changes identity for every job, even root's. Root without other capabilities reads
-    # only what root owns or everyone may read, as the settings archives are.
+    # only what root owns or everyone may read, as the settings archives are. wal-ship.sh runs as
+    # db's postgres (uid 100, gid 101), who owns the WAL spool.
     cap_add: [SETUID, SETGID]
     # As process 1, crond ignores the stop signal (the image's SIGINT) too: init passes it on.
     init: true
@@ -499,14 +523,22 @@ services:
       RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
       RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
       RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
-      # Pinged after every full success; empty values send nothing.
+      # The signing pair: the private key is this service's alone; the restores get the public
+      # key only.
+      BACKUP_SIGNING_KEY: ${BACKUP_SIGNING_KEY:?}
+      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}
+      # Pinged after every full success, and every 5 minutes while the WAL ships; empty values
+      # send nothing.
       HEARTBEAT_URL: ${HEARTBEAT_BACKUP_URL:-}
+      HEARTBEAT_WAL_URL: ${HEARTBEAT_WAL_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
       # The host's encrypted settings archives (app-apply creates the directory).
       - ./backup-out:/config-out:ro
       - storage-data:/storage:ro
+      # db's archived WAL, shared with db alone: writable, since the shipper removes what it sent.
+      - wal-spool:/wal-spool
     networks: [default, data]
     depends_on:
       db: { condition: service_healthy }
@@ -629,6 +661,8 @@ services:
       RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
       RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
       AGE_IDENTITY_FILE: /run/age/identity.txt
+      # What a night's seal must be signed by (VPS-43).
+      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}
       # A night's id, as the backup's journal line prints it; empty: the newest night of daily/
       # younger than 29 days.
       RESTORE_STAMP: ${RESTORE_STAMP:-}
@@ -691,6 +725,8 @@ services:
       RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
       RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
       AGE_IDENTITY_FILE: /run/age/identity.txt
+      # What a night's seal must be signed by (VPS-43).
+      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}
       # The night to recover, as the backup's own records print its id (docs/RUNBOOK.md, Disaster
       # recovery): restore.sh --into refuses to run without it.
       RESTORE_STAMP: ${RESTORE_STAMP:-}
@@ -728,6 +764,7 @@ volumes:
   db-data: {}
   db-config: {}
   storage-data: {}
+  wal-spool: {}
   web-static: {}
   web-cache: {}
   web-staging-static: {}

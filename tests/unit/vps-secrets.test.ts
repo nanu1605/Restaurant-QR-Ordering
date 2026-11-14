@@ -5,6 +5,7 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
+  sign,
   verify,
 } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -20,6 +21,7 @@ import {
   bech32Decode,
   bech32Encode,
   checkFiles,
+  checkSigningKeys,
   checkSupabaseKeys,
   FILES,
   generate,
@@ -28,6 +30,9 @@ import {
   PUBLISHABLE_PREFIX,
   render,
   SECRET_PREFIX,
+  signingKeyPair,
+  signingPrivateKey,
+  signingPublicKey,
   supabaseKeys,
   templateNames,
   type Values,
@@ -254,6 +259,105 @@ describe('the age key of the rehearsal', () => {
   });
 });
 
+describe('the backup’s signing pair', () => {
+  const pair = signingKeyPair();
+  const other = signingKeyPair();
+  const ok: Values = {
+    BACKUP_SIGNING_KEY: pair.privateKey,
+    BACKUP_SIGNING_PUBLIC_KEY: pair.publicKey,
+  };
+
+  it('is an Ed25519 key, base64 PKCS #8 DER, and its own public key, base64 SPKI DER', () => {
+    // The fixed DER headers in base64: what seal.sh checks before it hands a key to openssl.
+    expect(pair.privateKey).toMatch(/^MC4CAQAwBQYDK2VwBCIEI[A-Za-z0-9+/]{43}$/);
+    expect(pair.publicKey).toMatch(/^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/);
+    const secret = createPrivateKey({
+      key: Buffer.from(pair.privateKey, 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    expect(secret.asymmetricKeyType).toBe('ed25519');
+    expect(createPublicKey(secret).export({ format: 'der', type: 'spki' }).toString('base64')).toBe(
+      pair.publicKey,
+    );
+    const message = Buffer.from(`menumesh wal 1 1 000000010000000000000001 ${'0'.repeat(64)}\n`);
+    expect(
+      verify(null, message, signingPublicKey(pair.publicKey)!, sign(null, message, secret)),
+    ).toBe(true);
+    expect(signingPrivateKey(pair.privateKey)?.asymmetricKeyType).toBe('ed25519');
+    expect(other.privateKey).not.toBe(pair.privateKey);
+    // Another curve's keys in the same shapes are refused.
+    const x = generateKeyPairSync('x25519');
+    expect(
+      signingPrivateKey(x.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64')),
+    ).toBeNull();
+    expect(
+      signingPublicKey(x.publicKey.export({ format: 'der', type: 'spki' }).toString('base64')),
+    ).toBeNull();
+  });
+
+  it('is checked by name only: the pair, and the private key’s own public key first', () => {
+    expect(checkSigningKeys(ok)).toEqual([]);
+    // After a rotation the old public key stays, after the new one.
+    expect(
+      checkSigningKeys({
+        ...ok,
+        BACKUP_SIGNING_PUBLIC_KEY: `${pair.publicKey} ${other.publicKey}`,
+      }),
+    ).toEqual([]);
+    const cases: [Values, string][] = [
+      [{ ...ok, BACKUP_SIGNING_KEY: '' }, 'BACKUP_SIGNING_KEY is empty'],
+      [{ ...ok, BACKUP_SIGNING_PUBLIC_KEY: '' }, 'BACKUP_SIGNING_PUBLIC_KEY is empty'],
+      [
+        { ...ok, BACKUP_SIGNING_PUBLIC_KEY: other.publicKey },
+        "BACKUP_SIGNING_PUBLIC_KEY's first key is not BACKUP_SIGNING_KEY's public key",
+      ],
+      [
+        { ...ok, BACKUP_SIGNING_PUBLIC_KEY: `${other.publicKey} ${pair.publicKey}` },
+        "first key is not BACKUP_SIGNING_KEY's",
+      ],
+      [
+        { ...ok, BACKUP_SIGNING_PUBLIC_KEY: `${pair.publicKey}  ${other.publicKey}` },
+        'separated by single spaces',
+      ],
+      [
+        { ...ok, BACKUP_SIGNING_PUBLIC_KEY: `${pair.publicKey} ${pair.publicKey}` },
+        'names a key twice',
+      ],
+      [{ ...ok, BACKUP_SIGNING_KEY: pair.publicKey }, 'not an Ed25519 private key'],
+      [
+        { ...ok, BACKUP_SIGNING_KEY: `${pair.privateKey.slice(0, -1)}!` },
+        'not an Ed25519 private key',
+      ],
+      [{ ...ok, BACKUP_SIGNING_PUBLIC_KEY: pair.privateKey }, 'must be Ed25519 public keys'],
+    ];
+    for (const [values, expected] of cases) {
+      const found = checkSigningKeys(values).join('\n');
+      expect(found, expected).toContain(expected);
+      for (const text of [pair.privateKey, pair.publicKey, other.publicKey]) {
+        expect(found).not.toContain(text);
+      }
+    }
+  });
+
+  it('is made for the server and the rehearsal alike, and checked with the other files', () => {
+    for (const mode of ['production', 'rehearsal'] as const) {
+      const { values } = generate(mode);
+      expect(checkSigningKeys(values[0]), mode).toEqual([]);
+      expect(values[1].BACKUP_SIGNING_KEY, mode).toBeUndefined();
+      expect(values[2].BACKUP_SIGNING_KEY, mode).toBeUndefined();
+    }
+    const { values } = generate('rehearsal');
+    const swapped = [
+      { ...values[0], BACKUP_SIGNING_PUBLIC_KEY: other.publicKey },
+      ...values.slice(1),
+    ];
+    expect(checkFiles(swapped, 'rehearsal')[0].join('\n')).toContain(
+      "BACKUP_SIGNING_PUBLIC_KEY's first key is not BACKUP_SIGNING_KEY's public key",
+    );
+  });
+});
+
 describe('the env files', () => {
   const templates = FILES.map((spec) =>
     readFileSync(join('deploy/vps/env', spec.template), 'utf8'),
@@ -390,8 +494,16 @@ describe('pnpm vps:secrets', () => {
     const checked = await cli('--check', out);
     expect(checked.code).toBe(1);
     expect(checked.output).toContain('.env: STAGING_DB_PASSWORD is still to fill in');
+    // The signing pair's public half is printed once, for the owner to keep with the age key; the
+    // check prints neither half, and no other value is printed at all.
+    const { BACKUP_SIGNING_PUBLIC_KEY: publicKey } = parseEnv(
+      readFileSync(join(out, '.env'), 'utf8'),
+    ) as Values;
+    expect(written.output).toContain(`\n  BACKUP_SIGNING_PUBLIC_KEY=${publicKey}\n`);
+    expect(written.output).toContain('Keep its public half with the age key, offline');
+    expect(checked.output).not.toContain(publicKey);
     for (const secret of secretsIn(out).filter((value) => value.length >= 8)) {
-      expect(written.output + checked.output).not.toContain(secret);
+      if (secret !== publicKey) expect(written.output + checked.output).not.toContain(secret);
     }
   });
 

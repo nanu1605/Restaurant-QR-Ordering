@@ -38,3 +38,20 @@ newer release can be taken by repeating the marked changes on its files.
 | `envoy/cds.yaml`          | `docker/volumes/api/envoy/cds.yaml`             | `9f2df9e1355cbeda3ecca809bffca9ed439bb18a66b82ca07caf97e27c34c291` |
 | `envoy/lds.template.yaml` | `docker/volumes/api/envoy/lds.template.yaml`    | `51496623f48fe6178634fdd71efa72ec88ee46692a963cf8ec137ff667d9c52a` |
 | `envoy/start.sh`          | `docker/volumes/api/envoy/docker-entrypoint.sh` | `8a0c9503764de32ba39e0d81e73629457b13ec42ef19897e30e4918c996d0508` |
+
+## From the database image
+
+`db/pg_hba.conf` is the host rules file of the database image `db` runs,
+`supabase/postgres:17.6.1.136` at the digest `compose.yml` pins
+(`sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00`), its
+`/etc/postgresql/pg_hba.conf` byte for byte, with one line added at the end:
+`host replication supabase_admin samenet scram-sha-256`, which lets the backup service's
+`pg_basebackup` in from the networks `db` is on, with the password (docs/DECISIONS.md VPS-43). The
+image's file has no `replication` line, and `all` in its database column never matches one. No
+comment marks the change, so the file without its last line is the image's, which a unit pin
+checks against the sha256 below, and `pnpm vps:rehearse` against the image itself. A newer image
+means a new copy of its file, with the line added again.
+
+| File here        | In the image                  | sha256 of the image's file                                         |
+| ---------------- | ----------------------------- | ------------------------------------------------------------------ |
+| `db/pg_hba.conf` | `/etc/postgresql/pg_hba.conf` | `a925911753f4975548eb4079177441c886aa22b6dd69f2b0cff98f779fb0b66a` |

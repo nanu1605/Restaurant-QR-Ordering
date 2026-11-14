@@ -304,6 +304,88 @@ const quietDatabase = (text: string) => {
   );
 };
 
+/**
+ * db archives every WAL file it finishes into /wal-spool (VPS-43): basic_archive, at least once a
+ * minute while anything is written (the owner's RPO), through host rules of its own, the image's
+ * file with the backup's replication line. wal-spool.sh, its entrypoint, makes the spool
+ * postgres's, then runs the image's entrypoint with db's command, which still starts with postgres.
+ */
+const ARCHIVE_FLAGS = [
+  'hba_file=/etc/postgresql-menumesh/pg_hba.conf',
+  'archive_mode=on',
+  'archive_library=basic_archive',
+  'basic_archive.archive_directory=/wal-spool',
+  'archive_timeout=60',
+];
+const walArchive = (text: string) => {
+  const db = services(text).get('db') ?? [];
+  const command = (key(db, 'command') ?? []).slice(1).map((line) => line.trim());
+  const volumes = (key(db, 'volumes') ?? []).map((line) => line.trim());
+  return [
+    ...ARCHIVE_FLAGS.filter((flag) => !command.includes(`- ${flag}`)).map(
+      (flag) => `db does not run with ${flag}`,
+    ),
+    ...(command[0] === '- postgres' ? [] : ['db’s command does not start with postgres']),
+    ...(value(db, 'entrypoint') === "['/bin/sh', '/opt/menumesh/wal-spool.sh']"
+      ? []
+      : ['db does not start through wal-spool.sh']),
+    ...[
+      '- ./config/db/wal-spool.sh:/opt/menumesh/wal-spool.sh:ro',
+      '- ./config/db/pg_hba.conf:/etc/postgresql-menumesh/pg_hba.conf:ro',
+    ]
+      .filter((mount) => !volumes.includes(mount))
+      .map((mount) => `db lacks the mount ${mount.slice(2)}`),
+  ];
+};
+
+/**
+ * The WAL spool is db's and the backup's alone, writable in both: db's archiver fills it and the
+ * shipper removes what it sent. No other service mounts it.
+ */
+const walSpoolMounts = (text: string) => {
+  const mounts = [...services(text)].flatMap(([name, service]) =>
+    (key(service, 'volumes') ?? [])
+      .map((line) => /^\s+- wal-spool:(\S+)$/.exec(line)?.[1])
+      .filter((target) => target !== undefined)
+      .map((target) => `${name} ${target}`),
+  );
+  return [
+    ...(mounts.join(', ') === 'db /wal-spool, backup /wal-spool'
+      ? []
+      : [
+          `wal-spool is mounted as ${mounts.join(', ') || 'nowhere'}: db and backup alone, at /wal-spool, writable`,
+        ]),
+    ...(text.slice(text.indexOf('\nvolumes:\n')).includes('\n  wal-spool: {}\n')
+      ? []
+      : ['no wal-spool volume']),
+  ];
+};
+
+/**
+ * The backup's signing key goes to the backup service alone; the restores get its public key,
+ * which they check every night and WAL file against, and the shipper its heartbeat (VPS-43).
+ */
+const signingEnv = (text: string) => {
+  const holds = (name: string, line: string) =>
+    (key(services(text).get(name) ?? [], 'environment') ?? []).some(
+      (found) => found.trim() === line,
+    );
+  const given = [...services(text)]
+    .filter(([, service]) => service.some((line) => line.includes('BACKUP_SIGNING_KEY')))
+    .map(([name]) => name);
+  return [
+    ...(given.join() === 'backup' && holds('backup', 'BACKUP_SIGNING_KEY: ${BACKUP_SIGNING_KEY:?}')
+      ? []
+      : [`BACKUP_SIGNING_KEY goes to ${given.join(', ') || 'no service'}, not to backup alone`]),
+    ...['backup', 'restore-test', 'recover']
+      .filter((name) => !holds(name, 'BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}'))
+      .map((name) => `${name} does not require BACKUP_SIGNING_PUBLIC_KEY`),
+    ...(holds('backup', 'HEARTBEAT_WAL_URL: ${HEARTBEAT_WAL_URL:-}')
+      ? []
+      : ['backup has no HEARTBEAT_WAL_URL']),
+  ];
+};
+
 describe('deploy/vps/compose.yml', () => {
   it('is project menumesh, with only the top-level keys app-apply allows', () => {
     expect(topLevel(compose)).toEqual([]);
@@ -564,6 +646,102 @@ describe('deploy/vps/compose.yml', () => {
       quietDatabase,
       swap(compose, 'auto_explain.log_min_duration=-1', 'auto_explain.log_min_duration=10s'),
       'db does not run with auto_explain.log_min_duration=-1',
+    );
+  });
+
+  it('archives db’s WAL into the spool every minute, through its own host rules', () => {
+    expect(walArchive(compose)).toEqual([]);
+    refuses(
+      walArchive,
+      swap(compose, '      - -c\n      - archive_mode=on\n', ''),
+      'db does not run with archive_mode=on',
+    );
+    refuses(
+      walArchive,
+      swap(compose, 'archive_timeout=60', 'archive_timeout=300'),
+      'db does not run with archive_timeout=60',
+    );
+    refuses(
+      walArchive,
+      swap(
+        compose,
+        '      - hba_file=/etc/postgresql-menumesh/pg_hba.conf',
+        '      - hba_file=/tmp/pg_hba.conf',
+      ),
+      'db does not run with hba_file',
+    );
+    refuses(
+      walArchive,
+      swap(compose, "    entrypoint: ['/bin/sh', '/opt/menumesh/wal-spool.sh']\n", ''),
+      'db does not start through wal-spool.sh',
+    );
+    refuses(
+      walArchive,
+      swap(
+        compose,
+        '/etc/postgresql-menumesh/pg_hba.conf:ro',
+        '/etc/postgresql-menumesh/pg_hba.conf',
+      ),
+      'db lacks the mount ./config/db/pg_hba.conf',
+    );
+    refuses(
+      walArchive,
+      swapIn(compose, 'db', '    command:\n      - postgres\n', '    command:\n'),
+      'db’s command does not start with postgres',
+    );
+  });
+
+  it('shares the WAL spool between db and backup alone', () => {
+    expect(walSpoolMounts(compose)).toEqual([]);
+    refuses(
+      walSpoolMounts,
+      swapIn(
+        compose,
+        'recover',
+        '      - storage-data:/storage\n',
+        '      - storage-data:/storage\n      - wal-spool:/wal-spool\n',
+      ),
+      'recover /wal-spool',
+    );
+    refuses(
+      walSpoolMounts,
+      swapIn(
+        compose,
+        'backup',
+        '      - wal-spool:/wal-spool\n',
+        '      - wal-spool:/wal-spool:ro\n',
+      ),
+      'backup /wal-spool:ro',
+    );
+    refuses(walSpoolMounts, swap(compose, '  wal-spool: {}\n', ''), 'no wal-spool volume');
+  });
+
+  it('gives the signing key to the backup alone, and its public key to the restores', () => {
+    expect(signingEnv(compose)).toEqual([]);
+    refuses(
+      signingEnv,
+      swapIn(
+        compose,
+        'restore-test',
+        '      AGE_IDENTITY_FILE: /run/age/identity.txt\n',
+        '      AGE_IDENTITY_FILE: /run/age/identity.txt\n      BACKUP_SIGNING_KEY: ${BACKUP_SIGNING_KEY:?}\n',
+      ),
+      'BACKUP_SIGNING_KEY goes to backup, restore-test',
+    );
+    refuses(
+      signingEnv,
+      swapIn(
+        compose,
+        'recover',
+        '      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}\n',
+        '',
+      ),
+      'recover does not require BACKUP_SIGNING_PUBLIC_KEY',
+    );
+    refuses(
+      signingEnv,
+      swap(compose, '      HEARTBEAT_WAL_URL: ${HEARTBEAT_WAL_URL:-}\n', ''),
+      'backup has no HEARTBEAT_WAL_URL',
     );
   });
 });
@@ -1299,7 +1477,7 @@ const migrationTransactions = (files: Record<string, string>) =>
 const backupSh = kit('backup/backup.sh');
 /** 02:00 IST nightly; a missing, stale (2 h) or empty (1 KiB) settings archive fails the night. */
 const backupRules = (dockerfile: string, script: string) => [
-  ...(dockerfile.includes("printf '30 20 * * * /usr/local/bin/backup.sh\\n' >/etc/crontabs/root")
+  ...(dockerfile.includes("printf '30 20 * * * /usr/local/bin/backup.sh\\n")
     ? []
     : ['the image’s crontab is not 30 20 * * *']),
   ...(script.includes('elif [ -n "$(find "$archive" -mmin +120)" ]; then')
@@ -1853,6 +2031,151 @@ const storageFirst = (script: string) => {
   ];
 };
 
+const walShipSh = kit('backup/wal-ship.sh');
+const sealSh = kit('backup/seal.sh');
+const walSpoolSh = kit('config/db/wal-spool.sh');
+
+/**
+ * The image runs wal-ship.sh every minute as db's postgres (uid 100, gid 101), who owns the spool,
+ * through gosu, which drops root's two capabilities with it; openssl signs; the signing helpers
+ * are a file the scripts source, not a command (VPS-43).
+ */
+const walShipImage = (dockerfile: string) => [
+  ...(dockerfile.includes(
+    "printf '30 20 * * * /usr/local/bin/backup.sh\\n* * * * * gosu 100:101 /usr/local/bin/wal-ship.sh\\n' >/etc/crontabs/root",
+  )
+    ? []
+    : ['the crontab does not run wal-ship.sh every minute as 100:101']),
+  ...(dockerfile.includes('RUN apk add --no-cache age curl openssl rclone tar')
+    ? []
+    : ['the image has no openssl']),
+  ...(dockerfile.includes(
+    'COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh /usr/local/bin/',
+  )
+    ? []
+    : ['wal-ship.sh is not a command of the image']),
+  ...(dockerfile.includes('COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/')
+    ? []
+    : ['seal.sh is not where the scripts source it']),
+];
+
+/**
+ * wal-ship.sh (VPS-43): one run at a time; only the names basic_archive writes, never globbed; a
+ * raw file goes only once its encrypted copy is synced and renamed into the outbox; each name
+ * signs the cluster, the WAL file and the ciphertext's sha256, under the cluster db names and each
+ * segment's header confirms; one upload by its exact name, which writes nothing when the same bytes
+ * are there, and nothing else in the bucket; the alert after 10 minutes, at most hourly; the
+ * heartbeat every 5 minutes, to HEARTBEAT_WAL_URL.
+ */
+const walShipper = (script: string) => {
+  const outboxed = script.indexOf('mv -f "$tmp" "$dest" && fsync "$out"');
+  const removed = script.indexOf('    rm -f "$src"\n  done');
+  const rclone = code(script).filter((line) => /(?:^|[\s;|&(!])rclone\s+[a-z]/.test(line));
+  return [
+    ...(script.includes('flock -n 9 || exit 0') ? [] : ['two runs can ship at once']),
+    ...(/^set -f$/m.test(script) ? [] : ['names from the spool can be globbed']),
+    ...(script.includes(
+      String.raw`WAL='([0-9A-F]{24}(\.partial|\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history)'`,
+    )
+      ? []
+      : ['the WAL names are not basic_archive’s']),
+    ...(outboxed >= 0 && removed > outboxed
+      ? []
+      : ['a raw WAL file goes before its outbox copy is safe']),
+    ...(script.includes(
+      `printf 'menumesh wal 1 %s %s %s\\n' "$id" "$walfile" "$sum" >"$work/message"`,
+    )
+      ? []
+      : ['the signed message is not "menumesh wal 1 <cluster> <walfile> <sha256>"']),
+    ...(script.includes('"backups:$BACKUP_BUCKET/wal/$id/$folder/$walfile.$signature.zst.age"')
+      ? []
+      : ['the object is not wal/<cluster>/<folder>/<walfile>.<signature>.zst.age']),
+    ...(rclone.length === 1 && rclone[0].includes('rclone copyto --checksum --no-traverse ')
+      ? []
+      : ['the shipper does more in the bucket than one copyto --checksum by name']),
+    ...(script.includes('from pg_control_system() c, pg_stat_archiver a')
+      ? []
+      : ['the cluster does not come from pg_control_system()']),
+    ...(script.includes('sysid=$(od -An -tu8 -j24 -N8 "$src"')
+      ? []
+      : ['a segment’s header is not checked against the cluster']),
+    ...(script.includes('[ $((now - since)) -le 600 ]') &&
+    script.includes('[ $((now - last)) -ge 3600 ]')
+      ? []
+      : ['the alert is not after 10 minutes, at most hourly']),
+    ...(script.includes('[ $((now - last)) -ge 290 ]') &&
+    script.includes('HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat')
+      ? []
+      : ['the heartbeat is not every 5 minutes to HEARTBEAT_WAL_URL']),
+  ];
+};
+
+/**
+ * seal.sh (VPS-43): the private key reaches openssl as PEM text on file descriptor 3, from a
+ * here-document (a pipe in BusyBox ash), never in an argument or a file, and leaves the
+ * environment of every program the sourcing script runs; a signature counts only in its one
+ * spelling; no tr set starts with "-", which tr would take for an option.
+ */
+const SEAL_KEY_USES = [
+  'if [ -n "${BACKUP_SIGNING_KEY+set}" ]; then',
+  'seal_key=$BACKUP_SIGNING_KEY',
+  'case ${BACKUP_SIGNING_KEY-} in',
+  'MC4CAQAwBQYDK2VwBCIEI*) [ "${#BACKUP_SIGNING_KEY}" -eq 64 ] ;;',
+  '$BACKUP_SIGNING_KEY',
+];
+const sealRules = (lib: string) => {
+  const uses = code(lib)
+    .map((line) => line.trim())
+    .filter((line) => /\$\{?#?BACKUP_SIGNING_KEY\b/.test(line));
+  const sets = [...lib.matchAll(/\btr (?:-d )?'([^']*)'(?: '([^']*)')?/g)].flatMap((match) =>
+    match.slice(1).filter((set) => set !== undefined),
+  );
+  return [
+    ...(lib.includes(
+      'openssl pkeyutl -sign -rawin -inkey /dev/fd/3 -in "$1" -out "$seal_sign_dir/signature" 3<<EOF; then\n-----BEGIN PRIVATE KEY-----\n$BACKUP_SIGNING_KEY\n-----END PRIVATE KEY-----\nEOF\n',
+    )
+      ? []
+      : ['the private key does not reach openssl on file descriptor 3']),
+    ...uses
+      .filter((line) => !SEAL_KEY_USES.includes(line))
+      .map((line) => `the private key is used in: ${line}`),
+    ...(lib.includes('  unset BACKUP_SIGNING_KEY\n  BACKUP_SIGNING_KEY=$seal_key\n') &&
+    !/\bexport\b/.test(code(lib).join('\n'))
+      ? []
+      : ['the private key stays in the environment of the programs the script runs']),
+    ...(lib.includes('openssl pkeyutl -verify -rawin -pubin -inkey /dev/fd/3 -in "$2"')
+      ? []
+      : ['a public key does not reach openssl on file descriptor 3']),
+    ...(lib.includes('[ "$(seal_b64url <"$seal_check_dir/signature")" = "$1" ]')
+      ? []
+      : ['a signature counts in more than its one spelling']),
+    ...(sets.length >= 4 && sets.every((set) => !set.startsWith('-'))
+      ? []
+      : [`a tr set starts with "-": ${sets.join(' ')}`]),
+  ];
+};
+
+/**
+ * wal-spool.sh, db's entrypoint (VPS-43): as root, it stops when the volume is not mounted, makes
+ * /wal-spool postgres's and 0700 (Docker makes a volume root's and 0755), and ends in the image's
+ * own entrypoint with db's command, which fixes the data directory's owner and drops to postgres
+ * as before.
+ */
+const walSpoolWrapper = (script: string) => {
+  const lines = code(script).map((line) => line.trim());
+  return [
+    ...(lines.includes('spool=/wal-spool') && lines.includes('if [ ! -d "$spool" ]; then')
+      ? []
+      : ['a missing wal-spool mount is not refused']),
+    ...(lines.includes('chown postgres:postgres "$spool"') && lines.includes('chmod 0700 "$spool"')
+      ? []
+      : ['the spool is not postgres’s and 0700']),
+    ...(lines.at(-1) === 'exec docker-entrypoint.sh "$@"'
+      ? []
+      : ['it does not end in the image’s entrypoint with db’s command']),
+  ];
+};
+
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
   const ignore = kit('migrate/Dockerfile.dockerignore');
@@ -1924,6 +2247,140 @@ describe('the migrate and backup images', () => {
       (text) => backupRules(backupImage, text),
       swap(backupSh, '-le 1024 ]; then', '-le 0 ]; then'),
       'no size check',
+    );
+  });
+
+  it('ships the WAL every minute as db’s postgres, with openssl and the signing helpers', () => {
+    const backupImage = kit('backup/Dockerfile');
+    expect(walShipImage(backupImage)).toEqual([]);
+    refuses(
+      walShipImage,
+      swap(
+        backupImage,
+        '* * * * * gosu 100:101 /usr/local/bin/wal-ship.sh',
+        '* * * * * /usr/local/bin/wal-ship.sh',
+      ),
+      'every minute as 100:101',
+    );
+    refuses(
+      walShipImage,
+      swap(backupImage, 'age curl openssl rclone tar', 'age curl rclone tar'),
+      'no openssl',
+    );
+    refuses(
+      walShipImage,
+      swap(
+        backupImage,
+        'counts.sql seal.sh /usr/local/share/menumesh/',
+        'counts.sql /usr/local/share/menumesh/',
+      ),
+      'seal.sh is not where',
+    );
+  });
+
+  it('ships each WAL file encrypted, signed and named by its cluster, and alerts when one waits', () => {
+    expect(walShipper(walShipSh)).toEqual([]);
+    refuses(walShipper, swap(walShipSh, 'flock -n 9 || exit 0', 'flock 9'), 'two runs');
+    refuses(walShipper, swap(walShipSh, '\nset -f\n', '\n'), 'globbed');
+    refuses(
+      walShipper,
+      swap(walShipSh, '    rm -f "$src"\n  done', '  done'),
+      'a raw WAL file goes before',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, `'menumesh wal 1 %s %s %s\\n' "$id"`, `'menumesh wal 1 %s %s\\n' "$id"`),
+      'the signed message',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, 'wal/$id/$folder/$walfile.$signature', 'wal/$folder/$walfile.$signature'),
+      'the object is not',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, 'rclone copyto --checksum --no-traverse', 'rclone copyto --no-check-dest'),
+      'one copyto --checksum by name',
+    );
+    refuses(
+      walShipper,
+      swap(
+        walShipSh,
+        '    rm -f "$out/$file"\n',
+        '    rm -f "$out/$file"\n    rclone delete "backups:$BACKUP_BUCKET/wal/"\n',
+      ),
+      'one copyto --checksum by name',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, 'sysid=$(od -An -tu8 -j24 -N8 "$src"', 'sysid=$id; : $(od -An'),
+      'header is not checked',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, '[ $((now - last)) -ge 3600 ]', '[ $((now - last)) -ge 60 ]'),
+      'at most hourly',
+    );
+    refuses(
+      walShipper,
+      swap(walShipSh, 'HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat', 'notify.sh beat'),
+      'HEARTBEAT_WAL_URL',
+    );
+  });
+
+  it('hands the signing key to openssl on a file descriptor, and takes one spelling of a signature', () => {
+    expect(sealRules(sealSh)).toEqual([]);
+    refuses(
+      sealRules,
+      swap(
+        sealSh,
+        '-sign -rawin -inkey /dev/fd/3 -in "$1"',
+        '-sign -rawin -inkey "$BACKUP_SIGNING_KEY" -in "$1"',
+      ),
+      'on file descriptor 3',
+    );
+    refuses(
+      sealRules,
+      swap(
+        sealSh,
+        '  seal_sign_dir=$(mktemp',
+        `  printf '%s' "$BACKUP_SIGNING_KEY" >/tmp/key\n  seal_sign_dir=$(mktemp`,
+      ),
+      'the private key is used in: printf',
+    );
+    refuses(
+      sealRules,
+      swap(sealSh, '  unset BACKUP_SIGNING_KEY\n', '  export BACKUP_SIGNING_KEY\n'),
+      'stays in the environment',
+    );
+    refuses(
+      sealRules,
+      swap(
+        sealSh,
+        '    [ "$(seal_b64url <"$seal_check_dir/signature")" = "$1" ]; then',
+        '    :; then',
+      ),
+      'more than its one spelling',
+    );
+    refuses(sealRules, swap(sealSh, "tr '/+' '_-'", "tr '+/' '-_'"), 'a tr set starts with "-"');
+  });
+
+  it('gives db’s postgres the WAL spool, then runs the image’s entrypoint with db’s command', () => {
+    expect(walSpoolWrapper(walSpoolSh)).toEqual([]);
+    refuses(
+      walSpoolWrapper,
+      swap(walSpoolSh, 'chmod 0700 "$spool"', 'chmod 0755 "$spool"'),
+      'postgres’s and 0700',
+    );
+    refuses(
+      walSpoolWrapper,
+      swap(walSpoolSh, 'exec docker-entrypoint.sh "$@"', 'exec docker-entrypoint.sh postgres'),
+      'the image’s entrypoint',
+    );
+    refuses(
+      walSpoolWrapper,
+      swap(walSpoolSh, 'if [ ! -d "$spool" ]; then', 'if false; then'),
+      'missing wal-spool mount',
     );
   });
 
@@ -2772,6 +3229,28 @@ describe('the VPS workflows', () => {
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
 
 /** What differs from a list of `<sha256>  <file>` lines: a changed, missing or unlisted file. */
+/**
+ * config/db/pg_hba.conf is the image's /etc/postgresql/pg_hba.conf byte for byte, the sha256
+ * SOURCES.md lists for it, with one line added at the end: the backup's replication connection
+ * (VPS-43). The rehearsal compares it with the image's own file too.
+ */
+const REPLICATION_LINE = 'host replication supabase_admin samenet scram-sha-256';
+const hbaPin = (file: Buffer, sources: string) => {
+  const listed =
+    /^\| `db\/pg_hba\.conf` +\| `\/etc\/postgresql\/pg_hba\.conf` +\| `([0-9a-f]{64})` \|$/m.exec(
+      sources,
+    )?.[1];
+  const ending = Buffer.from(`\n${REPLICATION_LINE}\n`);
+  const upstream = file.subarray(0, file.length - ending.length + 1);
+  const ends = file.length > ending.length && file.subarray(-ending.length).equals(ending);
+  return [
+    ...(ends ? [] : [`the last line is not "${REPLICATION_LINE}"`]),
+    ...(ends && listed !== undefined && sha256(upstream) === listed
+      ? []
+      : ['without its last line the file is not the image’s, as SOURCES.md lists it']),
+  ];
+};
+
 const unlike = (sums: [string, string][], files: Record<string, Buffer>) => [
   ...sums
     .filter(([sum, name]) => !files[name] || sha256(files[name]) !== sum)
@@ -2815,6 +3294,21 @@ describe('copies kept byte for byte', () => {
     expect(unlike(sums, { ...files, 'db/jwt.sql': Buffer.from('-- changed\n') })).toEqual([
       'db/jwt.sql changed',
     ]);
+  });
+
+  it('keeps db’s host rules as the image’s file and the one line, as SOURCES.md lists it', () => {
+    const hba = readFileSync(join(KIT, 'config', 'db', 'pg_hba.conf'));
+    const sources = kit('config/SOURCES.md');
+    expect(hbaPin(hba, sources)).toEqual([]);
+    const text = hba.toString('utf8');
+    const bad = (changed: string) => hbaPin(Buffer.from(changed), sources).join('\n');
+    expect(bad(swap(text, '# IPv6 external connections', '# IPv6 connections'))).toContain(
+      'not the image’s',
+    );
+    expect(bad(`${text}host all all all trust\n`)).toContain('the last line is not');
+    expect(bad(text.replace(REPLICATION_LINE, 'host replication all all trust'))).toContain(
+      'the last line is not',
+    );
   });
 });
 

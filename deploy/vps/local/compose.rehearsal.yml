@@ -64,6 +64,8 @@ services:
       - -c
       - config_file=/etc/postgresql/postgresql.conf
       - -c
+      - hba_file=/etc/postgresql-menumesh/pg_hba.conf
+      - -c
       - shared_buffers=128MB
       - -c
       - max_connections=100
@@ -83,6 +85,14 @@ services:
       - log_statement=none
       - -c
       - auto_explain.log_min_duration=-1
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_library=basic_archive
+      - -c
+      - basic_archive.archive_directory=/wal-spool
+      - -c
+      - archive_timeout=60
 
   # The browser's and this machine's address for Supabase (SUPABASE_PUBLIC_URL).
   api-gw:

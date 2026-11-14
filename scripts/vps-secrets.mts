@@ -2,9 +2,11 @@
  * Writes the shared server's secrets (docs/DECISIONS.md VPS-36): the .env that deploy/vps/compose.yml
  * reads and the two app settings files, made from the templates in deploy/vps/env/. Every value the
  * stack makes for itself is generated here, in the formats of self-hosted Supabase's own key scripts
- * (v0.8.4, docker/utils/generate-keys.sh and add-new-auth-keys.sh), with Node's crypto only. The
- * owner's values from other accounts stay empty under a "# FILL IN" line. Files are 0600, values are
- * never printed, and existing files are kept unless --force.
+ * (v0.8.4, docker/utils/generate-keys.sh and add-new-auth-keys.sh), with Node's crypto only, and so
+ * is the backup's Ed25519 signing pair (VPS-43). The owner's values from other accounts stay empty
+ * under a "# FILL IN" line. Files are 0600, and existing files are kept unless --force. No value is
+ * ever printed but the signing pair's public half, on the server's run, which the owner keeps with
+ * the age key.
  *
  *   pnpm vps:secrets --out <dir>                         the server's .env, env/web.env and
  *                                                        env/web-staging.env
@@ -197,6 +199,80 @@ export function bech32Decode(text: string): { prefix: string; bytes: Buffer } | 
   return { prefix, bytes: Buffer.from(bytes) };
 }
 
+/**
+ * The backup's signing pair (docs/DECISIONS.md VPS-43): an Ed25519 private key as base64 PKCS #8
+ * DER (64 characters), which only the backup service gets, and its public key as base64 SPKI DER
+ * (60 characters), which the restores check every night's seal and every WAL file's name against.
+ * Base64 of DER, so the backup image's openssl takes each as PEM text without a file, and a value
+ * stays one line of an env file.
+ */
+export function signingKeyPair() {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  return {
+    privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+    publicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+  };
+}
+
+/** An Ed25519 private key from base64 PKCS #8 DER; null when the text is not one. */
+export function signingPrivateKey(text: string): KeyObject | null {
+  if (!/^[A-Za-z0-9+/]{64}$/.test(text)) return null;
+  try {
+    const key = createPrivateKey({
+      key: Buffer.from(text, 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    return key.asymmetricKeyType === 'ed25519' ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An Ed25519 public key from base64 SPKI DER; null when the text is not one. */
+export function signingPublicKey(text: string): KeyObject | null {
+  if (!/^[A-Za-z0-9+/]{59}=$/.test(text)) return null;
+  try {
+    const key = createPublicKey({ key: Buffer.from(text, 'base64'), format: 'der', type: 'spki' });
+    return key.asymmetricKeyType === 'ed25519' ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Problems with the signing pair, by name only: the private key, then the public keys, one or
+ * more separated by single spaces (the old ones stay after a rotation, so a restore still reads
+ * the nights they signed), the first of them the private key's own, which the backup checks a
+ * probe against.
+ */
+export function checkSigningKeys(values: Values): string[] {
+  const problems: string[] = [];
+  const secret = values.BACKUP_SIGNING_KEY ?? '';
+  const publics = values.BACKUP_SIGNING_PUBLIC_KEY ?? '';
+  const privateKey = secret ? signingPrivateKey(secret) : null;
+  if (!secret) problems.push('BACKUP_SIGNING_KEY is empty');
+  else if (!privateKey) {
+    problems.push('BACKUP_SIGNING_KEY is not an Ed25519 private key (base64 PKCS #8 DER)');
+  }
+  const keys = publics.split(' ');
+  if (!publics) problems.push('BACKUP_SIGNING_PUBLIC_KEY is empty');
+  else if (!keys.every((key) => signingPublicKey(key) !== null)) {
+    problems.push(
+      'BACKUP_SIGNING_PUBLIC_KEY must be Ed25519 public keys (base64 SPKI DER), separated by single spaces',
+    );
+  } else if (new Set(keys).size !== keys.length) {
+    problems.push('BACKUP_SIGNING_PUBLIC_KEY names a key twice');
+  } else if (privateKey) {
+    const probe = Buffer.from(`menumesh vps:secrets ${randomUUID()}\n`);
+    const signature = sign(null, probe, privateKey);
+    if (!verify(null, probe, signingPublicKey(keys[0])!, signature)) {
+      problems.push("BACKUP_SIGNING_PUBLIC_KEY's first key is not BACKUP_SIGNING_KEY's public key");
+    }
+  }
+  return problems;
+}
+
 /** An age X25519 key pair: the recipient (age1...) and an identity file, as age-keygen writes. */
 export function ageKeyPair(now = new Date()) {
   const { privateKey, publicKey } = generateKeyPairSync('x25519');
@@ -248,6 +324,7 @@ export const FILES: FileSpec[] = [
       'STAGING_HEARTBEAT_DIGEST_URL',
       'STAGING_HEARTBEAT_JOBS_URL',
       'HEARTBEAT_BACKUP_URL',
+      'HEARTBEAT_WAL_URL',
       'TELEGRAM_BOT_TOKEN',
       'TELEGRAM_CHAT_ID',
       // Named on the one run that needs it, never kept in the file.
@@ -324,6 +401,7 @@ export const AGE_IDENTITY = 'age/identity.txt';
 export function generate(mode: Mode, now = new Date()) {
   const { values: keys, expires } = supabaseKeys(now.getTime());
   const urls = mode === 'production' ? PRODUCTION : REHEARSAL;
+  const signing = signingKeyPair();
   const project: Values = {
     ...keys,
     SITE_URL: urls.siteUrl,
@@ -331,6 +409,8 @@ export function generate(mode: Mode, now = new Date()) {
     // Production's and staging's each their own.
     CRON_SECRET: base64url(32),
     STAGING_CRON_SECRET: base64url(32),
+    BACKUP_SIGNING_KEY: signing.privateKey,
+    BACKUP_SIGNING_PUBLIC_KEY: signing.publicKey,
   };
   // A rehearsal's staff logins use the domain the end-to-end tests expect.
   const web: Values = {
@@ -605,6 +685,7 @@ export function checkFiles([project, web, staging]: Values[], mode: Mode): strin
   if (project.BACKUP_AGE_RECIPIENT && !isAgeRecipient(project.BACKUP_AGE_RECIPIENT)) {
     own.push('BACKUP_AGE_RECIPIENT is not an age public key (age1...)');
   }
+  own.push(...checkSigningKeys(project));
   const lists = [own, forWeb, forStaging];
   [project, web, staging].forEach((values, index) => {
     if (mode === 'rehearsal' && index > 0) return;
@@ -715,6 +796,13 @@ function write(mode: Mode, out: string, force: boolean) {
       "  SUPABASE_PUBLISHABLE_KEY is also the production image's NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY " +
         '(the GitHub variable PRODUCTION_SUPABASE_PUBLISHABLE_KEY).',
     );
+    // Public, and needed where the server and the bucket's token can't reach: a restore on a new
+    // server checks every night and WAL file against it.
+    console.log(
+      "  The backup's signing key stays in .env, for the backup service alone. Keep its public half " +
+        'with the age key, offline (a restore on a new server checks the backups against it):',
+    );
+    console.log(`  BACKUP_SIGNING_PUBLIC_KEY=${values[0].BACKUP_SIGNING_PUBLIC_KEY}`);
   }
 }
 
