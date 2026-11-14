@@ -19,24 +19,35 @@
  *   pnpm vps:rehearse [--fresh] [--rebuild]
  *                    builds the three images and brings the stack up as the server's install and
  *                    app-deploy do, proving each step on the way (memory, secrets, labels, start
- *                    order, migrations, schema parity, the pre-deploy dump, health, the gateway).
- *                    A rerun reuses the stack, the secrets and an image nothing changed for;
+ *                    order, WAL archiving and the host rules, migrations, schema parity, the
+ *                    pre-deploy dump, health, the gateway, the WAL shipped to a local S3 from quiet
+ *                    logs). A rerun reuses the stack, the secrets and an image nothing changed for;
  *                    --fresh starts from new secrets and empty volumes, --rebuild builds every image.
  *   pnpm vps:backup-test
- *                    the nightly backup into a local S3, each night named by its id (its stamp and
- *                    8 random hex characters): a night with a stale settings archive, then the
+ *                    db's WAL shipped and signed, and an outage of the shipper alerted and ended;
+ *                    the nightly backup into the local S3, each night named by its id (its stamp
+ *                    and 8 random hex characters): a night with a stale settings archive, then the
  *                    month's copy in monthly/ past planted names, no second copy, and a 1st's copy;
  *                    a night whose id someone else wrote a name of first, stopped before its first
  *                    upload; the monthly restore test; planted nights and names the restore must
  *                    refuse or not read, each night read from the one folder its age gives; and the
  *                    disaster recovery of the 1st's copy, from monthly/, on the rehearsal's own
- *                    volumes, after a recovery without RESTORE_STAMP is refused.
+ *                    volumes, after a recovery without RESTORE_STAMP is refused, whose new cluster
+ *                    ships its WAL under its own identifier.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  sign,
+  verify,
+} from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -529,6 +540,46 @@ export function restoreDifferences(source: readonly string[], restored: readonly
   }
   for (const line of added.values()) unknown.push(`only in the restore: ${line}`);
   return { known, unknown };
+}
+
+/** A WAL file's name as basic_archive writes it: a segment, its .partial, a .backup file, a timeline's .history. */
+export const WAL_FILE = String.raw`[0-9A-F]{24}(?:\.partial|\.[0-9A-F]{8}\.backup)?|[0-9A-F]{8}\.history`;
+
+/**
+ * The parts of a WAL object's name as wal-ship.sh writes it (docs/DECISIONS.md VPS-43):
+ * wal/<cluster>/<log id>/<walfile>.<signature>.zst.age, where the log id is the walfile's second 8
+ * hex digits, or history/ for a timeline's history file; undefined for any other name.
+ */
+export function walObject(path: string) {
+  const match = new RegExp(
+    `^wal/(\\d{1,20})/([0-9A-F]{8}|history)/(${WAL_FILE})\\.([A-Za-z0-9_-]{86})\\.zst\\.age$`,
+  ).exec(path);
+  if (!match) return undefined;
+  const [, cluster, folder, walfile, signature] = match;
+  const own = walfile.endsWith('.history') ? 'history' : walfile.slice(8, 16);
+  return folder === own ? { cluster, folder, walfile, signature } : undefined;
+}
+
+/** What a WAL object's name signs: its cluster, its WAL file and the sha256 of its bytes. */
+export const walMessage = (cluster: string, walfile: string, sha256: string) =>
+  `menumesh wal 1 ${cluster} ${walfile} ${sha256}\n`;
+
+/**
+ * Whether a base64url signature (64 bytes, in its one spelling) is one of the message by any of
+ * the Ed25519 public keys (base64 SPKI DER, separated by spaces), as seal.sh checks one.
+ */
+export function signedBy(publicKeys: string, message: string, signature: string): boolean {
+  const bytes = Buffer.from(signature, 'base64url');
+  if (bytes.length !== 64 || bytes.toString('base64url') !== signature) return false;
+  return publicKeys.split(' ').some((key) => {
+    try {
+      const der = Buffer.from(key, 'base64');
+      const publicKey = createPublicKey({ key: der, format: 'der', type: 'spki' });
+      return verify(null, Buffer.from(message), publicKey, bytes);
+    } catch {
+      return false;
+    }
+  });
 }
 
 // --- running things ---
@@ -2576,6 +2627,449 @@ async function gateway(checks: Checks, env: Record<string, string>) {
   );
 }
 
+// --- WAL archiving and shipping (VPS-43): vps:rehearse steps 3 and 8, and vps:backup-test ---
+
+/** The line config/db/pg_hba.conf adds to the image's own host rules: the backup's pg_basebackup. */
+const REPLICATION_LINE = 'host replication supabase_admin samenet scram-sha-256';
+
+/** A one-off of the backup service as the shipper runs, db's postgres (uid 100, gid 101): sh -c. */
+const asShipper = (script: string) =>
+  compose([
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    '--user',
+    '100:101',
+    '--entrypoint',
+    'sh',
+    'backup',
+    '-c',
+    script,
+  ]);
+
+/** The WAL files waiting in the spool and in the shipper's outbox, by name. */
+function walWaiting(): { spool: string[]; outbox: string[] } {
+  const run = asShipper(
+    'ls -A /wal-spool && echo / && { ls -A /wal-spool/.ship/out 2>/dev/null || true; }',
+  );
+  if (run.status !== 0) fail(`Listing the WAL spool failed: ${run.stderr.trim()}`);
+  const [spool, outbox] = run.stdout.split('/\n');
+  const named = (text: string | undefined, suffix: string) =>
+    lines(text ?? '').filter((name) => new RegExp(`^(?:${WAL_FILE})${suffix}$`).test(name));
+  return { spool: named(spool, ''), outbox: named(outbox, String.raw`\.zst\.age`) };
+}
+
+/** The rehearsal db's system identifier, unsigned, as wal-ship.sh names its folder. */
+const clusterId = () =>
+  dbSql(
+    'select case when system_identifier < 0 then (system_identifier::numeric + 18446744073709551616)::text else system_identifier::text end from pg_control_system()',
+  )[0] ?? '';
+
+/**
+ * About 8 MiB of WAL without touching a table (non-transactional logical messages of random text),
+ * then a switch to a new segment, which db archives at once: the segment the writes ended in.
+ */
+function writeWal(): string {
+  const rows = dbSql(
+    [
+      "select count(pg_logical_emit_message(false, 'menumesh-rehearsal', (select string_agg(md5(random()::text || g), '') from generate_series(1, 32768)))) from generate_series(1, 8) g;",
+      'select pg_walfile_name(pg_current_wal_lsn());',
+      'select pg_switch_wal();',
+    ].join('\n'),
+  );
+  return rows[1] ?? fail(`No WAL file name from db: ${rows.join(' ')}`);
+}
+
+/** The bucket's WAL objects under wal/<cluster>/, as their full names. */
+function walNames(cluster: string): string[] {
+  const run = inBackup(`rclone lsf -R --files-only "backups:$BACKUP_BUCKET/wal/${cluster}/"`);
+  if (run.status !== 0) fail(`Listing wal/${cluster}/ failed: ${run.stderr.trim()}`);
+  return lines(run.stdout)
+    .map((name) => `wal/${cluster}/${name}`)
+    .sort();
+}
+
+/**
+ * Each object downloaded in the backup's container: the sha256 and bytes of what is in the
+ * bucket, and, decrypted with the rehearsal's age key, the WAL file's bytes and the system
+ * identifier its header names (offset 24 of a segment).
+ */
+function walContents(paths: string[]) {
+  const script = [
+    'set -eu',
+    'for path in "$@"; do',
+    '  rclone cat "backups:$BACKUP_BUCKET/$path" >/tmp/object',
+    '  age --decrypt --identity /run/age/identity.txt </tmp/object | zstd -dcq >/tmp/wal',
+    `  printf '%s %s %s %s %s\\n' "$path" "$(sha256sum </tmp/object | cut -d ' ' -f 1)" "$(wc -c </tmp/object)" "$(wc -c </tmp/wal)" "$(od -An -tu8 -j24 -N8 /tmp/wal | tr -d ' ')"`,
+    'done',
+  ].join('\n');
+  const run = compose([
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    '--volume',
+    `${slash(join(MIRROR, 'age'))}:/run/age:ro`,
+    '--entrypoint',
+    'sh',
+    'backup',
+    '-c',
+    script,
+    'sh',
+    ...paths,
+  ]);
+  if (run.status !== 0) fail(`Reading WAL objects failed: ${run.stderr.trim()}`);
+  return lines(run.stdout).map((line) => {
+    const [path, sha256, bytes, plain, sysid] = line.split(' ');
+    return { path, sha256, bytes: Number(bytes), plain: Number(plain), sysid };
+  });
+}
+
+/** Waits up to `limit` seconds for the bucket to hold each of the WAL files; the names it found. */
+async function walShipped(cluster: string, walfiles: string[], limit: number) {
+  const started = Date.now();
+  for (;;) {
+    const names = walNames(cluster);
+    const found = walfiles.map((walfile) =>
+      names.find((name) => walObject(name)?.walfile === walfile),
+    );
+    if (found.every((name) => name !== undefined) || seconds(started) >= limit) {
+      return { names, found, took: seconds(started) };
+    }
+    await sleep(5000);
+  }
+}
+
+/**
+ * The checks of shipped WAL objects: each name parses, its signature checks out with Node's crypto
+ * against the rehearsal's public key, and it decrypts to the WAL file it names, of the cluster its
+ * folder names. One line for the check, with the sizes.
+ */
+function walSigned(checks: Checks, env: Record<string, string>, what: string, paths: string[]) {
+  const read = walContents(paths);
+  const bad = read.flatMap(({ path, sha256, bytes, plain, sysid }) => {
+    const parts = walObject(path);
+    if (!parts) return [`${path}: not a name wal-ship.sh writes`];
+    const message = walMessage(parts.cluster, parts.walfile, sha256);
+    return [
+      ...(signedBy(env.BACKUP_SIGNING_PUBLIC_KEY, message, parts.signature)
+        ? []
+        : [`${path}: the signature does not check out`]),
+      ...(/^[0-9A-F]{24}$/.test(parts.walfile) &&
+      (plain !== 16 * 1048576 || sysid !== parts.cluster)
+        ? [
+            `${path}: ${plain} bytes of cluster ${sysid} decrypted, not a segment of ${parts.cluster}`,
+          ]
+        : []),
+      ...(bytes > 0 ? [] : [`${path}: empty`]),
+    ];
+  });
+  const kib = read.map(({ bytes }) => Math.round(bytes / 1024));
+  checks.expect(
+    `${what}: ${read.length} objects, each name as wal-ship.sh writes it, its Ed25519 signature checked by Node against BACKUP_SIGNING_PUBLIC_KEY, each decrypting (the rehearsal's age key, zstd) to the 16 MiB segment of the cluster its folder names; ${kib.join(', ')} KiB in the bucket`,
+    read.length === paths.length && read.length > 0 && !bad.length,
+    bad.join('\n'),
+  );
+  return read;
+}
+
+// Step 3, once db runs: what it archives, and its host rules.
+function walArchiving(checks: Checks) {
+  const settings = dbSql(
+    [
+      "select string_agg(name || '=' || setting, ' ' order by name) from pg_settings where name in ('archive_mode', 'archive_library', 'archive_timeout', 'hba_file', 'wal_level');",
+      "select current_setting('basic_archive.archive_directory', true);",
+    ].join('\n'),
+  );
+  const spool = compose(['exec', '-T', 'db', 'stat', '-c', '%u:%g %a', '/wal-spool']).stdout.trim();
+  checks.expect(
+    `db archives every WAL file into the spool: ${settings[0]}, basic_archive.archive_directory=${settings[1]}; /wal-spool ${spool} (uid:gid mode), made so by wal-spool.sh`,
+    settings[0] ===
+      'archive_library=basic_archive archive_mode=on archive_timeout=60 hba_file=/etc/postgresql-menumesh/pg_hba.conf wal_level=logical' &&
+      settings[1] === '/wal-spool' &&
+      spool === '100:101 700',
+    settings.join('\n'),
+  );
+  // The image's own file, from the very image db runs, and the kit's: the same, but for one line.
+  const image = compose(['exec', '-T', 'db', 'cat', '/etc/postgresql/pg_hba.conf']).stdout;
+  const kit = read('config', 'db', 'pg_hba.conf');
+  const rules = dbSql(
+    "select count(*) filter (where 'replication' = any(database)), count(*) filter (where error is not null) from pg_hba_file_rules",
+  )[0];
+  const identify = compose([
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    '--entrypoint',
+    'psql',
+    'backup',
+    '-X',
+    '-At',
+    '-d',
+    'dbname=replication replication=true',
+    '-c',
+    'IDENTIFY_SYSTEM',
+  ]);
+  const [systemid] = identify.stdout.trim().split('|');
+  checks.expect(
+    `db's host rules are the image's /etc/postgresql/pg_hba.conf byte for byte, then "${REPLICATION_LINE}" (pg_hba_file_rules: ${rules.replace('\t', ' replication line, ')} errors); the backup service's replication connection is let in with the password (IDENTIFY_SYSTEM: system ${systemid})`,
+    kit === `${image}${REPLICATION_LINE}\n` &&
+      rules === '1\t0' &&
+      identify.status === 0 &&
+      systemid === clusterId(),
+    `${identify.stdout}${identify.stderr}`,
+  );
+}
+
+// Step 8: the backup service and the bucket's stand-in: db's WAL shipped, signed, from a quiet log.
+async function walShipping(checks: Checks, env: Record<string, string>) {
+  const s3 = compose(['up', '-d', '--wait', '--wait-timeout', '60', 's3']);
+  if (s3.status !== 0) fail(`s3 did not start:\n${tail(s3.stderr)}`);
+  const since = daemonNow();
+  const started = Date.now();
+  const backup = compose(['up', '-d', 'backup']);
+  if (backup.status !== 0) fail(`backup did not start:\n${tail(backup.stderr)}`);
+  const cluster = clusterId();
+  const walfile = writeWal();
+  const shipped = await walShipped(cluster, [walfile], 200);
+  const waiting = walWaiting();
+  checks.expect(
+    `the backup service ships db's WAL to the local S3: ${walfile}, archived by a switch after about 8 MiB of WAL, is under wal/${cluster}/ ${seconds(started)} s after the service started (${shipped.names.length} objects there); the spool holds ${waiting.spool.length} WAL files and the outbox ${waiting.outbox.length}`,
+    shipped.found.every((name) => name !== undefined) &&
+      !waiting.spool.includes(walfile) &&
+      !waiting.outbox.includes(`${walfile}.zst.age`),
+    `${shipped.names.join('\n')}\nspool: ${waiting.spool.join(' ')}\noutbox: ${waiting.outbox.join(' ')}`,
+  );
+  walSigned(checks, env, `the shipped WAL of ${cluster}`, shipped.names.slice(-5));
+  // Silent on success, db and the shipper alike: wait out three of the shipper's minutes.
+  while (seconds(started) < 180) await sleep(5000);
+  const db = logsSince(containerOf('db') ?? fail('db has no container'), since);
+  const shipper = logsSince(containerOf('backup') ?? fail('backup has no container'), since);
+  const memory = cgroupMemory(containerOf('backup') ?? '');
+  checks.expect(
+    `${seconds(started)} s of WAL shipping, every minute: db wrote ${db.length} log lines and the backup service ${shipper.length}; the service's memory peaked at ${memory?.peak ?? '?'} MiB of its ${value('backup', 'mem_limit')}`,
+    !db.length && !shipper.length,
+    [...db, ...shipper].join('\n'),
+  );
+}
+
+/** base64url of an Ed25519 signature by a base64 PKCS #8 DER key, as seal.sh writes one. */
+const signedWith = (privateKey: string, message: string) =>
+  sign(
+    null,
+    Buffer.from(message),
+    createPrivateKey({ key: Buffer.from(privateKey, 'base64'), format: 'der', type: 'pkcs8' }),
+  ).toString('base64url');
+
+/**
+ * seal.sh in the backup image, with the rehearsal's signing pair from .env and a throwaway pair
+ * made here: openssl signs as Node does (Ed25519 is deterministic, so the very signature), takes
+ * what Node signed, and refuses a changed message, another key's signature and each other spelling
+ * of a good one (one character changed, padding, the last character's unused bits set, one short).
+ * With several public keys any one does, the first alone for the self-check; the private key is
+ * out of the environment children get; 300 random signatures go to base64url and back through
+ * BusyBox's base64 and tr; no file stays in /tmp. Nothing printed holds the private key.
+ */
+function sealProof(checks: Checks, env: Record<string, string>) {
+  const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+  const a = `menumesh wal 1 1 000000010000000000000001 ${sha('a')}\n`;
+  const b = `menumesh wal 1 1 000000010000000000000002 ${sha('b')}\n`;
+  const own = signedWith(env.BACKUP_SIGNING_KEY, a);
+  const other = generateKeyPairSync('ed25519');
+  const otherPublic = other.publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+  const otherSecret = other.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const swapAt = (text: string, at: number, char: string) =>
+    `${text.slice(0, at)}${char}${text.slice(at + 1)}`;
+  const given: Record<string, string> = {
+    SIG_A: own,
+    SIG_B: signedWith(env.BACKUP_SIGNING_KEY, b),
+    SIG_OTHER: signedWith(otherSecret, a),
+    BAD_MIDDLE: swapAt(own, 40, own[40] === 'A' ? 'B' : 'A'),
+    BAD_PADDED: `${own}==`,
+    BAD_UNUSED: swapAt(own, 85, alphabet[alphabet.indexOf(own[85]) ^ 1]),
+    BAD_SHORT: own.slice(0, 85),
+    OTHER_PUBLIC_KEY: otherPublic,
+    MESSAGE_A: a.trimEnd(),
+    MESSAGE_B: b.trimEnd(),
+  };
+  const script = [
+    'set -eu',
+    '. /usr/local/share/menumesh/seal.sh',
+    'said() { if "$@" 2>/dev/null; then echo yes; else echo no; fi; }',
+    `printf '%s\\n' "$MESSAGE_A" >/tmp/a`,
+    `printf '%s\\n' "$MESSAGE_B" >/tmp/b`,
+    'echo "signs-as-node $([ "$(seal_sign /tmp/a)" = "$SIG_A" ] && echo yes || echo no)"',
+    'echo "own $(said seal_verify /tmp/a "$SIG_A")"',
+    'echo "node $(said seal_verify /tmp/b "$SIG_B")"',
+    'echo "changed-message $(said seal_verify /tmp/b "$SIG_A")"',
+    'echo "other-key $(said seal_verify /tmp/a "$SIG_OTHER")"',
+    'for bad in BAD_MIDDLE BAD_PADDED BAD_UNUSED BAD_SHORT; do eval "sig=\\$$bad"; echo "$bad $(said seal_verify /tmp/a "$sig")"; done',
+    'echo "empty $(said seal_verify /tmp/a "")"',
+    'echo "self-check $(said seal_self_check)"',
+    'BACKUP_SIGNING_PUBLIC_KEY="$OTHER_PUBLIC_KEY $BACKUP_SIGNING_PUBLIC_KEY"',
+    'echo "any-of-two $(said seal_verify /tmp/a "$SIG_A")"',
+    'echo "other-listed $(said seal_verify /tmp/a "$SIG_OTHER")"',
+    'echo "first-only $(said seal_verify_first /tmp/a "$SIG_A")"',
+    'echo "self-check-other-first $(said seal_self_check)"',
+    'echo "key-in-children $(env | grep -c "^BACKUP_SIGNING_KEY=" || true)"',
+    'n=0; bad=0',
+    'while [ "$n" -lt 300 ]; do',
+    '  head -c 64 /dev/urandom >/tmp/r',
+    '  enc=$(seal_b64url </tmp/r)',
+    `  printf '%s==\\n' "$enc" | tr '_-' '/+' | base64 -d >/tmp/back`,
+    '  cmp -s /tmp/r /tmp/back || bad=$((bad + 1))',
+    '  case $enc in *[!A-Za-z0-9_-]*) bad=$((bad + 1)) ;; esac',
+    '  [ "${#enc}" -eq 86 ] || bad=$((bad + 1))',
+    '  n=$((n + 1))',
+    'done',
+    'echo "round-trips-bad $bad"',
+    'echo "left-in-tmp $(ls -A /tmp | grep -c "^seal\\." || true)"',
+  ].join('\n');
+  const run = compose([
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    ...Object.entries(given).flatMap(([name, text]) => ['-e', `${name}=${text}`]),
+    '--entrypoint',
+    'sh',
+    'backup',
+    '-c',
+    script,
+  ]);
+  const said = Object.fromEntries(lines(run.stdout).map((line) => line.split(' ')));
+  const expected: Record<string, string> = {
+    'signs-as-node': 'yes',
+    own: 'yes',
+    node: 'yes',
+    'changed-message': 'no',
+    'other-key': 'no',
+    BAD_MIDDLE: 'no',
+    BAD_PADDED: 'no',
+    BAD_UNUSED: 'no',
+    BAD_SHORT: 'no',
+    empty: 'no',
+    'self-check': 'yes',
+    'any-of-two': 'yes',
+    'other-listed': 'yes',
+    'first-only': 'no',
+    'self-check-other-first': 'no',
+    'key-in-children': '0',
+    'round-trips-bad': '0',
+    'left-in-tmp': '0',
+  };
+  const wrong = Object.entries(expected).filter(([name, answer]) => said[name] !== answer);
+  const output = `${run.stdout}${run.stderr}`;
+  checks.expect(
+    `seal.sh in the backup image: openssl signs as Node does and takes Node's signature; a changed message, another key's signature, a changed character, padding, unused bits set, a short or an empty signature are refused; with two public keys either checks, the first alone for the self-check; the private key reaches no child; 300 random signatures to base64url and back in BusyBox; nothing left in /tmp`,
+    run.status === 0 && !wrong.length && !output.includes(env.BACKUP_SIGNING_KEY),
+    wrong.length
+      ? wrong
+          .map(([name, answer]) => `${name}: ${said[name] ?? 'nothing'}, not ${answer}`)
+          .join('\n')
+      : tail(output),
+  );
+}
+
+/**
+ * vps:backup-test's WAL: written, switched and shipped by the running service, every name signed
+ * and every object the segment it names; then the service stopped and started again: the spool
+ * grows while it is down, its files are made to look 15 minutes old, as after such an outage, and
+ * once the service runs again, with its alert and heartbeat sent into the sinkhole, its first run
+ * alerts and ships them, the next says it resumed and pings the heartbeat.
+ */
+async function walProof(checks: Checks, env: Record<string, string>) {
+  // The service on the image just built, as app-deploy would bring it.
+  const up = compose(['up', '-d', 'backup']);
+  if (up.status !== 0) fail(`backup did not start:\n${tail(up.stderr)}`);
+  const cluster = clusterId();
+  const first = writeWal();
+  const second = writeWal();
+  const shipped = await walShipped(cluster, [first, second], 200);
+  const waiting = walWaiting();
+  checks.expect(
+    `db's WAL in the bucket: ${first} and ${second}, each archived after about 8 MiB of WAL and a switch, under wal/${cluster}/ within ${shipped.took} s; neither waits in the spool or the outbox (${waiting.spool.length} and ${waiting.outbox.length} files there)`,
+    shipped.found.every((name) => name !== undefined) &&
+      [first, second].every(
+        (walfile) =>
+          !waiting.spool.includes(walfile) && !waiting.outbox.includes(`${walfile}.zst.age`),
+      ),
+    `${shipped.names.join('\n')}\nspool: ${waiting.spool.join(' ')}\noutbox: ${waiting.outbox.join(' ')}`,
+  );
+  const names = shipped.found.filter((name): name is string => name !== undefined);
+  walSigned(checks, env, `the WAL files ${first} and ${second}`, names);
+  const others = walNames(cluster).filter((name) => !walObject(name));
+  checks.expect(
+    `every object under wal/${cluster}/ is named as wal-ship.sh names one (${walNames(cluster).length} objects)`,
+    !others.length,
+    others.join('\n'),
+  );
+
+  // The outage: the service stopped, WAL written, the spool's files made 15 minutes old, and the
+  // shipper's record as after such an outage, its last heartbeat and any alert (an earlier run's)
+  // long gone.
+  compose(['stop', 'backup']);
+  const walfile = writeWal();
+  let spooled = walWaiting().spool;
+  for (let tries = 0; tries < 30 && !spooled.includes(walfile); tries++) {
+    await sleep(1000);
+    spooled = walWaiting().spool;
+  }
+  const ago = Math.floor(Date.parse(daemonNow()) / 1000) - 15 * 60;
+  const aged = asShipper(
+    `cd /wal-spool && touch -d @${ago} ${spooled.join(' ')} && rm -f .ship/beat .ship/alert-sent .ship/alerting`,
+  );
+  if (!spooled.includes(walfile) || aged.status !== 0) {
+    fail(`The spool did not grow with the service stopped: ${spooled.join(' ')} ${aged.stderr}`);
+  }
+  const started = Date.now();
+  const sunk = docker(composeArgs(['up', '-d', 'backup']), undefined, {
+    TELEGRAM_BOT_TOKEN: 'rehearsal',
+    TELEGRAM_CHAT_ID: 'rehearsal',
+    HEARTBEAT_WAL_URL: 'https://hc-ping.com/menumesh-rehearsal-wal',
+  });
+  if (sunk.status !== 0) fail(`backup did not start again:\n${tail(sunk.stderr)}`);
+  const id = containerOf('backup') ?? fail('backup has no container');
+  let log: string[] = [];
+  while (seconds(started) < 200) {
+    log = lines(logsOf(id));
+    if (log.some((line) => line.startsWith('notify: the heartbeat ping failed'))) break;
+    await sleep(5000);
+  }
+  const kinds = log.map((line) =>
+    line.startsWith('wal-ship: [menumesh] WAL is not reaching the bucket')
+      ? 'alert'
+      : line.startsWith('wal-ship: [menumesh] WAL shipping resumed')
+        ? 'resumed'
+        : line === 'notify: the Telegram alert failed (curl exit 7)'
+          ? 'telegram'
+          : line === 'notify: the heartbeat ping failed (curl exit 7)'
+            ? 'heartbeat'
+            : line,
+  );
+  const drained = walWaiting();
+  const there = walNames(cluster).some((name) => walObject(name)?.walfile === walfile);
+  checks.expect(
+    `with the service stopped the spool grew (${spooled.join(', ')}); started again ${seconds(started)} s ago with Telegram and HEARTBEAT_WAL_URL in the sinkhole, it alerted once ("${log.find((line) => line.includes('not reaching')) ?? ''}"), shipped them (${walfile} ${there ? 'in the bucket' : 'not in the bucket'}, ${drained.spool.length + drained.outbox.length} waiting), said it resumed, then pinged the heartbeat: ${kinds.join(', ')}`,
+    kinds.join(' ') === 'alert telegram resumed telegram heartbeat' &&
+      /waited 1[5-9] minutes/.test(log[0] ?? '') &&
+      there &&
+      spooled.every(
+        (name) => !drained.spool.includes(name) && !drained.outbox.includes(`${name}.zst.age`),
+      ),
+    log.join('\n'),
+  );
+  const memory = cgroupMemory(id);
+  console.log(
+    `    · the backup service's memory after these runs: at most ${memory?.peak ?? '?'} MiB of its ${value('backup', 'mem_limit')} (docker stats: ${memory?.stats ?? '?'} MiB)`,
+  );
+  // Back to its own settings, which send nothing.
+  compose(['up', '-d', 'backup']);
+}
+
 async function rehearse(fresh: boolean, rebuild: boolean) {
   const checks = new Checks();
   if (docker(['version', '--format', '{{.Server.Version}}']).status !== 0) {
@@ -2596,6 +3090,7 @@ async function rehearse(fresh: boolean, rebuild: boolean) {
   images(checks, env, rebuild || fresh);
   console.log('3. db, then auth, rest, realtime, storage and api-gw');
   await supabase(checks);
+  walArchiving(checks);
   console.log('4. Migrations, as app-deploy runs them');
   await migrations(checks);
   console.log('5. The pre-deploy dump');
@@ -2604,9 +3099,11 @@ async function rehearse(fresh: boolean, rebuild: boolean) {
   await seedAndStart(checks);
   console.log('7. The gateway');
   await gateway(checks, env);
+  console.log('8. The WAL shipper: the backup service, with the local S3 for its bucket');
+  await walShipping(checks, env);
   removeOldBuilds();
   console.log(
-    `\nThe rehearsal stays up: the app on http://localhost:3300, Supabase on http://127.0.0.1:8300 (project ${PROJECT}, folder ${shown(MIRROR)}/). pnpm vps:down removes it.`,
+    `\nThe rehearsal stays up: the app on http://localhost:3300, Supabase on http://127.0.0.1:8300, the backup service shipping db's WAL to the local S3 (project ${PROJECT}, folder ${shown(MIRROR)}/). pnpm vps:down removes it.`,
   );
   console.log(`\nvps:rehearse: ${checks.passed + checks.failed} checks, ${checks.failed} failed`);
   if (checks.failed) process.exit(1);
@@ -3082,6 +3579,8 @@ async function backupTest() {
   checks.ok(
     `the local S3 (rclone serve s3) is up, bucket ${env.BACKUP_BUCKET}; in the backup container ${sunk.join(' and ')} resolve to the sinkhole (0.0.0.0)`,
   );
+  sealProof(checks, env);
+  await walProof(checks, env);
 
   // Storage files of two types to back up, as the app writes them (a support screenshot, an
   // export ZIP): a fresh rehearsal has none. The same names each run, never written over, so no
@@ -3582,9 +4081,9 @@ async function backupTest() {
     handedOver = true;
     await recovery(checks, env, oldFirstId, source, files, age, linked);
   } finally {
-    if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
+    if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler', 'backup']);
   }
-  compose(['rm', '--stop', '--force', 's3']);
+  // The local S3 stays, as the backup service ships db's WAL to it while the rehearsal runs.
   removeOldBuilds();
   console.log(
     `\nvps:backup-test: ${checks.passed + checks.failed} checks, ${checks.failed} failed`,
@@ -3697,8 +4196,22 @@ async function recovery(
     `${run.stdout}${run.stderr}\n${recoverDbLog()}\n${dbWrote.join('\n')}`,
   );
 
-  // The disaster: everything stops, db shut down cleanly with its cluster still on db-data.
-  compose(['stop', 'web', 'scheduler', 'api-gw', 'auth', 'rest', 'realtime', 'storage', 'db']);
+  // The disaster: everything stops, db shut down cleanly with its cluster still on db-data. The
+  // cluster's WAL, shipped until the backup service stopped, stays under its own identifier.
+  const oldCluster = clusterId();
+  compose([
+    'stop',
+    'backup',
+    'web',
+    'scheduler',
+    'api-gw',
+    'auth',
+    'rest',
+    'realtime',
+    'storage',
+    'db',
+  ]);
+  const oldWal = walNames(oldCluster);
   run = await recover();
   dropRecoverDb();
   checks.expect(
@@ -3706,7 +4219,8 @@ async function recovery(
     run.status === 1 && /is not a bare cluster/.test(`${run.stdout}${run.stderr}`),
     `${run.stdout}${run.stderr}`,
   );
-  compose(['rm', '--force', 'db', 'storage']);
+  // The backup service goes with them: it mounts storage-data and the WAL spool.
+  compose(['rm', '--force', 'db', 'storage', 'backup']);
   removeVolumes(dbData, dbConfig);
   run = await recover();
   dropRecoverDb();
@@ -3716,11 +4230,11 @@ async function recovery(
     `${run.stdout}${run.stderr}`,
   );
 
-  // A new server's volumes: all three new. A recovery without RESTORE_STAMP refuses to run at all,
-  // as it would take the newest name in the bucket (review finding F4); a night whose Storage
-  // archive holds a link is refused before the roles. So the same volumes stay as they were and
-  // take the real night next.
-  removeVolumes(dbData, dbConfig, storageData);
+  // A new server's volumes: all three new, and the WAL spool, which held the old cluster's WAL
+  // (VPS-43). A recovery without RESTORE_STAMP refuses to run at all, as it would take the newest
+  // name in the bucket (review finding F4); a night whose Storage archive holds a link is refused
+  // before the roles. So the same volumes stay as they were and take the real night next.
+  removeVolumes(dbData, dbConfig, storageData, `${PROJECT}_wal-spool`);
   run = await measured(
     `${PROJECT}-recover-${process.pid}`,
     ['-T', '-e', 'RESTORE_STAMP=', ...age, 'recover'],
@@ -3894,6 +4408,25 @@ restore: the Storage archive of ${linked} holds links or special files (1), whic
     JSON.stringify(fetched),
   );
   vault(checks, 'db');
+
+  // The backup service again, on a new WAL spool. The recovered cluster is a new one, made by
+  // recover-db's initdb: its WAL goes under its own identifier, and the old cluster's stays as it
+  // was, never mixed with it (VPS-43).
+  const backup = compose(['up', '-d', 'backup']);
+  if (backup.status !== 0)
+    fail(`backup did not start on the recovered stack:\n${tail(backup.stderr)}`);
+  const newCluster = clusterId();
+  const walfile = writeWal();
+  const shipped = await walShipped(newCluster, [walfile], 200);
+  const oldNow = walNames(oldCluster);
+  checks.expect(
+    `the backup service on the recovered cluster and a new spool: a new system identifier (${newCluster}; the old one ${oldCluster}), its WAL under wal/${newCluster}/ (${walfile} within ${shipped.took} s); the old cluster's ${oldNow.length} objects as they were`,
+    newCluster !== oldCluster &&
+      shipped.found.every((name) => name !== undefined) &&
+      oldWal.length > 0 &&
+      oldNow.join('\n') === oldWal.join('\n'),
+    `${shipped.names.join('\n')}\nold: ${oldNow.length} of ${oldWal.length}`,
+  );
 }
 
 // --- vps:down (J.4 step 13) ---

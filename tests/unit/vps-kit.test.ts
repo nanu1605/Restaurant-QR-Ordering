@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -25,7 +25,11 @@ import {
   seedFiles,
   serviceKey as key,
   serviceMounts,
+  signedBy,
   statsMib,
+  WAL_FILE,
+  walMessage,
+  walObject,
   webContext,
 } from '../../scripts/vps-kit.mts';
 
@@ -4029,5 +4033,56 @@ describe('the local rehearsal (deploy/vps/local, scripts/vps-kit.mts)', () => {
       'rows|public.orders: 25 | 33a6d08881910e74a1afaec53b55ab6f in the source, 24 | 0000 restored',
       'only in the restore: role|intruder|0100100|-1 -',
     ]);
+  });
+  it('reads the shipper’s WAL names and checks their signatures as a restore does', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const own = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+    const other = generateKeyPairSync('ed25519')
+      .publicKey.export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    const sum = 'ab'.repeat(32);
+    const message = walMessage('7301234567890123456', '000000010000000A00000003', sum);
+    expect(message).toBe(`menumesh wal 1 7301234567890123456 000000010000000A00000003 ${sum}\n`);
+    const signature = sign(null, Buffer.from(message), privateKey).toString('base64url');
+    const name = `wal/7301234567890123456/0000000A/000000010000000A00000003.${signature}.zst.age`;
+    expect(walObject(name)).toEqual({
+      cluster: '7301234567890123456',
+      folder: '0000000A',
+      walfile: '000000010000000A00000003',
+      signature,
+    });
+    expect(
+      walObject(`wal/7301234567890123456/history/00000002.history.${signature}.zst.age`),
+    ).toMatchObject({ folder: 'history', walfile: '00000002.history' });
+    expect(
+      walObject(`wal/1/0000000A/000000010000000A00000003.00000028.backup.${signature}.zst.age`)
+        ?.walfile,
+    ).toBe('000000010000000A00000003.00000028.backup');
+    // A segment in another log id's folder, a history file among the segments, a lower-case or
+    // short name, a cluster that is no number, another suffix: none is the shipper's.
+    for (const bad of [
+      `wal/7301234567890123456/0000000B/000000010000000A00000003.${signature}.zst.age`,
+      `wal/7301234567890123456/0000000A/00000002.history.${signature}.zst.age`,
+      `wal/7301234567890123456/0000000a/000000010000000a00000003.${signature}.zst.age`,
+      `wal/7301234567890123456/0000000A/000000010000000A0000003.${signature}.zst.age`,
+      `wal/cluster/0000000A/000000010000000A00000003.${signature}.zst.age`,
+      `wal/7301234567890123456/0000000A/000000010000000A00000003.${signature}.age`,
+      `wal/7301234567890123456/0000000A/000000010000000A00000003.${signature.slice(1)}.zst.age`,
+    ]) {
+      expect(walObject(bad), bad).toBeUndefined();
+    }
+    expect(new RegExp(`^(?:${WAL_FILE})$`).test('archtemp.000000010000000A00000003.12.34')).toBe(
+      false,
+    );
+    expect(signedBy(own, message, signature)).toBe(true);
+    expect(signedBy(`${other} ${own}`, message, signature)).toBe(true);
+    expect(signedBy(other, message, signature)).toBe(false);
+    expect(signedBy(own, message.replace(sum, 'cd'.repeat(32)), signature)).toBe(false);
+    // The one spelling only: the last character's unused bits set, or padding.
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const unused = `${signature.slice(0, -1)}${alphabet[alphabet.indexOf(signature.at(-1)!) ^ 1]}`;
+    expect(Buffer.from(unused, 'base64url').equals(Buffer.from(signature, 'base64url'))).toBe(true);
+    expect(signedBy(own, message, unused)).toBe(false);
+    expect(signedBy(own, message, `${signature}==`)).toBe(false);
   });
 });
