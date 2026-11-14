@@ -366,6 +366,18 @@ const walSpoolMounts = (text: string) => {
 };
 
 /**
+ * The backup image is built on Postgres's, which declares a volume for its data folder: the
+ * long-running backup service mounts a small tmpfs there, so Docker makes no anonymous volume for
+ * it that would outlive the container (the one-offs' go with their `run --rm`).
+ */
+const backupDataFolder = (text: string, dockerfile: string) =>
+  !/^FROM postgres:/m.test(dockerfile) ||
+  value(services(text).get('backup') ?? [], 'tmpfs') ===
+    "['/var/lib/postgresql/data:size=1m,mode=0700']"
+    ? []
+    : ['the backup service leaves its image’s /var/lib/postgresql/data to an anonymous volume'];
+
+/**
  * The backup's signing key goes to the backup service alone; the restores get its public key,
  * which they check every night and WAL file against, and the shipper its heartbeat (VPS-43).
  */
@@ -718,6 +730,16 @@ describe('deploy/vps/compose.yml', () => {
       'backup /wal-spool:ro',
     );
     refuses(walSpoolMounts, swap(compose, '  wal-spool: {}\n', ''), 'no wal-spool volume');
+  });
+
+  it('keeps the backup image’s Postgres data folder off an anonymous volume', () => {
+    const dockerfile = kit('backup/Dockerfile');
+    expect(backupDataFolder(compose, dockerfile)).toEqual([]);
+    refuses(
+      (text) => backupDataFolder(text, dockerfile),
+      swapIn(compose, 'backup', "    tmpfs: ['/var/lib/postgresql/data:size=1m,mode=0700']\n", ''),
+      'anonymous volume',
+    );
   });
 
   it('gives the signing key to the backup alone, and its public key to the restores', () => {

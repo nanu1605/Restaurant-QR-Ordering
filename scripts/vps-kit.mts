@@ -2852,6 +2852,32 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
     `${shipped.names.join('\n')}\nspool: ${waiting.spool.join(' ')}\noutbox: ${waiting.outbox.join(' ')}`,
   );
   walSigned(checks, env, `the shipped WAL of ${cluster}`, shipped.names.slice(-5));
+  // The image's base declares a volume for Postgres's data, which the service covers with a
+  // tmpfs: else Docker gives it an anonymous volume, which outlives the container.
+  const [mountsJson, tmpfsJson] = docker([
+    'inspect',
+    '--format',
+    '{{json .Mounts}}\n{{json .HostConfig.Tmpfs}}',
+    containerOf('backup') ?? fail('backup has no container'),
+  ])
+    .stdout.trim()
+    .split('\n');
+  const mounts = (JSON.parse(mountsJson || 'null') ?? []) as {
+    Type: string;
+    Name?: string;
+    Destination: string;
+  }[];
+  const tmpfs = [
+    ...Object.keys(JSON.parse(tmpfsJson || 'null') ?? {}),
+    ...mounts.filter((mount) => mount.Type === 'tmpfs').map((mount) => mount.Destination),
+  ];
+  const volumes = mounts.filter((mount) => mount.Type === 'volume');
+  const anonymous = volumes.filter((mount) => !mount.Name?.startsWith(`${PROJECT}_`));
+  checks.expect(
+    `the backup service's volumes are the project's own (${volumes.map((mount) => `${mount.Name} at ${mount.Destination}`).join(', ')}), and a tmpfs covers its image's /var/lib/postgresql/data: no anonymous volume`,
+    !anonymous.length && tmpfs.includes('/var/lib/postgresql/data'),
+    `${mountsJson}\n${tmpfsJson}`,
+  );
   // Silent on success, db and the shipper alike: wait out three of the shipper's minutes.
   while (seconds(started) < 180) await sleep(5000);
   const db = logsSince(containerOf('db') ?? fail('db has no container'), since);

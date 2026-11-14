@@ -539,6 +539,9 @@ services:
       - storage-data:/storage:ro
       # db's archived WAL, shared with db alone: writable, since the shipper removes what it sent.
       - wal-spool:/wal-spool
+    # The image's base, Postgres's, declares a volume for a data folder this service never uses:
+    # a tmpfs there keeps Docker from making an anonymous volume that outlives the container.
+    tmpfs: ['/var/lib/postgresql/data:size=1m,mode=0700']
     networks: [default, data]
     depends_on:
       db: { condition: service_healthy }
