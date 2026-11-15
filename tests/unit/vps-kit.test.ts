@@ -22,23 +22,25 @@ import {
   rehearsalImagesEnv,
   renderListeners,
   restoreDifferences,
-  SEAL_MAX,
-  sealOf,
-  type SealPart,
-  sealPartName,
-  sealText,
-  sealVerdict,
   seedFiles,
   serviceKey as key,
   serviceMounts,
-  signedBy,
-  signedWith,
   statsMib,
   WAL_FILE,
   walMessage,
   walObject,
   webContext,
 } from '../../scripts/vps-kit.mts';
+import {
+  SEAL_MAX,
+  sealOf,
+  type SealPart,
+  sealPartName,
+  sealText,
+  sealVerdict,
+  signedBy,
+  signedWith,
+} from '../../scripts/vps-seal.mts';
 
 /**
  * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-42) is checked by the server's
@@ -4392,7 +4394,7 @@ describe('the migrate and backup images', () => {
   });
 });
 
-// --- the seals, as the harness reads them (scripts/vps-kit.mts) ---
+// --- the seals, as the harness reads them (scripts/vps-seal.mts) ---
 
 describe('the nights’ seals (VPS-43)', () => {
   const night = '2026-11-01T2030Z-0123abcd';
