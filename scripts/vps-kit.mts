@@ -29,11 +29,16 @@
  *                    shipper's other failures on a spool and a bucket of their own; the nightly
  *                    backup into the local S3, each night named by its id (its stamp and 8 random
  *                    hex characters), with a base backup and a signed seal: a night with a stale
- *                    settings archive, then the month's copy in monthly/ past planted names and a
- *                    copy sealed by another key, no second copy, a night in the service with its
- *                    shipper at once, a base a checkpoint overtakes, which its slot carries, a
- *                    1st's copy, and a 1st whose base failed; every seal and the base read as a
- *                    restore reads them; a night's seal and settings archive checked on this
+ *                    settings archive, then the month's copy in monthly/, its signed record last,
+ *                    past planted names and a copy sealed by another key, no second copy but the
+ *                    copy named, a night in the service with its shipper at once, a base a
+ *                    checkpoint overtakes, which its slot carries, a 1st's copy, a 1st whose base
+ *                    failed, then the month's next night beaten at its own check, a copy without
+ *                    its record and copies under records someone else put there, each copied
+ *                    again, and the copy an older listed key recorded counted; a 1st whose removal
+ *                    of old copies fails, which still says it made the copy; every seal, every
+ *                    copy's record and the base read as a restore and the month's copy read them;
+ *                    a night's seal and settings archive checked on this
  *                    machine by pnpm vps:verify-night, as the owner checks them before a new
  *                    server gets the archive, and an archive put over the night's own and one
  *                    under a night that sealed none refused; a night whose id someone else wrote
@@ -71,6 +76,8 @@ import { parseArgs, parseEnv } from 'node:util';
 
 import {
   NIGHT_ID,
+  recordText,
+  recordVerdict,
   SEAL_MAX,
   type SealPart,
   sealOf,
@@ -4098,6 +4105,28 @@ const nightParts = (night: string, config: boolean, base = true) =>
     ...(config ? [`config-${night}.tar.age`] : []),
   ].sort();
 
+/** What a month's copy leaves in monthly/: the night's objects, and its record last. */
+const copyParts = (night: string) => [...nightParts(night, true), `copy-${night}.txt`].sort();
+
+/** How the last line of a night that made the month's copy ends. */
+const KEPT = ", kept in monthly/ as the month's copy";
+
+/**
+ * backup.sh's journal lines on stdout: the line a night that made the month's copy prints as soon
+ * as the copy's record is up (Stop C's re-review, finding B1), and the night's last, "backup
+ * <night>: N parts, N bytes" and how it names the month's copy.
+ */
+const nightSaid = (stdout: string) => {
+  const said = lines(stdout).filter((line) => line.startsWith('backup '));
+  const last = /^backup (\S+): \d+ parts, \d+ bytes(.*)$/.exec(said.at(-1) ?? '');
+  return {
+    said,
+    night: last?.[1] ?? '',
+    last: last?.[0] ?? said.at(-1) ?? '',
+    kept: (night: string) => said.includes(`backup ${night}: kept in monthly/ as the month's copy`),
+  };
+};
+
 /** A night id of the test's own making, for a stamp, as a token holder could make one. */
 const idOf = (stamp: string) => `${stamp}-${randomBytes(4).toString('hex')}`;
 
@@ -4257,8 +4286,9 @@ function nightsInBucket(nights: readonly (readonly [string, string])[]) {
  * Each night's seal as a restore reads it, here with Node's crypto (VPS-43): seal.sh's grammar,
  * signed by a key of BACKUP_SIGNING_PUBLIC_KEY, with the parts a night has (the base and the
  * settings archive as given), the base line there exactly when the base part is, and each part in
- * the folder at the sha256 and size the seal gives. The night's other objects there are its seal
- * and, after a base that failed, what of the base went up, which the seal doesn't list.
+ * the folder at the sha256 and size the seal gives. The night's other objects there are its seal,
+ * in monthly/ its copy's record (recordsChecked reads those), and, after a base that failed, what
+ * of the base went up, which the seal doesn't list.
  */
 function sealsChecked(
   checks: Checks,
@@ -4290,6 +4320,7 @@ function sealsChecked(
     const others = [...held.objects.keys()].filter(
       (name) =>
         name !== `seal-${night}.txt` &&
+        !(folder === 'monthly' && name === `copy-${night}.txt`) &&
         !listed.includes(name) &&
         !(!base && name === `base-${night}.tar.zst.age`),
     );
@@ -4304,6 +4335,38 @@ function sealsChecked(
     bad.join('\n'),
   );
   return found;
+}
+
+/**
+ * Each record of a month's copy in monthly/ as backup.sh's whole_copy reads one, here with Node's
+ * crypto (Stop C's re-review, the rest of finding S2): byte for byte its night's line, with the
+ * sha256 of that night's seal as monthly/ holds it, then the signature of that line by a key of
+ * BACKUP_SIGNING_PUBLIC_KEY; and monthly/ holds a record for exactly the copies the given nights
+ * made and kept (rclone serve s3 lists from a cache of 5 s, so its listing is read until it shows
+ * those, for 20 s at most).
+ */
+async function recordsChecked(checks: Checks, env: Record<string, string>, copies: string[]) {
+  const want = copies.map((id) => `copy-${id}.txt`).sort();
+  let records: string[] = [];
+  for (let tries = 0; tries < 20; tries++) {
+    records = bucketNames('monthly').filter((name) => /^copy-.+\.txt$/.test(name));
+    if (records.join(' ') === want.join(' ')) break;
+    await sleep(1000);
+  }
+  const ids = records.map((name) => name.slice('copy-'.length, -'.txt'.length));
+  const got = bucketObjects(
+    ids.flatMap((id) => [`monthly/copy-${id}.txt`, `monthly/seal-${id}.txt`]),
+  );
+  const said = ids.map((id) => {
+    const text = got.get(`monthly/copy-${id}.txt`)?.toString('latin1') ?? '';
+    const seal = got.get(`monthly/seal-${id}.txt`)?.toString('latin1') ?? '';
+    return `${id}: ${recordVerdict(text, id, seal, env.BACKUP_SIGNING_PUBLIC_KEY)} (${text.length} bytes)`;
+  });
+  checks.expect(
+    `each record of a month's copy in monthly/, read with Node's crypto as the month's copy reads one: its night's line and the sha256 of that night's seal as monthly/ holds it, signed by BACKUP_SIGNING_PUBLIC_KEY's key; ${records.length} records, one for each copy the nights made and kept (${said.join('; ')})`,
+    records.join(' ') === want.join(' ') && said.every((line) => / ok \(\d+ bytes\)$/.test(line)),
+    `${said.join('\n')}\nwanted ${want.join(', ')}`,
+  );
 }
 
 /**
@@ -4663,9 +4726,44 @@ const BASE_STAND_IN = [
 ].join('\n');
 
 /**
+ * A stand-in for rclone, else the image's own. With FAKE_DELETE=fail every rclone delete fails, as
+ * the removal of old copies can while the provider is down. With FAKE_PLANT=<night>, just before
+ * backup.sh lists monthly/'s seals of the month, that night's own seal goes from daily/ into
+ * monthly/, beside objects of random bytes at the sizes it gives under its parts' exact names, as
+ * one who watches daily/'s listing could do between the night's seal and its check of monthly/
+ * (Stop C's re-review, the rest of finding S2); then it waits until monthly/'s listing shows the
+ * seal, which rclone serve s3 gives from a cache of 5 s.
+ */
+const RCLONE_STAND_IN = [
+  '#!/bin/sh',
+  'real=/usr/bin/rclone',
+  `if [ "\${FAKE_DELETE:-}" = fail ] && [ "\${1-}" = delete ]; then echo 'rclone: the stand-in fails every delete' >&2; exit 1; fi`,
+  'if [ -n "${FAKE_PLANT:-}" ] && [ "${1-}" = lsf ] && [ ! -e /var/tmp/planted-seal ]; then',
+  '  case " $* " in',
+  '    *" --include seal-"*)',
+  '      : >/var/tmp/planted-seal',
+  '      top="backups:$BACKUP_BUCKET"',
+  '      "$real" copyto --no-check-dest "$top/daily/seal-$FAKE_PLANT.txt" "$top/monthly/seal-$FAKE_PLANT.txt" </dev/null',
+  `      "$real" cat --no-traverse "$top/daily/seal-$FAKE_PLANT.txt" </dev/null | sed -n 's/^part [0-9a-f]* \\([0-9]*\\) \\(.*\\)$/\\1 \\2/p' >/var/tmp/planted-parts`,
+  '      while read -r bytes name; do head -c "$bytes" /dev/urandom | "$real" rcat "$top/monthly/$name"; done </var/tmp/planted-parts',
+  '      tries=0',
+  '      until "$real" lsf --files-only --include "seal-$FAKE_PLANT.txt" "$top/monthly/" </dev/null | grep -qx "seal-$FAKE_PLANT.txt"; do',
+  '        tries=$((tries + 1))',
+  '        [ "$tries" -lt 20 ] || break',
+  '        sleep 1',
+  '      done',
+  `      echo "rclone: the stand-in put seal-$FAKE_PLANT.txt in monthly/, beside $(wc -l </var/tmp/planted-parts) objects under its parts' names at their sizes" >&2`,
+  '      ;;',
+  '  esac',
+  'fi',
+  'exec "$real" "$@"',
+  '',
+].join('\n');
+
+/**
  * The arguments of `compose run` for a one-off of the backup service running backup.sh with the
- * stand-ins date, od and pg_basebackup, copied to /var/tmp/bin: the service's /tmp is a tmpfs,
- * which runs nothing.
+ * stand-ins date, od, pg_basebackup and rclone, copied to /var/tmp/bin: the service's /tmp is a
+ * tmpfs, which runs nothing.
  */
 const standInArgs = (fakes: Record<string, string>) => [
   '--no-deps',
@@ -4677,10 +4775,13 @@ const standInArgs = (fakes: Record<string, string>) => [
   'sh',
   'backup',
   '-c',
-  'mkdir -p /var/tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /var/tmp/bin/ && chmod 755 /var/tmp/bin/date /var/tmp/bin/od /var/tmp/bin/pg_basebackup && PATH=/var/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
+  'mkdir -p /var/tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup rclone /var/tmp/bin/ && chmod 755 /var/tmp/bin/date /var/tmp/bin/od /var/tmp/bin/pg_basebackup /var/tmp/bin/rclone && PATH=/var/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
 ];
 
-/** A one-off of the backup service running backup.sh with the stand-ins date, od and pg_basebackup. */
+/**
+ * A one-off of the backup service running backup.sh with the stand-ins date, od, pg_basebackup
+ * and rclone.
+ */
 const standInBackup = (fakes: Record<string, string>) =>
   compose(['run', '--rm', ...standInArgs(fakes)]);
 
@@ -4716,6 +4817,7 @@ async function backupTest() {
   writeFileSync(join(MIRROR, 'test-bin', 'date'), DATE_STAND_IN, { mode: 0o755 });
   writeFileSync(join(MIRROR, 'test-bin', 'od'), OD_STAND_IN, { mode: 0o755 });
   writeFileSync(join(MIRROR, 'test-bin', 'pg_basebackup'), BASE_STAND_IN, { mode: 0o755 });
+  writeFileSync(join(MIRROR, 'test-bin', 'rclone'), RCLONE_STAND_IN, { mode: 0o755 });
   const backupImage = REHEARSAL_IMAGES.BACKUP_IMAGE;
   const sha = git('rev-parse', 'HEAD').stdout.trim();
   const built = build(backupImage, ['--build-arg', `REVISION=${sha}`, join(KIT, 'backup')]);
@@ -4941,11 +5043,11 @@ async function backupTest() {
       'backup',
       '/usr/local/bin/backup.sh',
     ]);
-    const summary = /^backup (\S+): (.*)$/m.exec(good.stdout);
-    const night = summary?.[1] ?? '';
+    const summary = nightSaid(good.stdout);
+    const night = summary.night;
     const objects = night ? nightOf(night) : [];
     checks.expect(
-      `backup.sh as the service runs it, with a fresh settings archive: exit ${good.status} in ${usage(good, 'backup')}; "${summary?.[0] ?? tail(good.stdout, 1)}", the night's ${objects.length} objects in the bucket; the heartbeat last, into the sinkhole ("${tail(good.stderr, 1)}")`,
+      `backup.sh as the service runs it, with a fresh settings archive: exit ${good.status} in ${usage(good, 'backup')}; "${summary.last || tail(good.stdout, 1)}", the night's ${objects.length} objects in the bucket; the heartbeat last, into the sinkhole ("${tail(good.stderr, 1)}")`,
       good.status === 0 &&
         NIGHT_ID.test(night) &&
         objects.join(' ') === nightParts(night, true).join(' ') &&
@@ -4954,14 +5056,18 @@ async function backupTest() {
     );
     // The month's first whole night is its copy, whatever its day, past the names planted for the
     // month (review findings B4, N2 and N3), the whole-looking copy another key sealed and the
-    // failed night's own seal (VPS-43).
+    // failed night's own seal (VPS-43); its record goes last, and the night says so in a line of
+    // its own as soon as the record is up, then in its last (Stop C's re-review, finding B1).
     const monthly = bucketNames('monthly');
     checks.expect(
-      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, seal last, past the names planted for its month (${junk.slice(0, 2).join(', ')}), a whole-looking copy whose seal another key signed (${forgedCopy.at(-1)}) and the failed night's own seal alone: ${monthly.length} objects`,
+      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, its seal after its parts and its record last, past the names planted for its month (${junk.slice(0, 2).join(', ')}), a whole-looking copy whose seal another key signed (${forgedCopy.at(-1)}) and the failed night's own seal alone: ${monthly.length} objects; its lines "${summary.said.join('", then "')}"`,
       night !== '' &&
-        /, kept in monthly\/ as the month's copy$/.test(summary?.[0] ?? '') &&
-        monthly.join(' ') === [...plantedMonthly, ...nightParts(night, true)].sort().join(' '),
-      monthly.join('\n'),
+        summary.said.length === 2 &&
+        summary.kept(night) &&
+        summary.said[0] === `backup ${night}: kept in monthly/ as the month's copy` &&
+        summary.last.endsWith(KEPT) &&
+        monthly.join(' ') === [...plantedMonthly, ...copyParts(night)].sort().join(' '),
+      `${good.stdout}\n${monthly.join('\n')}`,
     );
     // Each part is age's: its first line is age's header, nothing of the data in plain text. The
     // seal alone is plain text.
@@ -4988,14 +5094,15 @@ async function backupTest() {
       'backup',
       '/usr/local/bin/backup.sh',
     ]);
-    const nextLine = /^backup (\S+): .*$/m.exec(next.stdout);
-    const nextSummary = nextLine?.[0] ?? tail(next.stdout, 1);
-    const nextNight = nextLine?.[1] ?? night;
+    const nextSaid = nightSaid(next.stdout);
+    const nextSummary = nextSaid.last || tail(next.stdout, 1);
+    const nextNight = nextSaid.night || night;
     const monthlyNext = bucketNames('monthly');
     checks.expect(
-      `a later whole night of the month makes no second copy: exit ${next.status}, "${nextSummary}", monthly/ still ${monthlyNext.length} objects`,
+      `a later whole night of the month makes no second copy, and names the month's copy, its record found: exit ${next.status}, "${nextSummary}", monthly/ still ${monthlyNext.length} objects`,
       next.status === 0 &&
-        nextSummary.startsWith('backup ') &&
+        nextSaid.said.length === 1 &&
+        nextSummary.endsWith(`, the month's copy is ${night}`) &&
         !nextSummary.includes('kept in monthly') &&
         monthlyNext.join(' ') === monthly.join(' '),
       `${next.stdout}${next.stderr}\n${monthlyNext.join('\n')}`,
@@ -5012,18 +5119,18 @@ async function backupTest() {
       { command: ['/usr/local/bin/backup.sh'] },
       { user: '100:101', command: ['/usr/local/bin/wal-ship.sh'] },
     ]);
-    const serviceLine = /^backup (\S+): .*$/m.exec(both.runs[0].stdout);
-    const serviceNight = serviceLine?.[1] ?? nextNight;
+    const serviceSaid = nightSaid(both.runs[0].stdout);
+    const serviceNight = serviceSaid.night || nextNight;
     const limitMib = Number(value('backup', 'mem_limit').replace(/m$/, ''));
     // The scripts' small files go in /tmp, a tmpfs that counts in that memory (compose.yml): the
     // most it held, which must leave three quarters of its size free.
     const tmpMib = Number(/'\/tmp:size=(\d+)m[,']/.exec(value('backup', 'tmpfs'))?.[1]);
     checks.expect(
-      `a night in the backup service itself, as its crond runs one, with wal-ship.sh at once: exits ${both.runs.map((run) => run.status).join(' and ')} in ${both.took} s, "${serviceLine?.[0] ?? tail(both.runs[0].stdout, 1)}"; the service's memory at most ${both.peakMib} MiB of its ${value('backup', 'mem_limit')} (memory.current, page cache included), its /tmp at most ${both.tmpKib} KiB of its ${tmpMib} MiB tmpfs`,
+      `a night in the backup service itself, as its crond runs one, with wal-ship.sh at once: exits ${both.runs.map((run) => run.status).join(' and ')} in ${both.took} s, "${serviceSaid.last || tail(both.runs[0].stdout, 1)}"; the service's memory at most ${both.peakMib} MiB of its ${value('backup', 'mem_limit')} (memory.current, page cache included), its /tmp at most ${both.tmpKib} KiB of its ${tmpMib} MiB tmpfs`,
       both.runs.every((run) => run.status === 0) &&
-        serviceLine !== null &&
+        serviceSaid.night !== '' &&
         serviceNight !== nextNight &&
-        !serviceLine[0].includes('kept in monthly') &&
+        serviceSaid.last.endsWith(`, the month's copy is ${night}`) &&
         both.peakMib > 0 &&
         both.peakMib < limitMib &&
         tmpMib > 0 &&
@@ -5077,18 +5184,19 @@ async function backupTest() {
     // whatever monthly/ holds for its month (review finding N2). Then its daily copy goes, as the
     // job removes one after 30 days, so that monthly/ alone holds the night.
     const first = standInBackup({ FAKE_STAMP: oldFirst });
-    const firstLine = /^backup (\S+): .*$/m.exec(first.stdout);
-    const firstSummary = firstLine?.[0] ?? tail(first.stdout, 1);
+    const firstSaid = nightSaid(first.stdout);
+    const firstSummary = firstSaid.last || tail(first.stdout, 1);
     // Its id: the stamp the stand-in gave, and the random part backup.sh drew.
-    const oldFirstId = firstLine?.[1] ?? '';
+    const oldFirstId = firstSaid.night;
     const firstKept = bucketNames('monthly').filter((name) => name.includes(`-${oldFirstId}.`));
     checks.expect(
-      `a whole 1st (${oldFirstId || oldFirst}, stamped by a stand-in date) with names planted for its month in monthly/ (${junk.slice(2).join(', ')}): exit ${first.status}, "${firstSummary}", its ${firstKept.length} parts in monthly/`,
+      `a whole 1st (${oldFirstId || oldFirst}, stamped by a stand-in date) with names planted for its month in monthly/ (${junk.slice(2).join(', ')}): exit ${first.status}, "${firstSummary}", its ${firstKept.length} objects in monthly/, its record last`,
       first.status === 0 &&
         NIGHT_ID.test(oldFirstId) &&
         stampPart(oldFirstId) === oldFirst &&
-        firstSummary.endsWith(", kept in monthly/ as the month's copy") &&
-        firstKept.join(' ') === nightParts(oldFirstId, true).join(' '),
+        firstSaid.kept(oldFirstId) &&
+        firstSummary.endsWith(KEPT) &&
+        firstKept.join(' ') === copyParts(oldFirstId).join(' '),
       `${first.stdout}${first.stderr}`,
     );
     const aged = inBackup(
@@ -5119,12 +5227,192 @@ async function backupTest() {
       `${baseless.stdout}${baseless.stderr}\n${baselessParts.join('\n')}`,
     );
 
-    // A month whose copy is gone from monthly/, as if it had never gone up, four months back (the
-    // stand-in date): its first whole night, on the 2nd, made it; then its parts and seal go, and a
-    // token holder puts that night's real seal back, copied from daily/, beside an object named
-    // after each part it lists, a space and an x, at the size it gives. monthly/'s listing quotes no
-    // name, so those read as the parts' own lines; looked up by their exact names, the parts are
-    // not there, and the month's next whole night is still its copy (Stop C's review, finding S2).
+    // monthly/'s listing once it shows these names and none of those: rclone serve s3 lists a
+    // folder from a cache of 5 s, and backup.sh finds a month's seals by a listing.
+    const monthlyShows = async (want: string[], gone: string[] = []) => {
+      for (let tries = 0; tries < 20; tries++) {
+        const listed = bucketNames('monthly');
+        if (want.every((name) => listed.includes(name)) && !gone.some((n) => listed.includes(n)))
+          return listed;
+        await sleep(1000);
+      }
+      return bucketNames('monthly');
+    };
+    // Whether every part a night's seal in monthly/ lists is there at the sha256 and size it gives.
+    const copyIsReal = (id: string) => {
+      const held = nightsInBucket([['monthly', id]]).get(`monthly ${id}`);
+      const seal = held ? sealOf(held.seal, id) : 'not read';
+      return (
+        typeof seal !== 'string' &&
+        seal.parts.every(({ name, sha256, bytes }) => {
+          const object = held?.objects.get(name);
+          return object?.sha256 === sha256 && object.bytes === bytes;
+        })
+      );
+    };
+    const sealIn = (path: string) => bucketObjects([path]).get(path)?.toString('latin1') ?? '';
+    // A copy's objects in monthly/, removed: each case leaves the month one copy to look at.
+    const uncopy = (id: string) => {
+      const run = inBackup(`rclone delete --include '*-${id}.*' "backups:$BACKUP_BUCKET/monthly/"`);
+      if (run.status !== 0) fail(`Removing ${id} from monthly/ failed: ${run.stderr.trim()}`);
+    };
+
+    // The rest of finding S2 (Stop C's re-review), its route b, in the month of the 1st whose base
+    // failed: the month's first whole night, the 2nd, beaten at its own check. The stand-in rclone,
+    // just before backup.sh lists monthly/'s seals, puts the night's own seal from daily/ there,
+    // beside objects of random bytes at the sizes it gives under its parts' exact names. Before the
+    // records the night took that for the month's copy and made none, with no alert; now a copy
+    // without its record is none, and the night copies itself over them, its record last: its line
+    // as soon as the record is up, then its last, and every part in monthly/ as its seal gives it.
+    const recordMonth = baseFirst.slice(0, 7);
+    const beatenId = `${recordMonth}-02T2030Z-${randomBytes(4).toString('hex')}`;
+    archive(stampOf(daemonNow()));
+    const beaten = standInBackup({
+      FAKE_STAMP: stampPart(beatenId),
+      FAKE_HEX: beatenId.slice(-8),
+      FAKE_PLANT: beatenId,
+    });
+    const beatenSaid = nightSaid(beaten.stdout);
+    const plantLine = lines(beaten.stderr).find((line) =>
+      line.startsWith('rclone: the stand-in put'),
+    );
+    const beatenKept = bucketNames('monthly').filter((name) => name.includes(`-${beatenId}.`));
+    checks.expect(
+      `the month's first whole night after its 1st whose base failed (${beatenId}), beaten at its own check ("${plantLine ?? 'nothing planted'}"): a copy without its record is none, so the night copies itself over them: exit ${beaten.status}, "${beatenSaid.said.join('", then "')}", its ${beatenKept.length} objects in monthly/, each part the one its seal gives`,
+      beaten.status === 0 &&
+        plantLine !== undefined &&
+        beatenSaid.night === beatenId &&
+        beatenSaid.said.length === 2 &&
+        beatenSaid.kept(beatenId) &&
+        beatenSaid.last.endsWith(KEPT) &&
+        beatenKept.join(' ') === copyParts(beatenId).join(' ') &&
+        copyIsReal(beatenId),
+      `${beaten.stdout}${beaten.stderr}\n${beatenKept.join('\n')}`,
+    );
+
+    // That copy with its record gone, every part and the seal left, as a copy cut short before its
+    // record, or one made by hand, is: no whole copy, so the month's next whole night copies itself
+    // again.
+    const unrecorded = inBackup(
+      `rclone deletefile "backups:$BACKUP_BUCKET/monthly/copy-${beatenId}.txt"`,
+    );
+    if (unrecorded.status !== 0)
+      fail(`Removing the record of ${beatenId} failed: ${unrecorded.stderr.trim()}`);
+    await monthlyShows([`seal-${beatenId}.txt`], [`copy-${beatenId}.txt`]);
+    const again = standInBackup({ FAKE_STAMP: `${recordMonth}-03T2030Z` });
+    const againSaid = nightSaid(again.stdout);
+    const againId = againSaid.night;
+    const againKept = bucketNames('monthly').filter((name) => name.includes(`-${againId}.`));
+    checks.expect(
+      `that copy with its record gone, its parts and seal left (as a copy cut short before its record, or one made by hand, is): no whole copy, so the month's next whole night copies itself again: exit ${again.status}, "${againSaid.last || tail(again.stdout, 1)}", its ${againKept.length} objects in monthly/`,
+      again.status === 0 &&
+        stampPart(againId) === `${recordMonth}-03T2030Z` &&
+        againSaid.kept(againId) &&
+        againSaid.last.endsWith(KEPT) &&
+        againKept.join(' ') === copyParts(againId).join(' '),
+      `${again.stdout}${again.stderr}\n${againKept.join('\n')}`,
+    );
+    uncopy(beatenId);
+
+    // Records someone else put over the record of the month's newest copy, the copy itself left as
+    // it is: junk; the record of another night, this month's copy's, renamed; one of this night but
+    // of another seal (the 1st two months back's), signed by the backup's key; and one of this
+    // night and its very seal, signed by another key. None counts, so each time the month's next
+    // whole night copies itself again, and becomes the copy the next record is put over.
+    const renamed = sealIn(`monthly/copy-${night}.txt`);
+    const plantedRecords: [string, (target: string) => string][] = [
+      ['junk', () => 'planted, not a record\n'],
+      [`the record of ${night}, renamed`, () => renamed],
+      [
+        `one of this night over another seal (${oldFirstId}'s), signed by the backup's key`,
+        (target) =>
+          recordText(target, sealIn(`monthly/seal-${oldFirstId}.txt`), env.BACKUP_SIGNING_KEY),
+      ],
+      [
+        'one of this night and its seal, signed by another key',
+        (target) => recordText(target, sealIn(`monthly/seal-${target}.txt`), otherSigningKey()),
+      ],
+    ];
+    let recordTarget = againId;
+    let recordDay = 4;
+    const recordNights = [beatenId, againId];
+    for (const [what, made] of plantedRecords) {
+      const text = made(recordTarget);
+      const path = `monthly/copy-${recordTarget}.txt`;
+      putObject(path, text);
+      for (let tries = 0; tries < 20 && sealIn(path) !== text; tries++) await sleep(1000);
+      await monthlyShows([`seal-${recordTarget}.txt`, `copy-${recordTarget}.txt`]);
+      const stamp = `${recordMonth}-${String(recordDay).padStart(2, '0')}T2030Z`;
+      const run = standInBackup({ FAKE_STAMP: stamp });
+      const said = nightSaid(run.stdout);
+      const kept = bucketNames('monthly').filter((name) => name.includes(`-${said.night}.`));
+      checks.expect(
+        `a record someone else put in monthly/ over the copy of ${recordTarget}, ${what} (${text.length} bytes): no whole copy, so the month's next whole night copies itself: exit ${run.status}, "${said.last || tail(run.stdout, 1)}", its ${kept.length} objects in monthly/`,
+        run.status === 0 &&
+          stampPart(said.night) === stamp &&
+          said.kept(said.night) &&
+          said.last.endsWith(KEPT) &&
+          kept.join(' ') === copyParts(said.night).join(' '),
+        `${run.stdout}${run.stderr}\n${kept.join('\n')}`,
+      );
+      uncopy(recordTarget);
+      recordNights.push(said.night);
+      recordTarget = said.night;
+      recordDay++;
+    }
+
+    // A rotation (VPS-43): a new pair, its public key first in the list and the old key kept after
+    // it. A whole night signed with the new key counts the copy the old key recorded, as it counts
+    // the old key's seals, and names it.
+    const rotated = generateKeyPairSync('ed25519');
+    const rotatedKey = rotated.privateKey
+      .export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const rotatedPublic = rotated.publicKey
+      .export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    const ofMonth = (listed: string[]) =>
+      listed.filter((name) => name.includes(`-${recordMonth}-`));
+    const monthBeforeRotation = ofMonth(
+      await monthlyShows(
+        [`seal-${recordTarget}.txt`, `copy-${recordTarget}.txt`],
+        recordNights.filter((id) => id !== recordTarget).map((id) => `seal-${id}.txt`),
+      ),
+    );
+    const rotatedStamp = `${recordMonth}-${String(recordDay).padStart(2, '0')}T2030Z`;
+    const relied = standInBackup({
+      FAKE_STAMP: rotatedStamp,
+      BACKUP_SIGNING_KEY: rotatedKey,
+      BACKUP_SIGNING_PUBLIC_KEY: `${rotatedPublic} ${env.BACKUP_SIGNING_PUBLIC_KEY}`,
+    });
+    const reliedSaid = nightSaid(relied.stdout);
+    checks.expect(
+      `after a rotation (a new pair, its public key first, the old one kept after it), a whole night signed with the new key counts the copy the old key recorded (${recordTarget}) and names it: exit ${relied.status}, "${reliedSaid.last || tail(relied.stdout, 1)}", the month's ${monthBeforeRotation.length} objects in monthly/ as they were`,
+      relied.status === 0 &&
+        stampPart(reliedSaid.night) === rotatedStamp &&
+        reliedSaid.said.length === 1 &&
+        reliedSaid.last.endsWith(`, the month's copy is ${recordTarget}`) &&
+        ofMonth(bucketNames('monthly')).join(' ') === monthBeforeRotation.join(' '),
+      `${relied.stdout}${relied.stderr}\n${ofMonth(bucketNames('monthly')).join('\n')}`,
+    );
+    // The month's nights go from daily/, the one the new key signed among them; its copy stays.
+    const recordDaily = inBackup(
+      `rclone delete ${[...recordNights, reliedSaid.night || 'none']
+        .map((id) => `--include '*-${id}.*'`)
+        .join(' ')} "backups:$BACKUP_BUCKET/daily/"`,
+    );
+    if (recordDaily.status !== 0)
+      fail(
+        `Removing the nights of ${recordMonth} from daily/ failed: ${recordDaily.stderr.trim()}`,
+      );
+
+    // A month whose copy's parts are gone from monthly/, as if they had never gone up, four months
+    // back (the stand-in date): its first whole night, on the 2nd, made it; then its parts go, its
+    // seal and its record staying, and a token holder puts an object named after each part the
+    // seal lists, a space and an x, at the size it gives. The record vouches for the seal, so only
+    // the parts' names tell: monthly/'s listing quotes no name, so those read as the parts' own
+    // lines; looked up by their exact names, the parts are not there, and the month's next whole
+    // night is still its copy (Stop C's review, finding S2).
     const absent = monthBefore(`${baseFirst.slice(0, 7)}-01T0000Z`);
     archive(stampOf(daemonNow()));
     const absentFirst = standInBackup({ FAKE_STAMP: `${absent}-02T2030Z` });
@@ -5136,10 +5424,9 @@ async function backupTest() {
     const lookalike = inBackup(
       [
         'set -e',
-        `rclone delete --include '*-${absentFirstId}.*' "backups:$BACKUP_BUCKET/monthly/"`,
-        `rclone copyto "backups:$BACKUP_BUCKET/daily/seal-${absentFirstId}.txt" "backups:$BACKUP_BUCKET/monthly/seal-${absentFirstId}.txt"`,
-        `rclone cat "backups:$BACKUP_BUCKET/daily/seal-${absentFirstId}.txt" | sed -n 's/^part [0-9a-f]* \\([0-9]*\\) \\(.*\\)$/\\1 \\2/p' >/tmp/sealed`,
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/monthly/seal-${absentFirstId}.txt" | sed -n 's/^part [0-9a-f]* \\([0-9]*\\) \\(.*\\)$/\\1 \\2/p' >/tmp/sealed`,
         'while read -r bytes name; do',
+        '  rclone deletefile "backups:$BACKUP_BUCKET/monthly/$name" </dev/null',
         '  head -c "$bytes" /dev/urandom | rclone rcat "backups:$BACKUP_BUCKET/monthly/$name x"',
         '  echo "$name x"',
         'done </tmp/sealed',
@@ -5155,27 +5442,23 @@ async function backupTest() {
       );
     }
     // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows them.
-    for (let tries = 0; tries < 20; tries++) {
-      const listed = bucketNames('monthly');
-      if (
-        listed.includes(`seal-${absentFirstId}.txt`) &&
-        lookalikes.every((name) => listed.includes(name)) &&
-        !listed.includes(`base-${absentFirstId}.tar.zst.age`)
-      )
-        break;
-      await sleep(1000);
-    }
+    await monthlyShows(
+      [`seal-${absentFirstId}.txt`, `copy-${absentFirstId}.txt`, ...lookalikes],
+      [`base-${absentFirstId}.tar.zst.age`],
+    );
     const absentNext = standInBackup({ FAKE_STAMP: `${absent}-03T2030Z` });
-    const absentNextLine = /^backup (\S+): .*$/m.exec(absentNext.stdout);
-    const absentNextId = absentNextLine?.[1] ?? '';
+    const absentNextSaid = nightSaid(absentNext.stdout);
+    const absentNextId = absentNextSaid.night;
     const monthlyAbsent = bucketNames('monthly').filter((name) => name.includes(`-${absent}-`));
     checks.expect(
-      `a month whose copy is gone from monthly/ (${absent}, stand-in stamps), its first night's real seal put back there beside ${lookalikes.length} objects named after the parts it lists, a space and an x, at its sizes ("${lookalikes.find((name) => name.startsWith('base-')) ?? ''}"): the month's next whole night is still its copy, each part looked up by its name: exit ${absentNext.status}, "${absentNextLine?.[0] ?? tail(absentNext.stdout, 1)}", its ${monthlyAbsent.filter((name) => name.includes(`-${absentNextId}.`)).length} objects in monthly/`,
+      `a month whose copy's parts are gone from monthly/ (${absent}, stand-in stamps), its first night's seal and record left there beside ${lookalikes.length} objects named after the parts it lists, a space and an x, at its sizes ("${lookalikes.find((name) => name.startsWith('base-')) ?? ''}"): the month's next whole night is still its copy, each part looked up by its name: exit ${absentNext.status}, "${absentNextSaid.last || tail(absentNext.stdout, 1)}", its ${monthlyAbsent.filter((name) => name.includes(`-${absentNextId}.`)).length} objects in monthly/`,
       absentNext.status === 0 &&
         stampPart(absentNextId) === `${absent}-03T2030Z` &&
-        (absentNextLine?.[0] ?? '').endsWith(", kept in monthly/ as the month's copy") &&
+        absentNextSaid.kept(absentNextId) &&
+        absentNextSaid.last.endsWith(KEPT) &&
         monthlyAbsent.filter((name) => name.includes(`-${absentNextId}.`)).join(' ') ===
-          nightParts(absentNextId, true).join(' ') &&
+          copyParts(absentNextId).join(' ') &&
+        monthlyAbsent.includes(`copy-${absentFirstId}.txt`) &&
         lookalikes.every((name) => monthlyAbsent.includes(name)),
       `${absentNext.stdout}${absentNext.stderr}\n${monthlyAbsent.join('\n')}`,
     );
@@ -5185,8 +5468,51 @@ async function backupTest() {
     if (unlooked.status !== 0)
       fail(`Removing the look-alikes of ${absentFirstId} failed: ${unlooked.stderr.trim()}`);
 
+    // A 1st whose removal of old copies fails, five months back (the stand-in rclone fails every
+    // delete, as while the provider is down): its copy and record are up before the removal, so
+    // its journal says "kept in monthly/" in a line of its own, though the night then fails with
+    // the alert; and the month's next whole night names that copy (Stop C's re-review, B1).
+    const removalMonth = monthBefore(`${absent}-01T0000Z`);
+    archive(stampOf(daemonNow()));
+    const unremoved = standInBackup({
+      FAKE_STAMP: `${removalMonth}-01T2030Z`,
+      FAKE_DELETE: 'fail',
+    });
+    const unremovedSaid = nightSaid(unremoved.stdout);
+    const unremovedLine =
+      lines(unremoved.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
+    const unremovedId =
+      /^\[menumesh\] backup failed \(exit \d+\) at (\S+):/.exec(unremovedLine)?.[1] ?? '';
+    const unremovedKept = bucketNames('monthly').filter((name) =>
+      name.includes(`-${unremovedId}.`),
+    );
+    checks.expect(
+      `a 1st whose removal of old copies fails (${unremovedId || removalMonth}, a stand-in rclone failing every delete): exit ${unremoved.status}, its one line "${unremovedSaid.said.join('", "')}", then "${unremovedLine}"; its ${unremovedKept.length} objects in monthly/, its record among them`,
+      unremoved.status === 1 &&
+        stampPart(unremovedId) === `${removalMonth}-01T2030Z` &&
+        unremovedSaid.said.join('\n') ===
+          `backup ${unremovedId}: kept in monthly/ as the month's copy` &&
+        unremovedLine ===
+          `[menumesh] backup failed (exit 1) at ${unremovedId}: the removal of old copies` &&
+        unremoved.stderr.includes('rclone: the stand-in fails every delete') &&
+        unremovedKept.join(' ') === copyParts(unremovedId).join(' '),
+      `${unremoved.stdout}${unremoved.stderr}\n${unremovedKept.join('\n')}`,
+    );
+    await monthlyShows([`seal-${unremovedId}.txt`, `copy-${unremovedId}.txt`]);
+    const named = standInBackup({ FAKE_STAMP: `${removalMonth}-02T2030Z` });
+    const namedSaid = nightSaid(named.stdout);
+    checks.expect(
+      `the month's next whole night (${namedSaid.night || 'none'}) names that copy: exit ${named.status}, "${namedSaid.last || tail(named.stdout, 1)}"`,
+      named.status === 0 &&
+        stampPart(namedSaid.night) === `${removalMonth}-02T2030Z` &&
+        namedSaid.said.length === 1 &&
+        namedSaid.last.endsWith(`, the month's copy is ${unremovedId}`),
+      `${named.stdout}${named.stderr}`,
+    );
+
     // Every night above as a restore reads it, with Node's crypto: its seal signed by the backup's
-    // key, and each part it lists in its folder as it went up; the month's copies too.
+    // key, and each part it lists in its folder as it went up; the month's copies too, and each
+    // copy's record as the month's copy reads it.
     const nights = sealsChecked(checks, env, [
       { folder: 'daily', night: failedNight, config: false, base: true },
       { folder: 'daily', night, config: true, base: true },
@@ -5196,8 +5522,11 @@ async function backupTest() {
       { folder: 'daily', night: slowNight, config: true, base: true },
       { folder: 'monthly', night: oldFirstId, config: true, base: true },
       { folder: 'daily', night: baselessId, config: true, base: false },
+      { folder: 'monthly', night: recordTarget, config: true, base: true },
       { folder: 'monthly', night: absentNextId, config: true, base: true },
+      { folder: 'monthly', night: unremovedId, config: true, base: true },
     ]);
+    await recordsChecked(checks, env, [night, oldFirstId, recordTarget, absentNextId, unremovedId]);
     const unbased = inBackup(
       `rclone delete --include '*-${baselessId}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
