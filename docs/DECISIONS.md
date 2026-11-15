@@ -8132,7 +8132,8 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
 - **VPS-45 · What a nightly dump could not do, and still can't:** a restore from a night goes back
   to that night, rewinds each counter to it, and loses what customers did after. A point-in-time
   recovery to `latest` after a server loss is the first choice, a night's logical restore the
-  fallback (RUNBOOK, Backups and restore (VPS)). A rewind to a time keeps the cluster and its
+  fallback (RUNBOOK, Backups and restore (VPS)), and the only way after a theft of the signing key
+  until the new key has signed a night (VPS-57). A rewind to a time keeps the cluster and its
   system identifier and starts a new timeline, whose history file `db` archives within a minute.
 
 **Left open (Stop C):**
