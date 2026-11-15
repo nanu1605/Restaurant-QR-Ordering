@@ -2983,6 +2983,36 @@ const scriptEnv = (text: string, scripts = SCRIPT_SERVICES) =>
   });
 
 /**
+ * pitr.sh's check of the base's timeline (Stop C's re-review, finding M1): the last WAL file of the
+ * base's own timeline among those it brought along, from its first on, and the next timeline in
+ * the replay's history held to begin past it.
+ */
+const BASE_CHECK = [
+  `base_last=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '`,
+  '  BEGIN { last = first }',
+  '  substr($0, 1, 8) == tli && substr($0, 9, 16) "" > last "" { last = substr($0, 9, 16) }',
+  `  END { print last }' "$work/base-wal")`,
+  `problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" -v last="$base_last" '`,
+  '  $1 == tli { on = NR; next }',
+  '  on && NR == on + 1 && $2 "" <= last "" { left = $2 }',
+  '  END {',
+  '    if (!on) print "is not one of them"',
+  '    else if (left != "" && left "" < first "") print "was left for a later one at " left ", before the base began"',
+  '    else if (left != "") print "was left for a later one at " left ", before the base ended"',
+  `  }' "$work/lineage")`,
+].join('\n');
+/** The check as it was before finding M1: the next timeline's begin held to the base's first WAL file alone. */
+const TODAYS_BASE_CHECK = [
+  `problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '`,
+  '  $1 == tli { on = NR; next }',
+  '  on && NR == on + 1 && $2 "" < first "" { left = $2 }',
+  `  END { if (!on) print "is not one of them"; else if (left != "") print "was left for a later one at " left ", before the base began" }' "$work/lineage")`,
+].join('\n');
+/** The refusal of the base, which nothing written to db-data may precede. */
+const BASE_REFUSED =
+  '  die "the base backup of $night is of the timeline $tli, from $start, which $problem:';
+
+/**
  * pitr.sh (VPS-43): everything it prints through the filter restore.sh has; a recovery only to a
  * point it is given, and no point more than 14 days back; the night's base read only once its seal
  * checks out, and held to the seal's size and sha256; the WAL's upload time the bucket's own, never
@@ -2998,7 +3028,10 @@ const scriptEnv = (text: string, scripts = SCRIPT_SERVICES) =>
  * the newest timeline whose history file is here, never another timeline's at the same position,
  * and a replay to latest must end at the chain's last WAL file from the bucket (review finding
  * C2). A recovery to latest with a cut chain is refused before anything is written to db-data,
- * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6).
+ * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6). A base whose timeline
+ * the replay leaves for the next before the last WAL file the base brought along is refused before
+ * anything is written: Postgres could read on along the abandoned timeline from those files
+ * (Stop C's re-review, finding M1).
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -3030,6 +3063,7 @@ const pitrRules = (script: string) => {
   const cutRefused = script.indexOf('die "a recovery to latest would end at the cut at $gap');
   const writes = script.indexOf('[ "$mode" != --into ] || writing=yes');
   const shortOfEnd = script.indexOf('  if [ "$restored" != "$from_bucket" ]; then');
+  const baseRefused = script.indexOf(BASE_REFUSED);
   return [
     ...(script.includes(String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`) &&
     script.indexOf('exec >"$fifo" 2>&1') < script.indexOf('mode=${1-}') &&
@@ -3135,6 +3169,14 @@ const pitrRules = (script: string) => {
     )
       ? []
       : ['the drill passes with the chain of WAL files cut']),
+    ...(script.includes(`${BASE_CHECK}\n[ -z "$problem" ] ||\n${BASE_REFUSED}`) &&
+    baseRefused >= 0 &&
+    writes > baseRefused &&
+    unpacked > baseRefused
+      ? []
+      : [
+          'a base is taken whose timeline the replay leaves before the base ended, inside the WAL it brought along, or it is refused after db-data is written',
+        ]),
   ];
 };
 
@@ -4652,6 +4694,36 @@ describe('the migrate and backup images', () => {
       ),
       'the drill passes with the chain of WAL files cut',
     );
+  });
+
+  it('refuses a base whose timeline the replay leaves before the base ended (Stop C’s re-review, finding M1)', () => {
+    const problem = 'the replay leaves before the base ended, inside the WAL it brought along';
+    // Today's check: the next timeline's begin held to the base's first WAL file alone, so a fork
+    // inside the base's own WAL passes.
+    refuses(pitrRules, swap(pitrSh, BASE_CHECK, TODAYS_BASE_CHECK), problem);
+    // Held to the base's first WAL file, or a fork in its last passing.
+    refuses(pitrRules, swap(pitrSh, '-v last="$base_last"', '-v last="$first"'), problem);
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '  on && NR == on + 1 && $2 "" <= last "" { left = $2 }',
+        '  on && NR == on + 1 && $2 "" < last "" { left = $2 }',
+      ),
+      problem,
+    );
+    // The refusal once db-data is being written.
+    const refusal =
+      /\n\[ -z "\$problem" \] \|\|\n {2}die "the base backup of \$night is of the timeline [^\n]*\n/.exec(
+        pitrSh,
+      )?.[0] ?? '';
+    expect(refusal).toContain('so it can\'t start from this base, and nothing was replayed"');
+    const late = swap(
+      swap(pitrSh, refusal, '\n'),
+      '[ "$mode" != --into ] || writing=yes\n',
+      `[ "$mode" != --into ] || writing=yes${refusal}`,
+    );
+    refuses(pitrRules, late, 'or it is refused after db-data is written');
   });
 
   it('hands the replay one WAL file at a time, and a file that fails to decrypt stops it', () => {

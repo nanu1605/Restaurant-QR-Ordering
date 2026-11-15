@@ -40,12 +40,15 @@
 # The replay follows the newest timeline whose history file is here, through the timelines that
 # history file names, and at each position reads the WAL file of the newest of them begun by then,
 # never an older timeline's after a newer one's: so the chain takes at each position that WAL file
-# and no other, and an older timeline's file at the same position never fills a gap in it. A WAL
-# file the chain needs that is not in the bucket, or none of whose objects is the backup's, ends
-# the chain there, said plainly, with whether the backup's WAL goes on after it: a cut. The drill
-# then fails; a recovery to latest, which would end at the cut, is refused before it writes
-# anything, unless PITR_ACCEPT_CUT names the WAL file it is cut at, the owner's word that the
-# database may end there. The WAL of a later timeline without that timeline's history file is
+# and no other, and an older timeline's file at the same position never fills a gap in it. The
+# night's base is of one of those timelines, and the next of them begins past the last WAL file
+# the base brought along, or it is refused before anything is written: else the replay could read
+# on along the abandoned timeline from the base's own copies of those files, which no chain hands
+# it. A WAL file the chain needs that is not in the bucket, or none of whose objects is the
+# backup's, ends the chain there, said plainly, with whether the backup's WAL goes on after it: a
+# cut. The drill then fails; a recovery to latest, which would end at the cut, is refused before it
+# writes anything, unless PITR_ACCEPT_CUT names the WAL file it is cut at, the owner's word that
+# the database may end there. The WAL of a later timeline without that timeline's history file is
 # refused before the replay, which would follow an older timeline instead. A replay to latest must
 # end at the chain's last WAL file from the bucket, or it is not the latest the bucket holds.
 #
@@ -496,12 +499,31 @@ else
   done <"$work/switches"
   echo "$newest $begins" >>"$work/lineage"
 fi
-# The base's timeline is one of them, not left before the base began: else Postgres would not
-# replay it, a base from before a recovery that went back past it.
-problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '
+# The base's timeline is one of them, and the next of them begins past the last WAL file the base
+# brought along. A base left before it began is from before a recovery that went back past it:
+# Postgres would not replay it. A base left while it ran, by a recovery back to a point inside it,
+# is no use either. Postgres takes at each position the WAL file of the newest timeline begun
+# there, the bucket's or else pg_wal's, and the base unpacks its own WAL files into pg_wal, of its
+# timeline, which that recovery abandoned at the fork. Past the fork the replay would follow the
+# later timeline and never reach the base's end; or, where the later timeline's WAL file there is
+# not in the bucket (a cut accepted, or that timeline gone from wal/), read on from the base's own
+# files along the abandoned timeline, through the WAL that recovery left out, to the base's end,
+# and promote there. The fork is held to the base's last WAL file, not to its end inside it: the
+# backup's end is followed in that file by whatever was written before the segment switch that
+# ends the backup, which a fork after the end would abandon too. With the fork past that file,
+# pg_wal holds no WAL file at a position where the replay reads another timeline than the base's.
+base_last=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '
+  BEGIN { last = first }
+  substr($0, 1, 8) == tli && substr($0, 9, 16) "" > last "" { last = substr($0, 9, 16) }
+  END { print last }' "$work/base-wal")
+problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" -v last="$base_last" '
   $1 == tli { on = NR; next }
-  on && NR == on + 1 && $2 "" < first "" { left = $2 }
-  END { if (!on) print "is not one of them"; else if (left != "") print "was left for a later one at " left ", before the base began" }' "$work/lineage")
+  on && NR == on + 1 && $2 "" <= last "" { left = $2 }
+  END {
+    if (!on) print "is not one of them"
+    else if (left != "" && left "" < first "") print "was left for a later one at " left ", before the base began"
+    else if (left != "") print "was left for a later one at " left ", before the base ended"
+  }' "$work/lineage")
 [ -z "$problem" ] ||
   die "the base backup of $night is of the timeline $tli, from $start, which $problem: the replay goes through the timelines up to $newest, the latest whose history file is in the bucket, so it can't start from this base, and nothing was replayed"
 
