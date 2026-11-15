@@ -33,13 +33,16 @@
  *                    copy sealed by another key, no second copy, a night in the service with its
  *                    shipper at once, a base a checkpoint overtakes, which its slot carries, a
  *                    1st's copy, and a 1st whose base failed; every seal and the base read as a
- *                    restore reads them; a night whose id someone else wrote a name of first,
- *                    stopped before its first upload; the monthly restore test; planted
- *                    nights and names the restore must refuse or not read, each night read from the
- *                    one folder its age gives and only as its seal gives it; and the disaster
- *                    recovery of the 1st's copy, from monthly/, on the rehearsal's own volumes,
- *                    after a recovery without RESTORE_STAMP is refused, whose new cluster ships its
- *                    WAL under its own identifier.
+ *                    restore reads them; a night's seal and settings archive checked on this
+ *                    machine by pnpm vps:verify-night, as the owner checks them before a new
+ *                    server gets the archive, and an archive put over the night's own and one
+ *                    under a night that sealed none refused; a night whose id someone else wrote
+ *                    a name of first, stopped before its first upload; the monthly restore test;
+ *                    planted nights and names the restore must refuse or not read, each night
+ *                    read from the one folder its age gives and only as its seal gives it; and the
+ *                    disaster recovery of the 1st's copy, from monthly/, on the rehearsal's own
+ *                    volumes, after a recovery without RESTORE_STAMP is refused, whose new cluster
+ *                    ships its WAL under its own identifier.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
@@ -1861,6 +1864,27 @@ function vpsSecrets(args: string[]): Run {
       ...args,
     ],
     { cwd: ROOT, encoding: 'utf8' },
+  );
+  if (result.error) throw result.error;
+  return { status: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
+}
+
+/**
+ * scripts/vps-verify-night.mts, as pnpm vps:verify-night runs it on the owner's machine, without
+ * this shell's BACKUP_SIGNING_PUBLIC_KEY or INIT_CWD: the keys come from the file it is given.
+ */
+function vpsVerifyNight(args: string[]): Run {
+  const environment = { ...process.env };
+  delete environment.BACKUP_SIGNING_PUBLIC_KEY;
+  delete environment.INIT_CWD;
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
+      join(ROOT, 'scripts', 'vps-verify-night.mts'),
+      ...args,
+    ],
+    { cwd: ROOT, encoding: 'utf8', env: environment },
   );
   if (result.error) throw result.error;
   return { status: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
@@ -4283,6 +4307,168 @@ function sealsChecked(
 }
 
 /**
+ * Objects of the bucket read by their exact names in a one-off of the backup service, as the
+ * owner downloads them with the provider's dashboard: each path's bytes (none for a path the
+ * bucket doesn't hold).
+ */
+function bucketObjects(paths: readonly string[]): Map<string, Buffer> {
+  const run = inBackup(
+    [
+      'set -eu',
+      'while read -r path; do',
+      `  printf '%s ' "$path"`,
+      '  rclone cat --no-traverse "backups:$BACKUP_BUCKET/$path" </dev/null | base64 -w 0',
+      '  echo',
+      'done',
+    ].join('\n'),
+    `${paths.join('\n')}\n`,
+  );
+  if (run.status !== 0) fail(`Reading ${paths.join(', ')} failed: ${run.stderr.trim()}`);
+  return new Map(
+    lines(run.stdout).map((line) => {
+      const [path, data = ''] = line.split(' ');
+      return [path, Buffer.from(data, 'base64')] as const;
+    }),
+  );
+}
+
+/** What disaster recovery's step 2 lets a settings archive hold (docs/RUNBOOK.md): these names. */
+const ARCHIVE_NAMES = /^(\.env|images\.env|deploys\.log|env\/.*|config\/.*)$/;
+
+/**
+ * A settings archive of someone else's making, as whoever holds the bucket's token and the age
+ * public key can make one: only names disaster recovery's listing allows, each a file or a folder,
+ * among them a config/db/wal-spool.sh of their own, which db would run as root; encrypted to the
+ * backup's age recipient and put in the bucket at a path, over what is there. Its size, and its
+ * entries as tar -tv lists them before age.
+ */
+function plantArchive(path: string) {
+  const run = inBackup(
+    [
+      'set -eu',
+      'rm -rf /var/tmp/planted && mkdir -p /var/tmp/planted/env /var/tmp/planted/config/db',
+      'cd /var/tmp/planted',
+      "printf 'POSTGRES_PASSWORD=planted\\n' >.env",
+      "printf 'BACKUP_IMAGE=planted\\n' >images.env",
+      "printf 'X=planted\\n' >env/web.env",
+      "printf '#!/bin/sh\\necho planted\\n' >config/db/wal-spool.sh",
+      'tar -cf /var/tmp/planted.tar .env images.env env config',
+      'age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" </var/tmp/planted.tar >/var/tmp/planted.tar.age',
+      `rclone copyto /var/tmp/planted.tar.age "backups:$BACKUP_BUCKET/${path}"`,
+      'echo "bytes $(wc -c </var/tmp/planted.tar.age)"',
+      'tar -tvf /var/tmp/planted.tar | sed "s/^/entry /"',
+    ].join('\n'),
+  );
+  const bytes = Number(/^bytes\s+(\d+)$/m.exec(run.stdout)?.[1] ?? 0);
+  if (run.status !== 0 || !bytes) fail(`Planting ${path} failed: ${run.stdout}${run.stderr}`);
+  const entries = lines(run.stdout)
+    .filter((line) => line.startsWith('entry '))
+    .map((line) => ({ type: line.slice(6, 7), name: line.split(/\s+/).at(-1) ?? '' }));
+  return { bytes, entries };
+}
+
+/**
+ * Disaster recovery's step 2, on this machine (Stop C's review, finding D1). A night's settings
+ * archive becomes a new server's settings, config/db/wal-spool.sh among them, which db runs as
+ * root, and nothing of the kit can run there before it: so the owner downloads it and the night's
+ * seal from the bucket by name, and pnpm vps:verify-night checks them here against the
+ * BACKUP_SIGNING_PUBLIC_KEY list kept with the age key. A whole night passes, naming its archive's
+ * sha256. An archive of someone else's making, as large as the sealed one, put over that night's
+ * own (the rehearsal's S3 takes overwrites, as a bucket with versioning does) with its real seal
+ * kept, is refused, though the listing that step 2 checked alone before takes it; and so is a
+ * night whose seal lists no settings archive, with one planted under its name, which such a night
+ * leaves free even under locks that refuse overwrites. The night's own archive is put back after.
+ */
+function verifyNightProof(
+  checks: Checks,
+  env: Record<string, string>,
+  nights: Map<string, { seal: string; objects: Map<string, SealPart> }>,
+  whole: string,
+  unconfigured: string,
+) {
+  const sum = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+  const scratch = mkdtempSync(join(tmpdir(), 'menumesh-kit-verify-'));
+  try {
+    const keys = join(scratch, 'keys.txt');
+    writeFileSync(keys, `BACKUP_SIGNING_PUBLIC_KEY=${env.BACKUP_SIGNING_PUBLIC_KEY}\n`);
+    // A folder of its own holding a night's seal and settings archive as daily/ holds them now.
+    const downloaded = (night: string, folderName: string) => {
+      const folder = join(scratch, folderName);
+      mkdirSync(folder);
+      const names = [`seal-${night}.txt`, `config-${night}.tar.age`];
+      const got = bucketObjects(names.map((name) => `daily/${name}`));
+      for (const name of names) {
+        const bytes = got.get(`daily/${name}`);
+        if (bytes?.length) writeFileSync(join(folder, name), bytes);
+      }
+      return folder;
+    };
+    const config = `config-${whole}.tar.age`;
+    const seal = sealOf(nights.get(`daily ${whole}`)?.seal ?? '', whole);
+    const part =
+      typeof seal === 'string' ? undefined : seal.parts.find(({ name }) => name === config);
+    if (!part) fail(`The seal of ${whole} lists no ${config}`);
+    const real = bucketObjects([`daily/${config}`]).get(`daily/${config}`) ?? Buffer.alloc(0);
+
+    const pass = vpsVerifyNight([whole, downloaded(whole, 'whole'), '--keys', keys]);
+    checks.expect(
+      `disaster recovery's step 2 on the owner's machine (Stop C's review, finding D1): ${whole}'s seal and settings archive downloaded from daily/ by name into a folder of their own, then pnpm vps:verify-night with the key list kept beside the age key: exit ${pass.status}, "${tail(pass.stdout, 1) || tail(pass.stderr, 1)}"`,
+      pass.status === 0 &&
+        pass.stderr === '' &&
+        sum(real) === part.sha256 &&
+        pass.stdout ===
+          [
+            `verify-night: ${config} is the part the backup sealed (${part.bytes} bytes, sha256 ${part.sha256})`,
+            `verify-night: the seal of ${whole} is signed by the backup's key, and the 1 part here matches it: copy ${config} to the server, where sha256sum must print ${part.sha256} for it before it is unpacked`,
+            '',
+          ].join('\n'),
+      `${pass.stdout}${pass.stderr}`,
+    );
+
+    const planted = plantArchive(`daily/${config}`);
+    const over = vpsVerifyNight([whole, downloaded(whole, 'planted'), '--keys', keys]);
+    const back = inBackup(
+      `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/daily/${config}"`,
+      real.toString('base64'),
+    );
+    const again = bucketObjects([`daily/${config}`]).get(`daily/${config}`) ?? Buffer.alloc(0);
+    if (back.status !== 0 || sum(again) !== part.sha256) {
+      fail(`Putting ${config} back failed: ${back.stderr.trim()}`);
+    }
+    checks.expect(
+      `a settings archive of someone else's making (${planted.entries.map(({ type, name }) => `${type} ${name}`).join(', ')}: only names the listing of step 2 allows, each a file or a folder), encrypted to the age recipient, ${planted.bytes} bytes as the sealed one is, put over ${config} in daily/ with the night's real seal kept: pnpm vps:verify-night exit ${over.status}, "${tail(over.stderr, 1)}", nothing else; the night's own archive put back after`,
+      over.status === 1 &&
+        over.stdout === '' &&
+        over.stderr ===
+          `verify-night: ${config} is not the part the backup sealed (its sha256 is not the seal's): someone else wrote to the bucket, and nothing in the folder can be trusted\n` &&
+        planted.bytes === part.bytes &&
+        planted.entries.some(({ name }) => name === 'config/db/wal-spool.sh') &&
+        planted.entries.every(({ type, name }) => '-d'.includes(type) && ARCHIVE_NAMES.test(name)),
+      `${over.stdout}${over.stderr}`,
+    );
+
+    const unsealed = `config-${unconfigured}.tar.age`;
+    const plantedUnsealed = plantArchive(`daily/${unsealed}`);
+    const none = vpsVerifyNight([
+      unconfigured,
+      downloaded(unconfigured, 'unsealed'),
+      '--keys',
+      keys,
+    ]);
+    checks.expect(
+      `a night whose seal lists no settings archive (${unconfigured}, whose archive was stale), with one of someone else's making put under its name in daily/ (${plantedUnsealed.bytes} bytes): pnpm vps:verify-night exit ${none.status}, "${tail(none.stderr, 1)}", nothing else`,
+      none.status === 1 &&
+        none.stdout === '' &&
+        none.stderr ===
+          `verify-night: the night of ${unconfigured} has no settings archive in its seal (${unsealed}): its backup had none fresh enough, and anything under that name is someone else's: name the night before it\n`,
+      `${none.stdout}${none.stderr}`,
+    );
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
  * A night's base backup, decrypted (the rehearsal's age key) and decompressed in a one-off of the
  * backup service, into /var/tmp (its /tmp is a small tmpfs): its tar's names, backup_label's lines
  * and the system identifier of its backup_manifest.
@@ -5017,6 +5203,11 @@ async function backupTest() {
     );
     if (unbased.status !== 0)
       fail(`Removing ${baselessId} from daily/ failed: ${unbased.stderr.trim()}`);
+
+    // A night's settings archive checked on the owner's machine against its seal before it goes
+    // to a new server (disaster recovery, step 2): the slowed base's night, whole, and the night
+    // whose settings archive was stale, which sealed none (Stop C's review, finding D1).
+    verifyNightProof(checks, env, nights, slowNight, failedNight);
 
     // The night's base backup, as a point-in-time recovery reads it: a tar with backup_label,
     // backup_manifest and, under pg_wal/, the WAL it needs from the file its seal names, of the
