@@ -124,6 +124,8 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
       'config-2026-11-12T2030Z-0123abcd.tar.age': 'another night’s',
       [`${sealName}.bak`]: 'not the seal',
       'keys.txt': `BACKUP_SIGNING_PUBLIC_KEY=${own.publicKey}\n`,
+      // A month's copy's record, which only backup.sh's month's copy reads, and never needs here.
+      [`copy-${night}.txt`]: 'planted, not a record',
     });
     expect(verdictOf(dir)).toEqual(passed(parts));
     // A night whose base failed seals "base none", and its settings archive still checks out.

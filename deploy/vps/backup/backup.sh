@@ -21,12 +21,14 @@
 #                              whole night, and a restore reads only the parts it lists
 #
 # A whole night stamped the 1st (UTC) is also copied to monthly/, or the next whole night when the
-# 1st's wasn't; daily copies go after 30 days, monthly ones after 366 and the shipped WAL after 15.
-# A missing or stale settings archive, or a base backup that failed, fails the run once everything
-# else is safe: the seal lists what went up (and says "base none" without a base), and such a night
-# is never the month's copy. A failure goes to Telegram (notify.sh alert); a full success prints
-# one line, `backup <night>: ...`, and pings HEARTBEAT_URL with it, so the monitor keeps each whole
-# night's id where the bucket's token can't reach. Nothing printed holds a value.
+# 1st's wasn't, and the copy recorded there last, signed, as copy-<night>.txt (below); daily copies
+# go after 30 days, monthly ones after 366 and the shipped WAL after 15. A missing or stale
+# settings archive, or a base backup that failed, fails the run once everything else is safe: the
+# seal lists what went up (and says "base none" without a base), and such a night is never the
+# month's copy. A failure goes to Telegram (notify.sh alert); a full success ends in one line,
+# `backup <night>: ...`, which names the month's copy, and pings HEARTBEAT_URL with it, so the
+# monitor keeps each whole night's id where the bucket's token can't reach. Nothing printed holds a
+# value.
 set -eu -o pipefail
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
@@ -132,11 +134,12 @@ done
 expected="globals-$night.sql.age:256 storage-$night.tar.age:1024 manifest-$night.txt.age:256"
 for db in $dbs; do expected="$expected $db-$night.dump.age:1024"; done
 
-# None of tonight's names may be in either folder before the first upload: nobody could know them,
-# so one that is there means someone else wrote to the bucket, and the night stops here.
+# None of tonight's names may be in either folder before the first upload, the month's copy's
+# record among them: nobody could know them, so one that is there means someone else wrote to the
+# bucket, and the night stops here.
 reason="the check of tonight's names"
 for folder in daily monthly; do
-  there=$(for part in $expected "base-$night.tar.zst.age:1024" "config-$night.tar.age:1024" "seal-$night.txt:0"; do echo "${part%:*}"; done |
+  there=$(for part in $expected "base-$night.tar.zst.age:1024" "config-$night.tar.age:1024" "seal-$night.txt:0" "copy-$night.txt:0"; do echo "${part%:*}"; done |
     held "$remote/$folder" | awk '{ printf "%s%s", sep, $2; sep = " " }')
   [ -z "$there" ] ||
     fail "someone else wrote to the bucket: $folder/ holds $there before tonight's first upload"
@@ -362,27 +365,73 @@ sealed_size=$(echo "seal-$night.txt" | held "$day" | awk '{ print $1 }')
 
 # The month's copy in monthly/: only a whole night, every upload above checked, its base made and
 # its settings archive fresh, and one stamped the 1st (UTC) or, while monthly/ holds no whole copy
-# of the month, the next whole night, so a 1st that failed leaves the copy to it. A whole copy is
-# one whose seal checks out against BACKUP_SIGNING_PUBLIC_KEY (whole_copy, below): names someone
-# else put in monthly/ can't stop the 1st's copy, nor make one of a night the backup never sealed,
-# as only the backup signs a seal. The seal goes last there too, so a copy cut short is no whole
-# copy. Each part is held to its size, not its bytes, which would cost the month's copy in
-# downloads every night: where a whole night's names in monthly/ are free, a token holder can put
-# objects of the sizes its seal gives under them, and the seal beside them, and so stop the month's
-# later copies, after that night's own copy was cut short (the night fails with the alert) or by
-# beating a whole night's own check after a 1st that failed. A restore refuses such parts by their
-# sha256.
+# of the month, the next whole night, so a 1st that failed leaves the copy to it. Its parts go
+# first, then its seal, then, once both are checked there, its record, copy-<night>.txt, last:
 #
+#   menumesh copy 1 <night> <sha256 of the night's seal, every byte of it>
+#   signature <base64url Ed25519 signature of the line above>
+#
+# signed with BACKUP_SIGNING_KEY, as the seal is. Only this script signs one, and only after its
+# own copy is in monthly/, each part and the seal under its exact name at the size it went up and
+# the seal byte for byte, so a record never vouches for objects the bucket doesn't hold. Its line
+# begins as nothing else the backup signs does (a seal's "menumesh seal 1", the WAL's "menumesh
+# wal 1", the self-check's probe), so no signature of one stands for another. A copy counts as
+# whole only with its record (whole_copy, below): names someone else put in monthly/ can't stop the
+# 1st's copy, nor stand in for a whole one, and a copy cut short before its record is copied again
+# by the next whole night. The night that makes the copy says so in a line of its own as soon as
+# the record is up, before the removal of old copies, which can fail; a later whole night names
+# the copy it found in its own line. So the journal, and through the heartbeat the monitor's log,
+# name the month's copy whatever fails after it (Stop C's re-review, finding B1).
+#
+# Each part is held to its size, not its bytes, which would cost the month's copy in downloads
+# every night. Objects of the sizes a night's seal gives, put under that night's free names in
+# monthly/ beside its real seal copied from daily/, after its own copy was cut short or by beating
+# its own check after a 1st that failed, passed for its copy and stopped the month's later copies
+# with no alert (Stop C's re-review, the rest of finding S2): they have no record, so the next
+# whole night copies itself. Under locks that refuse overwrites, an object put under one of
+# tonight's monthly/ names while the night runs (its id and sizes show in daily/'s listing from its
+# first upload) refuses that night's copy or record, and the night fails with the alert, as does
+# each later night so stopped. Under versioning, objects of the same sizes put over a recorded
+# copy's parts still pass for them; a restore refuses them by their sha256.
+#
+# record_message <night> <seal>: the line a record of that night's copy signs, for the seal the
+# file holds, on stdout.
+record_message() {
+  record_sum=$(sha256sum "$2" | cut -d ' ' -f 1) || return 1
+  case $record_sum in '' | *[!0-9a-f]*) return 1 ;; esac
+  [ "${#record_sum}" -eq 64 ] || return 1
+  printf 'menumesh copy 1 %s %s\n' "$1" "$record_sum"
+}
 # whole_copy <night>: whether monthly/ holds that night whole: its seal, at most seal_max bytes, a
 # backup's for that night with a base, a settings archive and a dump of each of tonight's
-# databases, and every part it lists in monthly/ at the size it gives, each looked up by its exact
-# name (held). A listing of monthly/ quotes no name: an object named after a part, a space and
-# more, at the part's size, passed for the part, and with the night's own seal copied there from
-# daily/, stopped every later copy of the month (Stop C's review, finding S2).
+# databases; its record, looked up by its exact name before it is read (rclone cat of a name the
+# folder doesn't hold reads every object under that name and a slash), no longer than 256 bytes,
+# and byte for byte the line built here from that night and the very seal file checked above,
+# "signature ", a signature of that line by any of BACKUP_SIGNING_PUBLIC_KEY's keys (as a seal's,
+# so a rotation keeps the copies the old key recorded) and a newline: nothing of the record is
+# taken but the signature, and that only to be checked; and every part the seal lists in monthly/
+# at the size it gives, each looked up by its exact name (held). A listing of monthly/ quotes no
+# name: an object named after a part, a space and more, at the part's size, passed for the part,
+# and with the night's own seal copied there from daily/, stopped every later copy of the month
+# (Stop C's review, finding S2).
 # shellcheck disable=SC2154 # seal_max and seal_parts: seal.sh's
 whole_copy() {
   rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&
     seal_open "$work/candidate" "$1" &&
+    record_message "$1" "$work/candidate" >"$work/candidate.message" &&
+    echo "copy-$1.txt" | held "$remote/monthly" >"$work/candidate.recorded" &&
+    LC_ALL=C awk -v name="copy-$1.txt" '
+      NF == 2 && $2 == name && $1 ~ /^[1-9][0-9]*$/ && $1 + 0 <= 256 { found = 1 }
+      END { exit found ? 0 : 1 }' "$work/candidate.recorded" &&
+    rclone cat --no-traverse --head 257 "$remote/monthly/copy-$1.txt" >"$work/candidate.record" &&
+    [ "$(($(wc -c <"$work/candidate.record")))" -le 256 ] &&
+    record_signature=$(tail -c 87 "$work/candidate.record" | head -c 86) &&
+    {
+      cat "$work/candidate.message"
+      printf 'signature %s\n' "$record_signature"
+    } >"$work/candidate.built" &&
+    cmp -s "$work/candidate.built" "$work/candidate.record" &&
+    seal_verify "$work/candidate.message" "$record_signature" &&
     printf '%s\n' "$seal_parts" >"$work/candidate.parts" &&
     awk '{ print $3 }' "$work/candidate.parts" | held "$remote/monthly" >"$work/candidate.held" &&
     DBS="$dbs" LC_ALL=C awk -v night="$1" '
@@ -428,7 +477,44 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
       rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"
     done
     rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"
+    # The copy as monthly/ holds it, before its record vouches for it: each part and the seal by its
+    # exact name at the size it went up, then the seal byte for byte.
+    reason="the check of the month's copy"
+    copied=$({
+      for part in $expected; do echo "${part%:*}"; done
+      echo "seal-$night.txt"
+    } | held "$remote/monthly")
+    for part in $expected "seal-$night.txt:0"; do
+      name=${part%:*}
+      if [ "$name" = "seal-$night.txt" ]; then
+        sent=$(($(wc -c <"$work/seal")))
+      else
+        read -r sum sent <"$work/sealed/$name"
+      fi
+      size=$(printf '%s\n' "$copied" | awk -v name="$name" 'NF == 2 && $2 == name { print $1 }')
+      [ "$size" = "$sent" ] || fail "monthly/$name is not in the bucket as it went up"
+    done
+    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$night.txt" >"$work/copied"
+    cmp -s "$work/copied" "$work/seal" || fail "monthly/seal-$night.txt is not the night's seal"
+    # Its record, last, and confirmed by its name at its size. A record that fails leaves the copy
+    # in monthly/, which a restore reads by its names, and the next whole night copies itself.
+    reason="the record of the month's copy"
+    record_message "$night" "$work/seal" >"$work/record.message" ||
+      fail "no sha256 of seal-$night.txt for the record"
+    signature=$(seal_sign "$work/record.message") || fail 'the record could not be signed (openssl)'
+    {
+      cat "$work/record.message"
+      printf 'signature %s\n' "$signature"
+    } >"$work/record"
+    rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"
+    recorded=$(echo "copy-$night.txt" | held "$remote/monthly" |
+      awk -v name="copy-$night.txt" 'NF == 2 && $2 == name { print $1 }')
+    [ "$recorded" = "$(($(wc -c <"$work/record")))" ] ||
+      fail "monthly/copy-$night.txt is not in the bucket as it went up"
+    echo "backup $night: kept in monthly/ as the month's copy"
     kept=", kept in monthly/ as the month's copy"
+  else
+    kept=", the month's copy is $whole"
   fi
 fi
 # 30 daily and 12 monthly copies. Only the bucket can keep a stolen token from deleting them sooner,
@@ -443,7 +529,7 @@ fi
 # modification time its uploader set, so an object someone else put in with an old one is tried
 # only once its lock has ended, not every night (review finding F3). The shipped WAL goes after 15
 # days, a day past the 14 a point-in-time recovery reaches back, but for each cluster's timeline
-# history files, small, which a recovery to any point reads.
+# history files, small, which a recovery to any point reads. A copy's record goes with its copy.
 reason='the removal of old copies'
 rclone delete --use-server-modtime --min-age 30d "$day/"
 rclone delete --use-server-modtime --min-age 366d "$remote/monthly/"
@@ -457,5 +543,6 @@ summary=$(printf '%s\n' "$listing" | awk '{ n++; total += $1 } END { printf "%d 
 line="backup $night: $summary$kept"
 echo "$line"
 # Last, so that a ping means every step above worked. It carries the line: with the server gone,
-# the monitor's log still names each whole night's id (docs/RUNBOOK.md, Disaster recovery).
+# the monitor's log still names each whole night's id and the month's copy (docs/RUNBOOK.md,
+# Disaster recovery).
 notify.sh beat "$line"

@@ -1,13 +1,14 @@
 /**
- * A night's seal and the backup's signatures (docs/DECISIONS.md VPS-43), read with Node's crypto:
- * deploy/vps/backup/seal.sh's rules, kept here once for the two scripts that need them on this
- * machine. scripts/vps-kit.mts holds the shell to the same verdicts (vps:backup-test gives seal_open
- * and sealOf the same texts) and checks every night the rehearsal seals with them;
+ * A night's seal, the record of a month's copy and the backup's signatures (docs/DECISIONS.md
+ * VPS-43), read with Node's crypto: deploy/vps/backup/seal.sh's and backup.sh's rules, kept here
+ * once for the two scripts that need them on this machine. scripts/vps-kit.mts holds the shell to
+ * the same verdicts (vps:backup-test gives seal_open and sealOf the same texts) and checks every
+ * night the rehearsal seals, and every record of a copy it keeps, with them;
  * scripts/vps-verify-night.mts checks a night the owner downloaded from the bucket, before its
  * settings archive goes to a new server. Nothing here reads a file, runs a program or uses the
  * network.
  */
-import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 
 /** A night's id as backup.sh makes one: its stamp, a dash and 8 random hex characters. */
 export const NIGHT_ID = /^\d{4}-\d\d-\d\dT\d{4}Z-[0-9a-f]{8}$/;
@@ -131,6 +132,61 @@ export function sealText(
     '',
   ].join('\n');
   return `${body}signature ${signedWith(privateKey, body)}\n`;
+}
+
+/** The longest record of a month's copy that backup.sh's whole_copy takes, in bytes: it reads one past. */
+export const RECORD_MAX = 256;
+
+/**
+ * The line a record of a night's month's copy signs (backup.sh's record_message): the night, and
+ * the sha256 of its seal, every byte of it (the seal's text, one byte a character).
+ */
+export const recordMessage = (night: string, seal: string) =>
+  `menumesh copy 1 ${night} ${createHash('sha256').update(Buffer.from(seal, 'latin1')).digest('hex')}\n`;
+
+/**
+ * The record of a night's month's copy as backup.sh writes it last to monthly/copy-<night>.txt,
+ * for the seal the copy holds, signed by a base64 PKCS #8 DER Ed25519 key.
+ */
+export function recordText(night: string, seal: string, privateKey: string): string {
+  const message = recordMessage(night, seal);
+  return `${message}signature ${signedWith(privateKey, message)}\n`;
+}
+
+/**
+ * A record of a month's copy as backup.sh's whole_copy reads one, but for the signature (signedBy
+ * checks it): at most RECORD_MAX bytes, and byte for byte the line built here from the night and
+ * its seal's text, then "signature ", 86 base64url characters and a newline. Nothing is taken from
+ * the record but the signature, as whole_copy takes nothing else: the line and the signature, or
+ * the problem that makes the text none. The texts are the files' bytes, one character each.
+ */
+export function recordOf(
+  text: string,
+  night: string,
+  seal: string,
+): { message: string; signature: string } | string {
+  if (!text.length) return 'is empty';
+  if (text.length > RECORD_MAX) return `is longer than a record's ${RECORD_MAX} bytes`;
+  const message = recordMessage(night, seal);
+  const signature = text.slice(message.length + 'signature '.length, -1);
+  if (text !== `${message}signature ${signature}\n` || !/^[A-Za-z0-9_-]{86}$/.test(signature)) {
+    return "is not the record of that night's seal";
+  }
+  return { message, signature };
+}
+
+/** What whole_copy makes of a record: "ok", or its problem, the signature checked against the keys. */
+export function recordVerdict(
+  text: string,
+  night: string,
+  seal: string,
+  publicKeys: string,
+): string {
+  const record = recordOf(text, night, seal);
+  if (typeof record === 'string') return record;
+  return signedBy(publicKeys, record.message, record.signature)
+    ? 'ok'
+    : "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys";
 }
 
 /**

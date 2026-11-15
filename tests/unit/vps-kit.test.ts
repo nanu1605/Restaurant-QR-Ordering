@@ -32,6 +32,11 @@ import {
   webContext,
 } from '../../scripts/vps-kit.mts';
 import {
+  RECORD_MAX,
+  recordMessage,
+  recordOf,
+  recordText,
+  recordVerdict,
   SEAL_MAX,
   sealOf,
   type SealPart,
@@ -1925,10 +1930,132 @@ const monthlyCopy = (script: string) => {
     copy.includes('if (!(need[i] in want)) exit 1')
       ? []
       : ['a copy counts as whole without its base, settings archive or a dump of each database']),
-    ...(parts > check && seal > parts ? [] : ['the seal is not copied last']),
+    ...(parts > check && seal > parts ? [] : ['the seal is not copied after every part']),
     ...(seal < failed && failed >= 0 ? [] : ['the copy is not before the night’s failure']),
   ];
 };
+
+/**
+ * A month's copy counts as whole only with its record, monthly/copy-<night>.txt: the line
+ * "menumesh copy 1 <night> <sha256 of the night's seal>" and its signature, which backup.sh alone
+ * signs, and only once its own copy is in monthly/, each part and the seal looked up there by its
+ * exact name at the size it went up and the seal compared byte for byte, and which it writes last
+ * and confirms by its name at its size. whole_copy builds that line itself, from the candidate's
+ * id and the very seal file seal_open checked; looks the record up by its exact name before it
+ * reads it (rclone cat of a missing name reads every object under it); reads at most 257 bytes and
+ * takes 256; compares the record byte for byte with the line, "signature ", the signature and a
+ * newline; and checks the signature with any of BACKUP_SIGNING_PUBLIC_KEY's keys, as a seal's. So
+ * objects of the sealed sizes under a night's free names in monthly/, beside its real seal copied
+ * there from daily/, are no copy, and the next whole night copies itself (Stop C's re-review, the
+ * rest of finding S2). The record's name is among tonight's names looked for before the first
+ * upload. The night that copies says "kept in monthly/" in a line of its own as soon as the record
+ * is up, before the removal of old copies, which can fail, and a whole night that found a recorded
+ * copy names it in its last line (finding B1).
+ */
+const copyRecord = (script: string) => {
+  const at = (text: string) => script.indexOf(text);
+  const copy = script.slice(at('whole_copy() {'), at("reason='the monthly copy'"));
+  const inCopy = (text: string) => copy.indexOf(text);
+  const names = at(
+    `for part in $expected "base-$night.tar.zst.age:1024" "config-$night.tar.age:1024" "seal-$night.txt:0" "copy-$night.txt:0"; do echo "\${part%:*}"; done |`,
+  );
+  const first = at('pg_dumpall --globals-only | put');
+  const parts = at('      rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"');
+  const seal = at(
+    '    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"',
+  );
+  const checked = at(`    reason="the check of the month's copy"`);
+  const looked = at('      echo "seal-$night.txt"\n    } | held "$remote/monthly")');
+  const sized = at(
+    '      [ "$size" = "$sent" ] || fail "monthly/$name is not in the bucket as it went up"',
+  );
+  const compared = at('    cmp -s "$work/copied" "$work/seal" ||');
+  const built = at('    record_message "$night" "$work/seal" >"$work/record.message" ||');
+  const signed = at('    signature=$(seal_sign "$work/record.message")');
+  const recorded = at(
+    '    rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"',
+  );
+  const confirmed = at('    [ "$recorded" = "$(($(wc -c <"$work/record")))" ] ||');
+  const said = at(`    echo "backup $night: kept in monthly/ as the month's copy"`);
+  const removal = at("reason='the removal of old copies'");
+  const opened = inCopy('    seal_open "$work/candidate" "$1" &&');
+  const message = inCopy('    record_message "$1" "$work/candidate" >"$work/candidate.message" &&');
+  const lookedUp = inCopy(
+    '    echo "copy-$1.txt" | held "$remote/monthly" >"$work/candidate.recorded" &&',
+  );
+  const read = inCopy('"$remote/monthly/copy-$1.txt" >"$work/candidate.record" &&');
+  const whole = inCopy('    cmp -s "$work/candidate.built" "$work/candidate.record" &&');
+  const verified = inCopy('    seal_verify "$work/candidate.message" "$record_signature" &&');
+  const partsHeld = inCopy(
+    `    awk '{ print $3 }' "$work/candidate.parts" | held "$remote/monthly"`,
+  );
+  return [
+    ...(script.includes(`  printf 'menumesh copy 1 %s %s\\n' "$1" "$record_sum"`) &&
+    script.includes(`  record_sum=$(sha256sum "$2" | cut -d ' ' -f 1) || return 1`)
+      ? []
+      : ['the record’s line is not the night and the sha256 of its seal’s bytes']),
+    ...(names >= 0 && names < first
+      ? []
+      : ['the record’s name is not among tonight’s names looked for before the first upload']),
+    ...(seal > parts &&
+    checked > seal &&
+    looked > checked &&
+    sized > looked &&
+    compared > sized &&
+    built > compared
+      ? []
+      : [
+          'the record is made before the copy is checked in monthly/, each part and the seal by its name and the seal byte for byte',
+        ]),
+    ...(signed > built && recorded > signed && confirmed > recorded
+      ? []
+      : ['the record is not signed, written last and confirmed by its name at its size']),
+    ...(said > confirmed && said < removal
+      ? []
+      : [
+          'the night that makes the copy doesn’t say "kept in monthly/" as soon as the record is up, before the removal of old copies',
+        ]),
+    ...(script.includes(`    kept=", the month's copy is $whole"`)
+      ? []
+      : ['a whole night that found a recorded copy doesn’t name it']),
+    ...(message > opened && opened >= 0 && verified > whole && whole > message
+      ? []
+      : ['a copy counts as whole without its record']),
+    ...(lookedUp > message && read > lookedUp
+      ? []
+      : ['the record is read before it is looked up by its exact name']),
+    ...(copy.includes('$1 + 0 <= 256 { found = 1 }') &&
+    copy.includes('    rclone cat --no-traverse --head 257 "$remote/monthly/copy-$1.txt"') &&
+    copy.includes('    [ "$(($(wc -c <"$work/candidate.record")))" -le 256 ] &&')
+      ? []
+      : ['a record longer than 256 bytes is read or taken']),
+    ...(/\b(?:awk|sed|grep|cut|read)\b[^\n]*"\$work\/candidate\.record"/.test(copy) ||
+    copy.split('record_message ').length !== 2 ||
+    copy.split('"$remote/monthly/seal-$1.txt"').length !== 2
+      ? [
+          'the record’s line is taken from the bucket, or built from another seal than the one checked',
+        ]
+      : []),
+    ...(copy.includes('seal_verify_first')
+      ? ['the record is checked with the first key alone']
+      : []),
+    ...(partsHeld > verified
+      ? []
+      : ['the parts are not looked up by name once the record is checked']),
+  ];
+};
+
+/**
+ * restore.sh, pitr.sh and pnpm vps:verify-night never read a copy's record, nor need one: a year
+ * of copies made before the records, and any made by hand, have none, and a restore reads a night
+ * by its seal and its parts' names alone (Stop C's re-review, the rest of finding S2).
+ */
+const recordsUnread = (files: Record<string, string>) =>
+  Object.entries(files)
+    .filter(([, text]) =>
+      text.split('\n').some((line) => !/^\s*(#|\/\/|\/?\*)/.test(line) && line.includes('copy-')),
+    )
+    .map(([name]) => `${name} reads a copy’s record`);
 
 /**
  * Every rclone copyto writes whatever its destination holds (--no-check-dest). Without it rclone
@@ -3409,13 +3536,166 @@ describe('the migrate and backup images', () => {
         '    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"\n',
         '',
       ),
-      'not copied last',
+      'not copied after every part',
     );
     // As before review finding F1: a whole copy looked for under the stamp alone.
     refuses(
       monthlyCopy,
       swap(backupSh, 'Z-[0-9a-f]{8}[.]txt$") { print', 'Z[.]txt$") { print'),
       'by a seal named with a night’s id',
+    );
+  });
+
+  it('counts a month’s copy as whole only with its signed record, which the copy’s night writes last', () => {
+    expect(copyRecord(backupSh)).toEqual([]);
+    // Today's whole_copy, as before Stop C's re-review (the rest of finding S2): a real seal copied
+    // from daily/ beside objects of its sizes under its parts' names was a whole copy.
+    const recordCheck = backupSh.slice(
+      backupSh.indexOf('    record_message "$1" "$work/candidate" >"$work/candidate.message" &&\n'),
+      backupSh.indexOf(`    printf '%s\\n' "$seal_parts" >"$work/candidate.parts" &&\n`),
+    );
+    const todaysWholeCopy = swap(backupSh, recordCheck, '');
+    refuses(copyRecord, todaysWholeCopy, 'a copy counts as whole without its record');
+    // Today's copy: the parts and the seal, nothing checked there, no record, and the month's copy
+    // said only in the night's last line, after the removal of old copies (finding B1).
+    const recordWrite = backupSh.slice(
+      backupSh.indexOf('    # The copy as monthly/ holds it, before its record vouches for it:'),
+      backupSh.indexOf(`    kept=", kept in monthly/ as the month's copy"\n`),
+    );
+    const todaysCopy = swap(
+      swap(backupSh, recordWrite, ''),
+      `  else\n    kept=", the month's copy is $whole"\n`,
+      '',
+    );
+    for (const problem of [
+      'the record is made before the copy is checked in monthly/',
+      'the record is not signed, written last and confirmed',
+      'doesn’t say "kept in monthly/" as soon as the record is up',
+      'a whole night that found a recorded copy doesn’t name it',
+    ]) {
+      refuses(copyRecord, todaysCopy, problem);
+    }
+    // Today's check of tonight's names, which left the record's name out.
+    refuses(
+      copyRecord,
+      swap(backupSh, ' "seal-$night.txt:0" "copy-$night.txt:0"; do', ' "seal-$night.txt:0"; do'),
+      'the record’s name is not among tonight’s names',
+    );
+    // The record before the copy's check in monthly/, and the kept line after the removal.
+    const check = backupSh.slice(
+      backupSh.indexOf('    # The copy as monthly/ holds it, before its record vouches for it:'),
+      backupSh.indexOf('    # Its record, last, and confirmed by its name at its size.'),
+    );
+    const record = backupSh.slice(
+      backupSh.indexOf('    # Its record, last, and confirmed by its name at its size.'),
+      backupSh.indexOf(`    echo "backup $night: kept in monthly/ as the month's copy"\n`),
+    );
+    refuses(
+      copyRecord,
+      swap(backupSh, `${check}${record}`, `${record}${check}`),
+      'the record is made before the copy is checked',
+    );
+    const keptLine = `    echo "backup $night: kept in monthly/ as the month's copy"\n`;
+    refuses(
+      copyRecord,
+      swap(
+        swap(backupSh, keptLine, ''),
+        "reason='the removal of old copies'\n",
+        `reason='the removal of old copies'\n${keptLine.trimStart()}`,
+      ),
+      'doesn’t say "kept in monthly/" as soon as the record is up, before the removal',
+    );
+    // whole_copy reading the record before it looks it up, or a longer one, parsing its text,
+    // building its line from another fetch of the seal, or checking it with the first key alone.
+    const lookup =
+      '    echo "copy-$1.txt" | held "$remote/monthly" >"$work/candidate.recorded" &&\n';
+    const cat =
+      '    rclone cat --no-traverse --head 257 "$remote/monthly/copy-$1.txt" >"$work/candidate.record" &&\n';
+    refuses(
+      copyRecord,
+      swap(
+        swap(backupSh, lookup, cat),
+        `${cat.trimEnd()}\n    [ "$((`,
+        `${lookup.trimEnd()}\n    [ "$((`,
+      ),
+      'the record is read before it is looked up by its exact name',
+    );
+    refuses(
+      copyRecord,
+      swap(
+        backupSh,
+        '--head 257 "$remote/monthly/copy-$1.txt"',
+        '--head 1048577 "$remote/monthly/copy-$1.txt"',
+      ),
+      'a record longer than 256 bytes',
+    );
+    refuses(
+      copyRecord,
+      swap(backupSh, '$1 + 0 <= 256 { found = 1 }', '{ found = 1 }'),
+      'a record longer than 256 bytes',
+    );
+    refuses(
+      copyRecord,
+      swap(
+        backupSh,
+        '    cmp -s "$work/candidate.built" "$work/candidate.record" &&\n',
+        '    grep -q "^menumesh copy 1 $1 " "$work/candidate.record" &&\n',
+      ),
+      'the record’s line is taken from the bucket',
+    );
+    refuses(
+      copyRecord,
+      swap(
+        backupSh,
+        '    record_message "$1" "$work/candidate" >"$work/candidate.message" &&\n',
+        '    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/again" &&\n    record_message "$1" "$work/again" >"$work/candidate.message" &&\n',
+      ),
+      'built from another seal than the one checked',
+    );
+    refuses(
+      copyRecord,
+      swap(
+        backupSh,
+        '    seal_verify "$work/candidate.message" "$record_signature" &&',
+        '    seal_verify_first "$work/candidate.message" "$record_signature" &&',
+      ),
+      'the record is checked with the first key alone',
+    );
+  });
+
+  it('reads no copy’s record in a restore, a point-in-time recovery or pnpm vps:verify-night', () => {
+    const files = {
+      'restore.sh': restoreSh,
+      'pitr.sh': pitrSh,
+      'vps-verify-night.mts': readFileSync(join('scripts', 'vps-verify-night.mts'), 'utf8'),
+    };
+    expect(recordsUnread(files)).toEqual([]);
+    refuses(
+      (text) => recordsUnread({ ...files, 'restore.sh': text }),
+      swap(
+        restoreSh,
+        'names=$(echo "seal-$night.txt" | held)',
+        `names=$(printf '%s\\n' "seal-$night.txt" "copy-$night.txt" | held)`,
+      ),
+      'restore.sh reads a copy’s record',
+    );
+    refuses(
+      (text) => recordsUnread({ ...files, 'pitr.sh': text }),
+      swap(
+        pitrSh,
+        '"$bucket/daily/seal-$candidate.txt" >"$work/seal" ||',
+        '"$bucket/monthly/copy-$candidate.txt" >"$work/seal" ||',
+      ),
+      'pitr.sh reads a copy’s record',
+    );
+    refuses(
+      (text) => recordsUnread({ ...files, 'vps-verify-night.mts': text }),
+      swap(
+        files['vps-verify-night.mts'],
+        'const sealName = `seal-${night}.txt`;',
+        'const sealName = `seal-${night}.txt`;\n  const recordName = `copy-${night}.txt`;',
+      ),
+      'vps-verify-night.mts reads a copy’s record',
     );
   });
 
@@ -4521,6 +4801,7 @@ describe('the nights’ seals (VPS-43)', () => {
     }
     for (const name of [
       `seal-${night}.txt`,
+      `copy-${night}.txt`,
       `base-${night}.tar.age`,
       `template1-${night}.dump.age`,
       `Postgres-${night}.dump.age`,
@@ -4531,6 +4812,80 @@ describe('the nights’ seals (VPS-43)', () => {
     ]) {
       expect(sealPartName(name, night)).toBe(false);
     }
+  });
+
+  // The record of a month's copy (Stop C's re-review, the rest of finding S2), for the seal above.
+  const record = recordText(night, good, privateKey);
+  const otherNight = '2026-11-02T2030Z-4567cdef';
+  const otherSeal = sealText(otherNight, base, parts, privateKey);
+
+  it('writes a copy’s record in the lines backup.sh writes, the night and its seal’s sha256, signed', () => {
+    const lines = record.split('\n');
+    expect(lines.slice(0, 1)).toEqual([`menumesh copy 1 ${night} ${sum(good)}`]);
+    expect(lines[1]).toMatch(/^signature [A-Za-z0-9_-]{86}$/);
+    expect(lines).toHaveLength(3);
+    expect(record.length).toBeLessThanOrEqual(RECORD_MAX);
+    expect(recordMessage(night, good)).toBe(`${lines[0]}\n`);
+    expect(recordVerdict(record, night, good, publicKey)).toBe('ok');
+    const read = recordOf(record, night, good);
+    if (typeof read === 'string') throw new Error(read);
+    expect(read.message).toBe(`${lines[0]}\n`);
+    expect(signedBy(publicKey, read.message, read.signature)).toBe(true);
+    // backup.sh's own line and limits are these, and no other signed line begins as it does.
+    expect(backupSh).toContain(`  printf 'menumesh copy 1 %s %s\\n' "$1" "$record_sum"`);
+    expect(backupSh).toContain(`--head ${RECORD_MAX + 1} "$remote/monthly/copy-$1.txt"`);
+    expect(backupSh).toContain(`$1 + 0 <= ${RECORD_MAX} { found = 1 }`);
+    expect(walShipSh).toContain(`'menumesh wal 1 %s %s %s\\n'`);
+    expect(sealSh).toContain(`printf 'menumesh seal probe %s\\n'`);
+  });
+
+  it('takes no record but the one of that night’s very seal, signed by a listed key', () => {
+    const other = generateKeyPairSync('ed25519');
+    const otherPrivate = other.privateKey
+      .export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const otherPublic = other.publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+    const message = record.slice(0, record.indexOf('signature '));
+    const signature = record.slice(record.indexOf('signature ') + 10, -1);
+    const notIts = "is not the record of that night's seal";
+    const cases: [string, string][] = [
+      ['planted, not a record\n', notIts],
+      // Another night's record, renamed to this night's.
+      [recordText(otherNight, otherSeal, privateKey), notIts],
+      // This night's, signed by the backup's key, but over another seal.
+      [recordText(night, otherSeal, privateKey), notIts],
+      [recordText(night, good.replace(' 7491 ', ' 7492 '), privateKey), notIts],
+      // This night's and its seal's, signed by another key.
+      [
+        recordText(night, good, otherPrivate),
+        "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys",
+      ],
+      [
+        `${message}signature ${signature.slice(0, 85)}${signature[85] === 'A' ? 'B' : 'A'}\n`,
+        "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys",
+      ],
+      // Each other spelling of it.
+      [record.replaceAll('\n', '\r\n'), notIts],
+      [`${record}\n`, notIts],
+      [record.slice(0, -1), notIts],
+      [`${record.slice(0, -1)}==\n`, notIts],
+      [`${message}signature  ${signature.slice(1)}\n`, notIts],
+      [`${message}signature ${signature.slice(0, 40)}\n${signature.slice(41)}\n`, notIts],
+      [record.replace('menumesh copy 1', 'menumesh copy 2'), notIts],
+      [
+        `${record}${'#'.repeat(RECORD_MAX + 1 - record.length)}`,
+        `is longer than a record's ${RECORD_MAX} bytes`,
+      ],
+      ['', 'is empty'],
+    ];
+    for (const [text, problem] of cases) {
+      expect(recordVerdict(text, night, good, publicKey)).toBe(problem);
+    }
+    // A rotation keeps the copies the old key recorded, as it keeps its seals: any listed key.
+    expect(recordVerdict(record, night, good, `${otherPublic} ${publicKey}`)).toBe('ok');
+    expect(recordVerdict(record, night, good, otherPublic)).toBe(
+      "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys",
+    );
   });
 });
 
