@@ -244,8 +244,8 @@ read_parts=0
 names=$(echo "seal-$night.txt" | held)
 if ! listed "$names" "seal-$night.txt"; then
   [ "$folder" = monthly ] ||
-    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so the backup's key signed none: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)"
-  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no seal there, so the backup's key signed none"
+    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so it is not signed by the backup's key: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)"
+  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no seal there, so it is not signed by the backup's key"
 fi
 # shellcheck disable=SC2154 # seal_max: seal.sh's
 rclone cat --no-traverse --head "$((seal_max + 1))" "$bucket/$folder/seal-$night.txt" >"$parts/seal" ||

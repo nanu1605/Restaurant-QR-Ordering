@@ -5213,7 +5213,7 @@ async function backupTest() {
       unsealedRun.run.status === 1 &&
         unsealedRun.bare &&
         unsealedRun.run.stdout ===
-          `restore: the night of ${unsealed} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so the backup's key signed none: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
+          `restore: the night of ${unsealed} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so it is not signed by the backup's key: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
       tail(unsealedRun.output),
     );
     const victim = `postgres-${nextNight}.dump.age`;
@@ -5352,7 +5352,7 @@ async function backupTest() {
       `the restore test of ${night}, younger than 29 days, by RESTORE_STAMP with only its monthly/ copy left: exit ${youngOnly.status}, "${tail(youngOnly.stdout, 1)}"`,
       youngOnly.status === 1 &&
         youngOnly.stdout ===
-          `restore: the night of ${night} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so the backup's key signed none: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
+          `restore: the night of ${night} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so it is not signed by the backup's key: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
       tail(`${youngOnly.stdout}${youngOnly.stderr}`),
     );
 
