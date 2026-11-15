@@ -31,9 +31,10 @@
  *                    hex characters), with a base backup and a signed seal: a night with a stale
  *                    settings archive, then the month's copy in monthly/ past planted names and a
  *                    copy sealed by another key, no second copy, a night in the service with its
- *                    shipper at once, a 1st's copy, and a 1st whose base failed; every seal and the
- *                    base read as a restore reads them; a night whose id someone else wrote a name
- *                    of first, stopped before its first upload; the monthly restore test; planted
+ *                    shipper at once, a base a checkpoint overtakes, which its slot carries, a
+ *                    1st's copy, and a 1st whose base failed; every seal and the base read as a
+ *                    restore reads them; a night whose id someone else wrote a name of first,
+ *                    stopped before its first upload; the monthly restore test; planted
  *                    nights and names the restore must refuse or not read, each night read from the
  *                    one folder its age gives and only as its seal gives it; and the disaster
  *                    recovery of the 1st's copy, from monthly/, on the rehearsal's own volumes,
@@ -4002,9 +4003,9 @@ function cgroupMemory(container: string, profile?: string, service = false) {
 /**
  * `compose run --rm` of a one-off under a known name, as the server runs it, with how long it took
  * and its memory: the cgroup's high-water mark and the most docker stats would have shown, read
- * every quarter second while it runs.
+ * every quarter second while it runs, when `watch`, if given, also runs.
  */
-async function measured(name: string, args: string[], profile?: string) {
+async function measured(name: string, args: string[], profile?: string, watch?: () => void) {
   const started = Date.now();
   const child = spawn(
     'docker',
@@ -4038,6 +4039,7 @@ async function measured(name: string, args: string[], profile?: string) {
       peakMib = Math.max(peakMib, now.peak);
       statsMib = Math.max(statsMib, now.stats);
     }
+    watch?.();
     await sleep(250);
   }
   await closed;
@@ -4445,32 +4447,51 @@ const OD_STAND_IN = [
 ].join('\n');
 
 /**
- * A stand-in for pg_basebackup that, with FAKE_BASE set, fails as a base backup can, after a few
- * bytes of its stream, which backup.sh still uploads; every other run is the image's own.
+ * A stand-in for pg_basebackup. With FAKE_BASE=fail it fails as a base backup can, after a few
+ * bytes of its stream, which backup.sh still uploads. With FAKE_BASE=slow it is the image's own at
+ * 4 MB/s, while db writes about 2 MB of WAL, switches to a new WAL file and is made to checkpoint 3 s
+ * in: db may then remove every WAL file archived before, the one the base starts in among them,
+ * which pg_basebackup -X fetch reads only at its end (VPS-43). That job is this shell's child, not
+ * pg_basebackup's, whose SIGCHLD handler would take any child's end for its WAL streamer's. Every
+ * other run is the image's own.
  */
 const BASE_STAND_IN = [
   '#!/bin/sh',
-  `if [ -n "\${FAKE_BASE:-}" ]; then printf 'a base backup cut short\\n'; echo 'pg_basebackup: error: the stand-in failed' >&2; exit 1; fi`,
+  `if [ "\${FAKE_BASE:-}" = fail ]; then printf 'a base backup cut short\\n'; echo 'pg_basebackup: error: the stand-in failed' >&2; exit 1; fi`,
+  'if [ "${FAKE_BASE:-}" = slow ]; then',
+  '  (',
+  '    sleep 3',
+  `    psql -X -q -At -d postgres -c "select pg_logical_emit_message(false, 'menumesh-rehearsal', repeat('x', 2000000)) is not null" -c "select pg_switch_wal() is not null" -c checkpoint`,
+  '  ) >/dev/null 2>&1 </dev/null &',
+  '  /usr/local/bin/pg_basebackup --max-rate=4M "$@"',
+  '  status=$?',
+  '  wait',
+  '  exit "$status"',
+  'fi',
   'exec /usr/local/bin/pg_basebackup "$@"',
   '',
 ].join('\n');
 
+/**
+ * The arguments of `compose run` for a one-off of the backup service running backup.sh with the
+ * stand-ins date, od and pg_basebackup.
+ */
+const standInArgs = (fakes: Record<string, string>) => [
+  '--no-deps',
+  '-T',
+  '--volume',
+  `${slash(join(MIRROR, 'test-bin'))}:/opt/menumesh-rehearsal:ro`,
+  ...Object.entries(fakes).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
+  '--entrypoint',
+  'sh',
+  'backup',
+  '-c',
+  'mkdir -p /tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /tmp/bin/ && chmod 755 /tmp/bin/date /tmp/bin/od /tmp/bin/pg_basebackup && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
+];
+
 /** A one-off of the backup service running backup.sh with the stand-ins date, od and pg_basebackup. */
 const standInBackup = (fakes: Record<string, string>) =>
-  compose([
-    'run',
-    '--rm',
-    '--no-deps',
-    '-T',
-    '--volume',
-    `${slash(join(MIRROR, 'test-bin'))}:/opt/menumesh-rehearsal:ro`,
-    ...Object.entries(fakes).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
-    '--entrypoint',
-    'sh',
-    'backup',
-    '-c',
-    'mkdir -p /tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /tmp/bin/ && chmod 755 /tmp/bin/date /tmp/bin/od /tmp/bin/pg_basebackup && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
-  ]);
+  compose(['run', '--rm', ...standInArgs(fakes)]);
 
 /** What a restore printed that only a read of the owner's key file could print. */
 const keyShown = (output: string) => /AGE-SECRET-KEY|# created:|# public key:/.test(output);
@@ -4814,6 +4835,48 @@ async function backupTest() {
       both.runs.map((run) => `${run.stdout}${run.stderr}`).join('\n'),
     );
 
+    // A base that a checkpoint overtakes: the stand-in pg_basebackup at 4 MB/s, with db made to
+    // switch WAL files and checkpoint 3 s in. db then removes what it archived before, and without
+    // a slot the WAL file the base starts in is gone when pg_basebackup -X fetch reads it at its
+    // end ("requested WAL segment ... has already been removed", tried by hand). The night's
+    // temporary slot, menumesh_base_<hex>, keeps it until the base ends, as db shows while the
+    // night runs, and goes with the night (VPS-43). The test knows the hex (the stand-in od).
+    while (stampOf(daemonNow()) === stampPart(serviceNight)) await sleep(1000);
+    archive(stampOf(daemonNow()));
+    const slowHex = randomBytes(4).toString('hex');
+    const slot = `menumesh_base_${slowHex}`;
+    // The slot as db shows it: temporary, the WAL file it keeps from, the WAL file of the latest
+    // checkpoint's redo, and whether the kept file is still in pg_wal.
+    const watched: string[][] = [];
+    const slow = await measured(
+      `${PROJECT}-backup-${process.pid}`,
+      standInArgs({ FAKE_BASE: 'slow', FAKE_HEX: slowHex }),
+      undefined,
+      () => {
+        for (const row of dbSql(
+          `select s.temporary, pg_walfile_name(s.restart_lsn), (select pg_walfile_name(redo_lsn) from pg_control_checkpoint()), (select count(*) from pg_ls_waldir() w where w.name = pg_walfile_name(s.restart_lsn)) from pg_replication_slots s where s.slot_name = '${slot}'`,
+        ))
+          watched.push(row.split('\t'));
+      },
+    );
+    const slowLine = /^backup (\S+): .*$/m.exec(slow.stdout);
+    const slowNight = slowLine?.[1] ?? '';
+    // A row taken after the checkpoint: its redo past the file the slot keeps, which is still there.
+    const carried = watched.find(
+      ([temporary, kept, redo, there]) => temporary === 't' && redo > kept && there === '1',
+    );
+    const slotsLeft = dbSql(
+      "select count(*) from pg_replication_slots where left(slot_name, 14) = 'menumesh_base_'",
+    )[0];
+    checks.expect(
+      `a base that a checkpoint overtakes (the stand-in pg_basebackup at 4 MB/s, db's WAL switched and a checkpoint 3 s in): exit ${slow.status} in ${slow.took} s, "${slowLine?.[0] ?? tail(slow.stdout, 1)}"; while it ran db's slot ${slot} (temporary) kept ${carried?.[1] ?? 'nothing'} in pg_wal past a checkpoint whose redo is in ${carried?.[2] ?? '?'} (${watched.length} looks); after it, ${slotsLeft} slots of a base`,
+      slow.status === 0 &&
+        slowNight === `${stampPart(slowNight)}-${slowHex}` &&
+        carried !== undefined &&
+        slotsLeft === '0',
+      `${slow.stdout}${slow.stderr}\n${watched.map((row) => row.join(' ')).join('\n')}`,
+    );
+
     // A whole 1st two months back, its stamp from a stand-in date (nothing else is faked): copied
     // whatever monthly/ holds for its month (review finding N2). Then its daily copy goes, as the
     // job removes one after 30 days, so that monthly/ alone holds the night.
@@ -4868,6 +4931,7 @@ async function backupTest() {
       { folder: 'monthly', night, config: true, base: true },
       { folder: 'daily', night: nextNight, config: true, base: true },
       { folder: 'daily', night: serviceNight, config: true, base: true },
+      { folder: 'daily', night: slowNight, config: true, base: true },
       { folder: 'monthly', night: oldFirstId, config: true, base: true },
       { folder: 'daily', night: baselessId, config: true, base: false },
     ]);
@@ -5038,7 +5102,7 @@ async function backupTest() {
     // bucket's top, no line of the key, no escape. One has a link in its Storage archive (N6), and
     // one is a copy in daily/ of the 1st two months back, past 29 days and so read from monthly/
     // alone (RV2). Two more, read further below, have a seal another key signed, or none.
-    while (stampOf(daemonNow()) <= stampPart(serviceNight)) await sleep(1000);
+    while (stampOf(daemonNow()) <= stampPart(slowNight || serviceNight)) await sleep(1000);
     const future = idOf(FUTURE);
     const planted = idOf(stampOf(daemonNow()));
     const daysAgo = (days: number) =>

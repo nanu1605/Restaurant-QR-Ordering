@@ -198,9 +198,46 @@ printf '%s\n' "$manifest" | put "manifest-$night.txt.age"
 # unsigned, as wal-ship.sh names the cluster's folder. A base that fails, or that runs past 2 hours,
 # stops none of the other parts: the night fails at the end, and its seal says "base none".
 # pg_basebackup's own lines stay in a file, and go to the journal only when it fails.
+#
+# pg_basebackup -X fetch reads the WAL last, after the data, from db's pg_wal, and db removes a WAL
+# file at its first checkpoint after the file was archived: checkpoint_timeout (5 minutes) after
+# the base's own checkpoint began, which spread can take half of, or sooner once max_wal_size
+# fills. A base that outlived that checkpoint would fail ("requested WAL segment ... has already
+# been removed"). So a temporary physical slot, menumesh_base_<hex>, keeps the WAL from before the
+# base's checkpoint until the base ends: a psql session of its own makes it, and holds it for as
+# long as this shell keeps the session's input, a FIFO on fd 9, open. The slot goes with the
+# session, whatever ends this job, and db's max_slot_wal_keep_size bounds what it can keep.
 base_line='base none'
 base_problem=
+holder=
+hold_wal() {
+  slot=menumesh_base_$hex
+  mkfifo -m 600 "$work/slot.fifo" || return 1
+  PGCONNECT_TIMEOUT=10 psql -X -q -At -v ON_ERROR_STOP=1 -d postgres <"$work/slot.fifo" \
+    >/dev/null 2>>"$work/base.log" &
+  holder=$!
+  exec 9<>"$work/slot.fifo"
+  printf "select pg_create_physical_replication_slot('%s', true, true);\n" "$slot" >&9
+  tries=0
+  until [ "$(PGCONNECT_TIMEOUT=10 psql -X -At -d postgres -c "select count(*) from pg_replication_slots where slot_name = '$slot' and temporary and restart_lsn is not null" 2>>"$work/base.log")" = 1 ]; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 30 ] && kill -0 "$holder" 2>/dev/null || return 1
+    sleep 1
+  done
+}
+# The end of the session's input ends the session, and the slot with it.
+release_wal() {
+  exec 9>&-
+  [ -z "$holder" ] || wait "$holder" || true
+  holder=
+}
 base() {
+  taken=0
+  take_base || taken=1
+  release_wal
+  return "$taken"
+}
+take_base() {
   if ! reading=$(psql -X -At -v ON_ERROR_STOP=1 -F ' ' -d postgres -c "
       select case when system_identifier < 0
                   then (system_identifier::numeric + 18446744073709551616)::text
@@ -221,6 +258,10 @@ base() {
   esac
   if [ -z "$cluster" ] || [ -z "$segment" ] || [ "$#" -ne 2 ]; then
     base_problem='db answered with no system identifier or WAL segment size'
+    return 1
+  fi
+  if ! hold_wal; then
+    base_problem='db would not hold the WAL for the base backup in a replication slot (are all of max_replication_slots in use?)'
     return 1
   fi
   if ! { timeout 7200 pg_basebackup --pgdata=- --format=tar --wal-method=fetch --checkpoint=spread \

@@ -2209,6 +2209,43 @@ const baseRules = (script: string) => {
 };
 
 /**
+ * The base's WAL is held until the base ends (VPS-43): pg_basebackup -X fetch reads the WAL last,
+ * and db removes a file at its first checkpoint after archiving it, so a temporary physical slot
+ * keeps it. A psql session of its own makes the slot, reading a FIFO this shell holds on fd 9 and
+ * started before the shell opens it (else the session would hold its own input and never end);
+ * the slot is seen in pg_replication_slots before pg_basebackup starts; and base() closes fd 9,
+ * which ends the session and the slot with it, whatever take_base did.
+ */
+const baseSlot = (script: string) => {
+  const start = script.indexOf('hold_wal() {');
+  const hold = script.slice(start, script.indexOf('\n}\n', start));
+  const session = hold.indexOf('<"$work/slot.fifo"');
+  const opened = hold.indexOf('  exec 9<>"$work/slot.fifo"\n');
+  const held = script.indexOf('  if ! hold_wal; then\n');
+  const taken = script.indexOf('  if ! { timeout 7200 pg_basebackup');
+  return [
+    ...(start >= 0 &&
+    hold.includes(
+      `printf "select pg_create_physical_replication_slot('%s', true, true);\\n" "$slot" >&9`,
+    ) &&
+    hold.includes('  slot=menumesh_base_$hex\n')
+      ? []
+      : ['the base’s WAL is not kept by a temporary slot of the night']),
+    ...(session >= 0 && opened > session
+      ? []
+      : ['the slot’s session holds its own input open, so it never ends']),
+    ...(hold.includes("where slot_name = '$slot' and temporary and restart_lsn is not null")
+      ? []
+      : ['the slot is not seen in db before the base']),
+    ...(held >= 0 && taken > held ? [] : ['the base starts before its WAL is held']),
+    ...(script.includes('base() {\n  taken=0\n  take_base || taken=1\n  release_wal\n') &&
+    script.includes('release_wal() {\n  exec 9>&-\n')
+      ? []
+      : ['the slot outlives the base']),
+  ];
+};
+
+/**
  * Each night's seal (VPS-43): the signing pair checked with a signed probe before anything goes
  * up; each part's sha256 and size taken as it streams, from FIFOs tee feeds, which this shell holds
  * open while the readers start and the readers never hold; each part held in the bucket to the size
@@ -2879,6 +2916,32 @@ describe('the migrate and backup images', () => {
         ' "config-$night.tar.age:1024"',
       ),
       'looked for before the first upload',
+    );
+  });
+
+  it('keeps the base’s WAL in a temporary slot of its own until the base ends', () => {
+    expect(baseSlot(backupSh)).toEqual([]);
+    refuses(baseSlot, swap(backupSh, "'%s', true, true);", "'%s', true, false);"), 'temporary');
+    // The shell's fd 9 opened first: the session would inherit it.
+    refuses(
+      baseSlot,
+      swap(
+        swap(backupSh, '  exec 9<>"$work/slot.fifo"\n', '  :\n'),
+        '  PGCONNECT_TIMEOUT=10 psql -X -q',
+        '  exec 9<>"$work/slot.fifo"\n  PGCONNECT_TIMEOUT=10 psql -X -q',
+      ),
+      'never ends',
+    );
+    refuses(
+      baseSlot,
+      swap(backupSh, ' and temporary and restart_lsn is not null', ''),
+      'seen in db',
+    );
+    refuses(baseSlot, swap(backupSh, '  if ! hold_wal; then\n', '  if false; then\n'), 'held');
+    refuses(
+      baseSlot,
+      swap(backupSh, '  take_base || taken=1\n  release_wal\n', '  take_base || taken=1\n'),
+      'outlives the base',
     );
   });
 
