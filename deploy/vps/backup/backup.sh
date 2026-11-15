@@ -191,6 +191,31 @@ storage_tar | put "storage-$night.tar.age"
 reason='the manifest'
 printf '%s\n' "$manifest" | put "manifest-$night.txt.age"
 
+# The host's settings archive (app-config-archive, 20:20 UTC): the newest name sorts last. One more
+# than two hours old means the host's timer stopped; it isn't copied, and the run fails at the end.
+# Its sha256 and size for the seal come from the file, which the host never writes again. It is
+# checked and copied here, before the base, which may run for 2 hours: checked after it, a fresh
+# archive could be more than 2 hours old by then, and a night whose base took long would fail
+# (Stop C's review, finding D4).
+archive=
+for file in /config-out/config-*.tar.age; do
+  [ -e "$file" ] && archive=$file
+done
+archive_problem=
+if [ -z "$archive" ]; then
+  archive_problem='no settings archive in /config-out'
+elif [ -n "$(find "$archive" -mmin +120)" ]; then
+  archive_problem="the settings archive ${archive##*/} is more than 2 hours old"
+elif [ "$(wc -c <"$archive")" -le 1024 ]; then
+  archive_problem="the settings archive ${archive##*/} is too small"
+else
+  reason='the copy of the settings archive'
+  sealed "config-$night.tar.age" "$(sha256sum "$archive" | cut -d ' ' -f 1)" "$(($(wc -c <"$archive")))" ||
+    fail "the settings archive ${archive##*/} could not be read"
+  rclone copyto --no-check-dest "$archive" "$day/config-$night.tar.age"
+  expected="$expected config-$night.tar.age:1024"
+fi
+
 # The base backup (VPS-43): the whole cluster as one tar with the WAL it needs to be consistent
 # alone (-X fetch), so a monthly copy keeps it too, through zstd and age. The seal gives a time no
 # earlier than its end (a second past pg_basebackup's), the WAL file it starts in, from which a
@@ -300,31 +325,9 @@ else
     sed -n '1,3s/^\(.\{0,200\}\).*/backup: | \1/p' >&2 || true
 fi
 
-# The host's settings archive (app-config-archive, 20:20 UTC): the newest name sorts last. One more
-# than two hours old means the host's timer stopped; it isn't copied, and the run fails at the end.
-# Its sha256 and size for the seal come from the file, which the host never writes again.
-archive=
-for file in /config-out/config-*.tar.age; do
-  [ -e "$file" ] && archive=$file
-done
-archive_problem=
-if [ -z "$archive" ]; then
-  archive_problem='no settings archive in /config-out'
-elif [ -n "$(find "$archive" -mmin +120)" ]; then
-  archive_problem="the settings archive ${archive##*/} is more than 2 hours old"
-elif [ "$(wc -c <"$archive")" -le 1024 ]; then
-  archive_problem="the settings archive ${archive##*/} is too small"
-else
-  reason='the copy of the settings archive'
-  sealed "config-$night.tar.age" "$(sha256sum "$archive" | cut -d ' ' -f 1)" "$(($(wc -c <"$archive")))" ||
-    fail "the settings archive ${archive##*/} could not be read"
-  rclone copyto --no-check-dest "$archive" "$day/config-$night.tar.age"
-fi
-
 # Every part of tonight is in the bucket, none is empty (the floors above), and each is as many
 # bytes as went up.
 reason='the check of the uploads'
-[ -n "$archive_problem" ] || expected="$expected config-$night.tar.age:1024"
 listing=$(for part in $expected; do echo "${part%:*}"; done | held "$day")
 for part in $expected; do
   name=${part%:*}

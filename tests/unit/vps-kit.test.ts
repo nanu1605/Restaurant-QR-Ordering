@@ -1755,6 +1755,28 @@ const backupRules = (dockerfile: string, script: string) => [
 ];
 
 /**
+ * The settings archive is checked and copied right after the manifest, as in Stop B, before the
+ * base, which may run for 2 hours: checked after it, an archive made at 20:20 could be more than 2
+ * hours old by then, and a night whose base took long failed for an archive that was fresh (Stop
+ * C's review, finding D4). Its sha256 and size still go to the seal, and a missing or stale one
+ * still fails the night at the end (backupRules, baseRules).
+ */
+const archiveFirst = (script: string) => {
+  const manifest = script.indexOf(`printf '%s\\n' "$manifest" | put "manifest-$night.txt.age"`);
+  const aged = script.indexOf('elif [ -n "$(find "$archive" -mmin +120)" ]; then');
+  const kept = script.indexOf('  sealed "config-$night.tar.age" "$(sha256sum "$archive"');
+  const copied = script.indexOf(
+    '  rclone copyto --no-check-dest "$archive" "$day/config-$night.tar.age"\n',
+  );
+  const base = script.indexOf("\nreason='the base backup'\nif base; then\n");
+  return manifest >= 0 && aged > manifest && kept > aged && copied > kept && base > copied
+    ? []
+    : [
+        'the settings archive is checked or copied after the base begins, which may run 2 hours, so a fresh archive can be taken for a stale one',
+      ];
+};
+
+/**
  * The month's copy in monthly/ is a whole night, its uploads checked and sealed, its base made and
  * its settings archive fresh: the 1st's, whatever monthly/ holds, or the next whole night's while
  * monthly/ holds no whole copy of the month (review findings B4, N2 and N3, VPS-40). Since VPS-43 a
@@ -2893,6 +2915,24 @@ describe('the migrate and backup images', () => {
       (text) => backupRules(backupImage, text),
       swap(backupSh, '-le 1024 ]; then', '-le 0 ]; then'),
       'no size check',
+    );
+  });
+
+  it('checks and copies the settings archive before the base, which may run 2 hours', () => {
+    expect(archiveFirst(backupSh)).toEqual([]);
+    // As before Stop C's review (finding D4): the archive checked and copied after the base.
+    const archive = backupSh.slice(
+      backupSh.indexOf("# The host's settings archive"),
+      backupSh.indexOf('# The base backup (VPS-43)'),
+    );
+    refuses(
+      archiveFirst,
+      swap(
+        swap(backupSh, archive, ''),
+        '\n# Every part of tonight is in the bucket',
+        `\n${archive}# Every part of tonight is in the bucket`,
+      ),
+      'checked or copied after the base begins',
     );
   });
 
