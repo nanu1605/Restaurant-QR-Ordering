@@ -111,6 +111,12 @@ services:
   recover:
     networks: [bucket]
 
+  pitr-test:
+    networks: [bucket]
+
+  recover-pitr:
+    networks: [bucket]
+
   # Staging is hosted Supabase and its own image: never started here.
   web-staging:
     profiles: !override [staging]

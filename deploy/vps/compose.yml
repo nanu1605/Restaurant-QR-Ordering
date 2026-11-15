@@ -679,6 +679,46 @@ services:
     pids_limit: 128
     oom_score_adj: 600
 
+  # The monthly drill of point-in-time recovery (VPS-43), after the restore test, with the same key
+  # on its ramfs: the last base backup of daily/ before PITR_TARGET and the WAL after it, replayed
+  # in memory by the backup image's own Postgres to that point, or to the latest WAL in the bucket.
+  # sudo app-compose menumesh --profile pitr-test run --rm -v /run/age:/run/age:ro pitr-test
+  pitr-test:
+    <<: *oneoff
+    image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
+    pull_policy: never
+    profiles: [pitr-test]
+    # Root hands the data folder, and a copy of the age key on /run/pitr, to the image's postgres
+    # (uid 70), who replays: CHOWN, then SETUID and SETGID for gosu.
+    cap_add: [CHOWN, SETUID, SETGID]
+    entrypoint: ['/usr/local/bin/pitr.sh', '--test']
+    environment:
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      RCLONE_CONFIG_BACKUPS_TYPE: s3
+      RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
+      RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+      RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+      RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
+      AGE_IDENTITY_FILE: /run/age/identity.txt
+      # What a night's seal and each WAL file must be signed by.
+      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}
+      # A time with its offset, such as 2026-11-15T14:30:00+05:30, or latest; empty: latest.
+      PITR_TARGET: ${PITR_TARGET:-}
+    # The replayed cluster in memory, which mem_limit counts, and the copy of the key.
+    tmpfs:
+      - /var/lib/postgresql/data:size=1g,mode=0700
+      - /run/pitr:size=1m,mode=0700
+    # The bucket alone: the replayed cluster listens on no port.
+    networks: [default]
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.0
+    cpu_shares: 256
+    pids_limit: 128
+    oom_score_adj: 600
+
   # Disaster recovery only (VPS-40): the real, empty volumes and a bare cluster. After it, stop
   # recover-db and start db, which finds a cluster and skips its init.
   recover-db:
@@ -745,6 +785,46 @@ services:
     cpu_shares: 512
     pids_limit: 128
     oom_score_adj: 100
+
+  # Disaster recovery to a point in time (VPS-43): the last base backup of daily/ that ended before
+  # PITR_TARGET and the WAL after it, replayed by the backup image's own Postgres into the real,
+  # empty db-data volume, and stopped cleanly there. Then start db on it, with a new wal-spool:
+  # db archives the new timeline. pitr.sh --into refuses to run without PITR_TARGET.
+  # sudo app-compose menumesh --profile recover run --rm -e PITR_TARGET=<point> -v /run/age:/run/age:ro recover-pitr
+  recover-pitr:
+    <<: *oneoff
+    image: ${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}
+    pull_policy: never
+    profiles: [recover]
+    # As recover-db: root hands db-data to the image's postgres (uid 70), who replays into it.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    entrypoint: ['/usr/local/bin/pitr.sh', '--into']
+    environment:
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?}
+      RCLONE_CONFIG_BACKUPS_TYPE: s3
+      RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
+      RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+      RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+      RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'
+      AGE_IDENTITY_FILE: /run/age/identity.txt
+      # What a night's seal and each WAL file must be signed by.
+      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}
+      # The point to recover to, a time with its offset or latest (docs/RUNBOOK.md, Disaster
+      # recovery).
+      PITR_TARGET: ${PITR_TARGET:-}
+    volumes:
+      # Writable here only: the replay fills it.
+      - db-data:/var/lib/postgresql/data
+    tmpfs: ['/run/pitr:size=1m,mode=0700']
+    networks: [default]
+    mem_limit: 1024m
+    memswap_limit: 1024m
+    cpus: 1.5
+    cpu_shares: 1024
+    pids_limit: 128
+    oom_score_adj: -800
 
 # default (implicit) is the egress bridge. gateway carries web to Envoy only, so the web
 # container reaches no Supabase service directly; data holds the Supabase services, with no way

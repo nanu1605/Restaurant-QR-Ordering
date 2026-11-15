@@ -329,6 +329,7 @@ export const FILES: FileSpec[] = [
       'TELEGRAM_CHAT_ID',
       // Named on the one run that needs it, never kept in the file.
       'RESTORE_STAMP',
+      'PITR_TARGET',
     ],
   },
   {

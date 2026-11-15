@@ -400,13 +400,129 @@ const signingEnv = (text: string) => {
     ...(given.join() === 'backup' && holds('backup', 'BACKUP_SIGNING_KEY: ${BACKUP_SIGNING_KEY:?}')
       ? []
       : [`BACKUP_SIGNING_KEY goes to ${given.join(', ') || 'no service'}, not to backup alone`]),
-    ...['backup', 'restore-test', 'recover']
+    ...['backup', 'restore-test', 'recover', 'pitr-test', 'recover-pitr']
       .filter((name) => !holds(name, 'BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}'))
       .map((name) => `${name} does not require BACKUP_SIGNING_PUBLIC_KEY`),
     ...(holds('backup', 'HEARTBEAT_WAL_URL: ${HEARTBEAT_WAL_URL:-}')
       ? []
       : ['backup has no HEARTBEAT_WAL_URL']),
   ];
+};
+
+/** A key's list as a service writes it, inline (`[a, 'b']`) or one `- ` line an item: its items. */
+const listOf = (service: readonly string[], name: string): string[] => {
+  const lines = key(service, name) ?? [];
+  const inline = lines[0]?.slice(`    ${name}:`.length).trim() ?? '';
+  if (inline) return [...inline.matchAll(/'([^']*)'|([^\s,'[\]]+)/g)].map((m) => m[1] ?? m[2]);
+  return lines.slice(1).map((line) => line.trim().replace(/^- /, '').replace(/^'(.*)'$/, '$1'));
+};
+
+/** What the point-in-time recovery's one-offs are given: the bucket, the key's path, the point. */
+const PITR_ENV = [
+  'BACKUP_BUCKET: ${BACKUP_BUCKET:?}',
+  'RCLONE_CONFIG_BACKUPS_TYPE: s3',
+  'RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}',
+  'RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}',
+  'RCLONE_CONFIG_BACKUPS_REGION: ${BACKUP_S3_REGION:-}',
+  'RCLONE_CONFIG_BACKUPS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?}',
+  'RCLONE_CONFIG_BACKUPS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?}',
+  "RCLONE_CONFIG_BACKUPS_NO_CHECK_BUCKET: 'true'",
+  'AGE_IDENTITY_FILE: /run/age/identity.txt',
+  'BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}',
+  'PITR_TARGET: ${PITR_TARGET:-}',
+];
+const PITR_ONEOFFS = {
+  'pitr-test': {
+    profiles: '[pitr-test]',
+    entrypoint: "['/usr/local/bin/pitr.sh', '--test']",
+    cap: '[CHOWN, SETUID, SETGID]',
+    tmpfs: ['/var/lib/postgresql/data:size=1g,mode=0700', '/run/pitr:size=1m,mode=0700'],
+    volumes: [] as string[],
+  },
+  'recover-pitr': {
+    profiles: '[recover]',
+    entrypoint: "['/usr/local/bin/pitr.sh', '--into']",
+    cap: '[CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]',
+    tmpfs: ['/run/pitr:size=1m,mode=0700'],
+    volumes: ['db-data:/var/lib/postgresql/data'],
+  },
+};
+/**
+ * The point-in-time recovery's one-offs (VPS-43), each the backup image's pitr.sh: pitr-test, the
+ * monthly drill, behind a profile of its own, replays into a tmpfs of 1g and keeps nothing;
+ * recover-pitr, behind recover's, replays into the real db-data volume, its one mount. Both reach
+ * the bucket alone (the default network: no database, no restore network), wait for nothing (db
+ * must not run while recover-pitr fills db-data), keep the copy of the age key on a tmpfs of their
+ * own, and get the bucket's settings, the key's path, the public signing key and PITR_TARGET, and
+ * nothing else. Root hands the data folder to the image's postgres (CHOWN, then SETUID and SETGID
+ * for gosu); recover-pitr also reads and changes a volume it doesn't own, as recover-db does.
+ */
+const pitrOneoffs = (text: string) =>
+  Object.entries(PITR_ONEOFFS).flatMap(([name, want]) => {
+    const service = services(text).get(name);
+    if (!service) return [`no service ${name}`];
+    const env = (key(service, 'environment') ?? []).slice(1).map((line) => line.trim());
+    const tmpfs = listOf(service, 'tmpfs');
+    const volumes = listOf(service, 'volumes');
+    return [
+      ...(value(service, 'image') === '${BACKUP_IMAGE:?set BACKUP_IMAGE in images.env}'
+        ? []
+        : [`${name} does not run the backup image`]),
+      ...(value(service, 'profiles') === want.profiles
+        ? []
+        : [`${name} is not behind the profile ${want.profiles}`]),
+      ...(value(service, 'entrypoint') === want.entrypoint
+        ? []
+        : [`${name} does not run ${want.entrypoint}`]),
+      ...(value(service, 'cap_add') === want.cap
+        ? []
+        : [`${name} adds ${value(service, 'cap_add') ?? 'no capability'}, not ${want.cap}`]),
+      ...(tmpfs.join(' ') === want.tmpfs.join(' ')
+        ? []
+        : [`${name}’s tmpfs is ${tmpfs.join(', ') || 'none'}, not ${want.tmpfs.join(', ')}`]),
+      ...(volumes.join(' ') === want.volumes.join(' ')
+        ? []
+        : [`${name} mounts ${volumes.join(', ') || 'nothing'}, not ${want.volumes.join(', ') || 'nothing'}`]),
+      ...(value(service, 'networks') === '[default]'
+        ? []
+        : [`${name} is not on the default network alone`]),
+      ...(key(service, 'depends_on') ? [`${name} waits for another service`] : []),
+      ...(JSON.stringify([...env].sort()) === JSON.stringify([...PITR_ENV].sort())
+        ? []
+        : [
+            `${name}’s environment is not the bucket’s, the key’s and the point alone: ${[
+              ...env.filter((line) => !PITR_ENV.includes(line)),
+              ...PITR_ENV.filter((line) => !env.includes(line)).map((line) => `no ${line}`),
+            ].join(', ')}`,
+          ]),
+    ];
+  });
+
+/**
+ * The one-offs run one at a time, each with the one-offs it waits for: the most they hold at once
+ * is the recovery's pair, recover-db and recover, 2,304 MiB beside the steady 6,560 (VPS-33).
+ * pitr-test and recover-pitr run alone, and no one-off or pair may hold more (VPS-43).
+ */
+const oneoffMemory = (text: string) => {
+  const all = services(text);
+  const oneoff = (name: string) => Boolean(key(all.get(name) ?? [], 'profiles'));
+  return [...all]
+    .filter(([name]) => oneoff(name))
+    .flatMap(([name, service]) => {
+      const waits = (key(service, 'depends_on') ?? [])
+        .slice(1)
+        .map((line) => /^ {6}([a-z0-9-]+):/.exec(line)?.[1])
+        .filter((found): found is string => found !== undefined && oneoff(found));
+      const total = [name, ...waits].reduce(
+        (sum, found) => sum + mib(value(all.get(found) ?? [], 'mem_limit')),
+        0,
+      );
+      return total <= 2304
+        ? []
+        : [
+            `${[name, ...waits].join(' and ')} ${waits.length ? 'hold' : 'holds'} ${total} MiB at once, over recover’s 2,304`,
+          ];
+    });
 };
 
 describe('deploy/vps/compose.yml', () => {
@@ -775,6 +891,109 @@ describe('deploy/vps/compose.yml', () => {
       signingEnv,
       swap(compose, '      HEARTBEAT_WAL_URL: ${HEARTBEAT_WAL_URL:-}\n', ''),
       'backup has no HEARTBEAT_WAL_URL',
+    );
+    refuses(
+      signingEnv,
+      swapIn(
+        compose,
+        'pitr-test',
+        '      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:?}\n',
+        '      BACKUP_SIGNING_PUBLIC_KEY: ${BACKUP_SIGNING_PUBLIC_KEY:-}\n',
+      ),
+      'pitr-test does not require BACKUP_SIGNING_PUBLIC_KEY',
+    );
+  });
+
+  it('replays to a point only in its two one-offs, each with the bucket alone', () => {
+    expect(pitrOneoffs(compose)).toEqual([]);
+    refuses(
+      pitrOneoffs,
+      swapIn(compose, 'pitr-test', '    networks: [default]', '    networks: [default, data]'),
+      'pitr-test is not on the default network alone',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(compose, 'pitr-test', '    profiles: [pitr-test]', '    profiles: [restore-test]'),
+      'pitr-test is not behind the profile [pitr-test]',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(compose, 'pitr-test', '      - /var/lib/postgresql/data:size=1g,mode=0700\n', ''),
+      'pitr-test’s tmpfs is /run/pitr:size=1m,mode=0700',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'recover-pitr',
+        '    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]',
+        '    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SYS_ADMIN]',
+      ),
+      'recover-pitr adds [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SYS_ADMIN]',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'recover-pitr',
+        '      - db-data:/var/lib/postgresql/data\n',
+        '      - db-data:/var/lib/postgresql/data\n      - db-config:/etc/postgresql-custom\n',
+      ),
+      'recover-pitr mounts db-data:/var/lib/postgresql/data, db-config:/etc/postgresql-custom',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'recover-pitr',
+        '      PITR_TARGET: ${PITR_TARGET:-}\n',
+        '      PITR_TARGET: ${PITR_TARGET:-}\n      PGPASSWORD: ${POSTGRES_PASSWORD:?}\n',
+      ),
+      'PGPASSWORD: ${POSTGRES_PASSWORD:?}',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'recover-pitr',
+        '    networks: [default]\n',
+        '    networks: [default]\n    depends_on:\n      db: { condition: service_healthy }\n',
+      ),
+      'recover-pitr waits for another service',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'recover-pitr',
+        "    entrypoint: ['/usr/local/bin/pitr.sh', '--into']",
+        "    entrypoint: ['/usr/local/bin/pitr.sh', '--test']",
+      ),
+      "recover-pitr does not run ['/usr/local/bin/pitr.sh', '--into']",
+    );
+  });
+
+  it('holds at most the recovery’s 2,304 MiB in any one-off and the one-offs it waits for', () => {
+    expect(oneoffMemory(compose)).toEqual([]);
+    refuses(
+      oneoffMemory,
+      swapIn(
+        compose,
+        'pitr-test',
+        '    mem_limit: 1536m\n    memswap_limit: 1536m',
+        '    mem_limit: 2560m\n    memswap_limit: 2560m',
+      ),
+      'pitr-test holds 2560 MiB',
+    );
+    refuses(
+      oneoffMemory,
+      swapIn(
+        compose,
+        'recover',
+        '    mem_limit: 384m\n    memswap_limit: 384m',
+        '    mem_limit: 512m\n    memswap_limit: 512m',
+      ),
+      'recover and recover-db hold 2432 MiB',
     );
   });
 });
@@ -2329,10 +2548,10 @@ const walShipImage = (dockerfile: string) => [
     ? []
     : ['the image has no openssl']),
   ...(dockerfile.includes(
-    'COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh /usr/local/bin/',
+    'COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh pitr.sh wal-fetch.sh /usr/local/bin/',
   )
     ? []
-    : ['wal-ship.sh is not a command of the image']),
+    : ['wal-ship.sh, pitr.sh or wal-fetch.sh is not a command of the image']),
   ...(dockerfile.includes('COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/')
     ? []
     : ['seal.sh is not where the scripts source it']),
@@ -2465,6 +2684,133 @@ const walSpoolWrapper = (script: string) => {
       : ['it does not end in the image’s entrypoint with db’s command']),
   ];
 };
+
+const pitrSh = kit('backup/pitr.sh');
+const walFetchSh = kit('backup/wal-fetch.sh');
+
+/**
+ * Each script's settings, its `for name in ...` list, are in the environment of every service that
+ * runs it (VPS-40, VPS-43): restore.sh's in restore-test and recover, pitr.sh's in pitr-test and
+ * recover-pitr, backup.sh's and wal-ship.sh's in backup.
+ */
+const SCRIPT_SERVICES: [string, string, string[]][] = [
+  ['restore.sh', restoreSh, ['restore-test', 'recover']],
+  ['pitr.sh', pitrSh, ['pitr-test', 'recover-pitr']],
+  ['backup.sh', backupSh, ['backup']],
+  ['wal-ship.sh', walShipSh, ['backup']],
+];
+const scriptEnv = (text: string, scripts = SCRIPT_SERVICES) =>
+  scripts.flatMap(([file, script, runners]) => {
+    const names = /^for name in ([A-Z0-9_ ]+); do$/m.exec(script)?.[1].split(' ') ?? [];
+    if (!names.length) return [`${file} names no setting it needs`];
+    return runners.flatMap((runner) => {
+      const given = (key(services(text).get(runner) ?? [], 'environment') ?? []).map(
+        (line) => /^ {6}([A-Z0-9_]+):/.exec(line)?.[1],
+      );
+      return names
+        .filter((name) => !given.includes(name))
+        .map((name) => `${runner} does not set ${name}, which ${file} needs`);
+    });
+  });
+
+/**
+ * pitr.sh (VPS-43): everything it prints through the filter restore.sh has; a recovery only to a
+ * point it is given, and no point more than 14 days back; the night's base read only once its seal
+ * checks out, and held to the seal's size and sha256; the WAL's upload time the bucket's own, never
+ * the time its uploader set; a WAL file kept only when the signature in its name is the backup's,
+ * over the cluster, the WAL file and the sha256 of those bytes; the replay with none of the
+ * script's environment, nothing preloaded, no event trigger and no hot standby, promoted at its end,
+ * fed by wal-fetch.sh; a recovery's new timeline kept for db to archive, the drill's never; the
+ * copy of the age key gone before anything reads the cluster, in sessions that write nothing.
+ */
+const REPLAY_FLAGS = [
+  '-c shared_preload_libraries= ',
+  '-c session_preload_libraries= ',
+  '-c local_preload_libraries= ',
+  '-c event_triggers=off ',
+  '-c hot_standby=off ',
+  '-c listen_addresses= ',
+  '-c "restore_command=/usr/local/bin/wal-fetch.sh $wal $key %f %p" ',
+  '-c recovery_target_action=promote',
+];
+const pitrRules = (script: string) => {
+  const sealed = script.indexOf('if ! seal_open "$work/seal" "$candidate"; then');
+  const base = script.indexOf('get "base-$night.tar.zst.age"');
+  const forgotten = script.indexOf('\nforget_key\n');
+  const counted = script.indexOf('dbs=$(ro -d postgres');
+  return [
+    ...(script.includes(String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`) &&
+    script.indexOf('exec >"$fifo" 2>&1') < script.indexOf('mode=${1-}') &&
+    script.includes('  exec >&- 2>&-\n  wait "$filter" || true\n  exit "$status"\n}') &&
+    script.includes('trap finish EXIT')
+      ? []
+      : ['what the run prints does not all go through the filter']),
+    ...(script.includes('  [ "$mode" = --test ] ||\n    die "a recovery needs PITR_TARGET')
+      ? []
+      : ['a recovery runs without PITR_TARGET']),
+    ...(script.includes('  [ "$point" -ge $((seconds - 14 * 86400)) ] ||')
+      ? []
+      : ['a point more than 14 days back is taken']),
+    ...(sealed >= 0 && base > sealed && script.includes('  want=$(seal_part "$1")\n')
+      ? []
+      : ['the base is read before a seal checks out']),
+    ...(script.includes(
+      '  [ "$(sha256sum "$work/$1" | cut -d \' \' -f 1)" = "${want% *}" ] ||',
+    ) && script.includes('  [ "$got" -eq "${want#* }" ] ||')
+      ? []
+      : ['a part is not held to its seal']),
+    ...(script.includes(
+      'rclone lsjson --files-only --no-mimetype --use-server-modtime "$bucket/wal/$cluster/$1/"',
+    )
+      ? []
+      : ['a WAL file’s upload time is not the bucket’s own']),
+    ...(script.includes(
+      String.raw`printf 'menumesh wal 1 %s %s %s\n' "$cluster" "$2" "$(sha256sum "$work/object" | cut -d ' ' -f 1)"`,
+    ) && script.includes('    if seal_verify "$work/message" "$3"; then')
+      ? []
+      : ['a WAL file is kept without the backup’s signature of its bytes']),
+    ...(script.includes(
+      'env -i PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C gosu postgres postgres "$@" </dev/null',
+    )
+      ? []
+      : ['the replay gets the script’s environment']),
+    ...REPLAY_FLAGS.filter((flag) => !script.includes(`  ${flag}`)).map(
+      (flag) => `the replay runs without ${flag.trim()}`,
+    ),
+    ...(script.includes('set -- "$@" -c archive_mode=on -c archive_command= -c archive_library=') &&
+    script.includes('set -- "$@" -c archive_mode=off -c fsync=off')
+      ? []
+      : ['a recovery’s new timeline is not kept for db to archive, or the drill keeps its own']),
+    ...(forgotten >= 0 && counted > forgotten
+      ? []
+      : ['the copy of the age key is there while the cluster is read']),
+    ...(script.includes("PGOPTIONS='-c default_transaction_read_only=on")
+      ? []
+      : ['the replayed cluster is read in sessions that can write']),
+    ...(code(script).includes('set -f') ? [] : ['names from the bucket can be globbed']),
+  ];
+};
+
+/**
+ * wal-fetch.sh, the replay's restore_command (VPS-43): only a WAL file's or a history file's name;
+ * one the folder lacks ends the WAL (exit 1); one it has is decrypted and decompressed whole beside
+ * the destination before it goes there, so the replay holds one WAL file decrypted at a time, and
+ * one that fails to stops the replay (exit 126, fatal to Postgres) instead of passing for the end.
+ */
+const walFetch = (script: string) => [
+  ...(script.includes(String.raw`grep -qE '^([0-9A-F]{24}|[0-9A-F]{8}\.history)$' || exit 1`)
+    ? []
+    : ['wal-fetch.sh takes a name that is no WAL file’s']),
+  ...(script.includes('[ -f "$folder/$name.zst.age" ] || exit 1')
+    ? []
+    : ['a WAL file the folder lacks does not end the WAL']),
+  ...(script.includes(
+    'age --decrypt --identity "$key" <"$folder/$name.zst.age" | zstd -dcq >"$partial" &&\n  mv -f "$partial" "$destination"',
+  )
+    ? []
+    : ['a WAL file is not whole before it is in place']),
+  ...(script.endsWith('\nexit 126\n') ? [] : ['a WAL file that fails to decrypt ends the WAL']),
+];
 
 describe('the migrate and backup images', () => {
   const dockerfile = kit('migrate/Dockerfile');
@@ -3520,6 +3866,89 @@ describe('the migrate and backup images', () => {
         '    seal_verify_first "$seal_open_dir/body"',
       ),
       'against each key',
+    );
+  });
+
+  it('sets in each service every setting the script it runs needs', () => {
+    expect(scriptEnv(compose)).toEqual([]);
+    refuses(
+      scriptEnv,
+      swapIn(compose, 'recover-pitr', '      AGE_IDENTITY_FILE: /run/age/identity.txt\n', ''),
+      'recover-pitr does not set AGE_IDENTITY_FILE, which pitr.sh needs',
+    );
+    refuses(
+      scriptEnv,
+      swapIn(compose, 'restore-test', '      PGUSER: supabase_admin\n', ''),
+      'restore-test does not set PGUSER, which restore.sh needs',
+    );
+    refuses(
+      (text) => scriptEnv(compose, [['pitr.sh', text, ['pitr-test', 'recover-pitr']]]),
+      swap(pitrSh, 'for name in BACKUP_BUCKET ', 'for name in PGHOST BACKUP_BUCKET '),
+      'pitr-test does not set PGHOST, which pitr.sh needs',
+    );
+  });
+
+  it('replays a night’s base and the backup’s signed WAL, each read as its seal or name gives it', () => {
+    expect(pitrRules(pitrSh)).toEqual([]);
+    refuses(
+      pitrRules,
+      swap(pitrSh, ' --no-mimetype --use-server-modtime "$bucket/wal/', ' --no-mimetype "$bucket/wal/'),
+      'upload time is not the bucket’s own',
+    );
+    refuses(
+      pitrRules,
+      swap(pitrSh, '    if seal_verify "$work/message" "$3"; then', '    if [ -s "$work/message" ]; then'),
+      'without the backup’s signature',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        'env -i PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C gosu postgres postgres "$@"',
+        'gosu postgres postgres "$@"',
+      ),
+      'the script’s environment',
+    );
+    refuses(pitrRules, swap(pitrSh, '  -c hot_standby=off \\\n', ''), 'without -c hot_standby=off');
+    refuses(
+      pitrRules,
+      swap(pitrSh, '  -c shared_preload_libraries= \\\n', ''),
+      'without -c shared_preload_libraries=',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '[ "$point" -ge $((seconds - 14 * 86400)) ] ||',
+        '[ "$point" -ge $((seconds - 29 * 86400)) ] ||',
+      ),
+      'more than 14 days back',
+    );
+    refuses(pitrRules, swap(pitrSh, '\nforget_key\n', '\n'), 'the copy of the age key');
+    refuses(
+      pitrRules,
+      swap(pitrSh, 'set -- "$@" -c archive_mode=off -c fsync=off', 'set -- "$@" -c fsync=off'),
+      'the drill keeps its own',
+    );
+    refuses(
+      pitrRules,
+      swap(pitrSh, '  [ "$mode" = --test ] ||\n    die "a recovery needs', '  true ||\n    die "a recovery needs'),
+      'without PITR_TARGET',
+    );
+  });
+
+  it('hands the replay one WAL file at a time, and a file that fails to decrypt stops it', () => {
+    expect(walFetch(walFetchSh)).toEqual([]);
+    refuses(walFetch, swap(walFetchSh, '\nexit 126\n', '\nexit 1\n'), 'ends the WAL');
+    refuses(
+      walFetch,
+      swap(walFetchSh, '[ -f "$folder/$name.zst.age" ] || exit 1', '[ -f "$folder/$name.zst.age" ] || exit 2'),
+      'does not end the WAL',
+    );
+    refuses(
+      walFetch,
+      swap(walFetchSh, 'zstd -dcq >"$partial" &&', 'zstd -dcq >"$destination" &&'),
+      'not whole before it is in place',
     );
   });
 });
