@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-45. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-58. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -28,9 +28,10 @@ their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this
 `app-apply` also creates `/srv/menumesh/backup-out` (root, 0755), where the host's settings
 archive lands every night. `config/db/` holds, beside the init SQL, `pg_hba.conf` (the database
 image's own file plus one `replication` line, for the backup's base) and `wal-spool.sh` (`db`'s
-entry wrapper, which makes the WAL spool postgres's before the image's own entrypoint runs). `/srv/menumesh` itself and `env/` are root's, 0750. Nothing under
-`/srv/menumesh` may be writable by anyone but root, up to `/`: `app-apply` refuses a mounted file
-otherwise. Every file here is LF only.
+entry wrapper, which makes the WAL spool postgres's before the image's own entrypoint runs).
+`/srv/menumesh` itself and `env/` are root's, 0750. Nothing under `/srv/menumesh` may be writable
+by anyone but root, up to `/`: `app-apply` refuses a mounted file otherwise. Every file here is LF
+only.
 
 ## Who does what
 
@@ -52,24 +53,33 @@ otherwise. Every file here is LF only.
 
 `backup/` is one image with four jobs, all from the `backup` service or a one-off of it:
 
-- **The night** (`backup.sh`, 20:30 UTC): the roles, each database, Storage, a manifest, a base
-  backup of the whole cluster and the settings archive, each age-encrypted to the owner's key, then
-  `seal-<id>.txt`, the list of parts with their sha256 and sizes, signed by `BACKUP_SIGNING_KEY`.
-  Under `daily/` in the bucket, a month's copy under `monthly/`.
+- **The night** (`backup.sh`, 20:30 UTC): the roles, each database, Storage, a manifest, the
+  settings archive and a base backup of the whole cluster, each age-encrypted to the owner's key,
+  then `seal-<id>.txt`, the list of parts with their sha256 and sizes, signed by
+  `BACKUP_SIGNING_KEY`. Under `daily/` in the bucket, a month's copy under `monthly/`.
 - **The WAL** (`wal-ship.sh`, every minute): `db` hands each finished WAL file to the `wal-spool`
   volume (`basic_archive`, at least once a minute); the shipper compresses, encrypts, signs and
   uploads it to `wal/<cluster>/…`, alerts when it can't, and pings `HEARTBEAT_WAL_URL` every 5
-  minutes. `wal-spool` is shared with `db` alone.
+  minutes. `wal-spool` is shared with `db` alone. The scripts' work files, and the shipper's record
+  while the spool takes no write, are in the service's 16m tmpfs at `/tmp`, inside its 320m, so a
+  full disk still gets its alert.
 - **The restores** (`restore.sh`: `restore-test`, `recover`): read a night only through its seal,
-  every part held to its size and sha256 before it is decrypted.
+  every part held to its size and sha256 before it is decrypted. On a new server the night's
+  settings archive is checked the same way before it is unpacked, on the owner's own machine:
+  `pnpm vps:verify-night <id> <folder> --keys <file>` (`scripts/vps-verify-night.mts`, with the
+  seal reader of `scripts/vps-seal.mts` that `pnpm vps:backup-test` holds to `seal.sh`) checks the
+  downloaded seal and archive and prints the sha256 that `sha256sum` must print on the server.
 - **Point in time** (`pitr.sh`: `pitr-test`, the monthly drill; `recover-pitr`, a recovery): the
   newest sealed base plus the signed WAL after it, replayed with the image's Postgres to a target
-  within 14 days or to the latest. `wal-fetch.sh` is its `restore_command`; `seal.sh` is the shared
-  seal and signature code.
+  within 14 days or to the latest, without the live cluster's `ALTER SYSTEM` settings. A recovery
+  to the latest whose chain of WAL files is cut is refused before it writes, unless
+  `PITR_ACCEPT_CUT` names the cut. `wal-fetch.sh` is its `restore_command`; `seal.sh` is the
+  shared seal and signature code.
 
 The public signing key (`BACKUP_SIGNING_PUBLIC_KEY`, one or several, space-separated) is in every
 service that reads the bucket; the private key is in `backup` alone. `pnpm vps:secrets` makes the
-pair and prints the public half for the owner to keep beside the age key.
+pair and prints the public half for the owner to keep beside the age key, and after each rotation
+the whole list in its place.
 
 ## First install, in order
 
@@ -100,7 +110,8 @@ pair and prints the public half for the owner to keep beside the age key.
 ## Checking it here first
 
 None of the checks needs the server. `pnpm test` pins what each file must keep
-(`tests/unit/vps-kit.test.ts`). `pnpm vps:check` runs the server's own `app-apply` checks on this
+(`tests/unit/vps-kit.test.ts`, and `tests/unit/vps-verify-night.test.ts` for
+`pnpm vps:verify-night`). `pnpm vps:check` runs the server's own `app-apply` checks on this
 folder, as root in a throwaway container, with `test/menumesh.conf` as `/etc/apps/menumesh.conf`,
 then the contract's extra rules, Caddy's and Envoy's own validation and shellcheck. `pnpm vps:edge`
 puts the server's Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers.
@@ -114,18 +125,22 @@ gitignored, with the throwaway values of `pnpm vps:secrets --rehearsal`) and
 its name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300),
 gives Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and
 sends every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the
-WAL shipper, its outage and its failure paths, then the nightly backup into that S3 with each
-night sealed, named by its id, its stamp and 8 random hex characters (a
-night with a stale settings archive, then the month's copy in `monthly/`, and a night whose id
-someone else wrote a name of first, stopped before its first upload), the monthly restore test,
-planted nights and names the restore must refuse or not read (each night is read from the one
-folder its age gives: `daily/` under 29 days, `monthly/` past that), and then the disaster recovery
-of a month's copy two months old, from `monthly/`, after one without `RESTORE_STAMP` is refused: the
-rehearsal's own database and Storage volumes are made new and filled from the backup, and the stack
-starts on them. Last, the point-in-time drill to a point and to the latest against rows written and
-a table dropped, restores that refuse a night another key sealed, and a recovery to a point into
-new `db-data` and `wal-spool` with the stack started on it. `pnpm vps:down` removes the project (its images too with `--images`), and nothing
-else.
+WAL shipper, its outage and its failure paths (a full disk among them), then the nightly backup
+into that S3 with each night sealed, named by its id, its stamp and 8 random hex characters (a
+night with a stale settings archive, then the month's copy in `monthly/`, past objects named like
+its parts too, and a night whose id someone else wrote a name of first, stopped before its first
+upload), the monthly restore test, the disaster recovery's check of a downloaded night with
+`pnpm vps:verify-night` (and its refusal of settings archives of someone else's), planted nights
+and names the restore must refuse or not read (each night is read from the one folder its age
+gives: `daily/` under 29 days, `monthly/` past that), and then the disaster recovery of a month's
+copy two months old, from `monthly/`, after one without `RESTORE_STAMP` is refused: the
+rehearsal's own database and Storage volumes are made new and filled from the backup, and the
+stack starts on them. Last, the point-in-time drill to a point and to the latest against rows
+written and a table dropped, over a base holding an `ALTER SYSTEM` setting too, restores that
+refuse a night another key sealed, a recovery to the latest refused at a cut and taken to it with
+`PITR_ACCEPT_CUT`, a recovery to a point into new `db-data` and `wal-spool` with the stack started
+on it, and a gap on the new timeline that an abandoned one's file must not fill. `pnpm vps:down`
+removes the project (its images too with `--images`), and nothing else.
 
 ## Where the borrowed files come from
 
