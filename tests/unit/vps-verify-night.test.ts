@@ -451,12 +451,26 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     });
   });
 
-  it('reads a seal no further than a byte past seal_max', () => {
+  it('reads a seal no further than a byte past seal_max, and a key file past its own cap', () => {
     const dir = temporary();
     writeFileSync(join(dir, 'big'), Buffer.alloc(5 << 20, 0x23));
     writeFileSync(join(dir, 'small'), good);
     expect(readCapped(join(dir, 'big'), SEAL_MAX).length).toBe(SEAL_MAX + 1);
     expect(readCapped(join(dir, 'small'), SEAL_MAX).toString('latin1')).toBe(good);
+    // The seal and the key file are read so, and nothing else is read whole but a part the seal
+    // gives the size of.
+    const source = readFileSync('scripts/vps-verify-night.mts', 'utf8');
+    expect(source).toContain(
+      "    text = readCapped(resolve(folder, sealName), SEAL_MAX).toString('latin1');\n",
+    );
+    expect(source).toContain('      bytes = readCapped(file, KEYS_MAX);\n');
+    expect(source.match(/(?<![.\w])(readCapped|digest)\(|readFileSync|createReadStream/g)).toEqual([
+      'readCapped(',
+      'digest(',
+      'readCapped(',
+      'readCapped(',
+      'digest(',
+    ]);
   });
 
   it('runs as pnpm vps:verify-night does: its lines and exit 0, or one line on stderr and exit 1', async () => {
