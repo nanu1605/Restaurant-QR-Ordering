@@ -4376,12 +4376,13 @@ CI and the deploys come in later stops: Stop B writes them and rehearses them on
 (VPS-31 to VPS-42), Stop C adds WAL archiving, signed nights and point-in-time recovery (VPS-43 to
 VPS-45, and its review's fixes VPS-46 to VPS-58), and Vercel stays production until the cut-over.
 The server's contract arrived on 2026-11-08, with adjustments the same day, and wins over the first
-plans where they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale tap
-and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export size
-cap is fine for now (VPS-6); single-slot deploys with a 25 s stop (VPS-22); production deploys run
-by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08), a menu reader that cannot answer
-stops the reading with Try again, and a page that fails twice is left out (VPS-30), and a restaurant
-that joins a running announcement is emailed within a minute (VPS-28).
+plans where they differ (VPS-24). The owner's answers: live screens refresh by themselves at the
+first stale tap and other pages show a Refresh toast (VPS-8); no background update check (VPS-11);
+the export size cap is fine for now (VPS-6); single-slot deploys with a 25 s stop (VPS-22);
+production deploys run by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08), a menu
+reader that cannot answer stops the reading with Try again, and a page that fails twice is left
+out (VPS-30), and a restaurant that joins a running announcement is emailed within a minute
+(VPS-28).
 
 ### App changes and the web image (Stop A)
 
@@ -8491,18 +8492,19 @@ place (VPS-43, Left open (Stop C), the Stop B review's Left open, the RUNBOOK,
 - **VPS-58 · D8 · The message to the server team had numbers and profiles the kit no longer has,
   low:** the message, not sent yet and kept outside this repository, gave Stop B's 34 checks for
   the rehearsal (40 now), the 53 of `pnpm vps:check` as `app-apply`'s (its own are 2 and 43 of
-  them), both new one-offs under profiles of their own (`recover-pitr` shares `recover` with
-  `recover-db` and `recover`, never run together), and no `cap_add` for them (`pitr-test` CHOWN,
-  SETUID and SETGID; `recover-pitr` CHOWN, DAC_OVERRIDE, FOWNER, SETUID and SETGID). It now says
-  so, gives `pnpm vps:backup-test`'s 87 checks where it said 77, and names the `backup` service's
-  new tmpfs inside its 320m.
+  them), both new one-offs under profiles of their own (`recover-pitr` shares the `recover`
+  profile with `recover-db` and `recover`, never run together), and no `cap_add` for them
+  (`pitr-test` CHOWN, SETUID and SETGID; `recover-pitr` CHOWN, DAC_OVERRIDE, FOWNER, SETUID and
+  SETGID). It now says so, gives `pnpm vps:backup-test`'s 87 checks where it said 77, and names
+  the `backup` service's new tmpfs inside its 320m.
 
 **On the rehearsal, after the fixes** (Docker Desktop, 15.18 GiB, on the final tree of the code,
 `5c9440e`): `pnpm vps:rehearse --fresh` 40 checks, 0 failed, 449 s, its step 8 now also finding the
 running backup service's `/tmp` a tmpfs; then `pnpm vps:backup-test` 87 checks, 0 failed, 1,298 s
 (77 before the review: S2's and C3's proofs, S1's, D6's three and C2's, and D1's three);
-`pnpm vps:check` 53 checks, 0 failed (`app-apply`'s 2 and 43 among them); `pnpm vps:down` 3 of 3,
-nothing of the rehearsal's left. The unit tests are 1,172 in 69 files (`vps-kit` 104,
-`vps-verify-night` 15, `vps-secrets` 21). Each code fix's unit rule reports problems on the script
-as it was and none on the fix, and S1, S2, C3, D1 and D6 were also shown by hand on the rehearsal
-with the scripts from before them (each entry above).
+`pnpm vps:check` 53 checks, 0 failed (`app-apply`'s 2 and 43 among them), and again after these
+documents changed `compose.yml`'s header; `pnpm vps:down` 3 of 3, nothing of the rehearsal's
+left. The unit tests are 1,172 in 69 files (`vps-kit` 104, `vps-verify-night` 15, `vps-secrets`
+21). Each code fix's unit rule reports problems on the script as it was and none on the fix, and
+S1, S2, C3, D1 and D6 were also shown by hand on the rehearsal with the scripts from before them
+(each entry above).
