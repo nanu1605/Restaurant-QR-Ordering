@@ -463,6 +463,7 @@ const PITR_ONEOFFS = {
     cap: '[CHOWN, SETUID, SETGID]',
     tmpfs: ['/var/lib/postgresql/data:size=1g,mode=0700', '/run/pitr:size=1m,mode=0700'],
     volumes: [] as string[],
+    env: [] as string[],
   },
   'recover-pitr': {
     profiles: '[recover]',
@@ -470,6 +471,7 @@ const PITR_ONEOFFS = {
     cap: '[CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]',
     tmpfs: ['/run/pitr:size=1m,mode=0700'],
     volumes: ['db-data:/var/lib/postgresql/data'],
+    env: ['PITR_ACCEPT_CUT: ${PITR_ACCEPT_CUT:-}'],
   },
 };
 /**
@@ -479,14 +481,16 @@ const PITR_ONEOFFS = {
  * the bucket alone (the default network: no database, no restore network), wait for nothing (db
  * must not run while recover-pitr fills db-data), keep the copy of the age key on a tmpfs of their
  * own, and get the bucket's settings, the key's path, the public signing key and PITR_TARGET, and
- * nothing else. Root hands the data folder to the image's postgres (CHOWN, then SETUID and SETGID
- * for gosu); recover-pitr also reads and changes a volume it doesn't own, as recover-db does.
+ * nothing else but recover-pitr's PITR_ACCEPT_CUT: the drill fails on any cut chain of WAL files
+ * (review finding D6). Root hands the data folder to the image's postgres (CHOWN, then SETUID and
+ * SETGID for gosu); recover-pitr also reads and changes a volume it doesn't own, as recover-db does.
  */
 const pitrOneoffs = (text: string) =>
   Object.entries(PITR_ONEOFFS).flatMap(([name, want]) => {
     const service = services(text).get(name);
     if (!service) return [`no service ${name}`];
     const env = (key(service, 'environment') ?? []).slice(1).map((line) => line.trim());
+    const given = [...PITR_ENV, ...want.env];
     const tmpfs = listOf(service, 'tmpfs');
     const volumes = listOf(service, 'volumes');
     return [
@@ -514,12 +518,12 @@ const pitrOneoffs = (text: string) =>
         ? []
         : [`${name} is not on the default network alone`]),
       ...(key(service, 'depends_on') ? [`${name} waits for another service`] : []),
-      ...(JSON.stringify([...env].sort()) === JSON.stringify([...PITR_ENV].sort())
+      ...(JSON.stringify([...env].sort()) === JSON.stringify([...given].sort())
         ? []
         : [
             `${name}’s environment is not the bucket’s, the key’s and the point alone: ${[
-              ...env.filter((line) => !PITR_ENV.includes(line)),
-              ...PITR_ENV.filter((line) => !env.includes(line)).map((line) => `no ${line}`),
+              ...env.filter((line) => !given.includes(line)),
+              ...given.filter((line) => !env.includes(line)).map((line) => `no ${line}`),
             ].join(', ')}`,
           ]),
     ];
@@ -1017,6 +1021,21 @@ describe('deploy/vps/compose.yml', () => {
         "    entrypoint: ['/usr/local/bin/pitr.sh', '--test']",
       ),
       "recover-pitr does not run ['/usr/local/bin/pitr.sh', '--into']",
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(compose, 'recover-pitr', '      PITR_ACCEPT_CUT: ${PITR_ACCEPT_CUT:-}\n', ''),
+      'no PITR_ACCEPT_CUT: ${PITR_ACCEPT_CUT:-}',
+    );
+    refuses(
+      pitrOneoffs,
+      swapIn(
+        compose,
+        'pitr-test',
+        '      PITR_TARGET: ${PITR_TARGET:-}\n',
+        '      PITR_TARGET: ${PITR_TARGET:-}\n      PITR_ACCEPT_CUT: ${PITR_ACCEPT_CUT:-}\n',
+      ),
+      'pitr-test’s environment is not the bucket’s, the key’s and the point alone: PITR_ACCEPT_CUT',
     );
   });
 
@@ -2846,7 +2865,11 @@ const scriptEnv = (text: string, scripts = SCRIPT_SERVICES) =>
  * None of the live cluster's own settings reach the replay: the base's postgresql.auto.conf, what
  * ALTER SYSTEM set there, waits aside while it runs and goes back for db after a recovery, and the
  * command line names the port and turns off every command a setting could run (review finding
- * S1).
+ * S1). Each position of the chain takes the WAL file of the timeline the replay reads there, from
+ * the newest timeline whose history file is here, never another timeline's at the same position,
+ * and a replay to latest must end at the chain's last WAL file from the bucket (review finding
+ * C2). A recovery to latest with a cut chain is refused before anything is written to db-data,
+ * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6).
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -2874,6 +2897,10 @@ const pitrRules = (script: string) => {
   const stopped = script.indexOf("quit || die 'the recovered cluster did not stop cleanly");
   const putBack = script.indexOf('    gosu postgres mv -f "$auto.pitr" "$auto" ||');
   const done = script.indexOf('echo "point-in-time recovery to $said_point done');
+  const orphaned = script.indexOf('[ -z "$orphans" ] ||');
+  const cutRefused = script.indexOf('die "a recovery to latest would end at the cut at $gap');
+  const writes = script.indexOf('[ "$mode" != --into ] || writing=yes');
+  const shortOfEnd = script.indexOf('  if [ "$restored" != "$from_bucket" ]; then');
   return [
     ...(script.includes(String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`) &&
     script.indexOf('exec >"$fifo" 2>&1') < script.indexOf('mode=${1-}') &&
@@ -2923,7 +2950,7 @@ const pitrRules = (script: string) => {
       ? []
       : ['the replayed cluster is read in sessions that can write']),
     ...(script.includes('[ -z "$orphans" ] ||\n  die "the backup\'s WAL of the timelines') &&
-    script.indexOf('[ -z "$orphans" ] ||') < script.indexOf('echo "pitr: replaying"')
+    orphaned < replaying
       ? []
       : ['a later timeline’s WAL is replayed without its history file']),
     ...(code(script).includes('set -f') ? [] : ['names from the bucket can be globbed']),
@@ -2939,6 +2966,46 @@ const pitrRules = (script: string) => {
     ...(stopped >= 0 && putBack > stopped && done > putBack
       ? []
       : ['a recovery does not put the base’s postgresql.auto.conf back once the cluster stopped']),
+    ...(script.includes(
+      String.raw`while next=$(printf '%08X' $((0x$newest + 1))) && grep -qx "$next" "$work/histories"; do`,
+    ) &&
+    script.includes(
+      '      if (tl "" > newest "") { print position, time, past, size, walfile, part[2] >later; next }',
+    ) &&
+    script.includes(
+      '      if (tl "" == reads "") print position, time, past, size, walfile, part[2]',
+    )
+      ? []
+      : ['a position takes a WAL file of another timeline than the one the replay reads there']),
+    ...(script.includes('    if grep -qx "$want$at" "$work/base-wal"; then') &&
+    script.includes('  gap=$want$at\n')
+      ? []
+      : [
+          'a WAL file the base brought fills a position of another timeline, or a gap is named on another',
+        ]),
+    ...(script.includes(
+      '  while read -r _ _ _ _ walfile signature; do\n    if take "$folder" "$walfile" "$signature" "$cap" </dev/null; then\n      cut=$walfile\n',
+    )
+      ? []
+      : ['the look past a gap gives up before it has tried every object named there']),
+    ...(shortOfEnd > replaying && shortOfEnd < counted && shortOfEnd < done
+      ? []
+      : ['a replay to latest that stopped short of the chain’s last WAL file passes']),
+    ...(script.includes('  accept=${PITR_ACCEPT_CUT-}\n') &&
+    script.includes('    [ "$accept" = "$gap" ] ||\n') &&
+    orphaned >= 0 &&
+    cutRefused > orphaned &&
+    writes > cutRefused &&
+    unpacked > writes
+      ? []
+      : [
+          'a recovery to latest goes past a cut chain of WAL files, or writes to db-data before it is refused',
+        ]),
+    ...(script.includes(
+      `  [ -z "$cut" ] || die "the chain of WAL files is cut at $gap, with the backup's WAL after it: the drill fails"`,
+    )
+      ? []
+      : ['the drill passes with the chain of WAL files cut']),
   ];
 };
 
@@ -4216,6 +4283,92 @@ describe('the migrate and backup images', () => {
         '    gosu postgres rm -f "$auto.pitr" ||',
       ),
       'a recovery does not put the base’s postgresql.auto.conf back',
+    );
+  });
+
+  it('takes at each position the WAL file of the timeline the replay reads there (review finding C2)', () => {
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '      if (tl "" == reads "") print position, time, past, size, walfile, part[2]',
+        '      print position, time, past, size, walfile, part[2]',
+      ),
+      'a position takes a WAL file of another timeline',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        String.raw`while next=$(printf '%08X' $((0x$newest + 1))) && grep -qx "$next" "$work/histories"; do`,
+        String.raw`while next=$(printf '%08X' $((0x$newest + 1))) && false; do`,
+      ),
+      'a position takes a WAL file of another timeline',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '    if grep -qx "$want$at" "$work/base-wal"; then',
+        '    if grep -q "$at\\$" "$work/base-wal"; then',
+      ),
+      'a WAL file the base brought fills a position of another timeline',
+    );
+    refuses(
+      pitrRules,
+      swap(pitrSh, '  gap=$want$at\n', '  gap=$tli$at\n'),
+      'a gap is named on another',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '  while read -r _ _ _ _ walfile signature; do\n    if take "$folder" "$walfile" "$signature" "$cap" </dev/null; then\n      cut=$walfile\n',
+        '  while read -r _ _ _ _ walfile signature && [ "$looked" -lt 8 ]; do\n    if take "$folder" "$walfile" "$signature" "$cap" </dev/null; then\n      cut=$walfile\n',
+      ),
+      'gives up before it has tried every object',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '  if [ "$restored" != "$from_bucket" ]; then',
+        '  if [ "$restored" != "$restored" ]; then',
+      ),
+      'stopped short of the chain’s last WAL file passes',
+    );
+  });
+
+  it('refuses a recovery to latest that a cut chain would end early, unless told (review finding D6)', () => {
+    refuses(
+      pitrRules,
+      swap(pitrSh, '    [ "$accept" = "$gap" ] ||\n', '    [ -n "$accept" ] ||\n'),
+      'a recovery to latest goes past a cut chain',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        'die "a recovery to latest would end at the cut at $gap',
+        'echo "a recovery to latest would end at the cut at $gap',
+      ),
+      'a recovery to latest goes past a cut chain',
+    );
+    // The base unpacked into db-data before the chain is known, as before the fix.
+    const early = swap(
+      pitrSh,
+      '\n# --- the WAL ---\n',
+      '\n[ "$mode" != --into ] || writing=yes\nbase_tar | gosu postgres tar --extract --file=- --directory="$data" --no-same-owner\n# --- the WAL ---\n',
+    );
+    refuses(pitrRules, early, 'writes to db-data before it is refused');
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        `  [ -z "$cut" ] || die "the chain of WAL files is cut at $gap, with the backup's WAL after it: the drill fails"`,
+        `  [ -z "$cut" ] || echo "the chain of WAL files is cut at $gap, with the backup's WAL after it: the drill fails"`,
+      ),
+      'the drill passes with the chain of WAL files cut',
     );
   });
 

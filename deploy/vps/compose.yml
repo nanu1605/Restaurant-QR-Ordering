@@ -817,6 +817,9 @@ services:
       # The point to recover to, a time with its offset or latest (docs/RUNBOOK.md, Disaster
       # recovery).
       PITR_TARGET: ${PITR_TARGET:-}
+      # Empty, a recovery to latest whose chain of WAL files is cut is refused; the WAL file the
+      # refusal named, given on that one run, recovers to the cut and no further.
+      PITR_ACCEPT_CUT: ${PITR_ACCEPT_CUT:-}
     volumes:
       # Writable here only: the replay fills it.
       - db-data:/var/lib/postgresql/data

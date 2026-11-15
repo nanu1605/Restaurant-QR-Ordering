@@ -20,22 +20,34 @@
 # whose seal (seal.sh) a key of BACKUP_SIGNING_PUBLIC_KEY signed and whose base backup ended before
 # the point; the nights passed over are named, with why. Its base part is downloaded as the bucket
 # holds it, still encrypted, into this container's own files, never more than a byte past the size
-# the seal gives, held to that size and sha256, and only then decrypted and unpacked by the image's
-# postgres (uid 70), who replays it. The WAL is wal-ship.sh's: wal/<cluster>/<log id>/
-# <walfile>.<signature>.zst.age, and wal/<cluster>/history/ for the timelines' history files. Only
-# the base's cluster is read, and of it only the history folder and each log id's folder in turn
-# from the one the base starts in. Each listing is read as JSON, one object a line, and a line only
-# when it is all a name wal-ship.sh writes: a name in the bucket can hold no quote or line break
-# that passes for another. Each WAL file is downloaded the same way, no larger than a WAL file can
-# be, and kept only when the signature in its name is the backup's, over the cluster, the WAL file
-# and the sha256 of those very bytes: whatever else is under its name is passed over. The WAL
-# files stay encrypted here; wal-fetch.sh, the replay's restore_command, decrypts each as the replay
-# asks for it. They are taken up to the first one uploaded more than 30 minutes after the point
-# (the shipper sends each within about 2), or all of them for latest. A WAL file the chain needs
-# that is not in the bucket, or none of whose objects is the backup's, ends the chain there, said
-# plainly, with whether the backup's WAL goes on after it; the drill then fails. The WAL of a
-# later timeline without that timeline's history file is refused before the replay, which would
-# follow an older timeline instead.
+# the seal gives, held to that size and sha256, and only then decrypted: first for its control
+# file, its backup_label and the names of its WAL files, and once the WAL after it is known to be
+# whole, or a cut the owner accepted, unpacked into the data folder by the image's postgres (uid
+# 70), who replays it. A recovery refused before that leaves db-data as empty as it found it.
+#
+# The WAL is wal-ship.sh's: wal/<cluster>/<log id>/<walfile>.<signature>.zst.age, and
+# wal/<cluster>/history/ for the timelines' history files. Only the base's cluster is read, and of
+# it only the history folder and each log id's folder in turn from the one the base starts in. Each
+# listing is read as JSON, one object a line, and a line only when it is all a name wal-ship.sh
+# writes: a name in the bucket can hold no quote or line break that passes for another. Each WAL
+# file is downloaded the same way, no larger than a WAL file can be, and kept only when the
+# signature in its name is the backup's, over the cluster, the WAL file and the sha256 of those
+# very bytes: whatever else is under its name is passed over. The WAL files stay encrypted here;
+# wal-fetch.sh, the replay's restore_command, decrypts each as the replay asks for it. They are
+# taken up to the first one uploaded more than 30 minutes after the point (the shipper sends each
+# within about 2), or all of them for latest.
+#
+# The replay follows the newest timeline whose history file is here, through the timelines that
+# history file names, and at each position reads the WAL file of the newest of them begun by then,
+# never an older timeline's after a newer one's: so the chain takes at each position that WAL file
+# and no other, and an older timeline's file at the same position never fills a gap in it. A WAL
+# file the chain needs that is not in the bucket, or none of whose objects is the backup's, ends
+# the chain there, said plainly, with whether the backup's WAL goes on after it: a cut. The drill
+# then fails; a recovery to latest, which would end at the cut, is refused before it writes
+# anything, unless PITR_ACCEPT_CUT names the WAL file it is cut at, the owner's word that the
+# database may end there. The WAL of a later timeline without that timeline's history file is
+# refused before the replay, which would follow an older timeline instead. A replay to latest must
+# end at the chain's last WAL file from the bucket, or it is not the latest the bucket holds.
 #
 # The replay runs on the image's own Postgres 17, not on the database's image: restore_command needs
 # age and zstd, which that image lacks. Replay rewrites pages and runs no SQL, so neither the
@@ -186,6 +198,15 @@ else
   cutoff=$(date -u -d "@$((point + 1800))" +%Y-%m-%dT%H:%M:%S)
 fi
 [ "$target" != latest ] || said_point='the latest WAL in the bucket'
+# A recovery to latest whose chain of WAL files is cut would end at the cut: it goes on only when
+# PITR_ACCEPT_CUT names the WAL file it is cut at, given on that one run. A recovery to a point
+# reaches it or is refused, and the drill fails on any cut, so neither reads it.
+accept=
+if [ "$mode" = --into ]; then
+  accept=${PITR_ACCEPT_CUT-}
+  [ -z "$accept" ] || [ "$target" = latest ] ||
+    die "PITR_ACCEPT_CUT is only for a recovery to latest, which a cut chain of WAL files would end early: a recovery to $said_point reaches it or is refused; run again without it"
+fi
 
 # Only into an empty data folder: a recovery into a new db-data volume, refused before anything
 # of the bucket is read.
@@ -300,37 +321,29 @@ if [ "$mode" = --test ]; then
   rm -f "$work/manifest-$night.txt.age"
 fi
 
-# --- the base, into the data folder ---
+# --- the base, read before anything is written ---
 
 get "base-$night.tar.zst.age"
-# From here on a recovery writes to db-data: one that stops leaves part of a cluster there.
-[ "$mode" != --into ] || writing=yes
-chmod 0700 "$data"
-chown postgres:postgres "$data"
-# pg_basebackup's tar holds only files and folders here: anything else is refused once unpacked,
-# before it is read. GNU tar keeps every member under the folder.
-age --decrypt --identity "$AGE_IDENTITY_FILE" <"$work/base-$night.tar.zst.age" | zstd -dcq |
-  gosu postgres tar --extract --file=- --directory="$data" --no-same-owner ||
-  stop "the base backup of $night (base-$night.tar.zst.age in daily/) could not be unpacked (see above)"
-rm -f "$work/base-$night.tar.zst.age"
-others=$(gosu postgres find "$data" ! -type f ! -type d | wc -l) || stop "$data could not be read"
-[ "$others" -eq 0 ] ||
-  die "the base backup of $night holds links or special files ($((others))), which pg_basebackup never writes here: nothing was replayed"
-# What ALTER SYSTEM set on the live cluster is in the base's postgresql.auto.conf, which Postgres
-# reads from the data folder whatever else it is told: commands to run at the recovery's end or
-# after a restartpoint, a port, a recovery target. None of it has a say in the replay, which would
-# run those commands as the user who holds the copy of the age key: the file waits beside itself
-# under another name, an empty one in its place, and a recovery puts it back once the cluster has
-# stopped, so that db starts with the settings it had.
-auto=$data/postgresql.auto.conf
-aside=
-if gosu postgres test -e "$auto"; then
-  gosu postgres mv -f "$auto" "$auto.pitr" || stop "the base backup's postgresql.auto.conf could not be set aside"
-  aside=yes
-fi
-gosu postgres touch "$auto" || stop "$auto could not be made"
+# pg_basebackup's tar, decrypted and decompressed as it is read, and never kept so: read once for
+# its members' names, once for its control file, its backup_label and its timeline history files
+# alone, into the run's files, and once more, unpacked into the data folder, when the WAL after
+# it has been checked.
+base_tar() {
+  age --decrypt --identity "$AGE_IDENTITY_FILE" <"$work/base-$night.tar.zst.age" | zstd -dcq
+}
+# The WAL files and timeline history files it brought along in pg_wal (-X fetch): those the chain
+# need not find in the bucket.
+base_tar | tar --list --file=- | { LC_ALL=C grep -E '^pg_wal/([0-9A-F]{24}|[0-9A-F]{8}[.]history)$' || true; } |
+  sed 's|^pg_wal/||' >"$work/base-pg_wal" ||
+  stop "the base backup of $night (base-$night.tar.zst.age in daily/) could not be read (see above)"
+grep -E '^[0-9A-F]{24}$' "$work/base-pg_wal" >"$work/base-wal" || true
+mkdir "$work/peek"
+# shellcheck disable=SC2046 # the history files' names, as the listing above held them: hex digits
+base_tar | tar --extract --file=- --directory="$work/peek" --no-same-owner global/pg_control backup_label \
+  $(sed -n 's|^\([0-9A-F]\{8\}[.]history\)$|pg_wal/\1|p' "$work/base-pg_wal") ||
+  stop "the base backup of $night has no control file or backup_label to read (see above)"
 # The cluster, its WAL files' size and where its backup starts, as its own files give them.
-control=$(LC_ALL=C gosu postgres pg_controldata "$data") || stop "the base backup of $night has no control file to read"
+control=$(LC_ALL=C pg_controldata "$work/peek") || stop "the base backup of $night has no control file to read"
 system=$(printf '%s\n' "$control" | sed -n 's/^Database system identifier: *\([0-9]\{1,20\}\)$/\1/p')
 segment=$(printf '%s\n' "$control" | sed -n 's/^Bytes per WAL segment: *\([0-9]\{1,10\}\)$/\1/p')
 [ "$system" = "$cluster" ] ||
@@ -339,15 +352,9 @@ case $segment in
   1048576 | 2097152 | 4194304 | 8388608 | 16777216 | 33554432 | 67108864 | 134217728 | 268435456 | 536870912 | 1073741824) ;;
   *) die "the base backup of $night names no WAL segment size" ;;
 esac
-label=$(gosu postgres sed -n 's/^START WAL LOCATION: .* (file \([0-9A-F]\{24\}\))$/\1/p' "$data/backup_label") ||
-  stop "the base backup of $night has no backup_label to read"
+label=$(sed -n 's/^START WAL LOCATION: .* (file \([0-9A-F]\{24\}\))$/\1/p' "$work/peek/backup_label")
 [ "$label" = "$start" ] ||
   die "the base backup of $night starts in ${label:-no WAL file}, not the $start its seal names"
-# The segments the base brought along in pg_wal (-X fetch), which the chain need not find in the
-# bucket: their log id and segment, as 16 hex digits.
-gosu postgres ls "$data/pg_wal" | { grep -E '^[0-9A-F]{24}$' || true; } | cut -c 9-24 >"$work/base-wal" ||
-  stop "the base backup's pg_wal could not be read"
-echo "pitr: the base backup of $night unpacked: $(($(gosu postgres du -sk "$data" | cut -f 1) / 1024)) MiB in $data, WAL segments of $((segment / 1048576)) MiB"
 
 # --- the WAL ---
 
@@ -360,12 +367,19 @@ cap=$((segment + segment / 64 + 65536))
 kept=0
 kept_bytes=0
 passed=0
+# The timelines the replay goes through, "<timeline> <position it begins at>" a line, oldest first,
+# and the newest of them: set once the history files are in (below).
+: >"$work/lineage"
+newest=
+# The objects named after a later timeline than the newest, for the check after the chain.
+: >"$work/later"
 # folder_of <folder> <names> <first>: the WAL objects of wal/<cluster>/<folder>/ named <names> (a
 # regular expression) as "<position> <upload time> <past> <bytes> <walfile> <signature>", one a
 # line, oldest position and then oldest upload first; <position> is the walfile but its timeline,
-# <past> whether it went up later than the cutoff. Only names of the base's timeline or later and,
-# in the first folder, from the base's start on. rclone lsjson prints one object a line, every
-# name in JSON's quotes, and a line counts only when it is all one of those names.
+# <past> whether it went up later than the cutoff. Of the WAL files, only those from the base's
+# start on, each of the timeline the replay reads at its position; those of a timeline later than
+# the newest go to $work/later instead. rclone lsjson prints one object a line, every name in
+# JSON's quotes, and a line counts only when it is all one of those names.
 folder_of() {
   status=0
   rclone lsjson --files-only --no-mimetype --use-server-modtime "$bucket/wal/$cluster/$1/" \
@@ -376,9 +390,12 @@ folder_of() {
   # The fields rclone may add after IsDir, such as a provider's storage class ("Tier"), are plain
   # values; a line with anything else is passed over, as is any name but the backup's. Positions
   # and times are compared as text: a hex position such as 00000000000000E5 reads as a number.
-  LC_ALL=C awk -v names="$2" -v first="$3" -v tli="$tli" -v cutoff="$cutoff" -v top="$(printf '%08X' "$segs")" '
+  LC_ALL=C awk -v names="$2" -v first="$3" -v tli="$tli" -v newest="$newest" -v cutoff="$cutoff" \
+    -v top="$(printf '%08X' "$segs")" -v lineage="$work/lineage" -v later="$work/later-here" '
     BEGIN {
       line = "^[{]\"Path\":\"" names "\",\"Name\":\"" names "\",\"Size\":[0-9]{1,12},\"ModTime\":\"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,9})?Z\",\"IsDir\":false(,\"[A-Za-z]+\":(\"[A-Za-z0-9_.-]*\"|[0-9]+|true|false))*[}],?$"
+      while ((getline entry < lineage) > 0) { split(entry, e, " "); n++; timeline[n] = e[1]; begins[n] = e[2] }
+      printf "" >later
     }
     $0 ~ line {
       split($0, f, "\"")
@@ -386,19 +403,25 @@ folder_of() {
       size = f[11]
       gsub(/[^0-9]/, "", size)
       time = substr(f[14], 1, 19)
+      past = (cutoff != "" && time "" > cutoff "") ? 1 : 0
       split(f[4], part, ".")
       walfile = part[1]
-      if (part[2] == "history") { walfile = walfile ".history"; signature = part[3]; position = walfile }
-      else {
-        signature = part[2]
-        position = substr(walfile, 9, 16)
-        if (substr(walfile, 1, 8) "" < tli "" || substr(walfile, 17, 8) "" >= top "" || position "" < first "") next
+      if (part[2] == "history") {
+        print walfile ".history", time, past, size, walfile ".history", part[3]
+        next
       }
-      print position, time, (cutoff != "" && time "" > cutoff "") ? 1 : 0, size, walfile, signature
+      tl = substr(walfile, 1, 8)
+      position = substr(walfile, 9, 16)
+      if (tl "" < tli "" || substr(walfile, 17, 8) "" >= top "" || position "" < first "") next
+      if (tl "" > newest "") { print position, time, past, size, walfile, part[2] >later; next }
+      reads = ""
+      for (i = 1; i <= n; i++) if (begins[i] "" <= position "") reads = timeline[i]
+      if (tl "" == reads "") print position, time, past, size, walfile, part[2]
     }' "$work/listing" | LC_ALL=C sort -k1,1 -k2,2 >"$work/candidates"
-  [ "$(wc -l <"$work/candidates")" -le 2048 ] ||
+  [ $(($(wc -l <"$work/candidates") + $(wc -l <"$work/later-here"))) -le 2048 ] ||
     die "wal/$cluster/$1/ holds more than 2048 WAL names, more than the backup writes there: someone else wrote to the bucket"
-  room "$(awk '{ n += $4 } END { printf "%.0f", n / 1024 }' "$work/candidates")" "the WAL of wal/$cluster/$1/"
+  room "$(cat "$work/candidates" "$work/later-here" | awk '{ n += $4 } END { printf "%.0f", n / 1024 }')" "the WAL of wal/$cluster/$1/"
+  cat "$work/later-here" >>"$work/later"
 }
 # take <folder> <walfile> <signature> <cap>: the object <walfile>.<signature>.zst.age of that folder,
 # read by its name no further than a byte past <cap>, and kept as $wal/<walfile>.zst.age only when
@@ -431,17 +454,68 @@ while read -r _ _ _ _ walfile signature; do
   take history "$walfile" "$signature" 1048576 </dev/null || true
 done <"$work/candidates"
 histories=$kept
-
-# The chain: every position from the base's start, in turn, needs a WAL file of the base's
-# timeline or a later one that is the backup's, or one the base brought along; a position's
-# objects are tried oldest upload first, and a file already kept is not tried again. The chain is
-# whole once a position's WAL file went up later than the cutoff; else it ends at the first
-# position it can't fill, and why is said.
-position=$((0x$(echo "$start" | cut -c 9-16) * segs + 0x$(echo "$start" | cut -c 17-24)))
+# The timelines whose history files are here, the bucket's and the base's own, and of them the
+# newest, as Postgres finds the timeline it replays to: from the base's up, as long as the next
+# one's history file is here.
+# shellcheck disable=SC2012 # names this script gave the files it kept: hex digits and dots
+{
+  ls "$wal" | sed -n 's/^\([0-9A-F]\{8\}\)[.]history[.]zst[.]age$/\1/p'
+  sed -n 's/^\([0-9A-F]\{8\}\)[.]history$/\1/p' "$work/base-pg_wal"
+} | LC_ALL=C sort -u >"$work/histories"
+newest=$tli
+while next=$(printf '%08X' $((0x$newest + 1))) && grep -qx "$next" "$work/histories"; do
+  newest=$next
+done
+# The timelines the replay goes through and the position each begins at, as Postgres reads them
+# from the newest one's history file: each timeline before it, and where it was left for the next,
+# "<timeline>\t<hi>/<lo>\t<why>" a line, oldest first; the newest begins where the last was left.
 first=$(echo "$start" | cut -c 9-24)
+if [ "$newest" = "$tli" ]; then
+  echo "$tli 0000000000000000" >"$work/lineage"
+else
+  if [ -e "$wal/$newest.history.zst.age" ]; then
+    age --decrypt --identity "$AGE_IDENTITY_FILE" <"$wal/$newest.history.zst.age" | zstd -dcq >"$work/history" ||
+      stop "the history file of the timeline $newest could not be read (see above)"
+  else
+    cp "$work/peek/pg_wal/$newest.history" "$work/history"
+  fi
+  tab=$(printf '\t')
+  LC_ALL=C awk '!/^[ \t]*(#|$)/' "$work/history" >"$work/history-lines"
+  sed -n "s|^\([1-9][0-9]\{0,9\}\)$tab\([0-9A-F]\{1,8\}\)/\([0-9A-F]\{1,8\}\)\($tab.*\)\{0,1\}\$|\1 \2 \3|p" \
+    "$work/history-lines" >"$work/switches"
+  [ -s "$work/switches" ] && [ "$(wc -l <"$work/switches")" -eq "$(wc -l <"$work/history-lines")" ] ||
+    die "the history file of the timeline $newest holds a line Postgres does not write: nothing was replayed"
+  begins=0000000000000000
+  before=0
+  while read -r parent hi lo; do
+    [ "$parent" -gt "$before" ] && [ "$parent" -lt $((0x$newest)) ] ||
+      die "the history file of the timeline $newest names its timelines out of order: nothing was replayed"
+    printf '%08X %s\n' "$parent" "$begins" >>"$work/lineage"
+    begins=$(printf '%08X%08X' $((0x$hi)) $((0x$lo / segment)))
+    before=$parent
+  done <"$work/switches"
+  echo "$newest $begins" >>"$work/lineage"
+fi
+# The base's timeline is one of them, not left before the base began: else Postgres would not
+# replay it, a base from before a recovery that went back past it.
+problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '
+  $1 == tli { on = NR; next }
+  on && NR == on + 1 && $2 "" < first "" { left = $2 }
+  END { if (!on) print "is not one of them"; else if (left != "") print "was left for a later one at " left ", before the base began" }' "$work/lineage")
+[ -z "$problem" ] ||
+  die "the base backup of $night is of the timeline $tli, from $start, which $problem: the replay goes through the timelines up to $newest, the latest whose history file is in the bucket, so it can't start from this base, and nothing was replayed"
+
+# The chain: every position from the base's start, in turn, needs the WAL file of the timeline the
+# replay reads there that is the backup's, or that same file as the base brought it along; a
+# position's objects are tried oldest upload first, and a file already kept is not tried again.
+# The chain is whole once a position's WAL file went up later than the cutoff; else it ends at the
+# first position it can't fill, and why is said.
+position=$((0x$(echo "$start" | cut -c 9-16) * segs + 0x$(echo "$start" | cut -c 17-24)))
 folder=
 end=
 last=
+# The chain's last WAL file from the bucket, which a replay to latest takes last.
+from_bucket=
 while :; do
   log=$(printf '%08X' "$((position / segs))")
   at=$log$(printf '%08X' "$((position % segs))")
@@ -449,6 +523,8 @@ while :; do
     folder=$log
     folder_of "$folder" '[0-9A-F]{24}[.][A-Za-z0-9_-]{86}[.]zst[.]age' "$first"
   fi
+  # The timeline the replay reads at this position.
+  want=$(LC_ALL=C awk -v at="$at" '$2 "" <= at "" { reads = $1 } END { print reads }' "$work/lineage")
   found=
   late=
   tried=0
@@ -462,8 +538,8 @@ while :; do
     fi
   done <"$work/here"
   if [ -z "$found" ]; then
-    if grep -qx "$at" "$work/base-wal"; then
-      last=$tli$at
+    if grep -qx "$want$at" "$work/base-wal"; then
+      last=$want$at
       position=$((position + 1))
       continue
     fi
@@ -471,16 +547,19 @@ while :; do
     break
   fi
   last=$found
+  from_bucket=$found
   [ "$late" != 1 ] || break
   position=$((position + 1))
 done
 echo "pitr: the WAL after it, from wal/$cluster/: $((kept - histories)) WAL files and $histories timeline histories checked and kept ($kept_bytes bytes), through $last; $passed objects passed over, not the backup's"
 
 # Where the chain ended, if before the cutoff: whether the backup's WAL goes on after the position
-# it couldn't fill, from up to 8 objects named past it, in its log id's folder or the next.
+# it couldn't fill, on the timelines the replay reads, from the objects named past it in its log
+# id's folder, or the next folder when that one has none. Each is tried until one is the backup's:
+# objects someone else named there cost a download each, and never hide the WAL after a gap.
 cut=
 if [ -n "$end" ]; then
-  gap=$tli$at
+  gap=$want$at
   if [ "$end" = missing ]; then
     why="$gap is not in the bucket (it keeps the WAL 15 days, or someone else removed it)"
   else
@@ -490,18 +569,18 @@ if [ -n "$end" ]; then
   [ "$end" = missing ] || refused="; the $tried objects named $gap there are not the backup's, and were passed over"
   LC_ALL=C awk -v at="$at" '($1 "") > (at "")' "$work/candidates" >"$work/beyond"
   if [ ! -s "$work/beyond" ]; then
-    folder_of "$(printf '%08X' "$((position / segs + 1))")" '[0-9A-F]{24}[.][A-Za-z0-9_-]{86}[.]zst[.]age' ''
-    cp "$work/candidates" "$work/beyond"
     folder=$(printf '%08X' "$((position / segs + 1))")
+    folder_of "$folder" '[0-9A-F]{24}[.][A-Za-z0-9_-]{86}[.]zst[.]age' ''
+    cp "$work/candidates" "$work/beyond"
   fi
-  looked=0
-  while read -r _ _ _ _ walfile signature && [ "$looked" -lt 8 ]; do
-    looked=$((looked + 1))
+  while read -r _ _ _ _ walfile signature; do
     if take "$folder" "$walfile" "$signature" "$cap" </dev/null; then
       cut=$walfile
       break
     fi
   done <"$work/beyond"
+  # The replay stops at the gap: it is never handed the WAL after it.
+  [ -z "$cut" ] || rm -f "$wal/$cut.zst.age"
   if [ -n "$cut" ]; then
     echo "pitr: the chain of WAL files is cut at $gap: $why. The backup's WAL goes on after it, from $cut, and the replay can't reach past the cut"
   elif [ "$target" = latest ]; then
@@ -511,18 +590,82 @@ if [ -n "$end" ]; then
   fi
 fi
 
-# Each later timeline the kept WAL files are of has its history file, the backup's, kept here or
-# in the base. db archives a timeline's history file before its first WAL file and wal-ship.sh
+# A later timeline than the newest whose history file is here, that the backup's WAL shows (a WAL
+# file of it, the backup's, in the folders the chain read, or its history file), means a history
+# file is missing. db archives a timeline's history file before its first WAL file and wal-ship.sh
 # sends it first, so one missing is someone else's doing: without it the replay would follow an
-# older timeline, and a recovery would number its own timeline as one already in the bucket.
-gosu postgres ls "$data/pg_wal" | { grep -E '^[0-9A-F]{8}\.history$' || true; } >"$work/base-histories" ||
-  stop "the base backup's pg_wal could not be read"
-orphans=$({ ls "$wal"; sed 's/$/.zst.age/' "$work/base-histories"; } | LC_ALL=C awk -v tli="$tli" '
-  /^[0-9A-F]{8}[.]history[.]zst[.]age$/ { known[substr($0, 1, 8)] = 1; next }
-  /^[0-9A-F]{24}[.]zst[.]age$/ { if (substr($0, 1, 8) "" > tli "") seen[substr($0, 1, 8)] = 1 }
-  END { for (t in seen) if (!(t in known)) print t }' | LC_ALL=C sort | tr '\n' ' ')
+# older timeline, and a recovery would number its own timeline as one already in the bucket. Each
+# such timeline's objects are tried until one is the backup's.
+LC_ALL=C sort -k5,5 -k2,2 "$work/later" >"$work/later-sorted"
+shown=
+while read -r _ _ _ _ walfile signature; do
+  timeline=$(echo "$walfile" | cut -c 1-8)
+  case " $shown " in *" $timeline "*) continue ;; esac
+  if take "$(echo "$walfile" | cut -c 9-16)" "$walfile" "$signature" "$cap" </dev/null; then
+    shown="${shown:+$shown }$timeline"
+  fi
+done <"$work/later-sorted"
+# shellcheck disable=SC2086 # timelines, split on purpose
+latest_shown=$({
+  printf '%s\n' $shown
+  LC_ALL=C awk -v newest="$newest" '$0 "" > newest ""' "$work/histories"
+} | LC_ALL=C sort | tail -n 1)
+orphans=
+if [ -n "$latest_shown" ]; then
+  timeline=$((0x$newest + 1))
+  while [ "$timeline" -le $((0x$latest_shown)) ]; do
+    name=$(printf '%08X' "$timeline")
+    grep -qx "$name" "$work/histories" || orphans="${orphans:+$orphans }$name"
+    timeline=$((timeline + 1))
+  done
+fi
 [ -z "$orphans" ] ||
-  die "the backup's WAL of the timelines ${orphans% } is in the bucket, but not those timelines' history files: someone else removed them, and the replay would follow an older timeline, so nothing was replayed"
+  die "the backup's WAL of the timelines $orphans is in the bucket, but not those timelines' history files: someone else removed them, and the replay would follow an older timeline, so nothing was replayed"
+
+# A recovery to latest with a cut chain would end at the cut and leave out the backup's WAL after
+# it, which a bucket put right gives back: refused here, before anything is written to db-data,
+# unless PITR_ACCEPT_CUT names that very WAL file.
+if [ "$mode" = --into ] && [ "$target" = latest ]; then
+  if [ -n "$cut" ]; then
+    [ -n "$accept" ] ||
+      die "a recovery to latest would end at the cut at $gap and leave out the backup's WAL after it: put the bucket's WAL back as the backup wrote it (docs/RUNBOOK.md, A stolen or leaked bucket token) and recover again, or recover to the cut and no further with PITR_ACCEPT_CUT=$gap; nothing was written to db-data"
+    [ "$accept" = "$gap" ] ||
+      die "PITR_ACCEPT_CUT is $accept, but the chain of WAL files is cut at $gap: name that WAL file to recover to the cut and no further; nothing was written to db-data"
+    echo "pitr: PITR_ACCEPT_CUT is $gap: the recovery ends at the cut, and leaves out the backup's WAL from $cut on"
+    said_point="the latest WAL before the cut at $gap"
+  elif [ -n "$accept" ]; then
+    die "PITR_ACCEPT_CUT is $accept, but the chain of WAL files is not cut: run again without it, to recover to the latest WAL in the bucket; nothing was written to db-data"
+  fi
+fi
+
+# --- the base, into the data folder ---
+
+# From here on a recovery writes to db-data: one that stops leaves part of a cluster there.
+[ "$mode" != --into ] || writing=yes
+chmod 0700 "$data"
+chown postgres:postgres "$data"
+# pg_basebackup's tar holds only files and folders here: anything else is refused once unpacked,
+# before it is read. GNU tar keeps every member under the folder.
+base_tar | gosu postgres tar --extract --file=- --directory="$data" --no-same-owner ||
+  stop "the base backup of $night (base-$night.tar.zst.age in daily/) could not be unpacked (see above)"
+rm -f "$work/base-$night.tar.zst.age"
+others=$(gosu postgres find "$data" ! -type f ! -type d | wc -l) || stop "$data could not be read"
+[ "$others" -eq 0 ] ||
+  die "the base backup of $night holds links or special files ($((others))), which pg_basebackup never writes here: nothing was replayed"
+# What ALTER SYSTEM set on the live cluster is in the base's postgresql.auto.conf, which Postgres
+# reads from the data folder whatever else it is told: commands to run at the recovery's end or
+# after a restartpoint, a port, a recovery target. None of it has a say in the replay, which would
+# run those commands as the user who holds the copy of the age key: the file waits beside itself
+# under another name, an empty one in its place, and a recovery puts it back once the cluster has
+# stopped, so that db starts with the settings it had.
+auto=$data/postgresql.auto.conf
+aside=
+if gosu postgres test -e "$auto"; then
+  gosu postgres mv -f "$auto" "$auto.pitr" || stop "the base backup's postgresql.auto.conf could not be set aside"
+  aside=yes
+fi
+gosu postgres touch "$auto" || stop "$auto could not be made"
+echo "pitr: the base backup of $night unpacked: $(($(gosu postgres du -sk "$data" | cut -f 1) / 1024)) MiB in $data, WAL segments of $((segment / 1048576)) MiB"
 
 # --- the replay ---
 
@@ -637,12 +780,22 @@ if [ -z "$ready" ]; then
 fi
 replay_lines
 # The WAL files the replay asked for and got, each once: it reads some of them twice.
-from_bucket=$(sed -n 's/^LOG:  restored log file "\([0-9A-F]\{8,24\}\(\.history\)\{0,1\}\)" from archive$/\1/p' "$work/replay.log" | sort -u | wc -l)
+from_archive=$(sed -n 's/^LOG:  restored log file "\([0-9A-F]\{8,24\}\(\.history\)\{0,1\}\)" from archive$/\1/p' "$work/replay.log" | sort -u)
 last_commit=$(sed -n 's/^LOG:  last completed transaction was at log time \([0-9-]\{10\} [0-9:]\{8\}\)[.0-9]*+00$/\1/p' "$work/replay.log" | tail -n 1)
 last_at=
 [ -z "$last_commit" ] || last_at="$(echo "$last_commit" | tr ' ' T)Z"
 timeline=$(sed -n 's/^LOG:  selected new timeline ID: \([0-9]\{1,10\}\)$/\1/p' "$work/replay.log" | tail -n 1)
-echo "pitr: the replay ended in $(($(date -u +%s) - replayed)) s, $((from_bucket)) WAL files read from the bucket, the cluster promoted to timeline ${timeline:-?}: $(($(gosu postgres du -sk "$data" | cut -f 1) / 1024)) MiB in $data"
+echo "pitr: the replay ended in $(($(date -u +%s) - replayed)) s, $(printf '%s' "$from_archive" | grep -c . || true) WAL files read from the bucket, the cluster promoted to timeline ${timeline:-?}: $(($(gosu postgres du -sk "$data" | cut -f 1) / 1024)) MiB in $data"
+# To latest, the replay ends where the WAL it was given ends: the last WAL file it took from the
+# bucket is the chain's last from there, or it stopped short of WAL that the chain holds.
+if [ "$target" = latest ]; then
+  restored=$(printf '%s\n' "$from_archive" | { grep -E '^[0-9A-F]{24}$' || true; } | LC_ALL=C sort | tail -n 1)
+  if [ "$restored" != "$from_bucket" ]; then
+    reached=$restored
+    [ -n "$reached" ] || reached="the base's own WAL"
+    die "the replay ended at $reached, though the chain of WAL files goes on to $from_bucket: it did not take the backup's WAL after that, so this is not the latest WAL in the bucket"
+  fi
+fi
 
 if [ "$mode" = --test ]; then
   # The rows there, in sessions that write nothing, and beside them the night's manifest: what was
