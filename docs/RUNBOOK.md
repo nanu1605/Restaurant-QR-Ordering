@@ -1351,9 +1351,11 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      is not empty, a run without `PITR_TARGET`, a point later than now or more than 14 days
      back; and a point the bucket's WAL doesn't reach is refused after the replay, with the
      reason (a cut chain names the missing or refused file, a late shipper's 30-minute rule
-     says so): recover to an earlier point. A recovery to `latest` whose chain of WAL files is cut
-     (a WAL file missing or not the backup's, with the backup's WAL after it) is refused before it
-     writes anything, since it would end at the cut:
+     says so): recover to an earlier point. A run refused once the replay began ends with
+     `the recovery stopped after it began to write to db-data`: make `db-data` new before the next
+     (`sudo docker volume rm menumesh_db-data`). A recovery to `latest` whose chain of WAL files is
+     cut (a WAL file missing or not the backup's, with the backup's WAL after it) is refused before
+     it writes anything, since it would end at the cut:
 
      `pitr: a recovery to latest would end at the cut at <file> and leave out the backup's WAL after it: … nothing was written to db-data`
 
