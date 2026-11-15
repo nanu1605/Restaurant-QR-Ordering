@@ -6113,6 +6113,53 @@ async function pitrProof(checks: Checks, env: Record<string, string>, age: strin
       `${shipped.names.filter((name) => name.includes('/history/')).join('\n')}\n${text.join('\n')}`,
     );
 
+    // The next drill, on the rewound cluster: a row on the new timeline, its WAL shipped, and the
+    // replay from the same night follows the history file from the old timeline to the new.
+    const [onNew] = dbSql(
+      'insert into public.rehearsal_pitr_rows values (100);\nselect pg_walfile_name(pg_current_wal_lsn());\nselect pg_switch_wal() is not null;',
+    );
+    const newShipped = await walShipped(cluster, [onNew ?? ''], 200);
+    const across = await drill('latest');
+    const countsAcross = pitrCounts(across.stdout);
+    const promoted = /the cluster promoted to timeline (\d+)/.exec(across.stdout)?.[1];
+    checks.expect(
+      `pitr-test to latest after the rewind, from the same night: exit ${across.status} in ${across.took} s, the new timeline's row in ${onNew} shipped within ${newShipped.took} s; rows A and the row on timeline ${Number(timeline)}, and the table (${countsAcross.find((line) => line.startsWith('table public.rehearsal_pitr_rows ')) ?? 'no rows'}, ${countsAcross.find((line) => line.startsWith('table public.rehearsal_pitr_dropped ')) ?? 'no table'}), promoted to timeline ${promoted ?? '?'}`,
+      across.status === 0 &&
+        across.stdout.includes(`from the night of ${night}: `) &&
+        countsAcross.includes('table public.rehearsal_pitr_rows 4') &&
+        countsAcross.includes('table public.rehearsal_pitr_dropped 2') &&
+        Number(promoted) > Number(timeline),
+      `${tail(across.stdout, 40)}\n${across.stderr}`,
+    );
+    // The new timeline's history file removed, as someone holding the token could: the replay
+    // would follow the old timeline past the point, so the drill refuses before it replays.
+    const saved = inBackup(
+      `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${historyObject}" | base64 -w 0 && rclone deletefile "backups:$BACKUP_BUCKET/${historyObject}"`,
+    ).stdout.trim();
+    if (!saved) fail(`Removing ${historyObject} failed`);
+    for (let tries = 0; tries < 20; tries++) {
+      if (!walNames(cluster).includes(historyObject)) break;
+      await sleep(1000);
+    }
+    const orphaned = await drill('latest');
+    const back = inBackup(
+      `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/${historyObject}" && rclone cat --no-traverse "backups:$BACKUP_BUCKET/${historyObject}" | base64 -w 0`,
+      saved,
+    );
+    if (back.status !== 0 || back.stdout.trim() !== saved) {
+      fail(`Putting ${historyObject} back failed: ${back.stderr.trim()}`);
+    }
+    const tl = history.slice(0, 8);
+    checks.expect(
+      `pitr-test to latest with ${history} removed from the bucket: exit ${orphaned.status}, "${tail(orphaned.stdout, 1)}", and nothing replayed`,
+      orphaned.status === 1 &&
+        !orphaned.stdout.includes('pitr: replaying') &&
+        orphaned.stdout.endsWith(
+          `pitr: the backup's WAL of the timelines ${tl} is in the bucket, but not those timelines' history files: someone else removed them, and the replay would follow an older timeline, so nothing was replayed\n`,
+        ),
+      `${tail(orphaned.stdout, 40)}\n${orphaned.stderr}`,
+    );
+
     // What the drill planted goes.
     const cleared = inBackup(
       `rclone deletefile "backups:$BACKUP_BUCKET/${plantedSegment}" && rclone deletefile "backups:$BACKUP_BUCKET/${plantedHistory}"`,

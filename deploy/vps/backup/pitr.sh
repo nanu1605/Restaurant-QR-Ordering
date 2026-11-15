@@ -33,7 +33,9 @@
 # asks for it. They are taken up to the first one uploaded more than 30 minutes after the point
 # (the shipper sends each within about 2), or all of them for latest. A WAL file the chain needs
 # that is not in the bucket, or none of whose objects is the backup's, ends the chain there, said
-# plainly, with whether the backup's WAL goes on after it; the drill then fails.
+# plainly, with whether the backup's WAL goes on after it; the drill then fails. The WAL of a
+# later timeline without that timeline's history file is refused before the replay, which would
+# follow an older timeline instead.
 #
 # The replay runs on the image's own Postgres 17, not on the database's image: restore_command needs
 # age and zstd, which that image lacks. Replay rewrites pages and runs no SQL, so neither the
@@ -493,6 +495,19 @@ if [ -n "$end" ]; then
     echo "pitr: the WAL in the bucket ends at $last, none of it uploaded more than 30 minutes past the point$refused"
   fi
 fi
+
+# Each later timeline the kept WAL files are of has its history file, the backup's, kept here or
+# in the base. db archives a timeline's history file before its first WAL file and wal-ship.sh
+# sends it first, so one missing is someone else's doing: without it the replay would follow an
+# older timeline, and a recovery would number its own timeline as one already in the bucket.
+gosu postgres ls "$data/pg_wal" | { grep -E '^[0-9A-F]{8}\.history$' || true; } >"$work/base-histories" ||
+  stop "the base backup's pg_wal could not be read"
+orphans=$({ ls "$wal"; sed 's/$/.zst.age/' "$work/base-histories"; } | LC_ALL=C awk -v tli="$tli" '
+  /^[0-9A-F]{8}[.]history[.]zst[.]age$/ { known[substr($0, 1, 8)] = 1; next }
+  /^[0-9A-F]{24}[.]zst[.]age$/ { if (substr($0, 1, 8) "" > tli "") seen[substr($0, 1, 8)] = 1 }
+  END { for (t in seen) if (!(t in known)) print t }' | LC_ALL=C sort | tr '\n' ' ')
+[ -z "$orphans" ] ||
+  die "the backup's WAL of the timelines ${orphans% } is in the bucket, but not those timelines' history files: someone else removed them, and the replay would follow an older timeline, so nothing was replayed"
 
 # --- the replay ---
 

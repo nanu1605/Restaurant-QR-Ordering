@@ -2793,6 +2793,10 @@ const pitrRules = (script: string) => {
     ...(script.includes("PGOPTIONS='-c default_transaction_read_only=on")
       ? []
       : ['the replayed cluster is read in sessions that can write']),
+    ...(script.includes('[ -z "$orphans" ] ||\n  die "the backup\'s WAL of the timelines') &&
+    script.indexOf('[ -z "$orphans" ] ||') < script.indexOf('echo "pitr: replaying"')
+      ? []
+      : ['a later timeline’s WAL is replayed without its history file']),
     ...(code(script).includes('set -f') ? [] : ['names from the bucket can be globbed']),
   ];
 };
@@ -3953,6 +3957,7 @@ describe('the migrate and backup images', () => {
       ),
       'without PITR_TARGET',
     );
+    refuses(pitrRules, swap(pitrSh, '[ -z "$orphans" ] ||', 'true ||'), 'without its history file');
   });
 
   it('hands the replay one WAL file at a time, and a file that fails to decrypt stops it', () => {
