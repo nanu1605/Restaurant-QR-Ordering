@@ -598,7 +598,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-45 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-58 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -680,8 +680,9 @@ by anyone else, or `app-apply` refuses the compose file.
    The public key (`age1…`) goes to the admin for `BACKUP_RECIPIENT` and into `.env`. The private
    key goes into the password manager and on paper, then off that machine: it never stays on the
    server, and without it no backup can be restored. The backup's **signing key** is a second pair,
-   made in step 6; keep its public half beside this key, in the password manager and on paper (it
-   is not secret, but a recovery on a new server needs it).
+   made in step 6; keep its public half beside this key, in the password manager and on paper, and
+   after each rotation the whole new list in its place (Secrets (VPS), Rotation). It is not secret,
+   but a recovery on a new server checks the night it takes against it, and trusts no other copy.
 
 2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes
    on the server, and an API token for this bucket only. How it keeps a stolen token from deleting
@@ -733,9 +734,11 @@ by anyone else, or `app-apply` refuses the compose file.
 6. **The secrets** (Secrets, below): `pnpm vps:secrets --out <a folder outside the repository>`,
    fill each `# FILL IN` line, then `pnpm vps:secrets --check <that folder>`. Note the date it gives
    for the API keys. It also makes the backup's **signing pair** (Ed25519) and prints the public
-   half once, as `BACKUP_SIGNING_PUBLIC_KEY=<key>`: keep that line with the age key (step 1). The
-   private half, `BACKUP_SIGNING_KEY`, goes into `.env` like the other generated values and is
-   read by the `backup` service alone; it is never printed.
+   half once, as `BACKUP_SIGNING_PUBLIC_KEY=<key>`: keep that line with the age key (step 1), and
+   also alone in a plain text file, which a recovery on a new server checks its night with
+   (`pnpm vps:verify-night … --keys <file>`, Disaster recovery, step 2). The private half,
+   `BACKUP_SIGNING_KEY`, goes into `.env` like the other generated values and is read by the
+   `backup` service alone; it is never printed.
 7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
    (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
 8. **The zone:** `menumesh.in` on Cloudflare, Full (strict), with zone-level authenticated origin
@@ -856,7 +859,7 @@ ones are for a new install or a planned rotation.
 Never on the server: the backup key's private half, the bucket's admin login, staging's password
 itself (in the password manager; testers get it from the owner) and the GitHub secrets. The
 signing key's private half is on the server, in `.env`, since the nightly job signs with it: a
-reached server means a new pair (Rotation).
+reached server means a new pair, and the old public key out of the list (Rotation).
 `SUPABASE_PUBLISHABLE_KEY` is also the production image's built-in key, the GitHub variable below.
 
 **GitHub** (Settings → Secrets and variables → Actions, at the repository level), for the VPS
@@ -901,11 +904,12 @@ recreates them; a `restart` keeps the old values.
   copies, 15 for the WAL): a restore accepts any key listed, the backup signs with the first and
   checks it against the first. Then `up -d backup`; the nights and WAL files signed from now on
   carry the new key, and the old ones stay readable while its public key stays in the list. Drop an
-  old key from the list only when none of its nights is left, or when a thief held it: a restore
-  then refuses every night that key signed, the real ones too, so after a theft the first
-  recoverable night is the first one signed with the new key. Keep the new public key with the
-  age key, and run the restore test and the point-in-time drill after it, since both read the
-  list.
+  old key from the list when none of its nights is left. A key a thief may have held leaves the
+  list at once, though the real nights it signed go with it: anything it signed could be the
+  thief's, and a point-in-time recovery has no other guard (A stolen or leaked bucket token (VPS),
+  step 5). Each time, the whole new list, as `BACKUP_SIGNING_PUBLIC_KEY=<list>`, takes the place of
+  the one kept with the age key: a recovery on a new server trusts that copy and no other. Then run
+  the restore test and the point-in-time drill, since both read the list.
 - Staging's password: a new hash, made off the server as in First install, step 11, which the admin
   puts in `edge.env` (`app-apply edge env`, then recreate Caddy); the GitHub secret
   `STAGING_SMOKE_BASIC_AUTH`; and the testers.
@@ -1066,12 +1070,17 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   stamped the 1st (UTC) is also copied to `monthly/`, whatever `monthly/` already holds; when the
   1st's night failed, the next whole night is, while `monthly/` holds no whole copy of the month.
   A night whose settings archive was missing or stale is never the month's copy, and neither is
-  one whose base failed. The copy is every part, then the seal; the job counts a candidate as the
-  month's copy only when its seal verifies and every part it lists is in `monthly/` at its size.
-  Daily copies go after 30 days and monthly ones after 366, by the bucket's own time of each upload, so an object
-  someone else put in with an old modification time is tried only once its lock has ended. Only
-  the bucket's own protection, the owner's choice (First install, step 2), keeps a stolen token
-  from deleting them sooner. A restore reads a night from `daily/` until it is 29 days old, then
+  one whose base failed. The copy is every part, then the seal; the job counts a night already in
+  `monthly/` as the month's copy only when its seal verifies, lists a base, a settings archive and
+  each database's dump, and every part it lists is in `monthly/` under its exact name at its size
+  (each looked up by that name, of at most 5 of the month's seals there). A size is all it holds a
+  part to, so objects someone else put under a night's names, at its sizes, beside its real seal,
+  can leave a month with no copy a restore takes (docs/DECISIONS.md, Left open (Stop C)): the
+  monthly restore test checks for the month's line first (below). Daily copies go after 30 days
+  and monthly ones after 366, by the bucket's own time of each upload, so an object someone else
+  put in with an old modification time is tried only once its lock has ended. Only the bucket's
+  own protection, the owner's choice (First install, step 2), keeps a stolen token from deleting
+  them sooner. A restore reads a night from `daily/` until it is 29 days old, then
   only the month's copy, from `monthly/`, until 365 days, as long as the bucket's locks hold them:
   from 29 days on, a night that is not a month's copy can't be restored, though `daily/` keeps it
   until the job removes it a day or two later.
@@ -1095,7 +1104,8 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
 
 - **The settings archive**, `/srv/menumesh/backup-out/config-<stamp>.tar.age`, holds `.env`,
   `images.env`, `env/`, `config/` and `deploys.log`, encrypted to `BACKUP_RECIPIENT`. A night whose
-  archive is missing or more than 2 hours old fails, with an alert, after its other parts are up.
+  archive is missing or more than 2 hours old when it is checked, right after the manifest and
+  before the base (which may take 2 hours), fails, with an alert, after its other parts are up.
   `systemctl list-timers 'app-config-archive@*'`,
   `sudo journalctl -t app-config-archive --since yesterday` and
   `sudo ls -l /srv/menumesh/backup-out` show it, and
@@ -1121,17 +1131,26 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   container runs it: `sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`.
   The night's own alerts, each naming the step: `the base backup failed or ran past 2 hours`, with
   `pg_basebackup`'s lines (db unreachable, the replication line in `pg_hba.conf` missing, a full
-  disk; the other parts are safe and the next night makes a base); `db would not hold the WAL for
-the base backup in a replication slot`, with psql's lines (all 5 of `max_replication_slots` are
-  in use: look in `db` with
+  disk; the other parts are safe and the next night makes a base);
+  `db would not hold the WAL for the base backup in a replication slot`, with psql's lines (all 5
+  of `max_replication_slots` are in use: look in `db` with
   `select slot_name, slot_type, temporary, active from pg_replication_slots`, and free one);
   `BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks`, said before
   anything is uploaded (the pair in `.env` doesn't match: the first public key must be the private
   key's own). While a base runs (at most 2 hours) a temporary slot keeps `db`'s WAL, at most 4 GB.
 
 - **The monthly restore test**, in the third week of the month (the first one before the first
-  restaurant), never while hostwatch reports the server throttled. The private key goes on a ramfs,
-  which is never swapped and is gone at unmount:
+  restaurant), never while hostwatch reports the server throttled. First the month's copy: a line
+  of the backup's journal whose id is of this month must say `kept in monthly/`:
+
+  ```sh
+  sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -25d -o cat | grep 'kept in monthly/'
+  ```
+
+  When none does, the month has no copy a restore takes (A night, above): with the admin login,
+  off the server, copy a whole night of the month that the journal names, one whose names
+  `monthly/` doesn't hold, from `daily/` to `monthly/`, its parts first and its seal last. Then the
+  test. The private key goes on a ramfs, which is never swapped and is gone at unmount:
 
   ```sh
   sudo install -d -m 700 /run/age
@@ -1149,12 +1168,12 @@ the base backup in a replication slot`, with psql's lines (all 5 of `max_replica
   `its seal is signed by the backup's key, and the <n> parts read match it (<bytes> bytes)`. It
   downloads the whole logical night (not the base) into the container's own files first, so the
   server's Docker disk needs that plus 1 GiB free, or it is refused at once with the sizes
-  (`the parts of <id> need N MiB in this container's files ... and M MiB are free`). Counts that moved during the night are
-  listed; only a missing table, an empty one or missing Storage files fail it. `app-compose` first
-  checks that the server has the memory. It names the night it takes first
-  (`restore: the night of <id>, from daily/, …`): unasked, the newest seal in `daily/` younger than
-  29 days, but never one stamped later than now, which it names as not taken (three, then how many
-  more). Check that id, and the one its last line names, against the backup's own journal line
+  (`the parts of <id> need N MiB in this container's files ... and M MiB are free`). Counts that
+  moved during the night are listed; only a missing table, an empty one or missing Storage files
+  fail it. `app-compose` first checks that the server has the memory. It names the night it takes
+  first (`restore: the night of <id>, from daily/, …`): unasked, the newest seal in `daily/`
+  younger than 29 days, but never one stamped later than now, which it names as not taken (three,
+  then how many more). Check that id, and the one its last line names, against the backup's own journal line
   (Last night's backup), since anyone holding the bucket's token can add a night under any stamp.
   Everything it prints loses its control characters, so a night's own text (psql's notices, for
   one) can add a line but not erase or rewrite one, and nothing of it comes after the last line.
@@ -1166,13 +1185,16 @@ the base backup in a replication slot`, with psql's lines (all 5 of `max_replica
   hangs on its age alone, from the stamp in its id and the server's clock (`timedatectl` says
   whether it is synchronized), never on what the bucket holds, which a stolen token can add to:
   - **Younger than 29 days**, `daily/` only, whose lock keeps every night that long: it shows
-    `from daily/`. A night `daily/` has no manifest of is refused, whatever `monthly/` holds, as
-    no backup finished it (one that failed, or an id no backup wrote):
-    `daily/ keeps every night of the last 29 days under its lock; this one has no manifest there`.
+    `from daily/`. A night `daily/` has no seal of is refused, whatever `monthly/` holds, as no
+    backup finished it (one that stopped before its seal, or an id no backup wrote):
+    `daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so it is not signed by the backup's key`.
   - **29 days old or more**, `monthly/` only, which keeps the month's copies a year: it shows
     `from monthly/`. Name such a night only when its journal line says `kept in monthly/`. One
-    that isn't a month's copy is refused (`only the month's copy is kept past 29 days`), unless
-    someone put a night in `monthly/` under its id, which is then read.
+    that isn't a month's copy has no seal there and is refused
+    (`only the month's copy is kept past 29 days; … this one has no seal there, so it is not signed by the backup's key`).
+    A night someone put in `monthly/` under its id is read only through its seal, which no key of
+    `BACKUP_SIGNING_PUBLIC_KEY` signed: it is refused as `not signed by the backup's key` (below),
+    and nothing of it is read.
   - **365 days old or more**, none: past `monthly/`'s lock its parts could have been replaced.
 
   A part that can't be read or restored ends the run with a line naming it and its folder, under
@@ -1204,10 +1226,12 @@ the base backup in a replication slot`, with psql's lines (all 5 of `max_replica
   ```
 
   It takes the newest sealed night with a base, checks and unpacks the base, takes the WAL after
-  it from the bucket (each file only if its signature verifies), replays it with Postgres in a
-  throwaway tmpfs to the latest point, and compares the counts with the night's manifest, shown
-  side by side (writes since the night move them, so they inform and don't fail). It takes about
-  5 seconds on the rehearsal and ends with
+  it from the bucket (each file only if its signature verifies, and at each position the file of
+  the timeline Postgres reads there), replays it with Postgres in a throwaway tmpfs to the latest
+  point, and compares the counts with the night's manifest, shown side by side (writes since the
+  night move them, so they inform and don't fail). The replay runs without the live cluster's own
+  settings, what `ALTER SYSTEM` set there: the base carries them, and they wait aside. It takes
+  about 5 seconds on the rehearsal and ends with
   `pitr test passed: the night of <id> and the WAL after it, replayed to <point>, its last transaction at <UTC>`;
   for `latest` that last transaction must be within about 12 minutes of the drill's start. For a
   point instead, add `-e PITR_TARGET=<point>`: `YYYY-MM-DDTHH:MM:SSZ`, or with an offset such as
@@ -1217,46 +1241,91 @@ the base backup in a replication slot`, with psql's lines (all 5 of `max_replica
     bucket token (VPS)); the line names the file;
   - `the last transaction the replay reached committed at …, N minutes before the drill began`:
     WAL is not reaching the bucket: see the WAL alerts (Logs and alerts (VPS));
-  - `no night of daily/ … has a seal signed by the backup's key with a base backup that ended
-before …`: there is no good night: the base failed, or the seals are not ours;
-  - `the backup's WAL of the timelines X is in the bucket, but not those timelines' history
-files`: someone removed a history file, and the replay would follow the wrong history;
+  - `the replay ended at <file>, though the chain of WAL files goes on to <file>: …`: Postgres
+    stopped short of the WAL the chain checked, so this is not the latest the bucket holds: as
+    for a cut chain;
+  - `no night of daily/ … has a seal signed by the backup's key with a base backup that ended before …`:
+    there is no good night: the base failed, or the seals are not ours;
+  - `the backup's WAL of the timelines X is in the bucket, but not those timelines' history files`:
+    someone removed a history file, and the replay would follow the wrong history (it may name
+    several timelines);
+  - `the base backup of <id> is of the timeline X, …, which was left for a later one at …, before the base began`:
+    the night's base is from before a rewind past it (below);
+  - `the history file of the timeline X holds a line Postgres does not write` or
+    `names its timelines out of order`: a history file signed by the backup's key that Postgres
+    never wrote: take the signing key for stolen (A stolen or leaked bucket token (VPS), step 5);
   - `<part> in daily/ is not the part the backup sealed`: as for the restore test.
 
   A drill to a point more than 14 days back, or later than now, is refused. Record the date, the
   night, the point and the result. After a rewind to a point before the last night's base (a
   recovery, below), run `backup.sh` before the next drill, or until the next night the drill picks
-  that base on the abandoned timeline and Postgres refuses it ("not a child of this server's
-  history").
+  that base, of the abandoned timeline, and refuses it (`… which was left for a later one at …`).
 
-- **Disaster recovery**, whose database and Storage steps `pnpm vps:backup-test` rehearses on this
-  machine (docs/DECISIONS.md VPS-40 and VPS-44). The first choice is a point-in-time recovery to
-  `latest`, which loses about 2 minutes instead of a day and keeps the invoice counters; a night's
-  logical recovery is the fallback, and the only way to bring Storage's files back on a new
-  server:
+- **Disaster recovery**, whose database and Storage steps, and step 2's check of the settings
+  archive, `pnpm vps:backup-test` rehearses on this machine (docs/DECISIONS.md VPS-40, VPS-44 and
+  VPS-51). The first choice is a point-in-time recovery to `latest`, which loses about 2 minutes
+  instead of a day and keeps the invoice counters; a night's logical recovery is the fallback, and
+  the only way to bring Storage's files back on a new server:
   1. A new server: the admin's part of First install, with new deploy keys and the new host key in
      `VPS_KNOWN_HOSTS`. If the old server may still run, stop its `cloudflared` first.
   2. The night's id, from the backup's own records and never from the names in the bucket, since
      anyone holding the bucket's token can add a night under any stamp: the journal's
      `backup <id>: …` lines if the old server still runs, else the backup monitor's log, where each
      ping carries that line (First install, step 3), and Telegram's failure lines. Its `<id>` names
-     the settings archive here and the recovery in step 5, which refuses to run without one. The
-     private key on a ramfs (as above). (A point-in-time recovery names no night: it takes the
-     newest one itself, so this step's id is for the settings archive.) The night's
-     `daily/config-<id>.tar.age` while it is younger
-     than 29 days, else `monthly/`'s, for a month's copy only (its journal line says
-     `kept in monthly/`), downloaded with the bucket provider's dashboard or a new read-only token
-     (the token on the server is inside the archive), listed first: only `.env`, `images.env`,
-     `env/`, `config/` and `deploys.log`, each entry a file (`-`) or a folder (`d`). Then it is
-     unpacked into `/srv/menumesh`; `.env` and `env/` come back root's, 0600. Compare
-     `BACKUP_SIGNING_PUBLIC_KEY` in the restored `.env` with the public key kept beside the age
-     key, and put the kept one in if they differ: a restore trusts the key it is given, and an
-     archive is only as good as the bucket it came from:
+     the settings archive here and the recovery in step 5, which refuses to run without one. (A
+     point-in-time recovery names no night: it takes the newest one itself, so this step's id is
+     for the settings archive.) The archive becomes the server's settings, and `db` runs its
+     `config/db/wal-spool.sh` as root, but none of the kit's scripts can run on the new server
+     before an archive is unpacked there: so it is checked against the night's seal on the owner's
+     own machine first, and only an archive that passes goes to the server (docs/DECISIONS.md
+     VPS-51).
+     1. **Download**, on the owner's machine, into an empty folder: the night's `seal-<id>.txt`
+        and `config-<id>.tar.age`, from `daily/` while the night is younger than 29 days, else
+        from `monthly/`, for a month's copy only (its journal line says `kept in monthly/`), with
+        the bucket provider's dashboard or a new read-only token (the token on the server is
+        inside the archive). Byte for byte: a seal opened and saved again with CRLF line ends is
+        refused.
 
-     ```sh
-     sudo age --decrypt --identity /run/age/identity.txt config-<id>.tar.age | tar -tv
-     sudo age --decrypt --identity /run/age/identity.txt config-<id>.tar.age | sudo tar -x -C /srv/menumesh
-     ```
+     2. **Check** them, from a checkout of this repository (Node 24), against the
+        `BACKUP_SIGNING_PUBLIC_KEY` list kept beside the age key, in a file of its own (First
+        install, step 6), never the archive's or the old server's:
+
+        ```sh
+        pnpm vps:verify-night <id> <folder> --keys <the list's file>
+        ```
+
+        It checks the seal's signature against each key of the list, that the seal lists a
+        settings archive, and that every part in the folder is the one the seal lists, by size and
+        sha256. It decrypts nothing and needs no age key and no network. A pass prints a line for
+        each part, then this one, with the sha256 to compare on the server:
+
+        `verify-night: the seal of <id> is signed by the backup's key, and the 1 part here matches it: copy config-<id>.tar.age to the server, where sha256sum must print <sha256> for it before it is unpacked`
+
+        Anything else is one line, exit 1, and nothing of the folder goes to the server.
+        `has no settings archive in its seal`: that night's archive was stale, so name the night
+        before. `is not signed by the backup's key`, `is not the part the backup sealed` or
+        `is not in the seal`: someone else wrote to the bucket (A stolen or leaked bucket token
+        (VPS)), so take an earlier night, or put the bucket right first.
+
+     3. **Unpack** it on the server, once that one file is copied to `~/incoming` and the private
+        key is on a ramfs (as above): `sha256sum` must print the sha256 the pass named, or nothing
+        is unpacked. Then the archive is listed, only `.env`, `images.env`, `env/`, `config/` and
+        `deploys.log`, each entry a file (`-`) or a folder (`d`), and unpacked into
+        `/srv/menumesh`; `.env` and `env/` come back root's, 0600:
+
+        ```sh
+        sha256sum ~/incoming/config-<id>.tar.age
+        sudo age --decrypt --identity /run/age/identity.txt ~/incoming/config-<id>.tar.age | tar -tv
+        sudo age --decrypt --identity /run/age/identity.txt ~/incoming/config-<id>.tar.age | sudo tar -x -C /srv/menumesh
+        ```
+
+     4. **The key list**, since a restore trusts the list it is given: `BACKUP_SIGNING_PUBLIC_KEY`
+        in the restored `.env` against the list kept beside the age key, which every rotation
+        replaces. A restored list that lacks a key of the kept one is from before a rotation: put
+        the kept list in. A key that only the restored list holds is an alarm, never one to keep:
+        put the kept list in, and find out how it got there before going on (a rotation never
+        written down, or someone on the old server: A stolen or leaked bucket token (VPS),
+        step 5).
 
   3. `sudo app-apply menumesh compose ~/incoming/compose.yml`, from the commit the server last had.
   4. The backup image that `images.env` names, by the admin form with a token on stdin as in First
@@ -1281,25 +1350,42 @@ files`: someone removed a history file, and the replay would follow the wrong hi
      is not empty, a run without `PITR_TARGET`, a point later than now or more than 14 days
      back; and a point the bucket's WAL doesn't reach is refused after the replay, with the
      reason (a cut chain names the missing or refused file, a late shipper's 30-minute rule
-     says so): recover to an earlier point, or to `latest`. It ends with
-     `point-in-time recovery to <point> done: start db with a new wal-spool …`. The volumes
-     of a new server are new already, but then Storage's files come only from a night: do the
-     logical recovery below first (into the new `storage-data`, `db-data` and `db-config`, without
-     starting `db`), then make `db-data` new again (`rm -sf db backup`, `docker volume rm
-menumesh_db-data`) and run the point-in-time recovery into it. That two-pass is reasoned, not
-     rehearsed; the rehearsal's rewind keeps `storage-data` and `db-config`. A new `db-config`
-     means vault secrets don't decrypt, as in the logical recovery.
+     says so): recover to an earlier point. A recovery to `latest` whose chain of WAL files is cut
+     (a WAL file missing or not the backup's, with the backup's WAL after it) is refused before it
+     writes anything, since it would end at the cut:
+
+     `pitr: a recovery to latest would end at the cut at <file> and leave out the backup's WAL after it: … nothing was written to db-data`
+
+     Put the bucket's WAL back as the backup wrote it where the bucket kept it (an old version,
+     with the admin login: A stolen or leaked bucket token (VPS)) and run it again. Or, to recover
+     to the cut and no further, run it again with `-e PITR_ACCEPT_CUT=<file>` too, the file that
+     line named: it says `PITR_ACCEPT_CUT is <file>: the recovery ends at the cut, …`, and a
+     `PITR_ACCEPT_CUT` with another file, with a point, or with no cut is refused.
+
+     It ends with `point-in-time recovery to <point> done: start db with a new wal-spool …`, the
+     live cluster's own settings (what `ALTER SYSTEM` set, which the replay ran without) put back
+     for `db`. After a theft of the signing key it has no night to start from until the new key
+     signs one (A stolen or leaked bucket token (VPS), step 5): recover a night logically instead.
+
+     The volumes of a new server are new already, but then Storage's files come only from a night:
+     do the logical recovery below first (into the new `storage-data`, `db-data` and `db-config`,
+     without starting `db`), then make `db-data` new again
+     (`rm -sf db backup`, `docker volume rm menumesh_db-data`) and run the point-in-time recovery
+     into it. That two-pass is reasoned, not rehearsed; the rehearsal's rewind keeps
+     `storage-data` and `db-config`. A new `db-config` means vault secrets don't decrypt, as in
+     the logical recovery.
 
      **The fallback, a night's logical recovery** of that night, into new volumes, from the one
-     folder its age gives, as in the restore test: `daily/` while it is younger than 29 days, `monthly/` from then on.
-     On a new server they are new. On the same server the old `db-data`, `db-config` and
-     `storage-data` go first, with everything stopped, once the containers that hold them are gone,
-     `backup` included (it reads `storage-data`); recovering onto a new server instead keeps them:
+     folder its age gives, as in the restore test: `daily/` while it is younger than 29 days,
+     `monthly/` from then on. On a new server they are new. On the same server the old `db-data`,
+     `db-config`, `storage-data` and `wal-spool` go first, with everything stopped, once the
+     containers that hold them are gone, `backup` included (it reads `storage-data` and ships from
+     `wal-spool`); recovering onto a new server instead keeps them:
 
      ```sh
      sudo app-compose menumesh stop
      sudo app-compose menumesh rm -sf db storage backup
-     sudo docker volume rm menumesh_db-data menumesh_db-config menumesh_storage-data
+     sudo docker volume rm menumesh_db-data menumesh_db-config menumesh_storage-data menumesh_wal-spool
      ```
 
      Then, on either server:
@@ -1316,21 +1402,28 @@ menumesh_db-data`) and run the point-in-time recovery into it. That two-pass is 
      after `restore: roles` says `stopped after it began to write`: part of the night is in the
      volumes, so all three go again, as above, before another night is recovered.
 
-  6. `sudo app-compose menumesh up -d db`, which finds the cluster and skips its init (after a
-     point-in-time recovery it archives the new timeline: its history file reaches `wal/` within a
-     minute or two), then `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup`
-     (`backup` was already running on a new server). `wal-spool` must be new after any recovery:
-     an old spool with files waiting and a new cluster stops the shipper, with an alert at once
-     (a changed identifier), and nothing mixes.
-  7. The images `images.env` names, by the admin form: production with its migrate image (the
-     migrations find nothing to apply), and staging; then
-     `sudo app-compose menumesh up -d scheduler scheduler-staging`.
+  6. `wal-spool` must be new after any recovery before `db` starts, as step 5 makes it on the same
+     server: an old spool with files waiting and a new cluster stops the shipper, with an alert at
+     once (a changed identifier), and nothing mixes. Then `sudo app-compose menumesh up -d db`,
+     which finds the cluster and skips its init (after a point-in-time recovery it archives the
+     new timeline: its history file reaches `wal/` within a minute or two), then
+     `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup` (`backup` was
+     already running on a new server).
+  7. Production's image, by the admin form, and staging's; then
+     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's is the image that
+     was live at the point recovered to. After a recovery to `latest`, or of a night, that is the
+     one `images.env` names, deployed with its migrate image (after `latest` the migrations find
+     nothing to apply). After a rewind to a point before a release, such as the bad release it
+     undid, it is the release before it, the last production line of `deploys.log` before that
+     point, deployed without a migrate reference (Deploys on the VPS, Rolling back by hand), and
+     never the entry of `images.env` that the rewind undid: that file still names the release,
+     whose migrate run would apply its migrations again and switch `web` back to it.
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
      password manager, then the site and redaction files from this repository, the leak test, and
      DNS to the new address.
-  9. The key off the ramfs, `backup.sh` run once by hand (`sudo app-compose menumesh run --rm
---no-deps -T backup /usr/local/bin/backup.sh`) so a base of the new state exists, and a restore
-     test and a point-in-time drill after the next night.
+  9. The key off the ramfs, `backup.sh` run once by hand
+     (`sudo app-compose menumesh run --rm --no-deps -T backup /usr/local/bin/backup.sh`) so a base
+     of the new state exists, and a restore test and a point-in-time drill after the next night.
 
   A recovery does not bring back what no backup holds: pgsodium's root key (vault secrets come back
   but do not decrypt; the app keeps none) and a few extension settings MenuMesh doesn't use
@@ -1347,14 +1440,15 @@ by every restore, however well it is encrypted: each night is read through its s
 WAL file is taken only if the signature in its name verifies (docs/DECISIONS.md VPS-43). What the
 holder can still do is delete what no lock holds, flood the bucket with names (a recovery then
 refuses past 2,048 names in a WAL folder), plant one of tonight's names first so the night fails,
-and make the month's copy repeat. Take it as stolen when a restore prints `is not signed by the
-backup's key`, `is not the part the backup sealed`, `backslash commands are restricted` or `holds
-links or special files`, when a drill or recovery prints `the chain of WAL files is cut`, when a
-night stops with `someone else wrote to the bucket`, when the WAL alert says a lock refuses what
-the shipper writes, when the bucket holds ids no journal line names or names the backup never
-writes, or when the token was seen anywhere it shouldn't be. A flood of names slows every listing; a large one can stop the job's check for the
-month's copy, failing each night after its uploads with the alert, and the restore test unasked,
-while a named restore lists nothing.
+and make the month's copy repeat. Take it as stolen when a restore, or `pnpm vps:verify-night` on
+a downloaded night, prints `is not signed by the backup's key`, `is not the part the backup
+sealed` or `is not in the seal`, when a restore prints `backslash commands are restricted` or
+`holds links or special files`, when a drill or recovery prints `the chain of WAL files is cut`,
+when a night stops with `someone else wrote to the bucket`, when the WAL alert says a lock refuses
+what the shipper writes, when the bucket holds ids no journal line names or names the backup never
+writes, or when the token was seen anywhere it shouldn't be. A flood of names slows every listing;
+a large one can stop the job's check for the month's copy, failing each night after its uploads
+with the alert, and the restore test unasked, while a named restore lists nothing.
 
 1. **Rotate the token** with the bucket's admin login, never on the server: a new token for this
    bucket only, into `.env`, then `sudo app-compose menumesh up -d backup` (Rotation), and the old
@@ -1383,10 +1477,27 @@ while a named restore lists nothing.
    date, what was found, what was removed and the result.
 
 5. **If the server itself may have been reached** (a leaked `.env`, not only the token), the
-   signing key was reachable too, and with it a holder could sign a night or a WAL file. Rotate the
-   signing key as well (Secrets (VPS), Rotation), take the token and the bucket's admin steps
-   above, and treat every night and WAL file signed by the old key since the first sign of trouble
-   as suspect: restore from the last night the journal names from before it.
+   signing key was reachable too, and with it a holder could sign a night or a WAL file under any
+   name, or over a night's own where no lock refuses it. A base of their own cluster, sealed so,
+   would be replayed into `db-data` by a point-in-time recovery, which has none of a logical
+   restore's guards. So rotate the signing key as well (Secrets (VPS), Rotation), and take the old
+   public key out of `BACKUP_SIGNING_PUBLIC_KEY` and out of the list kept with the age key at once:
+   from then on no restore, drill or point-in-time recovery takes a night or a WAL file it signed,
+   the real ones included. Take the token and the bucket's admin steps above too, and run
+   `backup.sh` once by hand (Last night's backup), so that a night of the new key exists. Until
+   then, and for any point before that night, a recovery is a night's logical one (Disaster
+   recovery, step 5, the fallback), of the last night from before the first sign of trouble, named
+   by the backup monitor's log (or the journal, from before the trouble), with the old key given
+   for that one run and never put back in `.env`:
+
+   ```sh
+   sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<id> -e BACKUP_SIGNING_PUBLIC_KEY=<the old public key> -v /run/age:/run/age:ro recover
+   ```
+
+   Its restore test, in step 4, takes the same two `-e`. Under versioning, first make the version of
+   that night's seal that went up before the trouble the current one again, with the admin login:
+   one signed with the stolen key could have been put over it, and the parts are then held to the
+   seal the backup wrote.
 
 ### Logs and alerts (VPS)
 
@@ -1429,22 +1540,41 @@ sudo journalctl CONTAINER_NAME=edge-caddy-1 --since -1h -o cat | grep menumesh.i
     outbox file is about 1 KiB idle); they drain, oldest first, once it works.
   - `db's archiver has failed for N minutes`: `db` can't copy into `/wal-spool` (full disk,
     wrong owner). Look at `pg_stat_archiver` (WAL shipping, above) and the disk. A full disk wants
-    the owner: free it at once, since `db` keeps its own WAL while it can't archive.
-  - A WAL file that can't be compressed, encrypted, put in the outbox, read, signed or uploaded:
-    almost always a full disk or the signing key.
-    At once, because no wait mends them: `db archives no WAL` (`archive_mode` off: a `db` started
-    with a command other than the compose file's); the spool is not postgres's to write (the
-    volume's owner: restart `db` so its wrapper fixes it); a variable not set; `BACKUP_SIGNING_KEY`
-    is not the first public key's pair (the pair in `.env`); a segment of another cluster, `db`'s
-    identifier changed while files wait, or an outbox without a kept identifier: a recovery or a new
-    `db-data` without a new `wal-spool` (stop `backup`, remove the volume, which drops what waits,
-    and start it). `HEARTBEAT_WAL_URL` silent for 15 minutes means the shipper isn't running
-    (`backup` down or its crond stuck: `ps`, then `up -d backup`) and nothing else says so.
-    **A dead shipper fills the spool by about 0.94 GiB an hour**, a whole 16 MiB file for each minute
-    that wrote anything (every minute here), until the server's disk and then `db`'s own disk fills:
-    bring `backup` back at once (it drains oldest first), and ask the server team's disk monitor to
-    watch the Docker volumes. One line, `[menumesh] WAL shipping resumed (cluster <id>)`, says it is
-    healthy again.
+    the owner: free it at once, since `db` keeps its own WAL while it can't archive. The shipper
+    sends this from a full disk too: its own files are in the `backup` service's 16 MiB tmpfs at
+    `/tmp`, where it also keeps its record while the spool takes no write.
+  - A WAL file that can't be compressed, encrypted, put in the outbox, read, signed or uploaded, or
+    `db's system identifier, <id>, could not be kept in /wal-spool/.ship` (when the shipper takes a
+    new identifier, as on its first run on a new spool): almost always a full disk or the signing
+    key.
+
+  At once, because no wait mends them: `db archives no WAL` (`archive_mode` off: a `db` started
+  with a command other than the compose file's); the spool is not postgres's to write (the
+  volume's owner: restart `db` so its wrapper fixes it); a variable not set; `BACKUP_SIGNING_KEY`
+  is not the first public key's pair (the pair in `.env`); a segment of another cluster, `db`'s
+  identifier changed while files wait, or an outbox without a kept identifier: a recovery or a new
+  `db-data` without a new `wal-spool`. The spool is made new with `db` and `backup` both gone, as
+  both mount it and Docker removes no volume a container holds. That takes the database down for
+  about a minute and drops what waits, and `db`'s wrapper makes the new volume postgres's:
+
+  ```sh
+  sudo app-compose menumesh rm -sf backup db
+  sudo docker volume rm menumesh_wal-spool
+  sudo app-compose menumesh up -d db
+  sudo app-compose menumesh up -d backup
+  ```
+
+  What waits includes the new cluster's own WAL since `db` started, so a base taken before this has
+  a cut chain until the next night: run `backup.sh` right after (Last night's backup).
+
+  `HEARTBEAT_WAL_URL` silent for 15 minutes means the shipper isn't running (`backup` down or its
+  crond stuck: `ps`, then `up -d backup`) when nothing else says so, or that one of the alerts
+  above holds, such as `db`'s archiver failing on a full disk, whose alert comes first.
+  **A dead shipper fills the spool by about 0.94 GiB an hour**, a whole 16 MiB file for each minute
+  that wrote anything (every minute here), until the server's disk and then `db`'s own disk fills:
+  bring `backup` back at once (it drains oldest first), and ask the server team's disk monitor to
+  watch the Docker volumes. One line, `[menumesh] WAL shipping resumed (cluster <id>)`, says it is
+  healthy again.
 
 ### Checking the kit here
 
@@ -1453,7 +1583,8 @@ Each needs only Docker Desktop, runs throwaway containers named `menumesh-kit-*`
 Supabase stack is only ever read.
 
 - `pnpm test` pins what each kit file must keep (`tests/unit/vps-kit.test.ts`,
-  `tests/unit/vps-secrets.test.ts`).
+  `tests/unit/vps-secrets.test.ts`), and what `pnpm vps:verify-night` takes and refuses
+  (`tests/unit/vps-verify-night.test.ts`).
 - `pnpm vps:check` (about 20 s, and 46 s more the first time, for its checker image) runs the
   server's own `app-apply` checks on `deploy/vps/` as root in a throwaway container, then the
   contract's rules, Caddy's and Envoy's validation and shellcheck. Run it after any change under
@@ -1488,12 +1619,17 @@ Supabase stack is only ever read.
 - `pnpm vps:backup-test` (about 20 minutes, on a running rehearsal) runs the shipper and the
   nightly backup into a local S3, then the restores and the point-in-time recovery: WAL shipped and
   signed, a shipper outage with its alert and its "resumed", the shipper's failure paths against a
-  Postgres of their own, every night's seal checked with Node's crypto, the restores' refusals (a
-  seal another key signed, a night with no seal, a part changed or longer or not listed, a night
-  too big for the disk), a base a checkpoint overtakes, the drill to a point and to `latest`
-  against rows and a table written and dropped, a changed WAL byte, and `recover-pitr` into new
-  volumes with the stack started on the result. And, as before: a night whose settings archive is
-  stale, then the month's copy in `monthly/` past names
+  Postgres of their own (a full disk among them, alerting from its tmpfs), every night's seal
+  checked with Node's crypto, the month's copy made past objects named like its parts, the
+  restores' refusals (a seal another key signed, a night with no seal, a part changed or longer or
+  not listed, a night too big for the disk), Disaster recovery's step 2 (`pnpm vps:verify-night`
+  on a night downloaded by name, then on a settings archive of someone else's put over it and on
+  one put under a night that sealed none), a base a checkpoint overtakes, the drill to a point and
+  to `latest` against rows and a table written and dropped, a base holding an `ALTER SYSTEM`
+  setting, a changed WAL byte, a recovery to `latest` refused at the cut and taken to it with
+  `PITR_ACCEPT_CUT`, `recover-pitr` into new volumes with the stack started on the result, and a
+  gap on the new timeline that an abandoned one's file must not fill. And, as before: a night
+  whose settings archive is stale, then the month's copy in `monthly/` past names
   planted there, no second copy, and a 1st's copy (stamped by a stand-in `date`); a night whose id
   someone else wrote a name of first (a stand-in `od` gives the random part), stopped before its
   first upload; the monthly restore test; planted nights and names the restore must refuse, or not
