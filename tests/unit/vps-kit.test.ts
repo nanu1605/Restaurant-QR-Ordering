@@ -2843,6 +2843,10 @@ const scriptEnv = (text: string, scripts = SCRIPT_SERVICES) =>
  * script's environment, nothing preloaded, no event trigger and no hot standby, promoted at its end,
  * fed by wal-fetch.sh; a recovery's new timeline kept for db to archive, the drill's never; the
  * copy of the age key gone before anything reads the cluster, in sessions that write nothing.
+ * None of the live cluster's own settings reach the replay: the base's postgresql.auto.conf, what
+ * ALTER SYSTEM set there, waits aside while it runs and goes back for db after a recovery, and the
+ * command line names the port and turns off every command a setting could run (review finding
+ * S1).
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -2851,7 +2855,11 @@ const REPLAY_FLAGS = [
   '-c event_triggers=off ',
   '-c hot_standby=off ',
   '-c listen_addresses= ',
+  '-c port=5432 ',
+  '-c ssl=off ',
   '-c "restore_command=/usr/local/bin/wal-fetch.sh $wal $key %f %p" ',
+  '-c recovery_end_command= ',
+  '-c archive_cleanup_command= ',
   '-c recovery_target_action=promote',
 ];
 const pitrRules = (script: string) => {
@@ -2859,6 +2867,13 @@ const pitrRules = (script: string) => {
   const base = script.indexOf('get "base-$night.tar.zst.age"');
   const forgotten = script.indexOf('\nforget_key\n');
   const counted = script.indexOf('dbs=$(ro -d postgres');
+  const unpacked = script.indexOf('gosu postgres tar --extract --file=- --directory="$data"');
+  const aside = script.indexOf('  gosu postgres mv -f "$auto" "$auto.pitr" ||');
+  const emptied = script.indexOf('gosu postgres touch "$auto" ||');
+  const replaying = script.indexOf('echo "pitr: replaying"');
+  const stopped = script.indexOf("quit || die 'the recovered cluster did not stop cleanly");
+  const putBack = script.indexOf('    gosu postgres mv -f "$auto.pitr" "$auto" ||');
+  const done = script.indexOf('echo "point-in-time recovery to $said_point done');
   return [
     ...(script.includes(String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`) &&
     script.indexOf('exec >"$fifo" 2>&1') < script.indexOf('mode=${1-}') &&
@@ -2912,6 +2927,18 @@ const pitrRules = (script: string) => {
       ? []
       : ['a later timeline’s WAL is replayed without its history file']),
     ...(code(script).includes('set -f') ? [] : ['names from the bucket can be globbed']),
+    ...(script.includes('auto=$data/postgresql.auto.conf\n') &&
+    unpacked >= 0 &&
+    aside > unpacked &&
+    emptied > aside &&
+    replaying > emptied
+      ? []
+      : [
+          'the replay reads the base’s own postgresql.auto.conf, what ALTER SYSTEM set on the live cluster',
+        ]),
+    ...(stopped >= 0 && putBack > stopped && done > putBack
+      ? []
+      : ['a recovery does not put the base’s postgresql.auto.conf back once the cluster stopped']),
   ];
 };
 
@@ -4152,6 +4179,44 @@ describe('the migrate and backup images', () => {
       'without PITR_TARGET',
     );
     refuses(pitrRules, swap(pitrSh, '[ -z "$orphans" ] ||', 'true ||'), 'without its history file');
+  });
+
+  it('keeps the live cluster’s own settings out of the replay (review finding S1)', () => {
+    for (const flag of [
+      '  -c port=5432 \\\n',
+      '  -c ssl=off \\\n',
+      '  -c recovery_end_command= \\\n',
+      '  -c archive_cleanup_command= \\\n',
+    ]) {
+      refuses(
+        pitrRules,
+        swap(pitrSh, flag, ''),
+        `the replay runs without ${flag.trim().slice(0, -2)}`,
+      );
+    }
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '  gosu postgres mv -f "$auto" "$auto.pitr" ||',
+        '  gosu postgres cp -f "$auto" "$auto.pitr" ||',
+      ),
+      'the replay reads the base’s own postgresql.auto.conf',
+    );
+    refuses(
+      pitrRules,
+      swap(pitrSh, 'gosu postgres touch "$auto" ||', 'gosu postgres test -e "$auto" ||'),
+      'the replay reads the base’s own postgresql.auto.conf',
+    );
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '    gosu postgres mv -f "$auto.pitr" "$auto" ||',
+        '    gosu postgres rm -f "$auto.pitr" ||',
+      ),
+      'a recovery does not put the base’s postgresql.auto.conf back',
+    );
   });
 
   it('hands the replay one WAL file at a time, and a file that fails to decrypt stops it', () => {

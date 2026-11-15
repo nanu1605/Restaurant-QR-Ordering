@@ -41,9 +41,11 @@
 # age and zstd, which that image lacks. Replay rewrites pages and runs no SQL, so neither the
 # database's libraries nor its ICU, which differs from this image's, takes part. The replayed
 # cluster is only counted, never written to: no sort or comparison of text, in read-only sessions,
-# and nothing of the night's runs there: no library is preloaded, no event trigger fires, it gets
-# none of this script's environment, and the copy of the age key it replays with is gone before
-# the first count. Everything printed goes through the filter restore.sh has too.
+# and nothing of the night's runs there: no library is preloaded, no event trigger fires, none of
+# the live cluster's own settings applies (what ALTER SYSTEM set there, in the base's
+# postgresql.auto.conf, waits aside while the replay runs, and goes back for db after a recovery),
+# it gets none of this script's environment, and the copy of the age key it replays with is gone
+# before the first count. Everything printed goes through the filter restore.sh has too.
 set -eu -o pipefail
 
 # Everything the run prints, its own lines and those of rclone, age, tar, Postgres and psql, goes
@@ -314,6 +316,19 @@ rm -f "$work/base-$night.tar.zst.age"
 others=$(gosu postgres find "$data" ! -type f ! -type d | wc -l) || stop "$data could not be read"
 [ "$others" -eq 0 ] ||
   die "the base backup of $night holds links or special files ($((others))), which pg_basebackup never writes here: nothing was replayed"
+# What ALTER SYSTEM set on the live cluster is in the base's postgresql.auto.conf, which Postgres
+# reads from the data folder whatever else it is told: commands to run at the recovery's end or
+# after a restartpoint, a port, a recovery target. None of it has a say in the replay, which would
+# run those commands as the user who holds the copy of the age key: the file waits beside itself
+# under another name, an empty one in its place, and a recovery puts it back once the cluster has
+# stopped, so that db starts with the settings it had.
+auto=$data/postgresql.auto.conf
+aside=
+if gosu postgres test -e "$auto"; then
+  gosu postgres mv -f "$auto" "$auto.pitr" || stop "the base backup's postgresql.auto.conf could not be set aside"
+  aside=yes
+fi
+gosu postgres touch "$auto" || stop "$auto could not be made"
 # The cluster, its WAL files' size and where its backup starts, as its own files give them.
 control=$(LC_ALL=C gosu postgres pg_controldata "$data") || stop "the base backup of $night has no control file to read"
 system=$(printf '%s\n' "$control" | sed -n 's/^Database system identifier: *\([0-9]\{1,20\}\)$/\1/p')
@@ -511,11 +526,14 @@ orphans=$({ ls "$wal"; sed 's/$/.zst.age/' "$work/base-histories"; } | LC_ALL=C 
 
 # --- the replay ---
 
-# The replay's own settings, none of the cluster's: an empty settings file, local connections
-# trusted, and on the command line what it needs. Nothing is preloaded and no event trigger fires,
-# so none of the night's code runs. A drill keeps nothing of the WAL; a recovery keeps what it
-# writes as WAL waiting to be archived (archive_mode on, nothing to archive it with), so db's
-# basic_archive sends the new timeline's history file and segments to the spool once it starts.
+# The replay's own settings, none of the cluster's: an empty settings file, the base's own
+# postgresql.auto.conf set aside (above), local connections trusted, and on the command line what
+# it needs, the port the drill's sessions use among them. Nothing is preloaded, no event trigger
+# fires, and no command the cluster's settings could name runs (none at the recovery's end or
+# after a restartpoint, and no SSL with its passphrase command), so none of the night's code runs.
+# A drill keeps nothing of the WAL; a recovery keeps what it writes as WAL waiting to be archived
+# (archive_mode on, nothing to archive it with), so db's basic_archive sends the new timeline's
+# history file and segments to the spool once it starts.
 : >"$work/postgresql.conf"
 printf 'local all all trust\n' >"$work/pg_hba.conf"
 : >"$work/pg_ident.conf"
@@ -526,7 +544,9 @@ set -- \
   -c hba_file="$work/pg_hba.conf" \
   -c ident_file="$work/pg_ident.conf" \
   -c listen_addresses= \
+  -c port=5432 \
   -c unix_socket_directories=/var/run/postgresql \
+  -c ssl=off \
   -c shared_preload_libraries= \
   -c session_preload_libraries= \
   -c local_preload_libraries= \
@@ -546,6 +566,8 @@ set -- \
   -c log_checkpoints=off \
   -c wal_recycle=off \
   -c "restore_command=/usr/local/bin/wal-fetch.sh $wal $key %f %p" \
+  -c recovery_end_command= \
+  -c archive_cleanup_command= \
   -c recovery_target_timeline=latest \
   -c recovery_target_action=promote
 if [ "$target" != latest ]; then
@@ -676,8 +698,15 @@ else
   quit || die 'the recovered cluster did not stop cleanly (see above)'
   state=$(LC_ALL=C gosu postgres pg_controldata "$data" | sed -n 's/^Database cluster state: *//p')
   [ "$state" = 'shut down' ] || die "the recovered cluster is not shut down cleanly (${state:-unreadable})"
-  # The replay's settings were all on its command line, kept there by postmaster.opts alone.
+  # The replay's settings were all on its command line, kept there by postmaster.opts alone. The
+  # base's own postgresql.auto.conf goes back, so that db starts with the settings the live cluster
+  # had.
   gosu postgres rm -f "$data/postmaster.opts"
+  if [ -n "$aside" ]; then
+    gosu postgres mv -f "$auto.pitr" "$auto" || stop "the base backup's postgresql.auto.conf could not be put back"
+  else
+    gosu postgres rm -f "$auto" || stop "$auto could not be removed"
+  fi
   writing=
   echo "pitr: the cluster $cluster stopped cleanly in $data on timeline ${timeline:-?}${last_at:+, its last transaction at $last_at}${cut:+, the chain cut at $gap}"
   echo "point-in-time recovery to $said_point done: start db with a new wal-spool (its entrypoint gives the files to its own postgres, uid 100, and it archives the new timeline), then auth, rest, realtime, storage, api-gw, web, scheduler and backup (docs/RUNBOOK.md)"
