@@ -787,15 +787,18 @@ if [ -z "$ready" ]; then
   if grep -q 'recovery ended before configured recovery target was reached' "$work/replay.log"; then
     # Why the WAL it was given ended there: a cut, the end of the bucket's WAL, or the first WAL
     # file uploaded more than 30 minutes past the point, which can still hold WAL from before it
-    # when the shipper was down then and sent it late.
+    # when the shipper was down then and sent it late. A recovery to latest goes no further past a
+    # cut: it is refused, unless PITR_ACCEPT_CUT names the cut, and then ends there.
+    instead='or to latest'
     if [ -n "$cut" ]; then
       short="the chain of WAL files is cut at $gap"
+      instead="or to latest with PITR_ACCEPT_CUT=$gap, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)"
     elif [ -n "$end" ]; then
       short="the WAL in the bucket ends at $last"
     else
       short="$last went up more than 30 minutes past the point, and no WAL after it is read: if the WAL shipper was down then, it sent the WAL of the point late"
     fi
-    die "the replay reached the end of the WAL it was given before the first transaction past $said_point ($short): recover to an earlier point, or to latest"
+    die "the replay reached the end of the WAL it was given before the first transaction past $said_point ($short): recover to an earlier point, $instead"
   fi
   [ "$waited" -lt 14400 ] || die 'the replay did not end within 4 hours'
   die "the replay stopped before it ended (see above)"

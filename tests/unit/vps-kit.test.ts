@@ -3011,6 +3011,9 @@ const TODAYS_BASE_CHECK = [
 /** The refusal of the base, which nothing written to db-data may precede. */
 const BASE_REFUSED =
   '  die "the base backup of $night is of the timeline $tli, from $start, which $problem:';
+/** What a recovery to a point that a cut chain stops short of is told to do instead. */
+const CUT_INSTEAD =
+  '      instead="or to latest with PITR_ACCEPT_CUT=$gap, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)"';
 
 /**
  * pitr.sh (VPS-43): everything it prints through the filter restore.sh has; a recovery only to a
@@ -3031,7 +3034,8 @@ const BASE_REFUSED =
  * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6). A base whose timeline
  * the replay leaves for the next before the last WAL file the base brought along is refused before
  * anything is written: Postgres could read on along the abandoned timeline from those files
- * (Stop C's re-review, finding M1).
+ * (Stop C's re-review, finding M1). A recovery to a point that a cut chain stops short of names
+ * PITR_ACCEPT_CUT for a recovery to latest, which is refused without it.
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -3176,6 +3180,12 @@ const pitrRules = (script: string) => {
       ? []
       : [
           'a base is taken whose timeline the replay leaves before the base ended, inside the WAL it brought along, or it is refused after db-data is written',
+        ]),
+    ...(script.includes(CUT_INSTEAD) &&
+    script.includes('($short): recover to an earlier point, $instead"')
+      ? []
+      : [
+          'a recovery to a point that a cut chain stops short of is pointed to latest without PITR_ACCEPT_CUT',
         ]),
   ];
 };
@@ -4724,6 +4734,18 @@ describe('the migrate and backup images', () => {
       `[ "$mode" != --into ] || writing=yes${refusal}`,
     );
     refuses(pitrRules, late, 'or it is refused after db-data is written');
+  });
+
+  it('names PITR_ACCEPT_CUT when a cut chain stops a recovery short of its point (Stop C’s re-review)', () => {
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '($short): recover to an earlier point, $instead"',
+        '($short): recover to an earlier point, or to latest"',
+      ),
+      'pointed to latest without PITR_ACCEPT_CUT',
+    );
   });
 
   it('hands the replay one WAL file at a time, and a file that fails to decrypt stops it', () => {
