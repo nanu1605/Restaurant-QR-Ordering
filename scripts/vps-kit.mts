@@ -5949,6 +5949,12 @@ const badSignature = () => randomBytes(64).toString('base64url');
  * storage-data stay, as on a rewind of the server), recovers to T: db starts on it, its counts are
  * the source's at T, the stack and a sign-in work, and db archives the new timeline's history file,
  * which the shipper signs into wal/<cluster>/history/.
+ *
+ * The review fixes add: a night whose base holds ALTER SYSTEM recovery_target drills clean, the
+ * setting set aside (review finding S1); at the rewind, recover-pitr to latest with the cut refuses
+ * before it writes, PITR_ACCEPT_CUT names the cut to go on (review finding D6); and after the fork,
+ * a timeline-2 object removed where timeline 1 holds the same position is named as the cut on
+ * timeline 2, not threaded over by timeline 1's abandoned file (review finding C2).
  */
 async function pitrProof(checks: Checks, env: Record<string, string>, age: string[]) {
   const cluster = clusterId();
@@ -5973,6 +5979,61 @@ async function pitrProof(checks: Checks, env: Record<string, string>, age: strin
     env.BACKUP_AGE_RECIPIENT,
   ]);
   if (made.status !== 0) fail(`The stand-in settings archive failed: ${made.stderr}`);
+
+  // What a night's base, decrypted, holds in postgresql.auto.conf, where ALTER SYSTEM writes.
+  const autoConf = (id: string) => {
+    const run = compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '--volume',
+      `${slash(join(MIRROR, 'age'))}:/run/age:ro`,
+      '--entrypoint',
+      'sh',
+      'backup',
+      '-c',
+      `set -eu
+rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/base-${id}.tar.zst.age" >/var/tmp/base.zst.age
+age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dcq | tar -xOf - postgresql.auto.conf`,
+    ]);
+    if (run.status !== 0) fail(`Reading the auto.conf of ${id} failed: ${run.stderr.trim()}`);
+    return run.stdout;
+  };
+  const pitrTest = (target: string) =>
+    measured(
+      `${PROJECT}-pitr-test-${process.pid}`,
+      ['-T', '-e', `PITR_TARGET=${target}`, ...age, 'pitr-test'],
+      'pitr-test',
+    );
+
+  // Review finding S1: the live cluster's ALTER SYSTEM settings ride along in the base's
+  // postgresql.auto.conf. recovery_target, which pitr.sh does not override on the command line,
+  // would clash with the replay's own target or stop it at the earliest consistent point if read.
+  // A night taken with it set, then reset so the live db stays sound, must still drill clean: the
+  // fix sets auto.conf aside while the replay runs.
+  dbSql("alter system set recovery_target = 'immediate';");
+  const s1Run = await measured(`${PROJECT}-backup-${process.pid}`, [
+    '--no-deps',
+    '-T',
+    'backup',
+    '/usr/local/bin/backup.sh',
+  ]);
+  dbSql('alter system reset recovery_target;');
+  const s1Night = /^backup (\S+): /m.exec(s1Run.stdout)?.[1] ?? '';
+  const s1Auto = NIGHT_ID.test(s1Night) ? autoConf(s1Night) : '';
+  const s1Drill = NIGHT_ID.test(s1Night)
+    ? await pitrTest('latest')
+    : { status: 1, stdout: '', stderr: s1Run.stderr, took: 0, peakMib: 0, statsMib: 0 };
+  checks.expect(
+    `point-in-time recovery over a night whose base holds ALTER SYSTEM recovery_target='immediate' (review finding S1): backup.sh ${s1Night || 'no night'}, its base's postgresql.auto.conf ${/recovery_target = 'immediate'/.test(s1Auto) ? 'holds the setting' : 'does not hold it'}; pitr-test to latest exit ${s1Drill.status} in ${s1Drill.took} s, "${lines(s1Drill.stdout).find((line) => line.startsWith('pitr test passed')) ?? tail(s1Drill.stdout, 1)}"`,
+    NIGHT_ID.test(s1Night) &&
+      /recovery_target = 'immediate'/.test(s1Auto) &&
+      s1Drill.status === 0 &&
+      s1Drill.stdout.includes('pitr test passed:'),
+    `${tail(s1Drill.stdout, 20)}\n${s1Drill.stderr}\nauto.conf:\n${s1Auto}`,
+  );
+
   const nightRun = await measured(`${PROJECT}-backup-${process.pid}`, [
     '--no-deps',
     '-T',
@@ -6169,12 +6230,39 @@ async function pitrProof(checks: Checks, env: Record<string, string>, age: strin
     }
 
     // recover-pitr refuses db's own db-data, and a run without the point.
-    const recoverPitr = (target: string) =>
+    const recoverPitr = (target: string, acceptCut?: string) =>
       measured(
         `${PROJECT}-recover-pitr-${process.pid}`,
-        ['-T', '-e', `PITR_TARGET=${target}`, ...age, 'recover-pitr'],
+        [
+          '-T',
+          '-e',
+          `PITR_TARGET=${target}`,
+          ...(acceptCut === undefined ? [] : ['-e', `PITR_ACCEPT_CUT=${acceptCut}`]),
+          ...age,
+          'recover-pitr',
+        ],
         'recover',
       );
+    // How many entries the db-data volume holds, to show a refused recovery wrote nothing. The
+    // volume is the one compose makes for recover-pitr; after `docker volume rm` a refused run
+    // remakes it empty.
+    const dbDataEntries = () => {
+      const run = docker([
+        'run',
+        '--rm',
+        '--network',
+        'none',
+        '--name',
+        `${PROJECT}-fix2-dbdata-${process.pid}`,
+        '--mount',
+        `type=volume,source=${PROJECT}_db-data,target=/d,readonly`,
+        REHEARSAL_IMAGES.BACKUP_IMAGE,
+        'sh',
+        '-c',
+        'ls -A /d | wc -l',
+      ]);
+      return run.status === 0 ? Number(run.stdout.trim()) : -1;
+    };
     let run = await recoverPitr(point);
     checks.expect(
       `recover-pitr with db running on db-data: exit ${run.status}, "${tail(run.stdout, 1)}", and nothing else`,
@@ -6209,6 +6297,67 @@ async function pitrProof(checks: Checks, env: Record<string, string>, age: strin
     compose(['rm', '--force', 'db', 'backup']);
     const removed = docker(['volume', 'rm', `${PROJECT}_db-data`, `${PROJECT}_wal-spool`]);
     if (removed.status !== 0) fail(`docker volume rm: ${removed.stderr.trim()}`);
+
+    // Review finding D6: a recovery to latest whose chain of WAL files is cut would end at the cut.
+    // With rows B's WAL object changed again (the cut from the drill check), recover-pitr to latest
+    // is refused before it writes to db-data; PITR_ACCEPT_CUT naming another file is refused too;
+    // only PITR_ACCEPT_CUT naming the cut recovers, to the cut and no further. The byte is put back
+    // and db-data emptied before the clean recovery to T.
+    const reflip = inBackup(
+      [
+        'set -e',
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${realPending}" >/tmp/part`,
+        'at=$(($(wc -c </tmp/part) / 2))',
+        'byte=$(od -An -tu1 -j"$at" -N1 /tmp/part | tr -d " ")',
+        `printf "$(printf '\\\\%03o' "$(( (byte + 1) % 256 ))")" | dd of=/tmp/part bs=1 seek="$at" conv=notrunc 2>/dev/null`,
+        `rclone copyto /tmp/part "backups:$BACKUP_BUCKET/${realPending}"`,
+      ].join('\n'),
+    );
+    if (reflip.status !== 0)
+      fail(`Re-changing a byte of ${realPending} failed: ${reflip.stderr.trim()}`);
+    const refusedLatest = await recoverPitr('latest');
+    const refusedEmpty = dbDataEntries();
+    checks.expect(
+      `recover-pitr to latest with ${pending}'s object changed (review finding D6): exit ${refusedLatest.status}, db-data holds ${refusedEmpty} entries, "${tail(refusedLatest.stdout, 1)}"`,
+      refusedLatest.status === 1 &&
+        refusedEmpty === 0 &&
+        refusedLatest.stdout.endsWith(
+          `pitr: a recovery to latest would end at the cut at ${pending} and leave out the backup's WAL after it: put the bucket's WAL back as the backup wrote it (docs/RUNBOOK.md, A stolen or leaked bucket token) and recover again, or recover to the cut and no further with PITR_ACCEPT_CUT=${pending}; nothing was written to db-data\n`,
+        ),
+      `${tail(refusedLatest.stdout, 20)}\n${refusedLatest.stderr}`,
+    );
+    const wrongCut = await recoverPitr('latest', dropped);
+    checks.expect(
+      `recover-pitr to latest with PITR_ACCEPT_CUT=${dropped}, not the cut (review finding D6): exit ${wrongCut.status}, db-data holds ${dbDataEntries()} entries, "${tail(wrongCut.stdout, 1)}"`,
+      wrongCut.status === 1 &&
+        wrongCut.stdout.endsWith(
+          `pitr: PITR_ACCEPT_CUT is ${dropped}, but the chain of WAL files is cut at ${pending}: name that WAL file to recover to the cut and no further; nothing was written to db-data\n`,
+        ),
+      `${tail(wrongCut.stdout, 20)}\n${wrongCut.stderr}`,
+    );
+    const toCut = await recoverPitr('latest', pending);
+    checks.expect(
+      `recover-pitr to latest with PITR_ACCEPT_CUT=${pending}, the cut (review finding D6): exit ${toCut.status} in ${toCut.took} s; "${lines(toCut.stdout).find((line) => line.startsWith('pitr: PITR_ACCEPT_CUT')) ?? ''}"`,
+      toCut.status === 0 &&
+        toCut.stdout.includes(
+          `pitr: PITR_ACCEPT_CUT is ${pending}: the recovery ends at the cut, and leaves out the backup's WAL from ${dropped} on`,
+        ) &&
+        toCut.stdout.endsWith(
+          `point-in-time recovery to the latest WAL before the cut at ${pending} done: start db with a new wal-spool (its entrypoint gives the files to its own postgres, uid 100, and it archives the new timeline), then auth, rest, realtime, storage, api-gw, web, scheduler and backup (docs/RUNBOOK.md)\n`,
+        ),
+      `${tail(toCut.stdout, 20)}\n${toCut.stderr}`,
+    );
+    const backFlip = inBackup(
+      `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/${realPending}" && rclone cat --no-traverse "backups:$BACKUP_BUCKET/${realPending}" | base64 -w 0`,
+      original,
+    );
+    if (backFlip.status !== 0 || backFlip.stdout.trim() !== original) {
+      fail(`Putting ${realPending} back failed: ${backFlip.stderr.trim()}`);
+    }
+    const clearedDbData = docker(['volume', 'rm', `${PROJECT}_db-data`]);
+    if (clearedDbData.status !== 0)
+      fail(`docker volume rm db-data: ${clearedDbData.stderr.trim()}`);
+
     run = await recoverPitr(point);
     const timeline = /^pitr: the cluster \d+ stopped cleanly in \S+ on timeline (\d+)/m.exec(
       run.stdout,
@@ -6329,6 +6478,76 @@ async function pitrProof(checks: Checks, env: Record<string, string>, age: strin
         Number(promoted) > Number(timeline),
       `${tail(across.stdout, 40)}\n${across.stderr}`,
     );
+    // Review finding C2: timeline 1's abandoned WAL past the fork is still in the bucket, and
+    // timeline 2 covers the same positions. A few more timeline-2 segments so one shares a position
+    // with timeline 1's dropped-table WAL (and has later timeline-2 objects); the timeline-2 object
+    // there removed, timeline 1's kept, the drill must name the cut on timeline 2, not thread over
+    // it with timeline 1's file.
+    const tl2 = Number(timeline).toString(16).toUpperCase().padStart(8, '0');
+    dbSql(
+      [
+        'insert into public.rehearsal_pitr_rows values (200);',
+        'select pg_switch_wal() is not null;',
+        'insert into public.rehearsal_pitr_rows values (201);',
+        'select pg_switch_wal() is not null;',
+        'insert into public.rehearsal_pitr_rows values (202);',
+        'select pg_switch_wal() is not null;',
+      ].join('\n'),
+    );
+    const posOf = (name: string) => walObject(name)?.walfile.slice(8);
+    const twin = `${tl2}${dropped.slice(8)}`;
+    let c2names: string[] = [];
+    for (let tries = 0; tries < 24; tries++) {
+      c2names = walNames(cluster);
+      const has = (wf: string) => c2names.some((name) => walObject(name)?.walfile === wf);
+      const later = c2names.some((name) => {
+        const parts = walObject(name);
+        return parts?.walfile.startsWith(tl2) && parts.walfile.slice(8) > dropped.slice(8);
+      });
+      if (has(twin) && has(dropped) && later) break;
+      await sleep(5000);
+    }
+    const twinObject = c2names.find((name) => walObject(name)?.walfile === twin) ?? '';
+    const tl1Twin = c2names.find((name) => walObject(name)?.walfile === dropped) ?? '';
+    if (!twinObject || !tl1Twin) {
+      fail(
+        `No timeline-2 object at ${twin} beside timeline 1's ${dropped} to prove C2:\n${c2names.filter((name) => posOf(name) === dropped.slice(8)).join('\n')}`,
+      );
+    }
+    const savedTwin = inBackup(
+      `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${twinObject}" | base64 -w 0 && rclone deletefile "backups:$BACKUP_BUCKET/${twinObject}"`,
+    ).stdout.trim();
+    if (!savedTwin) fail(`Removing ${twinObject} failed`);
+    for (let tries = 0; tries < 20; tries++) {
+      if (!walNames(cluster).includes(twinObject)) break;
+      await sleep(1000);
+    }
+    const stillTl1 = walNames(cluster).includes(tl1Twin);
+    const c2 = await drill('latest');
+    const putTwin = inBackup(
+      `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/${twinObject}" && rclone cat --no-traverse "backups:$BACKUP_BUCKET/${twinObject}" | base64 -w 0`,
+      savedTwin,
+    );
+    if (putTwin.status !== 0 || putTwin.stdout.trim() !== savedTwin) {
+      fail(`Putting ${twinObject} back failed: ${putTwin.stderr.trim()}`);
+    }
+    const c2cut = lines(c2.stdout).find((line) =>
+      line.startsWith('pitr: the chain of WAL files is cut at'),
+    );
+    checks.expect(
+      `pitr-test to latest with the timeline-2 object at ${twin} removed, timeline 1's ${dropped} at the same position kept (review finding C2): exit ${c2.status}, the cut named on timeline ${Number(timeline)} not threaded over by timeline 1's file, "${c2cut ?? tail(c2.stdout, 1)}"`,
+      c2.status === 1 &&
+        stillTl1 &&
+        c2cut !== undefined &&
+        c2cut.startsWith(
+          `pitr: the chain of WAL files is cut at ${twin}: ${twin} is not in the bucket`,
+        ) &&
+        c2.stdout.endsWith(
+          `pitr: the chain of WAL files is cut at ${twin}, with the backup's WAL after it: the drill fails\n`,
+        ),
+      `tl1 ${dropped} still present: ${stillTl1}\n${tail(c2.stdout, 40)}\n${c2.stderr}`,
+    );
+
     // The new timeline's history file removed, as someone holding the token could: the replay
     // would follow the old timeline past the point, so the drill refuses before it replays.
     const saved = inBackup(
