@@ -4373,7 +4373,8 @@ are safe on Vercel today, plus the Docker image. Stop A2 makes the long backgrou
 (VPS-25 to VPS-30): migrations that stay backward-compatible and app code that Vercel runs too.
 Compose, the gateway's Envoy config, the Caddy site file, the scheduler, backups, the image build in
 CI and the deploys come in later stops: Stop B writes them and rehearses them on this machine
-(VPS-31 to VPS-42), and Vercel stays production until the cut-over. The server's
+(VPS-31 to VPS-42), Stop C adds WAL archiving, signed nights and point-in-time recovery (VPS-43 to
+VPS-45), and Vercel stays production until the cut-over. The server's
 contract arrived on 2026-11-08, with adjustments the same day, and wins over the first plans where
 they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale tap
 and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export size
@@ -6588,8 +6589,8 @@ and a disaster recovery (Tests). What the rehearsal found was fixed in the kit, 
 pin where a text rule can catch it, and the entries below say what was built where it differs from
 the plan. The plan's three questions for the owner (the stop's scope, when CI may spend minutes, and
 staging's diner pages behind the password) were settled on its recommendations, which the owner can
-still change (VPS-37, VPS-41). WAL archiving and a point-in-time restore drill are Stop C, before
-the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Vercel and
+still change (VPS-37, VPS-41). WAL archiving, signed nights and a point-in-time recovery drill came
+in Stop C (VPS-43), before the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Vercel and
 `CRON_SECRET` out, the old workflows deleted) is Stop D.
 
 - **VPS-31 · The kit is `deploy/vps/`, a mirror of `/srv/menumesh/`, checked with the server's own
@@ -7006,7 +7007,8 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     a retention date on each object (S3 Object Lock) keeps the old versions only, and a restore
     reads the current one, as with versioning (since review finding F5; before, the RUNBOOK and
     this entry counted per-object retention beside the locks). A retention date on each object at
-    upload, which would keep the old versions from deletion, is left for Stop C. The removal of old
+    upload, which would keep the old versions from deletion, is still left open (Stop C signs the
+    nights instead: VPS-43). The removal of old
     copies takes an object's age from the bucket's own time of its upload (`--use-server-modtime`),
     never from the modification time its uploader set (since review finding F3: one locked object
     with a 2020 mtime failed every night's removal). A missing settings archive, or one more than 2
@@ -7096,8 +7098,8 @@ the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Ve
     `/graphql/v1`). Vault secrets come back but do not decrypt: pgsodium's root key on `db-config`
     is in no part of the backup, and the app keeps nothing in vault. A project that starts using
     them needs after-restore statements or a two-pass restore.
-  - **WAL archiving** and a point-in-time restore drill are Stop C, before the first live
-    restaurant: a nightly dump alone loses up to a day, and rewinds the invoice counters with it.
+  - **WAL archiving** and a point-in-time recovery came in Stop C (VPS-43): a nightly dump alone
+    loses up to a day, and rewinds the invoice counters with it.
 - **VPS-41 · Images and deploys in CI, off until two repository variables are on:**
   - **`vps-build.yml`** (called by CI and by VPS release) builds the web image for one target and
     the migrate image of the same commit, and pushes them to `ghcr.io/nanu1605/menumesh` as
@@ -7455,7 +7457,8 @@ and `deploy/vps/README.md`).
   prefix's old versions; `backup.sh`'s comment and VPS-40 say the same. A retention date on each
   object at upload (rclone's `--s3-object-lock-mode` and `--s3-object-lock-retain-until-date`) was
   not added: it fails on a bucket without Object Lock and can't be tried on the local S3. The owner
-  decides when the bucket is picked, and Stop C takes it up again. (40c705d "docs: correct the vps
+  decides when the bucket is picked; Stop C signs the nights instead (VPS-43) and leaves the
+  retention date open. (40c705d "docs: correct the vps
   runbook after review")
 - **B6 · The first install built the backup image before anything set `VPS_IMAGES` (RUNBOOK):**
   the backup image's workflow skips its job while the variable is off, so the step pushed nothing
@@ -7785,26 +7788,34 @@ takes the newest name when none is given.
 
 - A restore trusts a night's parts only while locks that refuse overwrites hold them (R2's prefix
   locks, not tried against R2 here). With versioning, or per-object retention, a token holder can
-  write new versions over a recent night's parts, and a restore reads them.
-- Nothing proves a night came from the backup. Unasked, the restore test takes a night planted in
-  `daily/` under an id stamped between the newest real night and now; a night that failed on its
-  settings archive can be completed with a planted `config-` part, after which its restore test
-  passes; a night 29 days old or more is read from `monthly/` whether or not it was the month's
-  copy, so one planted there under its id is restored; and a planted whole set in `monthly/` stands
-  in for the month's copy after a 1st that failed. The guard until then is the id: a restore names
-  its night first, to be checked against the journal line or the monitor's log, and the RUNBOOK
-  names a night that old only when its line says `kept in monthly/`.
+  write new versions over a recent night's parts, and a restore reads them. **Closed by Stop C
+  (VPS-43):** a part put over its own no longer matches its night's seal, and a restore refuses it
+  whatever the bucket keeps. What a lock still decides is whether the token holder can delete.
+- Nothing proves a night came from the backup. **Closed by Stop C (VPS-43):** a restore reads a
+  night only through its seal, signed by the backup's key, and every part it reads must match the
+  seal's size and sha256, so a planted night, settings archive, month's copy or whole set is
+  refused whatever the folder, the stamp or the clock (the rehearsal plants each). What it was:
+  unasked, the restore test took a night planted in `daily/` under an id stamped between the
+  newest real night and now; a night that failed on its settings archive could be completed with a
+  planted `config-` part; a night 29 days old or more was read from `monthly/` whether or not it
+  was the month's copy; and a planted whole set in `monthly/` stood in for the month's copy after
+  a 1st that failed. The id, checked against the journal line or the monitor's log, stays the
+  guard for which night to restore, and the RUNBOOK still names a night that old only when its
+  line says `kept in monthly/`.
 - A token holder watching the bucket during a run can read its id from the first part up and put
   another of its names first, a later part in `daily/` or the month's copy in `monthly/`, failing
   that night with the alert, whatever the plant's size and mtime (V1: the job's copies write
   regardless, so the lock refuses and none is kept as the copy). Such a night's parts, listed by
-  its id, show the planted name. It takes a live token, and ends with the rotation.
+  its id, show the planted name. It takes a live token, and ends with the rotation. **Still holds
+  after Stop C**, and the same for planted seals that make extra month's copies (cost only).
 - A night's age comes from the server's clock, taken once when a restore starts. A clock a day
   behind reads `daily/` a day past its lock; one a day ahead reads a young night that is not a
   month's copy from `monthly/`, where a night planted under its id is restored (both shown in the
   harness). A restore begun just before the 29-day or 365-day line reads its later parts, the
   Storage archive last in a recovery, minutes to hours after, possibly past the lock. The owner
   keeps the clock synchronized (`timedatectl`) and doesn't name a night that close to a line.
+  **After Stop C** a wrong clock can no longer make a restore read a part the backup did not write
+  (the seal decides), but it can still make it look in the wrong folder and refuse a real night.
 - From 29 days on, a night that is not a month's copy can't be restored, though `daily/` keeps it a
   day or two more (and, with the job stopped on a dead server, until someone removes it): a recovery
   begun more than 29 days after the last night has only month's copies. By design.
@@ -7814,11 +7825,333 @@ takes the newest name when none is given.
   name of the month in `monthly/` (about 1.4 KB a name, 171 MiB at 100,000), so some 200,000 would
   kill it after the night's uploads, losing the month's copy, the removal, the journal line and the
   heartbeat, with the alert, each night until the names go. The removal streams (35 MiB at 100,000).
-  Floods are cleared by the RUNBOOK's stolen-token steps.
+  Floods are cleared by the RUNBOOK's stolen-token steps. **Still holds after Stop C**, and the
+  WAL has its own (Left open (Stop C), below).
 - Not proved here: R2's locks and its LastModified, which `--use-server-modtime` reads, and the
   heartbeat monitor keeping a ping's body.
 
-The trust items share one answer, Stop C's hash of each part kept where the bucket's token can't
-reach: a restore would then refuse any part the backup did not write, whatever the folder, the clock
-or the bucket's protection. The bucket's protection still waits for the owner's choice of bucket
-(B5).
+The trust items shared one answer, Stop C's signature on each night and each WAL file, made with a
+key kept where the bucket's token can't reach: a restore now refuses any part the backup did not
+write, whatever the folder, the clock or the bucket's protection (VPS-43). What stays is what a
+signature can't stop: a live token can still delete objects no lock holds, flood the bucket with
+names, or plant one of tonight's names first so that night fails with the alert, and a leaked
+signing key lets a night through the seal, to the Stop B guards behind it (restricted psql, the
+manifest's lines, Storage's member check, the output filter), which the rehearsal proves against a
+night sealed with its own key. The bucket's locks, and so what a token holder can delete, still wait
+for the owner's choice of bucket (B5), and the clock is still the server's own.
+
+### WAL archiving, signed backups and point-in-time recovery (VPS Stop C)
+
+Stop C (2026-11-13 to 15) closes the two gaps Stop B named. A nightly dump alone loses up to a day
+and rewinds the invoice counters with it (VPS-40), and nothing proved that a night came from the
+backup: trust rested on bucket locks the owner has not picked (Review fixes (VPS Stop B), Left
+open). The database now archives its write-ahead log every minute to the same bucket, every night
+and every WAL file carries a signature that only the backup's key can make, and a recovery can
+rewind the database to any minute of the last 14 days. It is built and rehearsed on this machine,
+as Stop B was (`9a303e8` to `5a52760`); nothing is installed, and no workflow changed. The owner
+answered the plan's four questions on 2026-11-13, each as recommended: how much a crash may lose,
+how far back a rewind goes, what proves a backup is ours, and how often the server drill runs
+(the first bullet of VPS-43).
+
+- **VPS-43 · WAL archiving, signed nights, and point-in-time recovery from the bucket:**
+  - **The owner's four answers.**
+    1. A crash loses at most about 2 minutes: `archive_timeout=60` makes `db` finish a WAL file
+       each minute it wrote anything, and the shipper runs each minute. Measured: a file reached the
+       bucket 7.5 to 62 s after its switch.
+    2. A rewind goes back 14 days. The bucket's WAL is removed at 15 days, by the bucket's own time
+       of each upload (`--use-server-modtime`, as the nights'), and a point older than 14 days is
+       refused. The window is 14 days less the length of the base backup it starts from, and a day
+       less for each failed base at its old end (see Left open, below).
+    3. The proof is an Ed25519 signing key: each night's seal, and a signature in the name of each
+       WAL object, can only be made with the private key, which only `backup` holds. The owner
+       keeps the public key beside the age key.
+    4. The server drill is monthly, in the RUNBOOK step of the restore test, which it follows.
+  - **`db` archives into a spool.** The pinned image ships `basic_archive` and no wal-g, so
+    `archive_library=basic_archive` copies each finished file into `/wal-spool` (written, synced,
+    renamed, and a second copy of identical bytes is accepted), and no new long-running service is
+    needed: the shipper is a second crond line in the `backup` service, so the steady total stays
+    6,560 MiB. `/wal-spool` is a new named volume, mounted in `db` and `backup` only, which a
+    unit rule keeps true. Its owner is postgres, uid 100 in this image, made by
+    `config/db/wal-spool.sh`, `db`'s entry wrapper: as root it checks the volume is mounted,
+    `chown`s and `chmod`s it to 0700, then runs the image's own entrypoint with `db`'s command
+    (`exec` all the way down, so Postgres stays process 1 and stops as before; the capabilities
+    are unchanged). The flags: `archive_mode=on`, `archive_library=basic_archive`,
+    `basic_archive.archive_directory=/wal-spool`, `archive_timeout=60`, the same in the
+    rehearsal's override, which a pin keeps in step. `basic_archive` reports a failure at WARNING,
+    which `log_min_messages=error` hides, so the shipper reads `pg_stat_archiver` instead.
+  - **The host rules gain one line.** The image's `pg_hba.conf` has no `replication` line, and
+    `all` never matches a replication connection, so the backup's `pg_basebackup` could not connect.
+    `config/db/pg_hba.conf` is the image's file byte for byte (4,558 bytes, its sha256 in
+    `config/SOURCES.md`) plus `host replication supabase_admin samenet scram-sha-256`, mounted
+    read-only and named by `hba_file`; a unit test holds it to the pinned copy plus that line, and
+    the rehearsal checks the running image's file, its parsed rules (one replication rule, no
+    errors) and a replication connection from `backup` whose system id is `db`'s.
+  - **The shipper** (`wal-ship.sh`, in the backup image, run by crond each minute as uid 100:101
+    under `flock -n`, so it can read postgres's 0700 spool and root in the container can't).
+    Oldest file first it compresses (`zstd -3`) and encrypts (age, the owner's key) into an outbox
+    beside the spool, under a temporary name, synced and renamed, then deletes the raw file: the
+    bytes stay the same for every retry, and a down bucket costs about 1 KiB a file. Then it
+    copies each outbox file with `rclone copyto --checksum --no-traverse`: an identical object
+    already there means no request to write, so a lock never refuses a retry, and it never lists or
+    deletes in the bucket, so a flood of names costs it nothing. A run stops taking new files after
+    4 minutes, so the health part still runs behind a backlog. It prints nothing when all is well
+    (0 lines an hour in `db` and `backup`, measured for 188 minutes) and names a value in no line.
+  - **Names and signatures.** An object is `wal/<cluster>/<log id>/<walfile>.<signature>.zst.age`,
+    history files `wal/<cluster>/history/<tli>.history.<signature>.zst.age`, where `<cluster>` is
+    `pg_control_system()`'s system identifier and the signature is the base64url Ed25519 signature
+    of `menumesh wal 1 <cluster> <walfile> <sha256 of the object's bytes>`. The signature sits in
+    the name, with no sidecar: nobody can predict a name, so nobody can plant one first and make
+    the lock refuse the real file, and a copy under another WAL file's name fails its check. The
+    cluster is in the path and the message because a logical recovery makes a new cluster whose low
+    segment names would otherwise collide with the old one's. The shipper reads each segment's
+    header and stops with an alert when it names another cluster than the kept identifier, or when
+    the identifier changed while files wait, so after a recovery `wal-spool` must be new and
+    nothing mixes. A WAL file can have two objects (a crash after its first copy went up): the
+    bytes inside are the same, and a reader takes any one that verifies. A promotion's `.partial`
+    file and a base backup's `.backup` file ship too.
+  - **The signing key** is `BACKUP_SIGNING_KEY` (PKCS #8, base64, in `backup` alone) and
+    `BACKUP_SIGNING_PUBLIC_KEY` (SPKI, base64, in `backup` and every one-off that reads the bucket,
+    one key or several separated by spaces: a rotation lets a restore accept the old key and the
+    new). `pnpm vps:secrets` makes the pair for the server and the rehearsal, checks it by name
+    (shapes, the curve, that the first public key is the private key's own) and prints the public
+    key only, once, for the owner to keep. Alpine's Postgres image has no `openssl` command, so the
+    backup image adds it: `seal.sh`, sourced and never run, signs with `openssl pkeyutl -rawin`,
+    the key fed as PEM on a file descriptor (never an argument or a file, and sourcing un-exports
+    the variable, so no child sees it), and verifies against any key listed. A signature counts
+    only in its one spelling (86 base64url characters, 64 bytes, re-encoded equal). openssl's
+    signature is byte for byte Node's, proved both ways, and 300 round trips through BusyBox's
+    `tr` found no difference. Restores never trust a key from a restored settings archive.
+  - **What the shipper tells the owner.** One Telegram line, at most an hour apart, when the oldest
+    file waits over 10 minutes or `pg_stat_archiver` has failed for 10 minutes; at once for what no
+    wait mends: `archive_mode` off, a spool postgres can't write, a variable missing, a signing key
+    that is not the first public key's pair, a segment of another cluster, a changed identifier
+    while files wait, an outbox with no kept identifier. A line after it says WAL shipping
+    resumed. While healthy it pings `HEARTBEAT_WAL_URL` every 5 minutes (the monitor's period 5
+    and grace 10 minutes), which is also what notices a shipper that is not running at all.
+  - **The nightly base and the seal** (`backup.sh`). A night is now six parts for one database and
+    a seal: the roles, each database, Storage, the manifest, `base-<id>.tar.zst.age` (the whole
+    cluster, `pg_basebackup -Ft --wal-method=fetch` streamed through `zstd -3` and age, under
+    a spread checkpoint and the job's low priority), the settings archive, and last
+    `seal-<id>.txt`:
+
+    ```
+    menumesh seal 1 <id>
+    base <end time UTC> <start WAL file> <cluster>      (or: base none)
+    part <sha256> <bytes> <name>                        (one for each part)
+    signature <base64url Ed25519 signature of every line above>
+    ```
+
+    Each part's sha256 and size come from the ciphertext as it streams to the bucket (age into
+    `tee` into two FIFOs read by `sha256sum` and `wc -c`, then `rclone rcat`), the settings
+    archive's from its file. The seal goes up after every part, so a seal means a whole night; the
+    job reads it back as a restore will before it counts the night. The end of the base is the
+    second after `pg_basebackup` exited, never before its real end. A base that fails (or runs
+    past 2 hours) does not stop the logical parts: the night fails at the end with the alert and
+    its seal says `base none`, and such a night is never the month's copy. The month's copy is
+    the night's every part, then its seal, and the check "is there already a whole copy" counts a
+    candidate only when its seal verifies and lists a base, a settings archive and a dump of each
+    database, each in `monthly/` at its size, trying at most 5 seals, so planted names can't stop
+    the copy. WAL older than 15 days goes with the nightly removal, never the history files.
+
+  - **The base holds its WAL in a slot.** `pg_basebackup` with `-X fetch` reads the WAL last,
+    after the data, from `pg_wal`, and `db` removes a file at its first checkpoint after archiving
+    it, so a base that a checkpoint overtakes failed: by hand, a base at 2 MB/s with a WAL switch
+    and a checkpoint 3 s in died after 16 s with "requested WAL segment ... has already been
+    removed". Streaming can't write a tar to standard output, so the job makes a temporary physical
+    replication slot, `menumesh_base_<hex>`, in a psql session of its own that ends with the base
+    (and with the job, if it is killed), seen in `pg_replication_slots` before the base starts.
+    `max_slot_wal_keep_size=4GB` bounds what it keeps during the 2 hours. If `db` refuses the slot
+    (all 5 of `max_replication_slots` in use) the base fails rather than run without one.
+  - **Restores verify before they read** (`restore.sh`). The seal comes first, by its exact name,
+    read to a size cap, held to its strict grammar (printable ASCII, the lines above, each part
+    once, the base line agreeing with the parts), and its signature checked against
+    `BACKUP_SIGNING_PUBLIC_KEY` before any part is read; a bad one ends the run with "is not signed
+    by the backup's key ... someone else wrote to the bucket". Unasked, the restore test takes the
+    newest seal of `daily/` (the folder-by-age rule, the 29-day line, "never stamped later than
+    now" and every other Stop B rule are unchanged). Each part the seal lists is downloaded
+    (ciphertext) into the container's own files, held to the seal's size and sha256, and only then
+    decrypted from that file; a part the seal doesn't list is never read, and the Storage archive
+    is listed and extracted from one checked file. A test of a night whose seal lists no settings
+    archive stops at once. The whole logical night is downloaded before anything is restored, so
+    the server's Docker disk needs its size plus 1 GiB, or the restore is refused at once. A base
+    is never downloaded by a logical restore. The Stop B guards behind the seal all stay (psql's
+    restricted mode with a random key, the output filter, the exact names with `--no-traverse`, the
+    Storage member check, `RESTORE_STAMP` for `--into`, `--no-check-dest`, the night's random id):
+    a leaked signing key must still meet them, and the rehearsal plants nights sealed with its own
+    key to prove they do.
+  - **Point-in-time recovery** (`pitr.sh`, two services of the backup image, each run alone).
+    `pitr-test` (profile `pitr-test`, the monthly drill) replays into a tmpfs and throws it away;
+    `recover-pitr` (profile `recover`) replays into the empty `db-data` volume, for a disaster.
+    `PITR_TARGET` is a time (`YYYY-MM-DDTHH:MM:SSZ` or with an offset of at most 14 hours, held to
+    its own spelling) or `latest`; the drill's default is `latest`, a recovery refuses to run
+    without one, and a point later than now or more than 14 days back is refused. The data folder
+    must be empty, checked before the bucket is read.
+    1. **The night:** the newest seal of `daily/` (younger than 29 days, no later than the point)
+       that verifies and has a base that ended before the point.
+    2. **The base** is read as a restore reads a part (in the seal, room for it, size and sha256
+       before decryption), unpacked, and must name the seal's cluster and start file.
+    3. **The WAL** is listed by name and by the bucket's own upload time, from the base's start
+       file on, bounded per folder (past 2,048 names refuses: flood). Each object is downloaded
+       to a byte past its size cap and kept only when the signature in its name verifies over its
+       bytes: a planted object with good encryption and a random signature is passed over, which
+       the rehearsal proves by planting one under a real file's name first. The chain takes each
+       position in turn, takes the first verified object, and stops after the first file uploaded
+       more than 30 minutes past the point (never for `latest`) or at the first it can't fill,
+       which it names ("missing" or "refused"). A later timeline's files without its history
+       file are refused before the replay: Postgres would follow the abandoned history.
+    4. **The replay** is the image's own Postgres 17 (Alpine), as postgres, in an empty
+       environment, with an empty settings file, socket only, no preload library and
+       `restore_command` `wal-fetch.sh`, which decrypts and decompresses one verified file, whole
+       before it is put in place (exit 1 for a missing file, 126 for a failed one, which Postgres
+       takes as fatal, never as the end of the WAL). `recovery_target_timeline=latest`,
+       `recovery_target_action=promote`.
+    5. **The checks:** the log's "recovery stopping" and last-transaction lines; for `latest`, a
+       last transaction within 2 x `archive_timeout` and 10 minutes of the drill's start; and the
+       counts of `counts.sql` in each database, in read-only sessions, printed next to the
+       night's manifest (writes after the night move them, so they inform and don't fail).
+       `--into` stops the cluster cleanly, strips the recovery settings, and leaves it for `db`,
+       whose entry wrapper chowns it to uid 100; the cluster keeps `archive_mode=on` with an empty
+       command so the new timeline's history file and files keep their `.ready` for `db` to
+       archive. A replay that ends before the target says why (a cut, the end of the bucket's WAL,
+       a late shipper's 30-minute rule) and tells the owner to recover to an earlier point or to
+       `latest`.
+       Its output goes through `restore.sh`'s control-character filter; it needs the public key; its
+       own copy of the age key is on a tmpfs for the replay and removed as soon as it ends.
+  - **Why Alpine's Postgres replays.** `restore_command` runs age and zstd for each file, which the
+    Supabase image lacks, and fetching raw files ahead would put up to 16 MiB a minute of WAL on
+    disk. A probe showed Alpine's Postgres 17 starting on a Supabase base, replaying and reading
+    the rows. Replay is page for page, but the databases use ICU (`en_US.UTF-8`, provider `i`),
+    and Alpine's ICU differs from the image's (a collation-version warning), so the replayed
+    cluster is only replayed and counted: nothing writes, sorts or compares text, and amcheck
+    never runs. For the same reason `counts.sql` takes the newest migration with `collate "C"`.
+    `--into` does stop the cluster and hand it to `db`, which writes with its own ICU. The drill
+    runs the very path a recovery runs.
+  - **The two new one-offs** carry the full set of limits and `cap_drop: ALL`: `pitr-test`
+    1536m (its data in a 1g tmpfs that counts in the memory limit, `/run/pitr` 1m, caps CHOWN,
+    SETUID and SETGID, default network) and `recover-pitr` 1024m (the `db-data` volume, caps as
+    `recover-db`'s, since a new volume is the image's data folder owned by uid 70). Each reads
+    the bucket's settings, the age key file, `BACKUP_SIGNING_PUBLIC_KEY` and `PITR_TARGET` and
+    nothing else. One-offs run one at a time, so the largest set is still `recover-db` with
+    `recover`, 2,304 MiB, and the steady total is still 6,560 MiB. The backup service's limit
+    stays 320m: it peaked at 39 to 40 MiB with the shipper over 3 hours and 45 minutes, a night in
+    the running service 79 to 86 MiB.
+  - **What a recovery does not carry.** PITR restores the database alone. On the same server
+    `storage-data` and `db-config` stay, which the rehearsal proves. On a new server Storage's
+    files have no restore path short of `restore.sh --into`, which restores a night's database as
+    well, and a new `db-config` means vault secrets don't decrypt (as with the logical recovery:
+    pgsodium's root key is in no part). The RUNBOOK says so.
+- **VPS-44 · What was proved, and how big it is:**
+  - **Unit tests** (1,151 in 68 files; `vps-kit` 98 and `vps-secrets` 21): the compose file's db
+    flags, wrapper, mounts and the `wal-spool` volume's two users; the one-offs' exact
+    environments, limits and capabilities; the one-offs' memory (at most 2,304 MiB at once); the
+    signing environment in `backup`, `restore-test`, `recover`, `pitr-test` and `recover-pitr`
+    (and only the public key outside `backup`); every script's `for name in` list set by every
+    service that runs it; the image's crontab, files and `openssl`; and each script's rules
+    (`wal-ship.sh`, `seal.sh`, `wal-spool.sh`, `wal-fetch.sh`, `backup.sh`'s base, slot, hashes,
+    seal and month's copy, `restore.sh`'s trust and lookups, `pitr.sh`), each clean on the real
+    file and refusing at least one copy with a mistake. The seal's grammar is tested in
+    TypeScript and shell alike: 18 refusals in the same words, and 20 texts read the same by
+    `seal_open` in BusyBox and by Node.
+  - **`pnpm vps:check`** 53 checks, 0 failed (the vendored `app-apply` on the new compose, 14
+    shell scripts through shellcheck); **`pnpm vps:edge`** 20 of 20, unchanged;
+    **`pnpm vps:rehearse --fresh`** 40 checks, 0 failed, about 6 minutes: `db` archiving with the
+    host rules checked and a replication connection from `backup`, a segment in the bucket 20 s
+    after its switch, its signature checked with Node's crypto and its bytes a 16 MiB file of its
+    cluster, and 182 s with 0 lines in `db` and `backup`. **`pnpm vps:backup-test`** 77 checks, 0
+    failed, about 20 minutes (Stop B's 38, the shipper's 14, the seals' 12 and the PITR drill's
+    13):
+    - The shipper: two WAL files shipped and signed; the outage (service stopped, spool grows,
+      files aged 15 minutes, restarted with Telegram and the heartbeat sinkholed: an alert, then
+      "resumed"); 8 paths of the image's own `wal-ship.sh` against a Postgres, an S3 and a spool
+      of its own (a broken spool, a held lock, a wrong signing key, a bucket out of reach, a
+      segment of another cluster, a kept identifier of another cluster, stray names, `archive_mode`
+      off, `db` down), each alerting as designed.
+    - Seals: every night's seal checked with Node's crypto, the base's tar, and refusals with
+      nothing restored (`restore-db` still bare): a seal another key signed, a night with no seal,
+      a part replaced after the seal (same size, one byte), one 1 MiB longer, a part the seal
+      doesn't list, a seal claiming more bytes than the disk has; the month's copy made past a
+      whole-looking copy another key sealed; a base a checkpoint overtakes (the slot seen in
+      `db` keeping its first file through a checkpoint, and gone after) and a 1st whose base fails.
+    - PITR: rows A, the time T, rows B, a dropped table; `pitr-test` to T has A and the table, and
+      every one of 101 counts equal to the source's at T; to `latest` has B and no table; a changed
+      byte of the real WAL cuts the chain at the exact file, with the exact line; `recover-pitr`
+      refused while `db` runs and without a target; then, with `db-data` and `wal-spool` removed
+      (as in a disaster on the same server), a recovery to T, `db` up on it ("Skipping
+      initialization", the same system identifier, a new timeline), its 101 counts the source's at
+      T, the owner signing in through the gateway, the new timeline's history file in the bucket
+      within about a minute, and a drill to `latest` across the fork (rows A and a row written
+      after the recovery); and a history file removed, which the drill refuses before replaying.
+    - `pnpm vps:down` 3 of 3, nothing of the rehearsal's left, nothing else touched.
+  - **Measured, on the rehearsal** (Docker Desktop, 15.18 GiB): an idle day is one file a minute
+    (188 files in 188 minutes, the scheduler's per-minute writes keeping every minute from being
+    empty), 1.1 to 1.2 KiB each once compressed and encrypted: 1,440 objects and about 1.6 MiB a
+    day, about 21,600 objects and 24 MiB in the 15-day window, and about 43,200 requests to write
+    and as many to look up a month on the bucket. A file full of incompressible data is 1.4 to 5.2
+    MiB of its 16 MiB. A whole night of one database is 6 parts, 5.3 to 5.4 MB, the base the
+    largest (a 50 MiB tar of 1,723 members, 3.6 MB, about 14 to 1) and the seal 923 bytes
+    (room for about 140 parts in its 16 KiB cap). `backup.sh` 7.5 s and 96 MiB as a one-off; the
+    restore test 6.5 s and 39 to 50 MiB; `pitr-test` 4.9 s, 152 to 156 MiB, 65 MiB of its tmpfs,
+    5 WAL files read; `recover-pitr` 4.5 s, up to 157 MiB, and `db` up on its result in 7 s.
+    A recovery's own first night, with the base's checkpoint right after a restore, took 69 s.
+  - **Found and fixed on the way** (each with a unit pin where text can catch it): a base a
+    checkpoint overtakes (the slot, above); `rclone lsjson` adding fields after `IsDir` for an
+    S3 object (a storage class), which failed every line of the WAL listing; positions such as
+    `00000000000000E5` compared by `awk` as numbers (`0E5` is 0), so a missing file could pass as
+    filled, now compared as text; an anonymous volume Docker made for the `backup` service from
+    the base image's declared data folder, which outlived `vps:down` (a tmpfs over it now); and
+    an alert that waited 10 minutes for what no wait mends.
+- **VPS-45 · What a nightly dump could not do, and still can't:** a restore from a night goes back
+  to that night, rewinds each counter to it, and loses what customers did after. A point-in-time
+  recovery to `latest` after a server loss is the first choice, a night's logical restore the
+  fallback (RUNBOOK, Backups and restore (VPS)). A rewind to a time keeps the cluster and its
+  system identifier and starts a new timeline, whose history file `db` archives within a minute.
+
+**Left open (Stop C):**
+
+- The 30-minute rule is by upload time. After a shipper outage that spans the point, the first
+  file uploaded more than 30 minutes past it can hold WAL from before it: the chain stops there
+  and the recovery to that point fails, said plainly. `latest` or an earlier point still works.
+  Reading commit times with `pg_waldump`, or taking all the WAL to the end, would fix it.
+- The old end of the window. WAL is removed at 15 days by upload time and there is one base a
+  night: a point in the last minutes of the 14 days can need WAL that night's removal took, and
+  each failed base at the old end shortens the window by a day. The recovery names the first file
+  missing.
+- PITR restores the database alone (VPS-43, last bullet), and `db-config` is in no part.
+- After a rewind to a point before the last night's base, until the next night the drill takes
+  that base on the abandoned timeline and Postgres refuses it ("not a child of this server's
+  history"). The RUNBOOK says to run `backup.sh` after such a rewind. And
+  `recovery_target_timeline` is always `latest`: a point on an abandoned timeline's WAL past its
+  fork can't be reached.
+- If the newest suitable night's base doesn't match its seal, the run stops; no setting names an
+  older night.
+- A dead shipper fills the spool with a whole 16 MiB file for each minute that wrote anything,
+  which on this stack is every minute, idle too: about 0.94 GiB an hour, until the server's disk
+  and then `db`'s own `pg_wal` fill. Only the WAL heartbeat notices (no ping for 5 plus 10
+  minutes), and the server team's disk monitor should cover the Docker volumes.
+- A file that can't be compressed or put in the outbox keeps that run from uploading the outbox
+  too; the next minute retries both. In practice only a full disk does it.
+- An idle `db` ships one object a minute, about 43,200 requests to write and as many to look up a
+  month: within the usual free tiers, but the kit does not pick the provider.
+- A base cut short leaves an unlisted partial `base-<id>` object in `daily/` until the 30-day
+  removal; nothing reads it. A part is streamed to S3 in 5 MiB chunks, at most 10,000, so about
+  48 GiB a part, the base the largest (3.6 MB here; true of the dumps since Stop B).
+- While a base runs (at most 2 hours) its slot keeps WAL in `db`'s `pg_wal`, capped at 4 GB; idle
+  that is about a 16 MiB file a minute.
+- `pitr-test`'s 1g tmpfs holds the cluster and the WAL replayed since the last restartpoint (up
+  to the source's checkpoint distance): 65 MiB here. A larger or busier production may need a
+  bigger tmpfs (counted in the memory limit) or a drill on disk.
+- The month's-copy check tries at most 5 seals: planted well-named seals stamped earlier in the
+  month can hide the real copy, and each later whole night that month copies itself again (cost
+  only, never a lost copy).
+- Floods. A token holder can plant many well-named WAL objects: each costs a download of up to
+  16.6 MiB before it is refused, and past 2,048 names in a folder or the disk's room the
+  recovery refuses plainly. Denial of service only, never a wrong replay.
+- Once pgsodium exists, `pg_dump` prints 4 warning lines each night about `pgsodium.key`'s
+  circular foreign key, so a full success is not one line on such a database. Stop B's dumps,
+  unchanged; filtering `pg_dump`'s output could hide a real warning.
+- The rehearsal's `db` keeps the drill's two tables, `public.rehearsal_pitr_rows` and
+  `public.rehearsal_pitr_dropped`, which the next run drops and makes again; and a long-running
+  rehearsal's `backup` runs a night at 20:30 UTC that fails and logs its lines (harmless).
+- Not proved here, only the server can: R2's locks on the `wal/` prefix, a production-sized base
+  and drill (the 1g tmpfs, the 2-hour bound, the window's length), the WAL heartbeat monitor, and
+  the disk the spool and the restore's downloads need.
