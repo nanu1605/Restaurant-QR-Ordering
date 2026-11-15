@@ -1173,8 +1173,9 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   fail it. `app-compose` first checks that the server has the memory. It names the night it takes
   first (`restore: the night of <id>, from daily/, …`): unasked, the newest seal in `daily/`
   younger than 29 days, but never one stamped later than now, which it names as not taken (three,
-  then how many more). Check that id, and the one its last line names, against the backup's own journal line
-  (Last night's backup), since anyone holding the bucket's token can add a night under any stamp.
+  then how many more). Check that id, and the one its last line names, against the backup's own
+  journal line (Last night's backup), since anyone holding the bucket's token can add a night under
+  any stamp.
   Everything it prints loses its control characters, so a night's own text (psql's notices, for
   one) can add a line but not erase or rewrite one, and nothing of it comes after the last line.
   For another night add `-e RESTORE_STAMP=<id>`, the id as the night's journal line prints it (for
@@ -1441,14 +1442,15 @@ WAL file is taken only if the signature in its name verifies (docs/DECISIONS.md 
 holder can still do is delete what no lock holds, flood the bucket with names (a recovery then
 refuses past 2,048 names in a WAL folder), plant one of tonight's names first so the night fails,
 and make the month's copy repeat. Take it as stolen when a restore, or `pnpm vps:verify-night` on
-a downloaded night, prints `is not signed by the backup's key`, `is not the part the backup
-sealed` or `is not in the seal`, when a restore prints `backslash commands are restricted` or
-`holds links or special files`, when a drill or recovery prints `the chain of WAL files is cut`,
-when a night stops with `someone else wrote to the bucket`, when the WAL alert says a lock refuses
-what the shipper writes, when the bucket holds ids no journal line names or names the backup never
-writes, or when the token was seen anywhere it shouldn't be. A flood of names slows every listing;
-a large one can stop the job's check for the month's copy, failing each night after its uploads
-with the alert, and the restore test unasked, while a named restore lists nothing.
+a downloaded night, prints `is not signed by the backup's key`,
+`is not the part the backup sealed` or `is not in the seal`, when a restore prints
+`backslash commands are restricted` or `holds links or special files`, when a drill or recovery
+prints `the chain of WAL files is cut`, when a night stops with `someone else wrote to the bucket`,
+when the WAL alert says a lock refuses what the shipper writes, when the bucket holds ids no
+journal line names or names the backup never writes, or when the token was seen anywhere it
+shouldn't be. A flood of names slows every listing; a large one can stop the job's check for the
+month's copy, failing each night after its uploads with the alert, and the restore test unasked,
+while a named restore lists nothing.
 
 1. **Rotate the token** with the bucket's admin login, never on the server: a new token for this
    bucket only, into `.env`, then `sudo app-compose menumesh up -d backup` (Rotation), and the old
@@ -1591,9 +1593,9 @@ Supabase stack is only ever read.
   `deploy/vps/` and before every install.
 - `pnpm vps:edge` (about 10 s) puts the site file in the server's Caddy tree, in front of stub apps
   on `127.0.0.1:8443`, and tests how it answers. Run it after any change under `deploy/vps/edge/`.
-- `pnpm vps:rehearse [--fresh] [--rebuild]` (2 to 4 minutes, about 6 from empty since it watches
-  the WAL ship for 3 minutes) runs the whole stack as the server
-  would, as project `menumesh-rehearsal`, with throwaway secrets in `.vps-rehearsal/` (gitignored):
+- `pnpm vps:rehearse [--fresh] [--rebuild]` (2 to 4 minutes, 6 to 8 from empty since it watches
+  the WAL ship for 3 minutes) runs the whole stack as the server would, as project
+  `menumesh-rehearsal`, with throwaway secrets in `.vps-rehearsal/` (gitignored):
   the app on `http://localhost:3300` and the gateway on `http://127.0.0.1:8300`. It needs 6 GiB
   available in Docker Desktop's VM. A rerun keeps the stack, its secrets and an image nothing
   changed for; `--fresh` starts over with new secrets and empty volumes; `--rebuild` builds every
