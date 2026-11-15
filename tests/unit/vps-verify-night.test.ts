@@ -276,6 +276,19 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     expect(verdictOf(folderOf(good, [config], { [`planted-${night}.dump.age`]: 'planted' }))).toBe(
       `verify-night: planted-${night}.dump.age is not in the seal of ${night}, so the backup did not write it: someone else wrote to the bucket, and nothing in the folder can be trusted`,
     );
+    // A night whose base backup failed may still hold what of its base went up: refused too, as
+    // what it is, and the folder without it checks out.
+    const baseName = `base-${night}.tar.zst.age`;
+    const noBase = sealText(
+      night,
+      undefined,
+      parts.filter(({ name }) => name !== baseName),
+      own.privateKey,
+    );
+    expect(verdictOf(folderOf(noBase, [config], { [baseName]: randomBytes(4096) }))).toBe(
+      `verify-night: ${baseName} is not in the seal of ${night}, whose base backup failed: what of a base went up before it stopped is never read, so take it out of the folder and check again`,
+    );
+    expect(verdictOf(folderOf(noBase, [config]))).toEqual(passed([partOf(config)]));
   });
 
   it('refuses a night whose seal lists no settings archive, saying to name the night before', () => {

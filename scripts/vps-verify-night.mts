@@ -244,13 +244,18 @@ export function verifyNight(night: string, folder: string, from: Keys): Verdict 
   }
 
   // Every file named as one of the night's parts, as the seal gives it: its size first, so that a
-  // file of another size is never read, then its sha256.
+  // file of another size is never read, then its sha256. A night whose base backup failed seals
+  // "base none", and what of its base went up before it stopped can still be in the bucket under
+  // the base's name (VPS-43), unread by anything: the one name the seal leaves out that is not
+  // someone else's for certain, though it is refused all the same.
   const parts = names.filter((name) => sealPartName(name, night)).sort();
   for (const name of parts) {
     const part = sealed.get(name);
     if (!part) {
       return refused(
-        `${name} is not in the seal of ${night}, so the backup did not write it: someone else wrote to the bucket, and nothing in the folder can be trusted`,
+        name === `base-${night}.tar.zst.age` && !seal.base
+          ? `${name} is not in the seal of ${night}, whose base backup failed: what of a base went up before it stopped is never read, so take it out of the folder and check again`
+          : `${name} is not in the seal of ${night}, so the backup did not write it: someone else wrote to the bucket, and nothing in the folder can be trusted`,
       );
     }
     let held: { bytes: number; sha256: string };
