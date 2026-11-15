@@ -5358,6 +5358,7 @@ async function backupTest() {
 
     handedOver = true;
     await recovery(checks, env, oldFirstId, source, files, age, linked);
+    await pitrProof(checks, env, age);
   } finally {
     if (!handedOver) compose(['up', '-d', '--no-deps', 'web', 'scheduler', 'backup']);
   }
@@ -5418,6 +5419,45 @@ function vault(checks: Checks, service: string, profile?: string) {
 }
 
 // --- the disaster recovery (plan H.6), on the rehearsal's own volumes ---
+
+/**
+ * Through the gateway on 127.0.0.1:8300, as a browser: the seed's owner signs in, PostgREST gives
+ * the owner's restaurant with that token, and Realtime takes the WebSocket upgrade. What a check
+ * line says, whether it all worked, and the answers when not.
+ */
+async function ownerThroughGateway(env: Record<string, string>) {
+  const apikey = { apikey: env.SUPABASE_PUBLISHABLE_KEY };
+  const owner = await local(8300, '/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { ...apikey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'owner@local.test', password: 'Password123!' }),
+  });
+  let token = '';
+  try {
+    token = String((JSON.parse(owner.body) as Record<string, unknown>).access_token ?? '');
+  } catch {
+    // Not JSON: the check shows the answer.
+  }
+  const slugs = await local(8300, '/rest/v1/restaurants?select=slug&order=slug', {
+    headers: { ...apikey, Authorization: `Bearer ${token}` },
+  });
+  const realtime = await local(
+    8300,
+    `/realtime/v1/websocket?apikey=${env.SUPABASE_PUBLISHABLE_KEY}&vsn=1.0.0`,
+    { headers: websocket },
+  );
+  return {
+    said: `the seed's owner signs in (${token ? jwtHeader(token).alg : owner.status}), rest ${slugs.status} with the owner's restaurant, realtime ${realtime.status}`,
+    ok:
+      owner.status === 200 &&
+      token !== '' &&
+      jwtHeader(token).alg === 'ES256' &&
+      slugs.status === 200 &&
+      slugs.body.includes('"slug":"demo"') &&
+      realtime.status === 101,
+    detail: `sign-in ${owner.status} ${owner.body.slice(0, 200)}; rest ${slugs.status} ${slugs.body.slice(0, 200)}`,
+  };
+}
 
 /**
  * docs/RUNBOOK.md's disaster recovery, on the rehearsal: the recover one-off restores a night into
@@ -5602,36 +5642,8 @@ async function recovery(
   checks.ok(
     `${services.join(', ')}, then web and the scheduler, healthy on the recovered data (web in ${web} s, scheduler in ${scheduler} s)`,
   );
-  const apikey = { apikey: env.SUPABASE_PUBLISHABLE_KEY };
-  const owner = await local(8300, '/auth/v1/token?grant_type=password', {
-    method: 'POST',
-    headers: { ...apikey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'owner@local.test', password: 'Password123!' }),
-  });
-  let token = '';
-  try {
-    token = String((JSON.parse(owner.body) as Record<string, unknown>).access_token ?? '');
-  } catch {
-    // Not JSON: the check below shows the answer.
-  }
-  const slugs = await local(8300, '/rest/v1/restaurants?select=slug&order=slug', {
-    headers: { ...apikey, Authorization: `Bearer ${token}` },
-  });
-  const realtime = await local(
-    8300,
-    `/realtime/v1/websocket?apikey=${env.SUPABASE_PUBLISHABLE_KEY}&vsn=1.0.0`,
-    { headers: websocket },
-  );
-  checks.expect(
-    `through 127.0.0.1:8300: the seed's owner signs in (${token ? jwtHeader(token).alg : owner.status}), rest ${slugs.status} with the owner's restaurant, realtime ${realtime.status}`,
-    owner.status === 200 &&
-      token !== '' &&
-      jwtHeader(token).alg === 'ES256' &&
-      slugs.status === 200 &&
-      slugs.body.includes('"slug":"demo"') &&
-      realtime.status === 101,
-    `sign-in ${owner.status} ${owner.body.slice(0, 200)}; rest ${slugs.status} ${slugs.body.slice(0, 200)}`,
-  );
+  const through = await ownerThroughGateway(env);
+  checks.expect(`through 127.0.0.1:8300: ${through.said}`, through.ok, through.detail);
   // One object of each content type, downloaded the server's way: its type, cache control and
   // bytes. Then a new upload next to one, and its removal: the recovered files are Storage's own.
   const objects = types.map((type) => {
@@ -5701,6 +5713,415 @@ async function recovery(
       oldNow.join('\n') === oldWal.join('\n'),
     `${shipped.names.join('\n')}\nold: ${oldNow.length} of ${oldWal.length}`,
   );
+}
+
+// --- point-in-time recovery (VPS-43), on the recovered rehearsal ---
+
+/** counts.sql, as backup.sh, restore.sh and pitr.sh run it, in the rehearsal's db: its lines, sorted. */
+const dbCounts = () => dbSql(read('backup', 'counts.sql')).sort();
+
+/**
+ * What pitr.sh --test printed of the rows at the point, as counts.sql's lines ("table
+ * <schema>.<table> <rows>", "migration <version>"), sorted: the database's name and the night's
+ * column left out, and a table not there at the point not counted.
+ */
+const pitrCounts = (output: string) =>
+  lines(output)
+    .flatMap((line) => {
+      const row =
+        /^ {2}(table|migration) postgres( \S+)?: \S+ at the night, (\S+) at the point$/.exec(line);
+      return row && row[3] !== 'none' ? [`${row[1]}${row[2] ?? ''} ${row[3]}`] : [];
+    })
+    .sort();
+
+/** A badly signed WAL object's signature: 64 random bytes, as base64url, as a planter could make. */
+const badSignature = () => randomBytes(64).toString('base64url');
+
+/**
+ * Point-in-time recovery (VPS-43) on the rehearsal, which recovery() left running on a cluster of
+ * its own with the backup service shipping its WAL. A night of that cluster first, with its base
+ * backup; then the drill: rows A, a time T, rows B and a dropped table, with web and the scheduler
+ * stopped so that nothing else writes, and the WAL shipped. Under the name of the WAL file that
+ * rows B go to, and in the history folder, objects someone else could plant (age's encryption,
+ * not the backup's signature) go up first. pitr-test to T holds A, not B, and the table, row for
+ * row as the source held them at T; to latest it holds B and not the table, its last transaction
+ * the drill's own; with a byte of the real WAL file of rows B changed, the drill fails, saying the
+ * chain is cut there and the backup's WAL goes on after it. Then recover-pitr refuses db's own
+ * db-data and a run without PITR_TARGET, and, into a new db-data and a new wal-spool (db-config and
+ * storage-data stay, as on a rewind of the server), recovers to T: db starts on it, its counts are
+ * the source's at T, the stack and a sign-in work, and db archives the new timeline's history file,
+ * which the shipper signs into wal/<cluster>/history/.
+ */
+async function pitrProof(checks: Checks, env: Record<string, string>, age: string[]) {
+  const cluster = clusterId();
+  // A night of this cluster, as backup.sh makes one: its base starts after the recovery.
+  const out = join(MIRROR, 'backup-out');
+  for (const old of readdirSync(out)) rmSync(join(out, old), { force: true });
+  const stamp = stampOf(daemonNow());
+  const made = docker([
+    'run',
+    '--rm',
+    '--network',
+    'none',
+    '--name',
+    `${PROJECT}-archive-${process.pid}`,
+    '--mount',
+    `type=bind,source=${out},target=/out`,
+    REHEARSAL_IMAGES.BACKUP_IMAGE,
+    'sh',
+    '-c',
+    `mkdir -p /tmp/s/env && cd /tmp/s && printf 'POSTGRES_PASSWORD=stand-in\\n' >.env && printf 'WEB_IMAGE=x:none\\n' >images.env && printf 'X=1\\n' >env/web.env && tar -cf - .env images.env env | age -r "$1" >/out/config-${stamp}.tar.age`,
+    'archive',
+    env.BACKUP_AGE_RECIPIENT,
+  ]);
+  if (made.status !== 0) fail(`The stand-in settings archive failed: ${made.stderr}`);
+  const nightRun = await measured(`${PROJECT}-backup-${process.pid}`, [
+    '--no-deps',
+    '-T',
+    'backup',
+    '/usr/local/bin/backup.sh',
+  ]);
+  const night = /^backup (\S+): /m.exec(nightRun.stdout)?.[1] ?? '';
+  const sealed = sealOf(
+    nightsInBucket([['daily', night]]).get(`daily ${night}`)?.seal ?? '',
+    night,
+  );
+  const base = typeof sealed === 'string' ? undefined : sealed.base;
+  checks.expect(
+    `a night of the recovered cluster for point-in-time recovery: backup.sh exit ${nightRun.status} in ${nightRun.took} s, ${night || 'no night'}, its seal's base line "${base ? `${base.end} ${base.walfile} ${base.cluster}` : 'none'}"`,
+    nightRun.status === 0 && NIGHT_ID.test(night) && base?.cluster === cluster,
+    `${nightRun.stdout}${nightRun.stderr}`,
+  );
+
+  // The drill's writes, with nothing else writing: rows A, then the WAL switched, so that rows B
+  // go to the next WAL file, whose name the planted object takes; T; rows B; the table dropped.
+  compose(['stop', 'web', 'scheduler']);
+  let restarted = false;
+  const restart = () => {
+    if (!restarted) compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
+    restarted = true;
+  };
+  try {
+    dbSql(
+      [
+        'drop table if exists public.rehearsal_pitr_rows, public.rehearsal_pitr_dropped;',
+        'create table public.rehearsal_pitr_rows (n int);',
+        'create table public.rehearsal_pitr_dropped (n int);',
+        'insert into public.rehearsal_pitr_dropped values (1), (2);',
+        'insert into public.rehearsal_pitr_rows select generate_series(1, 3);',
+      ].join('\n'),
+    );
+    const atT = dbCounts();
+    const pending =
+      dbSql(
+        'select pg_switch_wal() is not null;\nselect pg_walfile_name(pg_current_wal_lsn());',
+      ).at(-1) ?? '';
+    const plantedSegment = `wal/${cluster}/${pending.slice(8, 16)}/${pending}.${badSignature()}.zst.age`;
+    const plantedHistory = `wal/${cluster}/history/00000009.history.${badSignature()}.zst.age`;
+    const planted = inBackup(
+      [
+        'set -e',
+        'head -c 16777216 /dev/zero | zstd -3 -q -c | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" >/tmp/segment',
+        `rclone copyto /tmp/segment "backups:$BACKUP_BUCKET/${plantedSegment}"`,
+        String.raw`printf '1\t0/1000000\tno recovery target specified\n' | zstd -3 -q -c | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" >/tmp/history`,
+        `rclone copyto /tmp/history "backups:$BACKUP_BUCKET/${plantedHistory}"`,
+      ].join('\n'),
+    );
+    if (planted.status !== 0) fail(`Planting WAL objects failed: ${planted.stderr.trim()}`);
+    const said = dbSql(
+      [
+        'select pg_sleep(1.2);',
+        `select 'T ' || to_char((date_trunc('second', clock_timestamp()) + interval '1 second') at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');`,
+        'select pg_sleep(2.5);',
+        'insert into public.rehearsal_pitr_rows select generate_series(4, 10);',
+        "select 'B ' || pg_walfile_name(pg_current_wal_lsn());",
+        'select pg_switch_wal() is not null;',
+        'drop table public.rehearsal_pitr_dropped;',
+        "select 'D ' || pg_walfile_name(pg_current_wal_lsn()) || ' ' || to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');",
+        'select pg_switch_wal() is not null;',
+      ].join('\n'),
+    );
+    const of = (label: string) =>
+      said.find((line) => line.startsWith(`${label} `))?.slice(label.length + 1) ?? '';
+    const point = of('T');
+    const [dropped, droppedAt] = of('D').split(' ');
+    if (of('B') !== pending || !point || !dropped) {
+      fail(`The drill's writes did not land as planned: ${said.join(' / ')}; pending ${pending}`);
+    }
+    // The shipper's next runs: rows B's WAL file beside the planted one, and the drop's.
+    const started = Date.now();
+    let names: string[] = [];
+    for (;;) {
+      names = walNames(cluster);
+      const has = (walfile: string) =>
+        names.filter((name) => walObject(name)?.walfile === walfile).length;
+      if ((has(pending) >= 2 && has(dropped) >= 1) || seconds(started) >= 240) break;
+      await sleep(5000);
+    }
+    const pendingObjects = names.filter((name) => walObject(name)?.walfile === pending);
+    const signedOnes = walContents(pendingObjects).map(({ path, sha256 }) => {
+      const parts = walObject(path);
+      return parts
+        ? signedBy(
+            env.BACKUP_SIGNING_PUBLIC_KEY,
+            walMessage(parts.cluster, parts.walfile, sha256),
+            parts.signature,
+          )
+        : false;
+    });
+    const realPending = pendingObjects[signedOnes.indexOf(true)] ?? '';
+    checks.expect(
+      `the drill: rows A in rehearsal_pitr_rows, T ${point}, rows B in ${pending}, rehearsal_pitr_dropped dropped in ${dropped} at ${droppedAt}, web and the scheduler stopped; ${seconds(started)} s later the bucket holds ${pendingObjects.length} objects named ${pending}, of which Node's crypto takes ${signedOnes.filter(Boolean).length} as the backup's (one planted first, encrypted to the owner's key but signed by none), and ${dropped}`,
+      pendingObjects.length === 2 &&
+        signedOnes.filter(Boolean).length === 1 &&
+        pendingObjects.includes(plantedSegment) &&
+        realPending !== plantedSegment &&
+        names.some((name) => walObject(name)?.walfile === dropped),
+      names.slice(-8).join('\n'),
+    );
+
+    // The drill as the server runs it: pitr-test, measured, its tmpfs's use read as it runs.
+    const drill = async (target: string) => {
+      const name = `${PROJECT}-pitr-test-${process.pid}`;
+      let tmpfsKib = 0;
+      const run = await measured(
+        name,
+        ['-T', '-e', `PITR_TARGET=${target}`, ...age, 'pitr-test'],
+        'pitr-test',
+        () => {
+          const df = docker(['exec', name, 'df', '-Pk', '/var/lib/postgresql/data']);
+          const used = Number(lines(df.stdout)[1]?.split(/\s+/)[2]);
+          if (Number.isFinite(used)) tmpfsKib = Math.max(tmpfsKib, used);
+        },
+      );
+      return { ...run, tmpfsMib: Math.round(tmpfsKib / 1024) };
+    };
+    const kept = (output: string) =>
+      /^pitr: the WAL after it, from wal\/\d+\/: (\d+) WAL files and (\d+) timeline histories checked and kept \((\d+) bytes\), through \S+; (\d+) objects passed over, not the backup's$/m.exec(
+        output,
+      );
+    const toT = await drill(point);
+    const keptT = kept(toT.stdout);
+    const countsT = pitrCounts(toT.stdout);
+    checks.expect(
+      `pitr-test to T (${point}): exit ${toT.status} in ${usage(toT, 'pitr-test')}, its tmpfs at most ${toT.tmpfsMib} MiB of 1g; from the night ${night}, ${keptT?.[1] ?? '?'} WAL files and ${keptT?.[2] ?? '?'} history files kept, ${keptT?.[4] ?? '?'} objects passed over; "${lines(toT.stdout).find((line) => line.startsWith('pitr: | recovery stopping')) ?? ''}"; rows A and the table there (${countsT.find((line) => line.startsWith('table public.rehearsal_pitr_rows ')) ?? 'no rows'}, ${countsT.find((line) => line.startsWith('table public.rehearsal_pitr_dropped ')) ?? 'no table'}), and all ${countsT.length} counts the source's at T`,
+      toT.status === 0 &&
+        toT.stdout.includes(`pitr: to ${point}, from the night of ${night}: `) &&
+        Number(keptT?.[4]) >= 2 &&
+        countsT.includes('table public.rehearsal_pitr_rows 3') &&
+        countsT.includes('table public.rehearsal_pitr_dropped 2') &&
+        countsT.join('\n') === atT.join('\n') &&
+        toT.stdout.endsWith(
+          `pitr test passed: the night of ${night} and the WAL after it, replayed to ${point}${/, its last transaction at \S+\n$/.exec(toT.stdout)?.[0] ?? '\n'}`,
+        ),
+      `${tail(toT.stdout, 40)}\n${toT.stderr}\nsource at T:\n${atT.join('\n')}`,
+    );
+    const latest = await drill('latest');
+    const keptLatest = kept(latest.stdout);
+    const countsLatest = pitrCounts(latest.stdout);
+    const lastAt = /, its last transaction at (\S+)\n$/.exec(latest.stdout)?.[1] ?? '';
+    checks.expect(
+      `pitr-test to latest: exit ${latest.status} in ${usage(latest, 'pitr-test')}, its tmpfs at most ${latest.tmpfsMib} MiB; ${keptLatest?.[1] ?? '?'} WAL files kept, ${keptLatest?.[4] ?? '?'} passed over; rows B there and not the table (${countsLatest.find((line) => line.startsWith('table public.rehearsal_pitr_rows ')) ?? 'no rows'}, ${countsLatest.some((line) => line.includes('rehearsal_pitr_dropped')) ? 'the table' : 'no table'}), its last transaction at ${lastAt || '?'}, the drop's ${droppedAt}`,
+      latest.status === 0 &&
+        Number(keptLatest?.[4]) >= 2 &&
+        countsLatest.includes('table public.rehearsal_pitr_rows 10') &&
+        !countsLatest.some((line) => line.includes('rehearsal_pitr_dropped')) &&
+        lastAt !== '' &&
+        Date.parse(lastAt) >= Date.parse(droppedAt) - 1000,
+      `${tail(latest.stdout, 40)}\n${latest.stderr}`,
+    );
+
+    // A byte changed in the real WAL file of rows B: no object of that name is the backup's now.
+    const original = inBackup(
+      `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${realPending}" | base64 -w 0`,
+    ).stdout.trim();
+    const flipped = inBackup(
+      [
+        'set -e',
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${realPending}" >/tmp/part`,
+        'at=$(($(wc -c </tmp/part) / 2))',
+        'byte=$(od -An -tu1 -j"$at" -N1 /tmp/part | tr -d " ")',
+        `printf "$(printf '\\\\%03o' "$(( (byte + 1) % 256 ))")" | dd of=/tmp/part bs=1 seek="$at" conv=notrunc 2>/dev/null`,
+        `rclone copyto /tmp/part "backups:$BACKUP_BUCKET/${realPending}"`,
+      ].join('\n'),
+    );
+    if (flipped.status !== 0 || !original) {
+      fail(`Changing a byte of ${realPending} failed: ${flipped.stderr.trim()}`);
+    }
+    const cut = await drill('latest');
+    const cutLine =
+      lines(cut.stdout).find((line) => line.startsWith('pitr: the chain of WAL files is cut at')) ??
+      '';
+    checks.expect(
+      `pitr-test to latest with a byte of ${pending}'s object changed: exit ${cut.status}, "${cutLine}", then "${tail(cut.stdout, 1)}"`,
+      cut.status === 1 &&
+        cutLine ===
+          `pitr: the chain of WAL files is cut at ${pending}: none of the 2 objects in the bucket named ${pending} is the backup's (their signatures do not check out): someone else wrote to the bucket. The backup's WAL goes on after it, from ${dropped}, and the replay can't reach past the cut` &&
+        cut.stdout.endsWith(
+          `pitr: the chain of WAL files is cut at ${pending}, with the backup's WAL after it: the drill fails\n`,
+        ),
+      `${tail(cut.stdout, 40)}\n${cut.stderr}`,
+    );
+    const put = inBackup(
+      `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/${realPending}" && rclone cat --no-traverse "backups:$BACKUP_BUCKET/${realPending}" | base64 -w 0`,
+      original,
+    );
+    if (put.status !== 0 || put.stdout.trim() !== original) {
+      fail(`Putting ${realPending} back failed: ${put.stderr.trim()}`);
+    }
+
+    // recover-pitr refuses db's own db-data, and a run without the point.
+    const recoverPitr = (target: string) =>
+      measured(
+        `${PROJECT}-recover-pitr-${process.pid}`,
+        ['-T', '-e', `PITR_TARGET=${target}`, ...age, 'recover-pitr'],
+        'recover',
+      );
+    let run = await recoverPitr(point);
+    checks.expect(
+      `recover-pitr with db running on db-data: exit ${run.status}, "${tail(run.stdout, 1)}", and nothing else`,
+      run.status === 1 &&
+        run.stdout ===
+          'pitr: /var/lib/postgresql/data, the db-data volume, is not empty: recover only into a new db-data volume (docs/RUNBOOK.md, Disaster recovery)\n',
+      `${run.stdout}${run.stderr}`,
+    );
+    run = await recoverPitr('');
+    checks.expect(
+      `recover-pitr without PITR_TARGET: exit ${run.status}, "${tail(run.stdout, 1)}", and nothing else`,
+      run.status === 1 &&
+        run.stdout ===
+          'pitr: a recovery needs PITR_TARGET, the point to recover to: a time with its offset, like 2026-11-15T14:30:00+05:30, or latest (docs/RUNBOOK.md, Disaster recovery)\n',
+      `${run.stdout}${run.stderr}`,
+    );
+
+    // The rewind: everything stops, db-data and wal-spool go, and the recovery to T fills a new
+    // db-data. db-config and storage-data stay, as on the server.
+    compose([
+      'stop',
+      'backup',
+      'web',
+      'scheduler',
+      'api-gw',
+      'auth',
+      'rest',
+      'realtime',
+      'storage',
+      'db',
+    ]);
+    compose(['rm', '--force', 'db', 'backup']);
+    const removed = docker(['volume', 'rm', `${PROJECT}_db-data`, `${PROJECT}_wal-spool`]);
+    if (removed.status !== 0) fail(`docker volume rm: ${removed.stderr.trim()}`);
+    run = await recoverPitr(point);
+    const timeline = /^pitr: the cluster \d+ stopped cleanly in \S+ on timeline (\d+)/m.exec(
+      run.stdout,
+    )?.[1];
+    checks.expect(
+      `recover-pitr to T into a new db-data: exit ${run.status} in ${usage(run, 'recover-pitr')}; "${lines(run.stdout).find((line) => line.startsWith('pitr: the cluster ')) ?? ''}"`,
+      run.status === 0 &&
+        run.stdout.includes(`pitr: to ${point}, from the night of ${night}: `) &&
+        timeline !== undefined &&
+        run.stdout.endsWith(
+          `point-in-time recovery to ${point} done: start db with a new wal-spool (its entrypoint gives the files to its own postgres, uid 100, and it archives the new timeline), then auth, rest, realtime, storage, api-gw, web, scheduler and backup (docs/RUNBOOK.md)\n`,
+        ),
+      `${tail(run.stdout, 40)}\n${run.stderr}`,
+    );
+    if (run.status !== 0)
+      fail('The recovery to T failed. pnpm vps:rehearse --fresh starts the rehearsal over.');
+    let since = Date.now();
+    const up = compose(['up', '-d', '--wait', '--wait-timeout', '180', 'db']);
+    const dbLog = logsOf(containerOf('db') ?? '');
+    const [identity, onTimeline] = (
+      dbSql(
+        "select case when system_identifier < 0 then (system_identifier::numeric + 18446744073709551616)::text else system_identifier::text end || ' ' || (select timeline_id from pg_control_checkpoint()) from pg_control_system()",
+      )[0] ?? ''
+    ).split(' ');
+    const recovered = dbCounts();
+    checks.expect(
+      `db started on the recovered db-data in ${seconds(since)} s ("${/[^\n]*Skipping initialization/.exec(dbLog)?.[0].trim() ?? 'no "Skipping initialization"'}"): the cluster ${identity}, on timeline ${onTimeline}; its ${recovered.length} counts the source's at T (rehearsal_pitr_rows ${recovered.find((line) => line.startsWith('table public.rehearsal_pitr_rows '))?.split(' ')[2] ?? '?'} rows)`,
+      up.status === 0 &&
+        /Skipping initialization/.test(dbLog) &&
+        identity === cluster &&
+        onTimeline === timeline &&
+        recovered.join('\n') === atT.join('\n'),
+      `${tail(`${up.stderr}\n${dbLog}`)}\n${recovered.filter((line) => !atT.includes(line)).join('\n')}`,
+    );
+    since = Date.now();
+    const rest = compose([
+      'up',
+      '-d',
+      '--wait',
+      '--wait-timeout',
+      '180',
+      'auth',
+      'rest',
+      'realtime',
+      'storage',
+      'api-gw',
+    ]);
+    if (rest.status !== 0)
+      fail(`The Supabase services did not turn healthy:\n${tail(rest.stderr)}`);
+    restart();
+    const [web, scheduler] = await Promise.all([
+      waitHealthy('web', 180, since),
+      waitHealthy('scheduler', 180, since),
+    ]);
+    const through = await ownerThroughGateway(env);
+    checks.expect(
+      `the stack on the cluster recovered to T (web in ${web} s, scheduler in ${scheduler} s), through 127.0.0.1:8300: ${through.said}`,
+      through.ok,
+      through.detail,
+    );
+
+    // The backup service on a new wal-spool: db archived the new timeline's history file, which
+    // the shipper signs and sends to the cluster's history folder.
+    const backup = compose(['up', '-d', 'backup']);
+    if (backup.status !== 0) fail(`backup did not start:\n${tail(backup.stderr)}`);
+    const history = `${Number(timeline).toString(16).toUpperCase().padStart(8, '0')}.history`;
+    const shipped = await walShipped(cluster, [history], 200);
+    const historyObject = shipped.found[0] ?? '';
+    // Its signature with Node's crypto, and its text, decrypted: the timeline it branched from, and
+    // where, before the first transaction past T.
+    const [sum, ...text] = lines(
+      compose([
+        'run',
+        '--rm',
+        '--no-deps',
+        '-T',
+        '--volume',
+        `${slash(join(MIRROR, 'age'))}:/run/age:ro`,
+        '--entrypoint',
+        'sh',
+        'backup',
+        '-c',
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/${historyObject}" >/tmp/object && sha256sum </tmp/object | cut -d ' ' -f 1 && age --decrypt --identity /run/age/identity.txt </tmp/object | zstd -dcq`,
+      ]).stdout,
+    );
+    const parts = walObject(historyObject);
+    const branched = /^(\d+)\t([0-9A-F]+\/[0-9A-F]+)\tbefore (\S+ \S+)$/.exec(text.at(-1) ?? '');
+    const branchedAt = Date.parse((branched?.[3] ?? '').replace(' ', 'T').replace(/\+00$/, 'Z'));
+    checks.expect(
+      `after db's start the new timeline's ${history} is under wal/${cluster}/history/ within ${shipped.took} s, signed by the backup's key (Node's crypto), and says: timeline ${Number(timeline)} branched from ${branched?.[1] ?? '?'} at ${branched?.[2] ?? '?'}, before ${branched?.[3] ?? '?'}, past T`,
+      parts !== undefined &&
+        signedBy(
+          env.BACKUP_SIGNING_PUBLIC_KEY,
+          walMessage(parts.cluster, parts.walfile, sum ?? ''),
+          parts.signature,
+        ) &&
+        branched !== null &&
+        Number(branched[1]) < Number(timeline) &&
+        branchedAt > Date.parse(point),
+      `${shipped.names.filter((name) => name.includes('/history/')).join('\n')}\n${text.join('\n')}`,
+    );
+
+    // What the drill planted goes.
+    const cleared = inBackup(
+      `rclone deletefile "backups:$BACKUP_BUCKET/${plantedSegment}" && rclone deletefile "backups:$BACKUP_BUCKET/${plantedHistory}"`,
+    );
+    if (cleared.status !== 0)
+      fail(`Removing the planted WAL objects failed: ${cleared.stderr.trim()}`);
+  } finally {
+    restart();
+  }
 }
 
 // --- vps:down (J.4 step 13) ---

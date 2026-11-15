@@ -414,7 +414,12 @@ const listOf = (service: readonly string[], name: string): string[] => {
   const lines = key(service, name) ?? [];
   const inline = lines[0]?.slice(`    ${name}:`.length).trim() ?? '';
   if (inline) return [...inline.matchAll(/'([^']*)'|([^\s,'[\]]+)/g)].map((m) => m[1] ?? m[2]);
-  return lines.slice(1).map((line) => line.trim().replace(/^- /, '').replace(/^'(.*)'$/, '$1'));
+  return lines.slice(1).map((line) =>
+    line
+      .trim()
+      .replace(/^- /, '')
+      .replace(/^'(.*)'$/, '$1'),
+  );
 };
 
 /** What the point-in-time recovery's one-offs are given: the bucket, the key's path, the point. */
@@ -482,7 +487,9 @@ const pitrOneoffs = (text: string) =>
         : [`${name}’s tmpfs is ${tmpfs.join(', ') || 'none'}, not ${want.tmpfs.join(', ')}`]),
       ...(volumes.join(' ') === want.volumes.join(' ')
         ? []
-        : [`${name} mounts ${volumes.join(', ') || 'nothing'}, not ${want.volumes.join(', ') || 'nothing'}`]),
+        : [
+            `${name} mounts ${volumes.join(', ') || 'nothing'}, not ${want.volumes.join(', ') || 'nothing'}`,
+          ]),
       ...(value(service, 'networks') === '[default]'
         ? []
         : [`${name} is not on the default network alone`]),
@@ -2754,9 +2761,8 @@ const pitrRules = (script: string) => {
     ...(sealed >= 0 && base > sealed && script.includes('  want=$(seal_part "$1")\n')
       ? []
       : ['the base is read before a seal checks out']),
-    ...(script.includes(
-      '  [ "$(sha256sum "$work/$1" | cut -d \' \' -f 1)" = "${want% *}" ] ||',
-    ) && script.includes('  [ "$got" -eq "${want#* }" ] ||')
+    ...(script.includes('  [ "$(sha256sum "$work/$1" | cut -d \' \' -f 1)" = "${want% *}" ] ||') &&
+    script.includes('  [ "$got" -eq "${want#* }" ] ||')
       ? []
       : ['a part is not held to its seal']),
     ...(script.includes(
@@ -3892,12 +3898,20 @@ describe('the migrate and backup images', () => {
     expect(pitrRules(pitrSh)).toEqual([]);
     refuses(
       pitrRules,
-      swap(pitrSh, ' --no-mimetype --use-server-modtime "$bucket/wal/', ' --no-mimetype "$bucket/wal/'),
+      swap(
+        pitrSh,
+        ' --no-mimetype --use-server-modtime "$bucket/wal/',
+        ' --no-mimetype "$bucket/wal/',
+      ),
       'upload time is not the bucket’s own',
     );
     refuses(
       pitrRules,
-      swap(pitrSh, '    if seal_verify "$work/message" "$3"; then', '    if [ -s "$work/message" ]; then'),
+      swap(
+        pitrSh,
+        '    if seal_verify "$work/message" "$3"; then',
+        '    if [ -s "$work/message" ]; then',
+      ),
       'without the backup’s signature',
     );
     refuses(
@@ -3932,7 +3946,11 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       pitrRules,
-      swap(pitrSh, '  [ "$mode" = --test ] ||\n    die "a recovery needs', '  true ||\n    die "a recovery needs'),
+      swap(
+        pitrSh,
+        '  [ "$mode" = --test ] ||\n    die "a recovery needs',
+        '  true ||\n    die "a recovery needs',
+      ),
       'without PITR_TARGET',
     );
   });
@@ -3942,7 +3960,11 @@ describe('the migrate and backup images', () => {
     refuses(walFetch, swap(walFetchSh, '\nexit 126\n', '\nexit 1\n'), 'ends the WAL');
     refuses(
       walFetch,
-      swap(walFetchSh, '[ -f "$folder/$name.zst.age" ] || exit 1', '[ -f "$folder/$name.zst.age" ] || exit 2'),
+      swap(
+        walFetchSh,
+        '[ -f "$folder/$name.zst.age" ] || exit 1',
+        '[ -f "$folder/$name.zst.age" ] || exit 2',
+      ),
       'does not end the WAL',
     );
     refuses(
