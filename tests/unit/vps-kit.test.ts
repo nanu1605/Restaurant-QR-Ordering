@@ -22,10 +22,17 @@ import {
   rehearsalImagesEnv,
   renderListeners,
   restoreDifferences,
+  SEAL_MAX,
+  sealOf,
+  type SealPart,
+  sealPartName,
+  sealText,
+  sealVerdict,
   seedFiles,
   serviceKey as key,
   serviceMounts,
   signedBy,
+  signedWith,
   statsMib,
   WAL_FILE,
   walMessage,
@@ -1522,53 +1529,82 @@ const backupRules = (dockerfile: string, script: string) => [
 ];
 
 /**
- * The month's copy in monthly/ is a whole night, its uploads checked and its settings archive
- * fresh: the 1st's, whatever monthly/ holds, or the next whole night's while monthly/ holds no
- * whole copy of the month, a manifest named as backup.sh names one with that night's roles, Storage
- * and settings archives and a dump of each database, each past its floor (review findings B4, N2
- * and N3, VPS-40). So names planted in monthly/ can't stop the 1st's copy, a night whose settings
- * archive failed is never the copy, and a 1st that failed leaves it to the next whole night. The
- * manifest goes last, and the copy still comes between the check of the uploads and the settings
- * archive's failure.
+ * The month's copy in monthly/ is a whole night, its uploads checked and sealed, its base made and
+ * its settings archive fresh: the 1st's, whatever monthly/ holds, or the next whole night's while
+ * monthly/ holds no whole copy of the month (review findings B4, N2 and N3, VPS-40). Since VPS-43 a
+ * whole copy is one whose seal, read by its name and no longer than a seal, seal_open takes for its
+ * night (seal.sh's lines, signed by a key of BACKUP_SIGNING_PUBLIC_KEY), with a base, a settings
+ * archive and a dump of each of tonight's databases, every part it lists in monthly/ at the size it
+ * gives; at most 5 seals named as backup.sh names one are tried. So names planted in monthly/ can't
+ * stop the 1st's copy nor stand in for a whole one, a night whose settings archive or base failed
+ * is never the copy, and a 1st that failed leaves it to the next whole night. The seal goes last,
+ * and the copy still comes before the night's failure.
  */
 const monthlyCopy = (script: string) => {
   const uploads = script.indexOf("reason='the check of the uploads'");
-  const whole = script.indexOf('if [ -z "$archive_problem" ]; then\n  case $stamp in');
+  const sealed = script.indexOf(
+    'rclone copyto --no-check-dest "$work/seal" "$day/seal-$night.txt"',
+  );
+  const whole = script.indexOf(
+    'if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then\n  case $stamp in',
+  );
   const first = script.indexOf('    ????-??-01T*) whole= ;;');
   const listed = script.indexOf(
-    `      whole=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
+    `      rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" >"$work/monthly"`,
+  );
+  const tried = script.indexOf('>"$work/candidates"');
+  const loop = script.indexOf(
+    '      whole=\n      while read -r candidate; do\n        if whole_copy "$candidate" </dev/null; then',
   );
   const check = script.indexOf('  if [ -z "$whole" ]; then');
   const parts = script.indexOf(
-    'case $name in manifest-*) ;; *) rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name" ;; esac',
+    '      rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"',
   );
-  const manifest = script.indexOf(
-    'rclone copyto --no-check-dest "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"',
+  const seal = script.indexOf(
+    '    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"',
   );
-  const archive = script.indexOf('[ -z "$archive_problem" ] || fail "$archive_problem"');
+  const failed = script.indexOf('[ -z "$problems" ] || fail "$problems"');
+  const copy = script.slice(
+    script.indexOf('whole_copy() {'),
+    script.indexOf("reason='the monthly copy'"),
+  );
   return [
     ...(script.includes('--include "manifest-$month-*"')
       ? ['any name in monthly/ stops the month’s copy']
       : []),
-    ...(whole > uploads && uploads >= 0
+    ...(whole > uploads && uploads >= 0 && whole > sealed && sealed >= 0
       ? []
-      : ['a night whose settings archive failed can be the month’s copy']),
+      : [
+          'a night whose settings archive or base failed, or not sealed yet, can be the month’s copy',
+        ]),
     ...(first > whole && first < check ? [] : ['the 1st’s copy waits on what monthly/ holds']),
-    ...(listed > first && listed < check
+    ...(listed > first && loop > listed && loop < check
       ? []
       : ['a 1st that failed leaves the month without a copy']),
+    ...(script.includes(`        sort | awk 'NR <= 5' >"$work/candidates"`) && tried > listed
+      ? []
+      : ['more than 5 seals in monthly/ are tried']),
     ...(script.includes(
-      String.raw`"^manifest-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][.]txt[.]age$"`,
-    ) && script.includes('s = substr(name, 10, 25)')
+      String.raw`$2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }`,
+    )
       ? []
-      : ['a whole copy in monthly/ is not looked for under a night’s id']),
-    ...(script.includes('ok = big(name, 256) && big("globals-" s ".sql.age", 256) &&') &&
-    script.includes('big("storage-" s ".tar.age", 1024) && big("config-" s ".tar.age", 1024)') &&
-    script.includes('if (!big(db[i] "-" s ".dump.age", 1024)) ok = 0')
+      : ['a whole copy in monthly/ is not looked for by a seal named with a night’s id']),
+    ...(copy.includes(
+      'rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&',
+    ) && copy.includes('    seal_open "$work/candidate" "$1" &&')
       ? []
-      : ['a copy in monthly/ counts as whole without every part past its floor']),
-    ...(parts > check && manifest > parts ? [] : ['the manifest is not copied last']),
-    ...(manifest < archive ? [] : ['the copy is not before the settings archive’s failure']),
+      : ['a copy in monthly/ counts as whole without a seal that checks out']),
+    ...(copy.includes('($2 in want) && $1 == want[$2] { have[$2] = 1 }') &&
+    copy.includes('for (name in want) if (!(name in have)) exit 1')
+      ? []
+      : ['a copy counts as whole without each part at the size its seal gives']),
+    ...(copy.includes(' base-" night ".tar.zst.age config-" night ".tar.age", need, " ")') &&
+    copy.includes('need[n + i] = db[i] "-" night ".dump.age"') &&
+    copy.includes('if (!(need[i] in want)) exit 1')
+      ? []
+      : ['a copy counts as whole without its base, settings archive or a dump of each database']),
+    ...(parts > check && seal > parts ? [] : ['the seal is not copied last']),
+    ...(seal < failed && failed >= 0 ? [] : ['the copy is not before the night’s failure']),
   ];
 };
 
@@ -1631,12 +1667,26 @@ const nightIds = (script: string) => {
 const serverTime = (script: string) => {
   const removals = code(script).filter((line) => line.includes('rclone delete'));
   return [
-    ...(removals.length === 2 ? [] : [`${removals.length} removals, not 2`]),
+    ...(removals.length === 3 ? [] : [`${removals.length} removals, not 3`]),
     ...removals
       .filter((line) => !line.includes(' --use-server-modtime '))
       .map((line) => `a removal reads the uploader’s time: ${line.trim()}`),
   ];
 };
+
+/**
+ * The shipped WAL goes after 15 days, a day past the 14 a point-in-time recovery reaches back, by
+ * the bucket's own time of upload, but each cluster's timeline history files, which a recovery to
+ * any point reads (VPS-43).
+ */
+const walRetention = (script: string) =>
+  code(script).some(
+    (line) =>
+      line.trim() ===
+      `rclone delete --use-server-modtime --min-age 15d --exclude '/*/history/**' "$remote/wal/"`,
+  )
+    ? []
+    : ['the shipped WAL is not removed after 15 days by its upload, history files kept'];
 
 /**
  * The heartbeat carries the night's journal line: with the server and its journal gone, the
@@ -1755,13 +1805,16 @@ const restoreTrust = (script: string) => {
   const restrict = script.indexOf(String.raw`printf '%srestrict %s\n' "\\" "$key"`);
   const roles = script.indexOf('fetch "globals-$night.sql.age" |');
   const piped = script.indexOf('} | sql -d template1 >/dev/null; then');
+  const checked = script.indexOf('for part in $reads; do get "$part"; done');
   return [
     ...(key >= 0 ? [] : ['no random key for the restricted mode']),
     ...(restrict > key && key >= 0 && restrict < roles && roles < piped
       ? []
       : ['the roles reach psql without \\restrict first']),
     ...(script.split('fetch "globals-$night.sql.age"').length === 2 &&
-    script.includes('for part in "globals-$night.sql.age" "storage-$night.tar.age"; do')
+    script.includes('reads="globals-$night.sql.age storage-$night.tar.age"') &&
+    checked >= 0 &&
+    checked < roles
       ? []
       : ['the roles file is read more than once, or not checked']),
     ...(script.includes(String.raw`sed -e '/^\\restrict /d' -e '/^\\unrestrict /d'`)
@@ -1797,7 +1850,7 @@ const restoreTrust = (script: string) => {
 const restoreFolder = (script: string) => {
   const unasked = script.indexOf('if [ -z "$night" ]; then');
   const daily = script.indexOf(
-    `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+    `  night=$(rclone lsf --files-only --include 'seal-*.txt' "$bucket/daily/" |`,
   );
   const checked = script.indexOf('case $night in');
   const choice = script.indexOf(
@@ -1810,18 +1863,16 @@ const restoreFolder = (script: string) => {
       '  die "the night of $night is 365 days old or more, so no folder is read for it:',
     ].join('\n'),
   );
-  const listing = script.indexOf(
-    `\nnames=$(printf '%s\\n' "manifest-$night.txt.age" "globals-$night.sql.age" "storage-$night.tar.age" "config-$night.tar.age" | held)\n`,
-  );
+  const listing = script.indexOf('\nnames=$(echo "seal-$night.txt" | held)\n');
   const young = script.indexOf(
     [
-      'if ! listed "$names" "manifest-$night.txt.age"; then',
+      'if ! listed "$names" "seal-$night.txt"; then',
       '  [ "$folder" = monthly ] ||',
-      '    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there',
+      '    die "the night of $night is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there',
     ].join('\n'),
   );
   const old = script.indexOf(
-    `  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night`,
+    `  die "the night of $night is 29 days old or more, so only monthly/ is read for it: only the month's copy is kept past 29 days; the backup's journal line says 'kept in monthly/' for that night, and this one has no seal there`,
   );
   const set = (name: string) =>
     code(script).filter((line) => line.trimStart().startsWith(`${name}=`)).length;
@@ -1857,7 +1908,8 @@ const restoreFolder = (script: string) => {
     ...(script.split('fetch "manifest-$night.txt.age"').length === 2
       ? []
       : ['the night’s manifest is read twice, as to compare it across folders']),
-    ...(script.includes('rclone cat --no-traverse "$bucket/$folder/$1"')
+    ...(script.includes('"$bucket/$folder/$1" >"$parts/$1"') &&
+    script.includes('"$bucket/$folder/seal-$night.txt" >"$parts/seal"')
       ? []
       : ['the parts are not read from the night’s folder']),
     ...(script.includes('is not in daily/') ? ['a message names daily/ for any night'] : []),
@@ -1867,7 +1919,7 @@ const restoreFolder = (script: string) => {
 /**
  * RESTORE_STAMP is a night's id as the backup's journal line prints it, its stamp and 8 hex
  * characters, checked whole before anything reads the bucket; the night's age comes from its stamp
- * part. Unasked, only manifests named as backup.sh names one count (review finding F1).
+ * part. Unasked, only seals named as backup.sh names one count (review finding F1, VPS-43).
  */
 const restoreIds = (script: string) => {
   const unasked = script.indexOf('if [ -z "$night" ]; then');
@@ -1882,10 +1934,10 @@ const restoreIds = (script: string) => {
       : ['RESTORE_STAMP is not checked whole as a night’s id']),
     ...(stamp > shape && stamp < choice ? [] : ['the night’s age is not taken from its stamp']),
     ...(script.includes(
-      String.raw`sed -n 's/^manifest-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z-[0-9a-f]\{8\}\)\.txt\.age$/\1/p'`,
+      String.raw`sed -n 's/^seal-\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]T[0-9]\{4\}Z-[0-9a-f]\{8\}\)\.txt$/\1/p'`,
     )
       ? []
-      : ['unasked, a manifest not named as backup.sh names one counts']),
+      : ['unasked, a seal not named as backup.sh names one counts']),
     ...(script.includes('if ($0 != "menumesh backup " night) {')
       ? []
       : ['the manifest’s first line is not checked against the night’s id']),
@@ -1896,13 +1948,14 @@ const restoreIds = (script: string) => {
  * A restore looks for each part by its exact name and reads it by that name (rclone's
  * --no-traverse: one request each), and never holds a folder's listing: a token holder can fill a
  * folder with names, and a listing held in the shell got every restore killed in its 384m (review
- * finding F2). Unasked, the restore test's one listing goes through a pipe that keeps only the
- * newest manifest id; rclone still lists the folder, which naming the night avoids.
+ * finding F2). The seal and each part are read so (VPS-43). Unasked, the restore test's one
+ * listing goes through a pipe that keeps only the newest seal's id; rclone still lists the folder,
+ * which naming the night avoids.
  */
 const restoreLookups = (script: string) => {
   const calls = code(script).filter((line) => /\brclone /.test(line));
   const unasked = script.indexOf(
-    `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+    `  night=$(rclone lsf --files-only --include 'seal-*.txt' "$bucket/daily/" |`,
   );
   const pipe = script.slice(unasked, script.indexOf("\n      }')\n", unasked));
   return [
@@ -1912,7 +1965,10 @@ const restoreLookups = (script: string) => {
       ? []
       : ['a part is looked for in a listing of its folder']),
     ...(script.includes(
-      'fetch() {\n  rclone cat --no-traverse "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"\n}',
+      'rclone cat --no-traverse --head "$((${want#* } + 1))" "$bucket/$folder/$1" >"$parts/$1"',
+    ) &&
+    script.includes(
+      'rclone cat --no-traverse --head "$((seal_max + 1))" "$bucket/$folder/seal-$night.txt" >"$parts/seal"',
     )
       ? []
       : ['a part is read after a listing of its folder']),
@@ -1921,10 +1977,10 @@ const restoreLookups = (script: string) => {
       : []),
     ...(unasked >= 0 && !/\bsort\b/.test(pipe) && pipe.includes('$0 > newest { newest = $0 }')
       ? []
-      : ['unasked, more than the newest manifest id is kept']),
-    ...(calls.length === 3
+      : ['unasked, more than the newest seal’s id is kept']),
+    ...(calls.length === 4
       ? []
-      : [`${calls.length} rclone commands, not the 3 of lookups and reads`]),
+      : [`${calls.length} rclone commands, not the 4 of lookups and reads`]),
   ];
 };
 
@@ -2056,6 +2112,166 @@ const storageFirst = (script: string) => {
       : ['a recovery that stops after it began to write doesn’t say to make the volumes new']),
   ];
 };
+
+/**
+ * A restore reads a night only as its seal gives it (VPS-43). The seal is read by its exact name,
+ * no further than a byte past seal_max, and taken by seal_open (seal.sh's lines and the signature
+ * against BACKUP_SIGNING_PUBLIC_KEY) before any part is read; a bad one stops the run saying the
+ * night is not signed by the backup's key. Each part comes through get(), which takes only a part
+ * the seal lists, reads it by name no further than a byte past its size into the container's own
+ * files, and holds it to the seal's size and sha256; fetch decrypts only those downloads. Every
+ * part is checked before anything is restored; a test of a night whose seal lists no settings
+ * archive stops before it reads one; the downloads go as the run ends.
+ */
+const sealFirst = (script: string) => {
+  const seal = script.indexOf(
+    'rclone cat --no-traverse --head "$((seal_max + 1))" "$bucket/$folder/seal-$night.txt" >"$parts/seal" ||',
+  );
+  const opened = script.indexOf('seal_open "$parts/seal" "$night" ||');
+  const config = script.indexOf(
+    '[ "$mode" != --test ] || [ -n "$(seal_part "config-$night.tar.age")" ] ||',
+  );
+  const firstRead = script.indexOf('\nget "manifest-$night.txt.age"\n');
+  const reads = script.indexOf('for part in $reads; do get "$part"; done');
+  const writing = script.indexOf('[ "$mode" != --into ] || writing=yes');
+  const roles = script.indexOf("echo 'restore: roles'");
+  const start = script.indexOf('get() {');
+  const get = script.slice(start, script.indexOf('\n}\n', start));
+  return [
+    ...(seal >= 0 && opened > seal && firstRead > opened
+      ? []
+      : ['a part is read before the night’s seal checked out']),
+    ...(script.includes(
+      `die "the night of $night is not signed by the backup's key: its seal (seal-$night.txt in $folder/) $seal_problem, so someone else wrote to the bucket, and nothing of the night was read"`,
+    )
+      ? []
+      : ['a bad seal doesn’t stop the run saying the night is not the backup’s']),
+    ...(get.includes('want=$(seal_part "$1")') && get.includes('[ -n "$want" ] || die')
+      ? []
+      : ['a part the seal doesn’t list can be read']),
+    ...(get.includes(`[ "$got" -eq "\${want#* }" ] ||`) &&
+    get.includes(`[ "$(sha256sum "$parts/$1" | cut -d ' ' -f 1)" = "\${want% *}" ] ||`)
+      ? []
+      : ['a part is not held to the size and sha256 its seal gives']),
+    ...(script.includes(
+      'fetch() {\n  age --decrypt --identity "$AGE_IDENTITY_FILE" <"$parts/$1"\n}',
+    )
+      ? []
+      : ['a part is decrypted from anything but its checked download']),
+    ...(reads > firstRead && writing > reads && roles > writing
+      ? []
+      : ['a part is checked only once something was restored']),
+    ...(config > opened && config < firstRead
+      ? []
+      : ['a test reads a night whose seal lists no settings archive']),
+    ...(script.includes('  [ -z "$parts" ] || rm -rf "$parts"\n  exec >&- 2>&-')
+      ? []
+      : ['the downloads stay when the run ends']),
+  ];
+};
+
+/**
+ * The nightly base backup (VPS-43): pg_basebackup's tar of the whole cluster to stdout, with the
+ * WAL it needs to be consistent alone (-X fetch), under a 2-hour bound, through zstd -3 and put.
+ * A base that fails stops none of the other parts (it runs as an if's test, after the manifest),
+ * the night fails at the end, and its seal says "base none"; its name and the seal's are looked
+ * for before the first upload with the night's others.
+ */
+const baseRules = (script: string) => {
+  const manifest = script.indexOf(`printf '%s\\n' "$manifest" | put "manifest-$night.txt.age"`);
+  const run = script.indexOf(
+    '\nif base; then\n  expected="$expected base-$night.tar.zst.age:1024"\n',
+  );
+  return [
+    ...(script.includes(
+      'timeout 7200 pg_basebackup --pgdata=- --format=tar --wal-method=fetch --checkpoint=spread \\\n',
+    ) && script.includes('    zstd -3 -q -c | put "base-$night.tar.zst.age"; then')
+      ? []
+      : ['the base is not pg_basebackup’s tar with its WAL, bounded, through zstd and put']),
+    ...(run > manifest && manifest >= 0 ? [] : ['a base that fails can stop the other parts']),
+    ...(script.includes("base_line='base none'") &&
+    script.includes(
+      '  base_line="base $(date -u -d "@$((ended + 1))" +%Y-%m-%dT%H:%M:%SZ) $walfile $cluster"',
+    )
+      ? []
+      : ['the seal’s base line is not its end, start walfile and cluster, or "base none"']),
+    ...(script.includes(
+      '[ -z "$base_problem" ] || problems="${problems:+$problems; }$base_problem"',
+    ) && script.includes('[ -z "$problems" ] || fail "$problems"')
+      ? []
+      : ['a base that failed doesn’t fail the night']),
+    ...(script.includes(
+      '"base-$night.tar.zst.age:1024" "config-$night.tar.age:1024" "seal-$night.txt:0"',
+    )
+      ? []
+      : ['the base’s or the seal’s name is not looked for before the first upload']),
+  ];
+};
+
+/**
+ * Each night's seal (VPS-43): the signing pair checked with a signed probe before anything goes
+ * up; each part's sha256 and size taken as it streams, from FIFOs tee feeds, which this shell holds
+ * open while the readers start and the readers never hold; each part held in the bucket to the size
+ * that went up; then, after that check, the seal of the night's id, its base line and each part,
+ * signed, taken by seal_open as a restore takes it, and uploaded by its name.
+ */
+const sealWrite = (script: string) => {
+  const probe = script.indexOf('seal_self_check ||');
+  const firstPut = script.indexOf('pg_dumpall --globals-only | put');
+  const uploads = script.indexOf("reason='the check of the uploads'");
+  const body = script.indexOf(`printf 'menumesh seal 1 %s\\n%s\\n' "$night" "$base_line"`);
+  const signed = script.indexOf('signature=$(seal_sign "$work/seal.body")');
+  const opened = script.indexOf('seal_open "$work/seal" "$night" ||');
+  const sent = script.indexOf('rclone copyto --no-check-dest "$work/seal" "$day/seal-$night.txt"');
+  return [
+    ...(probe >= 0 && probe < firstPut
+      ? []
+      : ['the signing pair is not checked before the first upload']),
+    ...(script.includes('  exec 7<>"$work/sum.fifo" 8<>"$work/size.fifo"\n') &&
+    script.includes('  sha256sum <"$work/sum.fifo" >"$work/sum" 7>&- 8>&- &\n') &&
+    script.includes('  wc -c <"$work/size.fifo" >"$work/size" 7>&- 8>&- &\n') &&
+    script.includes('tee "$work/sum.fifo" "$work/size.fifo" |') &&
+    script.includes('  exec 7>&- 8>&-\n')
+      ? []
+      : ['a part’s sha256 and size are not taken as it streams']),
+    ...(script.includes('[ "$size" -eq "$sent" ] || fail')
+      ? []
+      : ['a part in the bucket is not held to the size that went up']),
+    ...(body > uploads && signed > body && opened > signed && sent > opened
+      ? []
+      : ['the seal is not written, signed and checked after the check of the uploads']),
+    ...(script.includes(`    printf 'part %s %s %s\\n' "$sum" "$sent" "$name"`) &&
+    script.includes(`  printf 'signature %s\\n' "$signature"`)
+      ? []
+      : ['the seal does not list each part and end in its signature']),
+  ];
+};
+
+/**
+ * seal.sh's seal_open (VPS-43), which the restores and the month's copy trust: no more than
+ * seal_max bytes, which is the harness's SEAL_MAX; only printable ASCII and newlines, and a last
+ * newline; the night's own header and no part twice; and the signature of every byte before its
+ * line, checked against each key of BACKUP_SIGNING_PUBLIC_KEY.
+ */
+const sealGrammar = (lib: string) => [
+  ...(lib.includes(`\nseal_max=${SEAL_MAX}\n`) ? [] : ['seal_max is not the harness’s SEAL_MAX']),
+  ...(lib.includes('  if [ "$seal_size" -gt "$seal_max" ]; then\n')
+    ? []
+    : ['a seal of any size is read']),
+  ...(lib.includes(`[ "$(LC_ALL=C tr -d '\\n -~' <"$1" | wc -c)" -ne 0 ]`) &&
+  lib.includes(`[ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' \\n')" != 0a ]`)
+    ? []
+    : ['a seal may hold bytes past printable ASCII, or lack its last newline']),
+  ...(lib.includes('if (line[1] != "menumesh seal 1 " night) {') &&
+  lib.includes('if (seen[f[4]]++) { print "problem lists a part twice"; exit }')
+    ? []
+    : ['a seal of another night, or with a part twice, is taken']),
+  ...(lib.includes(
+    `  if sed '$d' "$1" >"$seal_open_dir/body" &&\n    seal_verify "$seal_open_dir/body"`,
+  )
+    ? []
+    : ['the signature is not checked over every line before it, against each key']),
+];
 
 const walShipSh = kit('backup/wal-ship.sh');
 const sealSh = kit('backup/seal.sh');
@@ -2443,36 +2659,71 @@ describe('the migrate and backup images', () => {
       ),
       'any name in monthly/',
     );
-    // As after B4 too: a night whose settings archive failed could be the copy (N3).
+    // As after B4 too: a night whose settings archive failed could be the copy (N3); and, since
+    // the base, one whose base failed.
     refuses(
       monthlyCopy,
       swap(
         backupSh,
-        'if [ -z "$archive_problem" ]; then\n  case $stamp in',
+        'if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then\n  case $stamp in',
         'if true; then\n  case $stamp in',
       ),
-      'settings archive failed',
+      'settings archive or base failed',
+    );
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        'if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then\n  case $stamp in',
+        'if [ -z "$archive_problem" ]; then\n  case $stamp in',
+      ),
+      'settings archive or base failed',
     );
     // As before B4: the 1st only.
     refuses(
       monthlyCopy,
       swap(
         backupSh,
-        `      whole=$(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
-        `      whole=never; : $(rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" |`,
+        '      whole=\n      while read -r candidate; do',
+        '      whole=never\n      while false; do',
       ),
       'without a copy',
     );
     refuses(
       monthlyCopy,
-      swap(backupSh, 'big("config-" s ".tar.age", 1024)', 'big("config-" s ".tar.age", 0)'),
-      'past its floor',
+      swap(backupSh, `sort | awk 'NR <= 5' >"$work/candidates"`, 'sort >"$work/candidates"'),
+      'more than 5 seals',
+    );
+    // As before the seals (VPS-43): a copy counted as whole by its names and sizes alone, which
+    // anyone holding the bucket's token can plant.
+    refuses(
+      monthlyCopy,
+      swap(backupSh, '    seal_open "$work/candidate" "$1" &&\n', '    : &&\n'),
+      'without a seal that checks out',
     );
     refuses(
       monthlyCopy,
       swap(
         backupSh,
-        '    rclone copyto --no-check-dest "$day/manifest-$night.txt.age" "$remote/monthly/manifest-$night.txt.age"\n',
+        '($2 in want) && $1 == want[$2] { have[$2] = 1 }',
+        '($2 in want) { have[$2] = 1 }',
+      ),
+      'at the size its seal gives',
+    );
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        ' base-" night ".tar.zst.age config-" night ".tar.age", need, " ")',
+        '", need, " ")',
+      ),
+      'without its base, settings archive',
+    );
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        '    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"\n',
         '',
       ),
       'not copied last',
@@ -2480,12 +2731,8 @@ describe('the migrate and backup images', () => {
     // As before review finding F1: a whole copy looked for under the stamp alone.
     refuses(
       monthlyCopy,
-      swap(
-        backupSh,
-        'Z-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][.]txt[.]age$")) continue',
-        'Z[.]txt[.]age$")) continue',
-      ),
-      'not looked for under a night’s id',
+      swap(backupSh, 'Z-[0-9a-f]{8}[.]txt$") { print', 'Z[.]txt$") { print'),
+      'by a seal named with a night’s id',
     );
   });
 
@@ -2580,6 +2827,87 @@ describe('the migrate and backup images', () => {
         'rclone delete --min-age 30d',
       ),
       'reads the uploader’s time',
+    );
+    refuses(
+      serverTime,
+      swap(
+        backupSh,
+        'rclone delete --use-server-modtime --min-age 15d',
+        'rclone delete --min-age 15d',
+      ),
+      'reads the uploader’s time',
+    );
+  });
+
+  it('removes the shipped WAL after 15 days, each cluster’s history files kept', () => {
+    expect(walRetention(backupSh)).toEqual([]);
+    refuses(walRetention, swap(backupSh, '--min-age 15d', '--min-age 14d'), 'after 15 days');
+    refuses(
+      walRetention,
+      swap(backupSh, ' --exclude \'/*/history/**\' "$remote/wal/"', ' "$remote/wal/"'),
+      'history files kept',
+    );
+  });
+
+  it('backs up the whole cluster each night, and a base that fails stops nothing else', () => {
+    expect(baseRules(backupSh)).toEqual([]);
+    refuses(baseRules, swap(backupSh, '--wal-method=fetch', '--wal-method=none'), 'with its WAL');
+    refuses(baseRules, swap(backupSh, 'timeout 7200 pg_basebackup', 'pg_basebackup'), 'bounded');
+    refuses(
+      baseRules,
+      swap(
+        backupSh,
+        '\nif base; then\n  expected="$expected base-$night.tar.zst.age:1024"\n',
+        '\nbase\nif true; then\n  expected="$expected base-$night.tar.zst.age:1024"\n',
+      ),
+      'can stop the other parts',
+    );
+    refuses(
+      baseRules,
+      swap(
+        backupSh,
+        '[ -z "$problems" ] || fail "$problems"',
+        '[ -z "$archive_problem" ] || fail "$archive_problem"',
+      ),
+      'doesn’t fail the night',
+    );
+    refuses(
+      baseRules,
+      swap(
+        backupSh,
+        ' "base-$night.tar.zst.age:1024" "config-$night.tar.age:1024"',
+        ' "config-$night.tar.age:1024"',
+      ),
+      'looked for before the first upload',
+    );
+  });
+
+  it('seals each night last, signed, with each part as it went up', () => {
+    expect(sealWrite(backupSh)).toEqual([]);
+    refuses(
+      sealWrite,
+      swap(backupSh, 'seal_self_check ||\n', ': ||\n'),
+      'checked before the first upload',
+    );
+    // The readers holding a FIFO open for writing would never see its end.
+    refuses(
+      sealWrite,
+      swap(
+        backupSh,
+        '  sha256sum <"$work/sum.fifo" >"$work/sum" 7>&- 8>&- &\n',
+        '  sha256sum <"$work/sum.fifo" >"$work/sum" &\n',
+      ),
+      'taken as it streams',
+    );
+    refuses(
+      sealWrite,
+      swap(backupSh, '[ "$size" -eq "$sent" ] || fail', ': || fail'),
+      'held to the size that went up',
+    );
+    refuses(
+      sealWrite,
+      swap(backupSh, 'seal_open "$work/seal" "$night" ||', ': ||'),
+      'signed and checked after',
     );
   });
 
@@ -2787,13 +3115,13 @@ describe('the migrate and backup images', () => {
       restoreFolder,
       swap(
         restoreSh,
-        'if ! listed "$names" "manifest-$night.txt.age"; then\n',
+        'if ! listed "$names" "seal-$night.txt"; then\n',
         [
-          'if [ "$folder" = daily ] && ! listed "$names" "manifest-$night.txt.age"; then',
+          'if [ "$folder" = daily ] && ! listed "$names" "seal-$night.txt"; then',
           '  folder=monthly',
-          '  names=$(echo "manifest-$night.txt.age" | held)',
+          '  names=$(echo "seal-$night.txt" | held)',
           'fi',
-          'if ! listed "$names" "manifest-$night.txt.age"; then',
+          'if ! listed "$names" "seal-$night.txt"; then',
           '',
         ].join('\n'),
       ),
@@ -2827,16 +3155,12 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       restoreFolder,
-      swap(
-        restoreSh,
-        'rclone cat --no-traverse "$bucket/$folder/$1"',
-        'rclone cat --no-traverse "$bucket/daily/$1"',
-      ),
+      swap(restoreSh, '"$bucket/$folder/$1" >"$parts/$1"', '"$bucket/daily/$1" >"$parts/$1"'),
       'night’s folder',
     );
     refuses(
       restoreFolder,
-      swap(restoreSh, '"$part is not in $folder/"', '"$part is not in daily/"'),
+      swap(restoreSh, '"$1 is not in $folder/"', '"$1 is not in daily/"'),
       'names daily/',
     );
   });
@@ -2881,7 +3205,7 @@ describe('the migrate and backup images', () => {
       restoreLookups,
       swap(
         restoreSh,
-        `names=$(printf '%s\\n' "manifest-$night.txt.age" "globals-$night.sql.age" "storage-$night.tar.age" "config-$night.tar.age" | held)`,
+        'names=$(echo "seal-$night.txt" | held)',
         'names=$(rclone lsf --files-only "$bucket/$folder/")',
       ),
       'listing is held in the shell',
@@ -2890,8 +3214,17 @@ describe('the migrate and backup images', () => {
       restoreLookups,
       swap(
         restoreSh,
-        'rclone cat --no-traverse "$bucket/$folder/$1"',
-        'rclone cat "$bucket/$folder/$1"',
+        'rclone cat --no-traverse --head "$((${want#* } + 1))"',
+        'rclone cat --head "$((${want#* } + 1))"',
+      ),
+      'read after a listing',
+    );
+    refuses(
+      restoreLookups,
+      swap(
+        restoreSh,
+        'rclone cat --no-traverse --head "$((seal_max + 1))"',
+        'rclone cat --head "$((seal_max + 1))"',
       ),
       'read after a listing',
     );
@@ -2908,7 +3241,7 @@ describe('the migrate and backup images', () => {
       restoreLookups,
       swap(
         restoreSh,
-        `  night=$(rclone lsf --files-only --include 'manifest-*.txt.age' "$bucket/daily/" |`,
+        `  night=$(rclone lsf --files-only --include 'seal-*.txt' "$bucket/daily/" |`,
         `  daily=$(rclone lsf --files-only "$bucket/daily/")\n  night=$(printf '%s\\n' "$daily" |`,
       ),
       'listing is held in the shell',
@@ -2920,7 +3253,7 @@ describe('the migrate and backup images', () => {
         '      substr($0, 1, 16) > lock && $0 > newest { newest = $0 }\n',
         '      substr($0, 1, 16) > lock\n',
       ),
-      'more than the newest manifest id is kept',
+      'more than the newest seal’s id is kept',
     );
   });
 
@@ -3052,6 +3385,219 @@ describe('the migrate and backup images', () => {
       swap(restoreSh, '[ "$mode" != --into ] || writing=yes\n', ''),
       'make the volumes new',
     );
+  });
+
+  it('reads a night only as its seal gives it, each part checked before anything is restored', () => {
+    expect(sealFirst(restoreSh)).toEqual([]);
+    // As before the seals (VPS-43): a night read whoever wrote it.
+    refuses(
+      sealFirst,
+      swap(restoreSh, 'seal_open "$parts/seal" "$night" ||', 'true ||'),
+      'before the night’s seal checked out',
+    );
+    refuses(
+      sealFirst,
+      swap(restoreSh, '  [ -n "$want" ] || die', '  [ -n "$want" ] || true'),
+      'the seal doesn’t list can be read',
+    );
+    refuses(
+      sealFirst,
+      swap(
+        restoreSh,
+        `  [ "$(sha256sum "$parts/$1" | cut -d ' ' -f 1)" = "\${want% *}" ] ||`,
+        '  true ||',
+      ),
+      'size and sha256 its seal gives',
+    );
+    // As before too: each part streamed from the bucket into age.
+    refuses(
+      sealFirst,
+      swap(
+        restoreSh,
+        '  age --decrypt --identity "$AGE_IDENTITY_FILE" <"$parts/$1"',
+        '  rclone cat --no-traverse "$bucket/$folder/$1" | age --decrypt --identity "$AGE_IDENTITY_FILE"',
+      ),
+      'anything but its checked download',
+    );
+    // Each part checked only as it is needed: a later one found changed after the databases.
+    refuses(
+      sealFirst,
+      swap(
+        swap(restoreSh, 'for part in $reads; do get "$part"; done\n', ''),
+        "echo 'restore: roles'\n",
+        'echo \'restore: roles\'\nfor part in $reads; do get "$part"; done\n',
+      ),
+      'checked only once something was restored',
+    );
+    refuses(
+      sealFirst,
+      swap(restoreSh, '  [ -z "$parts" ] || rm -rf "$parts"\n', ''),
+      'the downloads stay',
+    );
+  });
+
+  it('takes a seal only in the lines a backup writes, signed over every byte before its line', () => {
+    expect(sealGrammar(sealSh)).toEqual([]);
+    refuses(sealGrammar, swap(sealSh, '\nseal_max=16384\n', '\nseal_max=65536\n'), 'SEAL_MAX');
+    refuses(
+      sealGrammar,
+      swap(sealSh, `tr -d '\\n -~' <"$1"`, `tr -d '\\n -~\\t' <"$1"`),
+      'past printable ASCII',
+    );
+    refuses(
+      sealGrammar,
+      swap(sealSh, '        if (seen[f[4]]++) { print "problem lists a part twice"; exit }\n', ''),
+      'with a part twice',
+    );
+    refuses(
+      sealGrammar,
+      swap(
+        sealSh,
+        '    seal_verify "$seal_open_dir/body"',
+        '    seal_verify_first "$seal_open_dir/body"',
+      ),
+      'against each key',
+    );
+  });
+});
+
+// --- the seals, as the harness reads them (scripts/vps-kit.mts) ---
+
+describe('the nights’ seals (VPS-43)', () => {
+  const night = '2026-11-01T2030Z-0123abcd';
+  const pair = generateKeyPairSync('ed25519');
+  const privateKey = pair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+  const publicKey = pair.publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+  const sum = (text: string) => createHash('sha256').update(text).digest('hex');
+  const parts: SealPart[] = [
+    { sha256: sum('globals'), bytes: 7491, name: `globals-${night}.sql.age` },
+    { sha256: sum('storage'), bytes: 10440, name: `storage-${night}.tar.age` },
+    { sha256: sum('manifest'), bytes: 4265, name: `manifest-${night}.txt.age` },
+    { sha256: sum('postgres'), bytes: 1651328, name: `postgres-${night}.dump.age` },
+    { sha256: sum('base'), bytes: 3637298, name: `base-${night}.tar.zst.age` },
+    { sha256: sum('config'), bytes: 10440, name: `config-${night}.tar.age` },
+  ];
+  const base = {
+    end: '2026-11-01T20:33:07Z',
+    walfile: '0000000100000000000000B9',
+    cluster: '7708084103783477285',
+  };
+  const good = sealText(night, base, parts, privateKey);
+  const signed = (body: string) => `${body}signature ${signedWith(privateKey, body)}\n`;
+  const bodyOf = (text: string) => text.slice(0, text.lastIndexOf('signature '));
+
+  it('writes a seal in the lines backup.sh writes, which it reads back and whose signature checks out', () => {
+    expect(good.split('\n').slice(0, 3)).toEqual([
+      `menumesh seal 1 ${night}`,
+      `base ${base.end} ${base.walfile} ${base.cluster}`,
+      `part ${parts[0].sha256} ${parts[0].bytes} ${parts[0].name}`,
+    ]);
+    expect(good).toMatch(/\nsignature [A-Za-z0-9_-]{86}\n$/);
+    const seal = sealOf(good, night);
+    if (typeof seal === 'string') throw new Error(seal);
+    expect(seal.base).toEqual(base);
+    expect(seal.parts).toEqual(parts);
+    expect(seal.body).toBe(bodyOf(good));
+    expect(signedBy(publicKey, seal.body, seal.signature)).toBe(true);
+    expect(sealVerdict(good, night, publicKey)).toBe('ok');
+    // backup.sh's own lines are these.
+    expect(backupSh).toContain(`printf 'menumesh seal 1 %s\\n%s\\n' "$night" "$base_line"`);
+    expect(backupSh).toContain(`    printf 'part %s %s %s\\n' "$sum" "$sent" "$name"`);
+    const noBase = parts.filter(({ name }) => !name.startsWith('base-'));
+    const without = sealOf(sealText(night, undefined, noBase, privateKey), night);
+    expect(typeof without === 'string' ? without : without.base).toBeUndefined();
+  });
+
+  it('refuses each text seal_open refuses, in its words', () => {
+    const other = generateKeyPairSync('ed25519')
+      .privateKey.export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const noBase = parts.filter(({ name }) => !name.startsWith('base-'));
+    const cases: [string, string][] = [
+      [
+        sealText(night, base, parts, other),
+        "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys",
+      ],
+      [good.replace(' 7491 ', ' 7492 '), "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys"],
+      [
+        sealText('2026-11-02T2030Z-0123abcd', base, parts, privateKey),
+        `does not begin with the line "menumesh seal 1 ${night}"`,
+      ],
+      [sealText(night, base, [...parts, parts[0]], privateKey), 'lists a part twice'],
+      [sealText(night, base, noBase, privateKey), 'has a base line that its parts do not match'],
+      [
+        sealText(night, undefined, parts, privateKey),
+        'has a base line that its parts do not match',
+      ],
+      [
+        sealText(
+          night,
+          base,
+          [...parts, { ...parts[3], name: `template0-${night}.dump.age` }],
+          privateKey,
+        ),
+        'has a line 9 that is not a part as a backup lists one',
+      ],
+      [
+        signed(bodyOf(good).replace('part ', 'part  ')),
+        'has a line 3 that is not a part as a backup lists one',
+      ],
+      [
+        signed(bodyOf(good).replace(parts[0].sha256, parts[0].sha256.toUpperCase())),
+        'has a line 3 that is not a part as a backup lists one',
+      ],
+      [
+        signed(bodyOf(good).replace(base.walfile, base.walfile.toLowerCase())),
+        'has no base line as a backup writes one',
+      ],
+      [
+        signed(bodyOf(good).replace('\n', '\r\n')),
+        'holds a byte that is not printable ASCII, or does not end in a newline',
+      ],
+      [
+        `${good.slice(0, 20)}\0${good.slice(21)}`,
+        'holds a byte that is not printable ASCII, or does not end in a newline',
+      ],
+      [good.slice(0, -1), 'holds a byte that is not printable ASCII, or does not end in a newline'],
+      ['', 'is empty'],
+      [
+        `${good}${'#'.repeat(SEAL_MAX + 1 - good.length)}`,
+        `is longer than a seal's ${SEAL_MAX} bytes`,
+      ],
+      [`${good.slice(0, -1)}==\n`, 'does not end in a signature line'],
+      [bodyOf(good), 'does not end in a signature line'],
+      [`menumesh seal 1 ${night}\nbase none\nsignature x\n`, 'has fewer lines than a seal'],
+    ];
+    for (const [text, problem] of cases) expect(sealVerdict(text, night, publicKey)).toBe(problem);
+    // A seal as long as seal_max is still one.
+    const padded = sealOf(`${good}`, night);
+    expect(typeof padded).toBe('object');
+  });
+
+  it('names only the parts a night has', () => {
+    for (const name of [
+      `globals-${night}.sql.age`,
+      `storage-${night}.tar.age`,
+      `manifest-${night}.txt.age`,
+      `config-${night}.tar.age`,
+      `base-${night}.tar.zst.age`,
+      `postgres-${night}.dump.age`,
+      `_app_2-${night}.dump.age`,
+    ]) {
+      expect(sealPartName(name, night)).toBe(true);
+    }
+    for (const name of [
+      `seal-${night}.txt`,
+      `base-${night}.tar.age`,
+      `template1-${night}.dump.age`,
+      `Postgres-${night}.dump.age`,
+      `-${night}.dump.age`,
+      `${'a'.repeat(64)}-${night}.dump.age`,
+      'globals-2026-11-02T2030Z-0123abcd.sql.age',
+      `globals-${night}.sql.age.extra`,
+    ]) {
+      expect(sealPartName(name, night)).toBe(false);
+    }
   });
 });
 

@@ -584,6 +584,109 @@ export function signedBy(publicKeys: string, message: string, signature: string)
   });
 }
 
+/** base64url of an Ed25519 signature by a base64 PKCS #8 DER key, as seal.sh writes one. */
+export const signedWith = (privateKey: string, message: string) =>
+  sign(
+    null,
+    Buffer.from(message),
+    createPrivateKey({ key: Buffer.from(privateKey, 'base64'), format: 'der', type: 'pkcs8' }),
+  ).toString('base64url');
+
+/** The longest seal seal.sh's seal_open takes (seal_max), in bytes: a reader fetches one past it. */
+export const SEAL_MAX = 16384;
+
+/** A part of a night as its seal lists it. */
+export type SealPart = { sha256: string; bytes: number; name: string };
+
+/** Where a night's base backup starts, as its seal's base line gives it. */
+export type SealBase = { end: string; walfile: string; cluster: string };
+
+/** A night's seal, read: its base (none without one), its parts, and the signed lines' text. */
+export type Seal = { base?: SealBase; parts: SealPart[]; body: string; signature: string };
+
+/** Whether a name is one of a night's parts as backup.sh names them (seal.sh's part()). */
+export function sealPartName(name: string, night: string): boolean {
+  const fixed = [
+    'globals-%.sql.age',
+    'storage-%.tar.age',
+    'manifest-%.txt.age',
+    'config-%.tar.age',
+  ];
+  if ([...fixed, 'base-%.tar.zst.age'].some((form) => form.replace('%', night) === name))
+    return true;
+  const suffix = `-${night}.dump.age`;
+  if (name.length <= suffix.length || !name.endsWith(suffix)) return false;
+  const db = name.slice(0, -suffix.length);
+  return /^[a-z_][a-z0-9_]*$/.test(db) && db.length < 64 && !/^template[01]$/.test(db);
+}
+
+/**
+ * A night's seal as seal.sh's seal_open reads one, but for the signature (signedBy checks it): the
+ * seal, or the problem that makes the text none, in seal_open's own words, so the harness can hold
+ * the shell to the same verdicts. The text is the file's bytes, one character each (latin1).
+ */
+export function sealOf(text: string, night: string): Seal | string {
+  if (!text.length) return 'is empty';
+  if (text.length > SEAL_MAX) return `is longer than a seal's ${SEAL_MAX} bytes`;
+  if (/[^\n -~]/.test(text) || !text.endsWith('\n')) {
+    return 'holds a byte that is not printable ASCII, or does not end in a newline';
+  }
+  const line = text.slice(0, -1).split('\n');
+  if (line.length < 4) return 'has fewer lines than a seal';
+  if (line[0] !== `menumesh seal 1 ${night}`) {
+    return `does not begin with the line "menumesh seal 1 ${night}"`;
+  }
+  const based = /^base (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ([0-9A-F]{24}) ([1-9]\d{0,19})$/.exec(
+    line[1],
+  );
+  if (line[1] !== 'base none' && !based) return 'has no base line as a backup writes one';
+  const parts: SealPart[] = [];
+  for (let i = 2; i < line.length - 1; i++) {
+    const part = /^part ([0-9a-f]{64}) ([1-9]\d{0,14}) (\S+)$/.exec(line[i]);
+    if (!part || !sealPartName(part[3], night)) {
+      return `has a line ${i + 1} that is not a part as a backup lists one`;
+    }
+    if (parts.some(({ name }) => name === part[3])) return 'lists a part twice';
+    parts.push({ sha256: part[1], bytes: Number(part[2]), name: part[3] });
+  }
+  if (!based === parts.some(({ name }) => name === `base-${night}.tar.zst.age`)) {
+    return 'has a base line that its parts do not match';
+  }
+  const signature = /^signature ([A-Za-z0-9_-]{86})$/.exec(line[line.length - 1])?.[1];
+  if (!signature) return 'does not end in a signature line';
+  return {
+    ...(based ? { base: { end: based[1], walfile: based[2], cluster: based[3] } } : {}),
+    parts,
+    body: `${line.slice(0, -1).join('\n')}\n`,
+    signature,
+  };
+}
+
+/** What seal_open says of a seal: "ok", or its problem, the signature checked against the keys. */
+export function sealVerdict(text: string, night: string, publicKeys: string): string {
+  const seal = sealOf(text, night);
+  if (typeof seal === 'string') return seal;
+  return signedBy(publicKeys, seal.body, seal.signature)
+    ? 'ok'
+    : "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys";
+}
+
+/** A seal as backup.sh writes one, signed by a base64 PKCS #8 DER Ed25519 key. */
+export function sealText(
+  night: string,
+  base: SealBase | undefined,
+  parts: readonly SealPart[],
+  privateKey: string,
+): string {
+  const body = [
+    `menumesh seal 1 ${night}`,
+    base ? `base ${base.end} ${base.walfile} ${base.cluster}` : 'base none',
+    ...parts.map(({ sha256, bytes, name }) => `part ${sha256} ${bytes} ${name}`),
+    '',
+  ].join('\n');
+  return `${body}signature ${signedWith(privateKey, body)}\n`;
+}
+
 // --- running things ---
 
 type Run = { status: number; stdout: string; stderr: string };
@@ -2890,14 +2993,6 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
   );
 }
 
-/** base64url of an Ed25519 signature by a base64 PKCS #8 DER key, as seal.sh writes one. */
-const signedWith = (privateKey: string, message: string) =>
-  sign(
-    null,
-    Buffer.from(message),
-    createPrivateKey({ key: Buffer.from(privateKey, 'base64'), format: 'der', type: 'pkcs8' }),
-  ).toString('base64url');
-
 /**
  * seal.sh in the backup image, with the rehearsal's signing pair from .env and a throwaway pair
  * made here: openssl signs as Node does (Ed25519 is deterministic, so the very signature), takes
@@ -3006,6 +3101,137 @@ function sealProof(checks: Checks, env: Record<string, string>) {
           .map(([name, answer]) => `${name}: ${said[name] ?? 'nothing'}, not ${answer}`)
           .join('\n')
       : tail(output),
+  );
+}
+
+/**
+ * seal.sh's seal_open in the backup image against sealOf and signedBy here (VPS-43): a seal signed
+ * with the rehearsal's key, one of a night without a base, and each way a text can fail to be one
+ * (another key, a byte changed after signing, another night, a part twice or of another night or
+ * database, a base line its parts don't match, a carriage return, a tab, a NUL, no last newline, an
+ * empty file, one a byte too long, a padded signature, a wrong case), each given to both as the
+ * same bytes: the shell's verdict must be Node's, word for word. For the good seal it also prints
+ * what it read, which must be what was written.
+ */
+function sealOpenProof(checks: Checks, env: Record<string, string>) {
+  const night = '2026-11-01T2030Z-0123abcd';
+  const sum = (text: string) => createHash('sha256').update(text).digest('hex');
+  const parts: SealPart[] = [
+    { sha256: sum('globals'), bytes: 7491, name: `globals-${night}.sql.age` },
+    { sha256: sum('storage'), bytes: 10440, name: `storage-${night}.tar.age` },
+    { sha256: sum('manifest'), bytes: 4265, name: `manifest-${night}.txt.age` },
+    { sha256: sum('postgres'), bytes: 1651328, name: `postgres-${night}.dump.age` },
+    { sha256: sum('base'), bytes: 3637298, name: `base-${night}.tar.zst.age` },
+    { sha256: sum('config'), bytes: 10440, name: `config-${night}.tar.age` },
+  ];
+  const base = {
+    end: '2026-11-01T20:33:07Z',
+    walfile: '0000000100000000000000B9',
+    cluster: '7708084103783477285',
+  };
+  const key = env.BACKUP_SIGNING_KEY;
+  const good = sealText(night, base, parts, key);
+  const signedBody = (body: string) => `${body}signature ${signedWith(key, body)}\n`;
+  const bodyOf = (text: string) => text.slice(0, text.lastIndexOf('signature '));
+  const noBase = parts.filter(({ name }) => !name.startsWith('base-'));
+  const variants: Record<string, string> = {
+    good,
+    'base-none': sealText(night, undefined, noBase, key),
+    'other-key': sealText(night, base, parts, otherSigningKey()),
+    'changed-after': good.replace(' 7491 ', ' 7492 '),
+    'other-night': sealText('2026-11-02T2030Z-0123abcd', base, parts, key),
+    'part-twice': sealText(night, base, [...parts, parts[0]], key),
+    'other-nights-part': sealText(
+      night,
+      base,
+      [...parts, { ...parts[0], name: 'globals-2026-11-02T2030Z-0123abcd.sql.age' }],
+      key,
+    ),
+    'template-dump': sealText(
+      night,
+      base,
+      [...parts, { ...parts[3], name: `template1-${night}.dump.age` }],
+      key,
+    ),
+    'base-without-part': sealText(night, base, noBase, key),
+    'part-without-base': sealText(night, undefined, parts, key),
+    'carriage-return': signedBody(bodyOf(good).replace('\n', '\r\n')),
+    tab: signedBody(bodyOf(good).replace('part ', 'part\t')),
+    nul: `${good.slice(0, 20)}\0${good.slice(21)}`,
+    'no-last-newline': good.slice(0, -1),
+    empty: '',
+    'too-long': `${good}${'#'.repeat(SEAL_MAX + 1 - good.length)}`,
+    'padded-signature': `${good.slice(0, -1)}==\n`,
+    'upper-hex': signedBody(bodyOf(good).replace(parts[0].sha256, parts[0].sha256.toUpperCase())),
+    'two-spaces': signedBody(bodyOf(good).replace('part ', 'part  ')),
+    'no-signature': bodyOf(good),
+  };
+  const script = [
+    'set -eu',
+    '. /usr/local/share/menumesh/seal.sh',
+    'mkdir -p /tmp/v',
+    'while read -r name text; do printf %s "$text" | base64 -d >"/tmp/v/$name"; done',
+    'for file in /tmp/v/*; do',
+    '  if seal_open "$file" "$NIGHT"; then echo "${file##*/} ok"; else echo "${file##*/} $seal_problem"; fi',
+    'done',
+    'seal_open /tmp/v/good "$NIGHT"',
+    'printf "read %s\\n" "$seal_base"',
+    `printf '%s\\n' "$seal_parts" | sed 's/^/read /'`,
+    'printf "part %s\\n" "$(seal_part "postgres-$NIGHT.dump.age")"',
+    'printf "missing [%s]\\n" "$(seal_part "nothing-$NIGHT.dump.age")"',
+    'echo "left-in-tmp $(ls -A /tmp | grep -c "^seal\\." || true)"',
+  ].join('\n');
+  const input = Object.entries(variants)
+    .map(([name, text]) => `${name} ${Buffer.from(text, 'latin1').toString('base64')}`)
+    .join('\n');
+  const run = compose(
+    [
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '-e',
+      `NIGHT=${night}`,
+      '--entrypoint',
+      'sh',
+      'backup',
+      '-c',
+      script,
+    ],
+    `${input}\n`,
+  );
+  const said = new Map(
+    lines(run.stdout)
+      .filter((line) => !/^(read|part|missing|left-in-tmp) /.test(line))
+      .map((line) => [line.slice(0, line.indexOf(' ')), line.slice(line.indexOf(' ') + 1)]),
+  );
+  const wrong = Object.entries(variants).flatMap(([name, text]) => {
+    const want = sealVerdict(text, night, env.BACKUP_SIGNING_PUBLIC_KEY);
+    return said.get(name) === want
+      ? []
+      : [`${name}: the shell says "${said.get(name)}", Node "${want}"`];
+  });
+  const read = lines(run.stdout)
+    .filter((line) => line.startsWith('read '))
+    .map((line) => line.slice(5));
+  const wantRead = [
+    `${base.end} ${base.walfile} ${base.cluster}`,
+    ...parts.map(({ sha256, bytes, name }) => `${sha256} ${bytes} ${name}`),
+  ];
+  const refused = [...said.values()].filter((verdict) => verdict !== 'ok').length;
+  checks.expect(
+    `seal.sh's seal_open in BusyBox gives Node's verdict on ${said.size} texts: the backup's seal and one without a base taken, and read back as written; ${refused} refused, each in the words sealOf uses (another key, a byte changed after signing, another night, a part twice or not a night's, a base line its parts don't match, a carriage return, a tab, a NUL, no last newline, empty, ${SEAL_MAX + 1} bytes, a padded signature, upper-case hex, two spaces, no signature line); nothing left in /tmp`,
+    run.status === 0 &&
+      !wrong.length &&
+      said.size === Object.keys(variants).length &&
+      said.get('good') === 'ok' &&
+      said.get('base-none') === 'ok' &&
+      refused === Object.keys(variants).length - 2 &&
+      read.join('\n') === wantRead.join('\n') &&
+      run.stdout.includes(`\npart ${parts[3].sha256} ${parts[3].bytes}\n`) &&
+      run.stdout.includes('\nmissing []\n') &&
+      run.stdout.includes('\nleft-in-tmp 0\n'),
+    wrong.length ? wrong.join('\n') : tail(`${run.stdout}${run.stderr}`),
   );
 }
 
@@ -3828,13 +4054,18 @@ async function measured(name: string, args: string[], profile?: string) {
 const usage = (run: { took: number; peakMib: number; statsMib: number }, service: string) =>
   `${run.took} s, memory at most ${run.peakMib} MiB of its ${value(service, 'mem_limit')} (docker stats: ${run.statsMib} MiB)`;
 
-/** The night's objects the backup must leave: every part, and the settings archive if it was fresh. */
-const nightParts = (night: string, config: boolean) =>
+/**
+ * The night's objects the backup must leave: every part, the base if it was made, the settings
+ * archive if it was fresh, and the seal.
+ */
+const nightParts = (night: string, config: boolean, base = true) =>
   [
     `globals-${night}.sql.age`,
     `manifest-${night}.txt.age`,
     `postgres-${night}.dump.age`,
     `storage-${night}.tar.age`,
+    `seal-${night}.txt`,
+    ...(base ? [`base-${night}.tar.zst.age`] : []),
     ...(config ? [`config-${night}.tar.age`] : []),
   ].sort();
 
@@ -3859,31 +4090,304 @@ const bucketNames = (folder: string) => {
   return lines(run.stdout).sort();
 };
 
+/** Puts a text in the bucket at a path under it, as whoever holds the bucket's token could. */
+function putObject(path: string, text: string) {
+  const run = inBackup(`rclone rcat "backups:$BACKUP_BUCKET/${path}"`, text);
+  if (run.status !== 0) fail(`Putting ${path} in the bucket failed: ${run.stderr.trim()}`);
+}
+
+/** The parts a planted night's script printed, one "<sha256> <bytes> <name>" line each. */
+const plantedParts = (stdout: string): SealPart[] =>
+  lines(stdout).map((line) => {
+    const [sha256, bytes, name] = line.split(' ');
+    return { sha256, bytes: Number(bytes), name };
+  });
+
 /**
  * A planted night under daily/, under an id of the planter's making, as whoever holds the bucket's
  * token and the public key could upload one (review finding S1): a manifest that passes
- * restore.sh's rules, the given roles file, a stand-in for the dump, and a Storage archive of one
- * file, or of one file and a link to /proc/self/environ (review finding N6), each encrypted to the
- * rehearsal's key.
+ * restore.sh's rules, the given roles file, a stand-in for the dump, a Storage archive of one file,
+ * or of one file and a link to /proc/self/environ (review finding N6), and a settings archive, each
+ * encrypted to the rehearsal's key. With a key, a seal of those parts signed by it: the rehearsal's
+ * own signing key stands for one that leaked, behind which the restore's other guards must still
+ * hold (VPS-43), and any other key for someone without it. Its parts, as the seal lists them.
  */
-function plantNight(night: string, roles: string, storage: 'file' | 'link' = 'file') {
-  // Encrypts stdin to the rehearsal's key into daily/<name>.
-  const upload = (name: string) =>
-    `age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" | rclone rcat "backups:$BACKUP_BUCKET/daily/${name}"`;
+function plantNight(
+  night: string,
+  roles: string,
+  key: string | undefined,
+  storage: 'file' | 'link' = 'file',
+) {
+  // Encrypts stdin to the rehearsal's key into a file of the outbox below.
+  const encrypt = (name: string) =>
+    `age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" >"/tmp/planted/out/${name}"`;
   const manifest = `menumesh backup ${night}\\ndatabase postgres\\nstorage files 1\\nstorage bytes 8\\n`;
   const run = inBackup(
     [
       'set -e',
-      `printf '${manifest}' | ${upload(`manifest-${night}.txt.age`)}`,
-      upload(`globals-${night}.sql.age`),
-      `printf 'planted\\n' | ${upload(`postgres-${night}.dump.age`)}`,
-      "mkdir -p /tmp/planted/stub/b && printf 'planted\\n' >/tmp/planted/stub/b/a.txt",
-      ...(storage === 'link' ? ['ln -s /proc/self/environ /tmp/planted/stub/b/env'] : []),
-      `tar --create --file=- --directory=/tmp/planted . | ${upload(`storage-${night}.tar.age`)}`,
+      'mkdir -p /tmp/planted/out /tmp/planted/files/stub/b /tmp/planted/config',
+      `printf '${manifest}' | ${encrypt(`manifest-${night}.txt.age`)}`,
+      encrypt(`globals-${night}.sql.age`),
+      `printf 'planted\\n' | ${encrypt(`postgres-${night}.dump.age`)}`,
+      "printf 'planted\\n' >/tmp/planted/files/stub/b/a.txt",
+      ...(storage === 'link' ? ['ln -s /proc/self/environ /tmp/planted/files/stub/b/env'] : []),
+      `tar --create --file=- --directory=/tmp/planted/files . | ${encrypt(`storage-${night}.tar.age`)}`,
+      "printf 'POSTGRES_PASSWORD=planted\\n' >/tmp/planted/config/.env",
+      `tar --create --file=- --directory=/tmp/planted/config . | ${encrypt(`config-${night}.tar.age`)}`,
+      'cd /tmp/planted/out',
+      'for name in *; do',
+      '  rclone copyto "$name" "backups:$BACKUP_BUCKET/daily/$name" </dev/null',
+      `  printf '%s %s %s\\n' "$(sha256sum <"$name" | cut -d ' ' -f 1)" "$(wc -c <"$name")" "$name"`,
+      'done',
     ].join('\n'),
     roles,
   );
   if (run.status !== 0) fail(`Planting the night ${night} failed: ${run.stderr.trim()}`);
+  const parts = plantedParts(run.stdout);
+  if (key) putObject(`daily/seal-${night}.txt`, sealText(night, undefined, parts, key));
+  return parts;
+}
+
+/**
+ * A whole-looking month's copy planted in monthly/ under a night id of the planter's making: each
+ * part a night has, of random bytes past its floor, and a seal that lists them at their sha256
+ * and size, with a base line, signed by the given key. Its names.
+ */
+function plantCopy(night: string, key: string): string[] {
+  const names = [
+    `globals-${night}.sql.age`,
+    `storage-${night}.tar.age`,
+    `manifest-${night}.txt.age`,
+    `postgres-${night}.dump.age`,
+    `base-${night}.tar.zst.age`,
+    `config-${night}.tar.age`,
+  ];
+  const run = inBackup(
+    [
+      'set -e',
+      'mkdir -p /tmp/planted',
+      'cd /tmp/planted',
+      `for name in ${names.join(' ')}; do`,
+      '  head -c 4096 /dev/urandom >"$name"',
+      '  rclone copyto "$name" "backups:$BACKUP_BUCKET/monthly/$name" </dev/null',
+      `  printf '%s %s %s\\n' "$(sha256sum <"$name" | cut -d ' ' -f 1)" "$(wc -c <"$name")" "$name"`,
+      'done',
+    ].join('\n'),
+  );
+  if (run.status !== 0) fail(`Planting a copy in monthly/ failed: ${run.stderr.trim()}`);
+  const base = {
+    end: `${night.slice(0, 10)}T20:33:07Z`,
+    walfile: '000000010000000000000007',
+    cluster: '7',
+  };
+  putObject(`monthly/seal-${night}.txt`, sealText(night, base, plantedParts(run.stdout), key));
+  return [...names, `seal-${night}.txt`];
+}
+
+/** A throwaway Ed25519 private key, base64 PKCS #8 DER: someone else's, not the backup's. */
+const otherSigningKey = () =>
+  generateKeyPairSync('ed25519')
+    .privateKey.export({ format: 'der', type: 'pkcs8' })
+    .toString('base64');
+
+/**
+ * What the bucket holds of nights, each in a folder: the seal's bytes (latin1), and the sha256 and
+ * size of every object named with the night's id, read in the backup's container.
+ */
+function nightsInBucket(nights: readonly (readonly [string, string])[]) {
+  const script = [
+    'set -eu',
+    'while read -r folder night; do',
+    '  echo "night $folder $night"',
+    `  printf 'seal %s\\n' "$(rclone cat --no-traverse "backups:$BACKUP_BUCKET/$folder/seal-$night.txt" </dev/null | base64 -w 0)"`,
+    '  rclone lsf --files-only --include "*-$night.*" "backups:$BACKUP_BUCKET/$folder/" </dev/null | while read -r name; do',
+    '    rclone cat --no-traverse "backups:$BACKUP_BUCKET/$folder/$name" </dev/null >/tmp/object',
+    `    printf 'object %s %s %s\\n' "$name" "$(sha256sum </tmp/object | cut -d ' ' -f 1)" "$(wc -c </tmp/object)"`,
+    '  done',
+    'done',
+  ].join('\n');
+  const run = inBackup(
+    script,
+    `${nights.map(([folder, night]) => `${folder} ${night}`).join('\n')}\n`,
+  );
+  if (run.status !== 0) fail(`Reading the nights in the bucket failed: ${run.stderr.trim()}`);
+  const found = new Map<string, { seal: string; objects: Map<string, SealPart> }>();
+  let current: { seal: string; objects: Map<string, SealPart> } | undefined;
+  for (const line of lines(run.stdout)) {
+    const [kind, ...rest] = line.split(' ');
+    if (kind === 'night') found.set(rest.join(' '), (current = { seal: '', objects: new Map() }));
+    else if (kind === 'seal' && current) {
+      current.seal = Buffer.from(rest[0] ?? '', 'base64').toString('latin1');
+    } else if (kind === 'object' && current) {
+      const [name, sha256, bytes] = rest;
+      current.objects.set(name, { sha256, bytes: Number(bytes), name });
+    }
+  }
+  return found;
+}
+
+/**
+ * Each night's seal as a restore reads it, here with Node's crypto (VPS-43): seal.sh's grammar,
+ * signed by a key of BACKUP_SIGNING_PUBLIC_KEY, with the parts a night has (the base and the
+ * settings archive as given), the base line there exactly when the base part is, and each part in
+ * the folder at the sha256 and size the seal gives. The night's other objects there are its seal
+ * and, after a base that failed, what of the base went up, which the seal doesn't list.
+ */
+function sealsChecked(
+  checks: Checks,
+  env: Record<string, string>,
+  nights: { folder: string; night: string; config: boolean; base: boolean }[],
+) {
+  const found = nightsInBucket(nights.map(({ folder, night }) => [folder, night] as const));
+  const bad: string[] = [];
+  const said: string[] = [];
+  for (const { folder, night, config, base } of nights) {
+    const at = `${folder}/ ${night}`;
+    const held = found.get(`${folder} ${night}`);
+    const seal = held ? sealOf(held.seal, night) : 'was not read';
+    const verdict = held ? sealVerdict(held.seal, night, env.BACKUP_SIGNING_PUBLIC_KEY) : seal;
+    if (!held || typeof seal === 'string' || verdict !== 'ok') {
+      bad.push(`${at}: its seal ${verdict}`);
+      continue;
+    }
+    const listed = seal.parts.map(({ name }) => name).sort();
+    const want = nightParts(night, config, base).filter((name) => !name.startsWith('seal-'));
+    if (listed.join(' ') !== want.join(' ')) bad.push(`${at}: the seal lists ${listed.join(', ')}`);
+    if (Boolean(seal.base) !== base) bad.push(`${at}: its base line is not as the night was`);
+    for (const part of seal.parts) {
+      const object = held.objects.get(part.name);
+      if (object?.sha256 !== part.sha256 || object.bytes !== part.bytes) {
+        bad.push(`${at}: ${part.name} is not in the folder as the seal gives it`);
+      }
+    }
+    const others = [...held.objects.keys()].filter(
+      (name) =>
+        name !== `seal-${night}.txt` &&
+        !listed.includes(name) &&
+        !(!base && name === `base-${night}.tar.zst.age`),
+    );
+    if (others.length) bad.push(`${at}: also ${others.join(', ')}`);
+    said.push(
+      `${at}: ${seal.parts.length} parts, ${seal.base ? `base from ${seal.base.walfile}` : 'base none'}`,
+    );
+  }
+  checks.expect(
+    `each night's seal, read with Node's crypto as restore.sh reads it: in seal.sh's lines, signed by BACKUP_SIGNING_PUBLIC_KEY's key, and listing each of the night's parts at the sha256 and size the bucket holds (${said.join('; ')})`,
+    !bad.length && said.length === nights.length,
+    bad.join('\n'),
+  );
+  return found;
+}
+
+/**
+ * A night's base backup, decrypted (the rehearsal's age key) and decompressed in a one-off of the
+ * backup service: its tar's names, backup_label's lines and the system identifier of its
+ * backup_manifest.
+ */
+function baseOf(night: string) {
+  const script = [
+    'set -eu',
+    `rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/base-${night}.tar.zst.age" >/tmp/base.zst.age`,
+    'age --decrypt --identity /run/age/identity.txt </tmp/base.zst.age | zstd -dcq >/tmp/base.tar',
+    'tar -tf /tmp/base.tar | sed "s/^/name /"',
+    'tar -xOf /tmp/base.tar backup_label | sed "s/^/label /"',
+    `tar -xOf /tmp/base.tar backup_manifest | sed -n 's/^"System-Identifier": \\([0-9]*\\),$/system \\1/p'`,
+    'echo "bytes $(wc -c </tmp/base.tar)"',
+  ].join('\n');
+  const run = compose([
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    '--volume',
+    `${slash(join(MIRROR, 'age'))}:/run/age:ro`,
+    '--entrypoint',
+    'sh',
+    'backup',
+    '-c',
+    script,
+  ]);
+  if (run.status !== 0) fail(`Reading the base backup of ${night} failed: ${run.stderr.trim()}`);
+  const of = (kind: string) =>
+    lines(run.stdout)
+      .filter((line) => line.startsWith(`${kind} `))
+      .map((line) => line.slice(kind.length + 1));
+  return {
+    names: of('name'),
+    label: of('label'),
+    system: of('system')[0] ?? '',
+    bytes: Number(of('bytes')[0]),
+  };
+}
+
+/**
+ * Commands run in a running service's container with docker exec, at once, as crond runs its
+ * jobs there, with how long they took and the most memory the container's cgroup held meanwhile
+ * (memory.current, page cache included, read every quarter second).
+ */
+async function inService(container: string, runs: { user?: string; command: string[] }[]) {
+  const started = Date.now();
+  const children = runs.map(({ user, command }) => {
+    const child = spawn(
+      'docker',
+      ['exec', ...(user ? ['--user', user] : []), container, ...command],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const out = { status: undefined as number | undefined, stdout: '', stderr: '' };
+    child.stdout.on('data', (chunk: Buffer) => (out.stdout += chunk));
+    child.stderr.on('data', (chunk: Buffer) => (out.stderr += chunk));
+    const closed = new Promise<void>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', (code) => {
+        out.status = code ?? 1;
+        resolve();
+      });
+    });
+    return { out, closed };
+  });
+  let peakMib = 0;
+  while (children.some(({ out }) => out.status === undefined)) {
+    const bytes = Number(
+      docker(['exec', container, 'cat', '/sys/fs/cgroup/memory.current']).stdout,
+    );
+    if (Number.isFinite(bytes)) peakMib = Math.max(peakMib, Math.round(bytes / 1048576));
+    await sleep(250);
+  }
+  await Promise.all(children.map(({ closed }) => closed));
+  return { runs: children.map(({ out }) => out), peakMib, took: seconds(started) };
+}
+
+/**
+ * What a restore of a planted night whose Storage archive holds a link prints first, when the
+ * rehearsal's own key sealed it: the night's line, the seal's, then the refusal, before the roles.
+ */
+const sealedThenLink = (night: string, host: string) =>
+  new RegExp(
+    `^restore: the night of ${night}, from daily/, into ${host}\\nrestore: its seal is signed by the backup's key, and the \\d+ parts read match it \\(\\d+ bytes\\)\\nrestore: the Storage archive of ${night} holds links or special files \\(1\\), which Storage never writes: nothing was restored\\n`,
+  );
+
+/**
+ * A planted night's restore that must be refused before anything is restored: the run, its whole
+ * output, and whether restore-db is still bare after it (no role but its superuser, no database
+ * but initdb's).
+ */
+async function refusedRestore(night: string, age: string[]) {
+  const run = await measured(
+    `${PROJECT}-restore-test-${process.pid}`,
+    ['-T', '-e', `RESTORE_STAMP=${night}`, ...age, 'restore-test'],
+    'restore-test',
+  );
+  const left = sqlIn(
+    'restore-db',
+    "select (select count(*) from pg_roles where rolname !~ '^pg_' and rolname <> current_user) + (select count(*) from pg_database where datname not in ('template0', 'template1', 'postgres'))",
+    'restore-test',
+  );
+  compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
+  return {
+    run,
+    output: `${run.stdout}${run.stderr}`,
+    bare: left.status === 0 && left.stdout.trim() === '0',
+  };
 }
 
 /**
@@ -3937,7 +4441,18 @@ const OD_STAND_IN = [
   '',
 ].join('\n');
 
-/** A one-off of the backup service running backup.sh with the stand-ins date and od. */
+/**
+ * A stand-in for pg_basebackup that, with FAKE_BASE set, fails as a base backup can, after a few
+ * bytes of its stream, which backup.sh still uploads; every other run is the image's own.
+ */
+const BASE_STAND_IN = [
+  '#!/bin/sh',
+  `if [ -n "\${FAKE_BASE:-}" ]; then printf 'a base backup cut short\\n'; echo 'pg_basebackup: error: the stand-in failed' >&2; exit 1; fi`,
+  'exec /usr/local/bin/pg_basebackup "$@"',
+  '',
+].join('\n');
+
+/** A one-off of the backup service running backup.sh with the stand-ins date, od and pg_basebackup. */
 const standInBackup = (fakes: Record<string, string>) =>
   compose([
     'run',
@@ -3951,7 +4466,7 @@ const standInBackup = (fakes: Record<string, string>) =>
     'sh',
     'backup',
     '-c',
-    'mkdir -p /tmp/bin && cp /opt/menumesh-rehearsal/date /opt/menumesh-rehearsal/od /tmp/bin/ && chmod 755 /tmp/bin/date /tmp/bin/od && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
+    'mkdir -p /tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /tmp/bin/ && chmod 755 /tmp/bin/date /tmp/bin/od /tmp/bin/pg_basebackup && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
   ]);
 
 /** What a restore printed that only a read of the owner's key file could print. */
@@ -3985,6 +4500,7 @@ async function backupTest() {
   mkdirSync(join(MIRROR, 'test-bin'), { recursive: true });
   writeFileSync(join(MIRROR, 'test-bin', 'date'), DATE_STAND_IN, { mode: 0o755 });
   writeFileSync(join(MIRROR, 'test-bin', 'od'), OD_STAND_IN, { mode: 0o755 });
+  writeFileSync(join(MIRROR, 'test-bin', 'pg_basebackup'), BASE_STAND_IN, { mode: 0o755 });
   const backupImage = REHEARSAL_IMAGES.BACKUP_IMAGE;
   const sha = git('rev-parse', 'HEAD').stdout.trim();
   const built = build(backupImage, ['--build-arg', `REVISION=${sha}`, join(KIT, 'backup')]);
@@ -4029,6 +4545,7 @@ async function backupTest() {
     `the local S3 (rclone serve s3) is up, bucket ${env.BACKUP_BUCKET}; in the backup container ${sunk.join(' and ')} resolve to the sinkhole (0.0.0.0)`,
   );
   sealProof(checks, env);
+  sealOpenProof(checks, env);
   await walProof(checks, env);
   await shipperPaths(checks, env);
 
@@ -4144,7 +4661,12 @@ async function backupTest() {
       ].join('\n'),
     );
     if (cleared.status !== 0) fail(`Setting monthly/ up failed: ${cleared.stderr.trim()}`);
-    const planted0 = [otherMonth, ...junk].sort();
+    // And a whole-looking copy of this month, each part a night has at the size its seal gives,
+    // the seal signed by a key not the backup's: a token holder's copy, which must stop no copy
+    // either (VPS-43).
+    const forger = otherSigningKey();
+    const forgedCopy = plantCopy(idOf(`${today.slice(0, 7)}-05T0102Z`), forger);
+    const planted0 = [otherMonth, ...junk, ...forgedCopy].sort();
 
     // The month's first night here fails on a settings archive three hours old, after its other
     // uploads, with the alert to a Telegram bot in the sinkhole; such a night is never the month's
@@ -4178,6 +4700,19 @@ async function backupTest() {
       failedNight !== '' && monthlyFailed.join(' ') === planted0.join(' '),
       monthlyFailed.join('\n'),
     );
+    // That night's own seal, the backup's but of a night without a settings archive, copied into
+    // monthly/ alone, as a token holder can from daily/: no whole copy either.
+    const copied = inBackup(
+      `rclone copyto "backups:$BACKUP_BUCKET/daily/seal-${failedNight}.txt" "backups:$BACKUP_BUCKET/monthly/seal-${failedNight}.txt"`,
+    );
+    if (copied.status !== 0)
+      fail(`Copying the failed night's seal failed: ${copied.stderr.trim()}`);
+    const plantedMonthly = [...planted0, `seal-${failedNight}.txt`].sort();
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows it.
+    for (let tries = 0; tries < 20; tries++) {
+      if (bucketNames('monthly').includes(`seal-${failedNight}.txt`)) break;
+      await sleep(1000);
+    }
 
     // The next night as the service runs it, with a fresh settings archive and a heartbeat URL in
     // the sinkhole: the ping is the last step, after every upload was checked.
@@ -4203,25 +4738,28 @@ async function backupTest() {
       `${good.stdout}${good.stderr}\n${objects.join('\n')}`,
     );
     // The month's first whole night is its copy, whatever its day, past the names planted for the
-    // month (review findings B4, N2 and N3).
+    // month (review findings B4, N2 and N3), the whole-looking copy another key sealed and the
+    // failed night's own seal (VPS-43).
     const monthly = bucketNames('monthly');
     checks.expect(
-      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, past the names planted for its month (${junk.slice(0, 2).join(', ')}): ${monthly.length} objects`,
+      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, seal last, past the names planted for its month (${junk.slice(0, 2).join(', ')}), a whole-looking copy whose seal another key signed (${forgedCopy.at(-1)}) and the failed night's own seal alone: ${monthly.length} objects`,
       night !== '' &&
         /, kept in monthly\/ as the month's copy$/.test(summary?.[0] ?? '') &&
-        monthly.join(' ') === [...planted0, ...nightParts(night, true)].sort().join(' '),
+        monthly.join(' ') === [...plantedMonthly, ...nightParts(night, true)].sort().join(' '),
       monthly.join('\n'),
     );
-    // Each object is age's: its first line is age's header, nothing of the data in plain text.
+    // Each part is age's: its first line is age's header, nothing of the data in plain text. The
+    // seal alone is plain text.
+    const encrypted = objects.filter((name) => !name.startsWith('seal-'));
     const headers = lines(
       inBackup(
-        `for name in ${objects.join(' ')}; do printf '%s ' "$name"; rclone cat --head 21 "backups:$BACKUP_BUCKET/daily/$name"; echo; done`,
+        `for name in ${encrypted.join(' ')}; do printf '%s ' "$name"; rclone cat --head 21 "backups:$BACKUP_BUCKET/daily/$name"; echo; done`,
       ).stdout,
     );
     checks.expect(
-      `each of the night's objects starts with age's header (${headers.filter((line) => line.endsWith(' age-encryption.org/v1')).length} of ${objects.length})`,
-      objects.length > 0 &&
-        headers.length === objects.length &&
+      `each of the night's parts starts with age's header (${headers.filter((line) => line.endsWith(' age-encryption.org/v1')).length} of ${encrypted.length}); its seal is the one plain text`,
+      encrypted.length === objects.length - 1 &&
+        headers.length === encrypted.length &&
         headers.every((line) => line.endsWith(' age-encryption.org/v1')),
       headers.join('\n'),
     );
@@ -4248,6 +4786,31 @@ async function backupTest() {
       `${next.stdout}${next.stderr}\n${monthlyNext.join('\n')}`,
     );
 
+    // A night in the running backup service, as its crond runs one, with its WAL shipper at work
+    // at once (db's WAL written just before): what the two take of the service's memory together,
+    // the base backup included (VPS-43). A whole night of the month, so no copy either.
+    while (stampOf(daemonNow()) === stampPart(nextNight)) await sleep(1000);
+    archive(stampOf(daemonNow()));
+    const service = containerOf('backup') ?? fail('backup has no container');
+    writeWal();
+    const both = await inService(service, [
+      { command: ['/usr/local/bin/backup.sh'] },
+      { user: '100:101', command: ['/usr/local/bin/wal-ship.sh'] },
+    ]);
+    const serviceLine = /^backup (\S+): .*$/m.exec(both.runs[0].stdout);
+    const serviceNight = serviceLine?.[1] ?? nextNight;
+    const limitMib = Number(value('backup', 'mem_limit').replace(/m$/, ''));
+    checks.expect(
+      `a night in the backup service itself, as its crond runs one, with wal-ship.sh at once: exits ${both.runs.map((run) => run.status).join(' and ')} in ${both.took} s, "${serviceLine?.[0] ?? tail(both.runs[0].stdout, 1)}"; the service's memory at most ${both.peakMib} MiB of its ${value('backup', 'mem_limit')} (memory.current, page cache included)`,
+      both.runs.every((run) => run.status === 0) &&
+        serviceLine !== null &&
+        serviceNight !== nextNight &&
+        !serviceLine[0].includes('kept in monthly') &&
+        both.peakMib > 0 &&
+        both.peakMib < limitMib,
+      both.runs.map((run) => `${run.stdout}${run.stderr}`).join('\n'),
+    );
+
     // A whole 1st two months back, its stamp from a stand-in date (nothing else is faked): copied
     // whatever monthly/ holds for its month (review finding N2). Then its daily copy goes, as the
     // job removes one after 30 days, so that monthly/ alone holds the night.
@@ -4270,6 +4833,70 @@ async function backupTest() {
       `rclone delete --include '*-${oldFirstId}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
     if (aged.status !== 0) fail(`Removing ${oldFirstId} from daily/ failed: ${aged.stderr.trim()}`);
+
+    // A 1st whose base backup fails, three months back (the stand-ins date and pg_basebackup, which
+    // stops after a few bytes): the other parts and the settings archive still go up and are
+    // sealed, the seal says "base none" and lists no base, the night fails at the end with the
+    // alert, and, a 1st as it is, it is no month's copy (VPS-43).
+    const baseFirst = `${monthBefore(`${oldFirst.slice(0, 7)}-01T0000Z`)}-01T2030Z`;
+    archive(stampOf(daemonNow()));
+    const baseless = standInBackup({ FAKE_STAMP: baseFirst, FAKE_BASE: 'fail' });
+    const baselessLine = lines(baseless.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
+    const baselessId =
+      /^\[menumesh\] backup failed \(exit \d+\) at (\S+):/.exec(baselessLine)?.[1] ?? '';
+    const baselessParts = baselessId ? nightOf(baselessId) : [];
+    checks.expect(
+      `a 1st whose base backup fails (${baselessId || baseFirst}, a stand-in pg_basebackup that stops early): exit ${baseless.status}, "${baselessLine}", with pg_basebackup's line "${lines(baseless.stderr).find((line) => line.startsWith('backup: | ')) ?? ''}"; the other parts, the settings archive and the seal in daily/ all the same (${baselessParts.length} objects), nothing of it in monthly/`,
+      baseless.status === 1 &&
+        stampPart(baselessId) === baseFirst &&
+        baselessLine ===
+          `[menumesh] backup failed (exit 1) at ${baselessId}: the base backup failed or ran past 2 hours (pg_basebackup, zstd, age or rclone)` &&
+        baseless.stderr.includes('backup: | pg_basebackup: error: the stand-in failed') &&
+        nightParts(baselessId, true, false).every((name) => baselessParts.includes(name)) &&
+        !bucketNames('monthly').some((name) => name.includes(`-${baselessId}.`)),
+      `${baseless.stdout}${baseless.stderr}\n${baselessParts.join('\n')}`,
+    );
+
+    // Every night above as a restore reads it, with Node's crypto: its seal signed by the backup's
+    // key, and each part it lists in its folder as it went up; the month's copies too.
+    const nights = sealsChecked(checks, env, [
+      { folder: 'daily', night: failedNight, config: false, base: true },
+      { folder: 'daily', night, config: true, base: true },
+      { folder: 'monthly', night, config: true, base: true },
+      { folder: 'daily', night: nextNight, config: true, base: true },
+      { folder: 'daily', night: serviceNight, config: true, base: true },
+      { folder: 'monthly', night: oldFirstId, config: true, base: true },
+      { folder: 'daily', night: baselessId, config: true, base: false },
+    ]);
+    const unbased = inBackup(
+      `rclone delete --include '*-${baselessId}.*' "backups:$BACKUP_BUCKET/daily/"`,
+    );
+    if (unbased.status !== 0)
+      fail(`Removing ${baselessId} from daily/ failed: ${unbased.stderr.trim()}`);
+
+    // The night's base backup, as a point-in-time recovery reads it: a tar with backup_label,
+    // backup_manifest and, under pg_wal/, the WAL it needs from the file its seal names, of the
+    // cluster its seal names, which is db's, named by the night; started before the seal's end.
+    const nightSeal = sealOf(nights.get(`daily ${night}`)?.seal ?? '', night);
+    const sealedBase = typeof nightSeal === 'string' ? undefined : nightSeal.base;
+    const based = baseOf(night);
+    const labelled = (name: string) =>
+      based.label.find((line) => line.startsWith(`${name}: `))?.slice(name.length + 2) ?? '';
+    const startFile = /\(file ([0-9A-F]{24})\)$/.exec(labelled('START WAL LOCATION'))?.[1] ?? '';
+    const startTime = Date.parse(labelled('START TIME').replace(' ', 'T').replace(' UTC', 'Z'));
+    checks.expect(
+      `the night's base backup, decrypted and unpacked: a ${Math.round(based.bytes / 1048576)} MiB tar of ${based.names.length} members with backup_label, backup_manifest and pg_wal/${startFile}; backup_label starts in ${startFile} on "${labelled('LABEL')}", the manifest's system ${based.system}: the seal's base line "${sealedBase ? `${sealedBase.end} ${sealedBase.walfile} ${sealedBase.cluster}` : 'none'}", db's cluster`,
+      sealedBase !== undefined &&
+        ['backup_label', 'backup_manifest', `pg_wal/${sealedBase.walfile}`].every((name) =>
+          based.names.includes(name),
+        ) &&
+        startFile === sealedBase.walfile &&
+        labelled('LABEL') === `menumesh ${night}` &&
+        based.system === sealedBase.cluster &&
+        based.system === clusterId() &&
+        startTime <= Date.parse(sealedBase.end),
+      `${based.names.slice(0, 20).join('\n')}\n${based.label.join('\n')}\nsystem ${based.system}`,
+    );
 
     // A name of a night's id that someone else wrote first. Nobody can know an id before its night
     // runs; the stand-in od gives backup.sh the random part the test chose, so the test plays one
@@ -4335,9 +4962,12 @@ async function backupTest() {
     );
     const said = lines(test.stdout).filter((line) => line.startsWith('restore'));
     checks.expect(
-      `the restore test (restore-db, RESTORE_EXACT=1, the night ${night}): exit ${test.status} in ${usage(test, 'restore-test')}; restore-db at most ${restoreDb?.peak ?? '?'} MiB of its ${value('restore-db', 'mem_limit')}, the cluster ${restoredMb} MB of its 1g tmpfs. pg_restore read the dump from the pipe (rclone cat | age -d | pg_restore). ${said.join(' / ')}`,
+      `the restore test (restore-db, RESTORE_EXACT=1, the night ${night}): exit ${test.status} in ${usage(test, 'restore-test')}; restore-db at most ${restoreDb?.peak ?? '?'} MiB of its ${value('restore-db', 'mem_limit')}, the cluster ${restoredMb} MB of its 1g tmpfs. Each part downloaded, held to its seal, then decrypted from there into pg_restore's pipe. ${said.join(' / ')}`,
       test.status === 0 &&
         test.stdout.includes(`restore: the night of ${night}, from daily/, into restore-db\n`) &&
+        /^restore: its seal is signed by the backup's key, and the 5 parts read match it \(\d+ bytes\)$/m.test(
+          test.stdout,
+        ) &&
         /^restore: postgres has its \d+ tables as the manifest counted them$/m.test(test.stdout) &&
         /^restore: Storage holds \d+ files as the manifest counted$/m.test(test.stdout) &&
         test.stdout.endsWith(`restore test passed: the night of ${night}, from daily/\n`),
@@ -4360,19 +4990,21 @@ async function backupTest() {
     );
 
     // A manifest a token holder put in monthly/ under the later night, which daily/ alone holds,
-    // and not even age's: a night younger than 29 days is read from daily/ only, so it stops
-    // nothing (review finding RV1: the two folders' manifests were compared, and the restore test
-    // and the recovery of that night stopped).
+    // and not even age's, with a seal another key signed: a night younger than 29 days is read
+    // from daily/ only, so they stop nothing (review finding RV1: the two folders' manifests were
+    // compared, and the restore test and the recovery of that night stopped).
     if (nextNight === night) fail('The later night of the month did not run.');
     const stray = `manifest-${nextNight}.txt.age`;
-    const strayPut = inBackup(
-      `printf 'planted, not age\\n' | rclone rcat "backups:$BACKUP_BUCKET/monthly/${stray}"`,
+    putObject(`monthly/${stray}`, 'planted, not age\n');
+    const straySeal = `seal-${nextNight}.txt`;
+    putObject(
+      `monthly/${straySeal}`,
+      sealText(nextNight, undefined, [{ sha256: '0'.repeat(64), bytes: 17, name: stray }], forger),
     );
-    if (strayPut.status !== 0)
-      fail(`Planting ${stray} in monthly/ failed: ${strayPut.stderr.trim()}`);
-    // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows it.
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows them.
     for (let tries = 0; tries < 20; tries++) {
-      if (bucketNames('monthly').includes(stray)) break;
+      const listed = bucketNames('monthly');
+      if (listed.includes(stray) && listed.includes(straySeal)) break;
       await sleep(1000);
     }
     const beside = await measured(
@@ -4383,7 +5015,7 @@ async function backupTest() {
     compose(['--profile', 'restore-test', 'rm', '--stop', '--force', 'restore-db']);
     const strayListed = bucketNames('monthly').includes(stray);
     checks.expect(
-      `a manifest planted in monthly/ under ${nextNight}, a night of daily/ alone, not even age's (${strayListed ? 'listed there' : 'not listed'}): the night's restore test by RESTORE_STAMP exit ${beside.status}, "${lines(beside.stdout).find((line) => line.startsWith('restore: the night')) ?? ''}", "${tail(beside.stdout, 1)}"`,
+      `a manifest, not even age's, and a seal another key signed, planted in monthly/ under ${nextNight}, a night of daily/ alone (${strayListed ? 'listed there' : 'not listed'}): the night's restore test by RESTORE_STAMP exit ${beside.status}, "${lines(beside.stdout).find((line) => line.startsWith('restore: the night')) ?? ''}", "${tail(beside.stdout, 1)}"`,
       beside.status === 0 &&
         strayListed &&
         beside.stdout.includes(
@@ -4393,31 +5025,46 @@ async function backupTest() {
       tail(`${beside.stdout}${beside.stderr}`),
     );
 
-    // Planted nights, as whoever holds the bucket's token and the public key could upload them.
-    // One stamped 9999-12-31 sorts last and is never taken unasked; one of this minute, the newest
-    // by name, is, and its roles file has psql print a notice made to erase the night's line and
-    // put the good night's in its place (N4), then reads the owner's key with \i; one named by
-    // RESTORE_STAMP would copy the key into the bucket with \! first (S1). Each must stop at the
-    // roles with nothing run: no object at the bucket's top, no line of the key, no escape. One
-    // has a link in its Storage archive (N6), and one is a copy in daily/ of the 1st two months
-    // back, past 29 days and so read from monthly/ alone (RV2).
-    while (stampOf(daemonNow()) <= stampPart(nextNight)) await sleep(1000);
+    // Planted nights, as whoever holds the bucket's token and the public key could upload them,
+    // these sealed with the rehearsal's own signing key, as if it had leaked: the restore's guards
+    // behind the seal must still hold (VPS-40, VPS-43). One stamped 9999-12-31 sorts last and is
+    // never taken unasked; one of this minute, the newest by name, is, and its roles file has psql
+    // print a notice made to erase the night's line and put the good night's in its place (N4),
+    // then reads the owner's key with \i; one named by RESTORE_STAMP would copy the key into the
+    // bucket with \! first (S1). Each must stop at the roles with nothing run: no object at the
+    // bucket's top, no line of the key, no escape. One has a link in its Storage archive (N6), and
+    // one is a copy in daily/ of the 1st two months back, past 29 days and so read from monthly/
+    // alone (RV2). Two more, read further below, have a seal another key signed, or none.
+    while (stampOf(daemonNow()) <= stampPart(serviceNight)) await sleep(1000);
     const future = idOf(FUTURE);
     const planted = idOf(stampOf(daemonNow()));
     const daysAgo = (days: number) =>
       idOf(stampOf(new Date(Date.parse(daemonNow()) - days * 86_400_000).toISOString()));
     const older = daysAgo(3);
     const linked = daysAgo(4);
+    const forgedNight = daysAgo(5);
+    const unsealed = daysAgo(6);
     const fake = `restore: the night of ${night}, from daily/, into restore-db`;
-    plantNight(future, plantedRoles('copy'));
-    plantNight(planted, plantedRoles('read', fake));
-    plantNight(older, plantedRoles('copy'));
-    plantNight(linked, 'CREATE ROLE planted_link;\n', 'link');
-    plantNight(oldFirstId, plantedRoles('copy'));
-    // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ shows all five, each
-    // with the four parts of a night without its settings archive.
-    const plantedNames = [future, planted, older, linked, oldFirstId].flatMap((id) =>
-      nightParts(id, false),
+    const leaked = env.BACKUP_SIGNING_KEY;
+    plantNight(future, plantedRoles('copy'), leaked);
+    plantNight(planted, plantedRoles('read', fake), leaked);
+    plantNight(older, plantedRoles('copy'), leaked);
+    plantNight(linked, 'CREATE ROLE planted_link;\n', leaked, 'link');
+    plantNight(oldFirstId, plantedRoles('copy'), leaked);
+    plantNight(forgedNight, plantedRoles('copy'), forger);
+    plantNight(unsealed, plantedRoles('copy'), undefined);
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ shows all seven, each
+    // with the five parts of a night without a base, and the seals.
+    const plantedNames = [
+      future,
+      planted,
+      older,
+      linked,
+      oldFirstId,
+      forgedNight,
+      unsealed,
+    ].flatMap((id) =>
+      nightParts(id, true, false).filter((name) => id !== unsealed || !name.startsWith('seal-')),
     );
     for (let tries = 0; tries < 20; tries++) {
       const listed = bucketNames('daily');
@@ -4472,12 +5119,77 @@ async function backupTest() {
     checks.expect(
       `a planted night whose Storage archive holds a link, restore test (${linked}): exit ${link.status}, "${lines(linkOutput).find((line) => line.includes('links or special files')) ?? ''}"; nothing restored: no roles step, restore-db without its role (${linkRole})`,
       link.status === 1 &&
-        link.stdout.startsWith(
-          `restore: the night of ${linked}, from daily/, into restore-db\nrestore: the Storage archive of ${linked} holds links or special files (1), which Storage never writes: nothing was restored\n`,
-        ) &&
+        sealedThenLink(linked, 'restore-db').test(link.stdout) &&
         !/^restore: roles$/m.test(linkOutput) &&
         linkRole === '0',
       tail(linkOutput),
+    );
+
+    // Nights the backup's key did not seal, and parts not as it sealed them, are refused before
+    // anything of the night is read or restored, saying so (VPS-43): a planted night whose seal
+    // another key signed, and one with no seal; a part of a real night replaced after its seal,
+    // as many bytes, one of them changed (the rehearsal's S3 takes overwrites, which the
+    // recommended locks refuse); and a part the seal doesn't list, a settings archive planted for
+    // the night whose own was stale, not even age's, which is never read.
+    const forgedRun = await refusedRestore(forgedNight, age);
+    checks.expect(
+      `a planted night sealed by another key, restore test (${forgedNight}): exit ${forgedRun.run.status}, "${tail(forgedRun.run.stdout, 1)}", and nothing else; restore-db ${forgedRun.bare ? 'still bare' : 'not bare'}`,
+      forgedRun.run.status === 1 &&
+        forgedRun.bare &&
+        forgedRun.run.stdout ===
+          `restore: the night of ${forgedNight} is not signed by the backup's key: its seal (seal-${forgedNight}.txt in daily/) is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys, so someone else wrote to the bucket, and nothing of the night was read\n`,
+      tail(forgedRun.output),
+    );
+    const unsealedRun = await refusedRestore(unsealed, age);
+    checks.expect(
+      `a planted night with no seal, restore test (${unsealed}): exit ${unsealedRun.run.status}, "${tail(unsealedRun.run.stdout, 1)}", and nothing else; restore-db ${unsealedRun.bare ? 'still bare' : 'not bare'}`,
+      unsealedRun.run.status === 1 &&
+        unsealedRun.bare &&
+        unsealedRun.run.stdout ===
+          `restore: the night of ${unsealed} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so the backup's key signed none: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
+      tail(unsealedRun.output),
+    );
+    const victim = `postgres-${nextNight}.dump.age`;
+    const flipped = inBackup(
+      [
+        'set -e',
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/${victim}" >/tmp/part`,
+        'before=$(sha256sum </tmp/part | cut -d " " -f 1)',
+        'size=$(wc -c </tmp/part)',
+        'at=$((size / 2))',
+        'byte=$(od -An -tu1 -j"$at" -N1 /tmp/part | tr -d " ")',
+        `printf "$(printf '\\\\%03o' "$(( (byte + 1) % 256 ))")" | dd of=/tmp/part bs=1 seek="$at" conv=notrunc 2>/dev/null`,
+        `rclone copyto /tmp/part "backups:$BACKUP_BUCKET/daily/${victim}"`,
+        'echo "$size $(wc -c </tmp/part) $before $(sha256sum </tmp/part | cut -d " " -f 1)"',
+      ].join('\n'),
+    );
+    const [sizeBefore, sizeAfter, sumBefore, sumAfter] = flipped.stdout.trim().split(' ');
+    if (flipped.status !== 0 || sizeBefore !== sizeAfter || sumBefore === sumAfter) {
+      fail(`Changing a byte of ${victim} failed: ${flipped.stdout}${flipped.stderr}`);
+    }
+    const replacedRun = await refusedRestore(nextNight, age);
+    checks.expect(
+      `${victim}, replaced after the seal by as many bytes with one changed: the restore test of ${nextNight} exit ${replacedRun.run.status}, "${tail(replacedRun.run.stdout, 1)}", right after the night's line; no roles step, restore-db ${replacedRun.bare ? 'still bare' : 'not bare'}`,
+      replacedRun.run.status === 1 &&
+        replacedRun.bare &&
+        replacedRun.run.stdout ===
+          `restore: the night of ${nextNight}, from daily/, into restore-db\nrestore: ${victim} in daily/ is not the part the backup sealed (its sha256 is not the seal's): someone else wrote to the bucket, and nothing of the night was restored\n`,
+      tail(replacedRun.output),
+    );
+    const unlisted = `config-${failedNight}.tar.age`;
+    putObject(`daily/${unlisted}`, 'planted, not age\n');
+    for (let tries = 0; tries < 20; tries++) {
+      if (bucketNames('daily').includes(unlisted)) break;
+      await sleep(1000);
+    }
+    const unlistedRun = await refusedRestore(failedNight, age);
+    checks.expect(
+      `a settings archive planted for ${failedNight}, whose seal lists none: its restore test exit ${unlistedRun.run.status}, "${tail(unlistedRun.run.stdout, 1)}", and nothing else (age never read the planted part); restore-db ${unlistedRun.bare ? 'still bare' : 'not bare'}`,
+      unlistedRun.run.status === 1 &&
+        unlistedRun.bare &&
+        unlistedRun.run.stdout ===
+          `restore: the night of ${failedNight} has no settings archive in its seal (${unlisted}): its backup had none fresh enough, so a test of it can't pass, and nothing of it was read\n`,
+      tail(unlistedRun.output),
     );
     // The 1st two months back, with the planted copy in daily/ under its id: past 29 days, read
     // from monthly/ alone, and daily/ never looked in (RV2).
@@ -4507,7 +5219,7 @@ async function backupTest() {
     // daily copy: younger than 29 days, it is read from daily/ alone, so with only its monthly/
     // copy left its restore test is refused, saying why (review findings B1 and RV1).
     const removed = inBackup(
-      `rclone delete --include '*-${future}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
+      `rclone delete --include '*-${future}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${forgedNight}.*' --include '*-${unsealed}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
     if (removed.status !== 0) fail(`Removing nights from daily/ failed: ${removed.stderr.trim()}`);
     // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ no longer shows them.
@@ -4525,7 +5237,7 @@ async function backupTest() {
       `the restore test of ${night}, younger than 29 days, by RESTORE_STAMP with only its monthly/ copy left: exit ${youngOnly.status}, "${tail(youngOnly.stdout, 1)}"`,
       youngOnly.status === 1 &&
         youngOnly.stdout ===
-          `restore: the night of ${night} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no manifest there, so no backup finished it (the backup's journal names the nights that did)\n`,
+          `restore: the night of ${night} is younger than 29 days, so only daily/ is read for it: daily/ keeps every night of the last 29 days under its lock; this one has no seal there, so the backup's key signed none: a backup that stopped before its seal, or someone else wrote to the bucket (the backup's journal names the nights it sealed)\n`,
       tail(`${youngOnly.stdout}${youngOnly.stderr}`),
     );
 
@@ -4704,11 +5416,7 @@ async function recovery(
   checks.expect(
     `recover of a planted night whose Storage archive holds a link (${linked}), into the new volumes: exit ${run.status}, "${said(run, /links or special files/)}", and no roles step`,
     run.status === 1 &&
-      run.stdout.startsWith(
-        `restore: the night of ${linked}, from daily/, into recover-db
-restore: the Storage archive of ${linked} holds links or special files (1), which Storage never writes: nothing was restored
-`,
-      ) &&
+      sealedThenLink(linked, 'recover-db').test(run.stdout) &&
       !/^restore: roles$/m.test(`${run.stdout}${run.stderr}`),
     `${run.stdout}${run.stderr}`,
   );
