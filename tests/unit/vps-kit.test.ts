@@ -1786,7 +1786,10 @@ const archiveFirst = (script: string) => {
  * gives; at most 5 seals named as backup.sh names one are tried. So names planted in monthly/ can't
  * stop the 1st's copy nor stand in for a whole one, a night whose settings archive or base failed
  * is never the copy, and a 1st that failed leaves it to the next whole night. The seal goes last,
- * and the copy still comes before the night's failure.
+ * and the copy still comes before the night's failure. Each part is looked up by its exact name:
+ * a listing of monthly/ quotes no name, and an object named after a part, a space and more passed
+ * for the part, so a copied seal and such names stopped the month's copy (Stop C's review, finding
+ * S2); a listing line of more than a size and a name is no candidate seal either.
  */
 const monthlyCopy = (script: string) => {
   const uploads = script.indexOf("reason='the check of the uploads'");
@@ -1798,7 +1801,7 @@ const monthlyCopy = (script: string) => {
   );
   const first = script.indexOf('    ????-??-01T*) whole= ;;');
   const listed = script.indexOf(
-    `      rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" >"$work/monthly"`,
+    `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" "$remote/monthly/" |`,
   );
   const tried = script.indexOf('>"$work/candidates"');
   const loop = script.indexOf(
@@ -1829,7 +1832,7 @@ const monthlyCopy = (script: string) => {
     ...(listed > first && loop > listed && loop < check
       ? []
       : ['a 1st that failed leaves the month without a copy']),
-    ...(script.includes(`        sort | awk 'NR <= 5' >"$work/candidates"`) && tried > listed
+    ...(script.includes(`        sort -u | awk 'NR <= 5' >"$work/candidates"`) && tried > listed
       ? []
       : ['more than 5 seals in monthly/ are tried']),
     ...(script.includes(
@@ -1837,12 +1840,22 @@ const monthlyCopy = (script: string) => {
     )
       ? []
       : ['a whole copy in monthly/ is not looked for by a seal named with a night’s id']),
+    ...(script.includes('          NF == 2 && $1 + 0 <= max && $2 ~ ("^seal-" month')
+      ? []
+      : ['a listing line of more than a size and a name is taken for a seal']),
     ...(copy.includes(
       'rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&',
     ) && copy.includes('    seal_open "$work/candidate" "$1" &&')
       ? []
       : ['a copy in monthly/ counts as whole without a seal that checks out']),
-    ...(copy.includes('($2 in want) && $1 == want[$2] { have[$2] = 1 }') &&
+    ...(copy.includes(
+      `    awk '{ print $3 }' "$work/candidate.parts" | held "$remote/monthly" >"$work/candidate.held" &&`,
+    ) &&
+    copy.includes(`}' "$work/candidate.parts" "$work/candidate.held"`) &&
+    !/\brclone lsf\b|"\$work\/monthly"/.test(copy)
+      ? []
+      : ['a copy counts as whole by a listing of monthly/, not each part looked up by its name']),
+    ...(copy.includes('NF == 2 && ($2 in want) && $1 == want[$2] { have[$2] = 1 }') &&
     copy.includes('for (name in want) if (!(name in have)) exit 1')
       ? []
       : ['a copy counts as whole without each part at the size its seal gives']),
@@ -3124,7 +3137,7 @@ describe('the migrate and backup images', () => {
     );
     refuses(
       monthlyCopy,
-      swap(backupSh, `sort | awk 'NR <= 5' >"$work/candidates"`, 'sort >"$work/candidates"'),
+      swap(backupSh, `sort -u | awk 'NR <= 5' >"$work/candidates"`, 'sort -u >"$work/candidates"'),
       'more than 5 seals',
     );
     // As before the seals (VPS-43): a copy counted as whole by its names and sizes alone, which
@@ -3142,6 +3155,30 @@ describe('the migrate and backup images', () => {
         '($2 in want) { have[$2] = 1 }',
       ),
       'at the size its seal gives',
+    );
+    // As before Stop C's review (finding S2): the parts' sizes read from a listing of monthly/,
+    // whose lines an object named after a part, a space and more imitates.
+    refuses(
+      monthlyCopy,
+      swap(
+        swap(
+          backupSh,
+          `    awk '{ print $3 }' "$work/candidate.parts" | held "$remote/monthly" >"$work/candidate.held" &&\n`,
+          '',
+        ),
+        `}' "$work/candidate.parts" "$work/candidate.held"`,
+        `}' "$work/candidate.parts" "$work/monthly"`,
+      ),
+      'by a listing of monthly/',
+    );
+    refuses(
+      monthlyCopy,
+      swap(
+        backupSh,
+        '          NF == 2 && $1 + 0 <= max && $2 ~',
+        '          $1 + 0 <= max && $2 ~',
+      ),
+      'more than a size and a name is taken for a seal',
     );
     refuses(
       monthlyCopy,

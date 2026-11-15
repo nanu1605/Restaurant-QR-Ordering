@@ -4923,6 +4923,72 @@ async function backupTest() {
       `${baseless.stdout}${baseless.stderr}\n${baselessParts.join('\n')}`,
     );
 
+    // A month whose copy is gone from monthly/, as if it had never gone up, four months back (the
+    // stand-in date): its first whole night, on the 2nd, made it; then its parts and seal go, and a
+    // token holder puts that night's real seal back, copied from daily/, beside an object named
+    // after each part it lists, a space and an x, at the size it gives. monthly/'s listing quotes no
+    // name, so those read as the parts' own lines; looked up by their exact names, the parts are
+    // not there, and the month's next whole night is still its copy (Stop C's review, finding S2).
+    const absent = monthBefore(`${baseFirst.slice(0, 7)}-01T0000Z`);
+    archive(stampOf(daemonNow()));
+    const absentFirst = standInBackup({ FAKE_STAMP: `${absent}-02T2030Z` });
+    const absentFirstId =
+      /^backup (\S+): .*, kept in monthly\/ as the month's copy$/m.exec(absentFirst.stdout)?.[1] ??
+      fail(
+        `The first night of ${absent} made no month's copy:\n${absentFirst.stdout}${absentFirst.stderr}`,
+      );
+    const lookalike = inBackup(
+      [
+        'set -e',
+        `rclone delete --include '*-${absentFirstId}.*' "backups:$BACKUP_BUCKET/monthly/"`,
+        `rclone copyto "backups:$BACKUP_BUCKET/daily/seal-${absentFirstId}.txt" "backups:$BACKUP_BUCKET/monthly/seal-${absentFirstId}.txt"`,
+        `rclone cat "backups:$BACKUP_BUCKET/daily/seal-${absentFirstId}.txt" | sed -n 's/^part [0-9a-f]* \\([0-9]*\\) \\(.*\\)$/\\1 \\2/p' >/tmp/sealed`,
+        'while read -r bytes name; do',
+        '  head -c "$bytes" /dev/urandom | rclone rcat "backups:$BACKUP_BUCKET/monthly/$name x"',
+        '  echo "$name x"',
+        'done </tmp/sealed',
+      ].join('\n'),
+    );
+    const lookalikes = lines(lookalike.stdout);
+    if (
+      lookalike.status !== 0 ||
+      lookalikes.length !== nightParts(absentFirstId, true).length - 1
+    ) {
+      fail(
+        `Planting look-alikes of ${absentFirstId} failed: ${lookalike.stdout}${lookalike.stderr}`,
+      );
+    }
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until monthly/ shows them.
+    for (let tries = 0; tries < 20; tries++) {
+      const listed = bucketNames('monthly');
+      if (
+        listed.includes(`seal-${absentFirstId}.txt`) &&
+        lookalikes.every((name) => listed.includes(name)) &&
+        !listed.includes(`base-${absentFirstId}.tar.zst.age`)
+      )
+        break;
+      await sleep(1000);
+    }
+    const absentNext = standInBackup({ FAKE_STAMP: `${absent}-03T2030Z` });
+    const absentNextLine = /^backup (\S+): .*$/m.exec(absentNext.stdout);
+    const absentNextId = absentNextLine?.[1] ?? '';
+    const monthlyAbsent = bucketNames('monthly').filter((name) => name.includes(`-${absent}-`));
+    checks.expect(
+      `a month whose copy is gone from monthly/ (${absent}, stand-in stamps), its first night's real seal put back there beside ${lookalikes.length} objects named after the parts it lists, a space and an x, at its sizes ("${lookalikes.find((name) => name.startsWith('base-')) ?? ''}"): the month's next whole night is still its copy, each part looked up by its name: exit ${absentNext.status}, "${absentNextLine?.[0] ?? tail(absentNext.stdout, 1)}", its ${monthlyAbsent.filter((name) => name.includes(`-${absentNextId}.`)).length} objects in monthly/`,
+      absentNext.status === 0 &&
+        stampPart(absentNextId) === `${absent}-03T2030Z` &&
+        (absentNextLine?.[0] ?? '').endsWith(", kept in monthly/ as the month's copy") &&
+        monthlyAbsent.filter((name) => name.includes(`-${absentNextId}.`)).join(' ') ===
+          nightParts(absentNextId, true).join(' ') &&
+        lookalikes.every((name) => monthlyAbsent.includes(name)),
+      `${absentNext.stdout}${absentNext.stderr}\n${monthlyAbsent.join('\n')}`,
+    );
+    const unlooked = inBackup(
+      `rclone delete --include '*-${absentFirstId}.*' "backups:$BACKUP_BUCKET/monthly/"`,
+    );
+    if (unlooked.status !== 0)
+      fail(`Removing the look-alikes of ${absentFirstId} failed: ${unlooked.stderr.trim()}`);
+
     // Every night above as a restore reads it, with Node's crypto: its seal signed by the backup's
     // key, and each part it lists in its folder as it went up; the month's copies too.
     const nights = sealsChecked(checks, env, [
@@ -4934,6 +5000,7 @@ async function backupTest() {
       { folder: 'daily', night: slowNight, config: true, base: true },
       { folder: 'monthly', night: oldFirstId, config: true, base: true },
       { folder: 'daily', night: baselessId, config: true, base: false },
+      { folder: 'monthly', night: absentNextId, config: true, base: true },
     ]);
     const unbased = inBackup(
       `rclone delete --include '*-${baselessId}.*' "backups:$BACKUP_BUCKET/daily/"`,

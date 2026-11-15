@@ -364,27 +364,37 @@ sealed_size=$(echo "seal-$night.txt" | held "$day" | awk '{ print $1 }')
 # its settings archive fresh, and one stamped the 1st (UTC) or, while monthly/ holds no whole copy
 # of the month, the next whole night, so a 1st that failed leaves the copy to it. A whole copy is
 # one whose seal checks out against BACKUP_SIGNING_PUBLIC_KEY (whole_copy, below): names someone
-# else put in monthly/ can't stop the 1st's copy, nor stand in for one, as only the backup signs a
-# seal. The seal goes last there too, so a copy cut short is no whole copy.
+# else put in monthly/ can't stop the 1st's copy, nor make one of a night the backup never sealed,
+# as only the backup signs a seal. The seal goes last there too, so a copy cut short is no whole
+# copy. Each part is held to its size, not its bytes, which would cost the month's copy in
+# downloads every night: where a whole night's names in monthly/ are free, a token holder can put
+# objects of the sizes its seal gives under them, and the seal beside them, and so stop the month's
+# later copies, after that night's own copy was cut short (the night fails with the alert) or by
+# beating a whole night's own check after a 1st that failed. A restore refuses such parts by their
+# sha256.
 #
 # whole_copy <night>: whether monthly/ holds that night whole: its seal, at most seal_max bytes, a
 # backup's for that night with a base, a settings archive and a dump of each of tonight's
-# databases, and every part it lists in monthly/ at the size it gives.
+# databases, and every part it lists in monthly/ at the size it gives, each looked up by its exact
+# name (held). A listing of monthly/ quotes no name: an object named after a part, a space and
+# more, at the part's size, passed for the part, and with the night's own seal copied there from
+# daily/, stopped every later copy of the month (Stop C's review, finding S2).
 # shellcheck disable=SC2154 # seal_max and seal_parts: seal.sh's
 whole_copy() {
   rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&
     seal_open "$work/candidate" "$1" &&
     printf '%s\n' "$seal_parts" >"$work/candidate.parts" &&
+    awk '{ print $3 }' "$work/candidate.parts" | held "$remote/monthly" >"$work/candidate.held" &&
     DBS="$dbs" LC_ALL=C awk -v night="$1" '
       FNR == NR { want[$3] = $2; next }
-      ($2 in want) && $1 == want[$2] { have[$2] = 1 }
+      NF == 2 && ($2 in want) && $1 == want[$2] { have[$2] = 1 }
       END {
         n = split("globals-" night ".sql.age storage-" night ".tar.age manifest-" night ".txt.age base-" night ".tar.zst.age config-" night ".tar.age", need, " ")
         k = split(ENVIRON["DBS"], db, "\n")
         for (i = 1; i <= k; i++) need[n + i] = db[i] "-" night ".dump.age"
         for (i = 1; i <= n + k; i++) if (!(need[i] in want)) exit 1
         for (name in want) if (!(name in have)) exit 1
-      }' "$work/candidate.parts" "$work/monthly"
+      }' "$work/candidate.parts" "$work/candidate.held"
 }
 reason='the monthly copy'
 # --no-check-dest on each copyto: rclone skips a same-size, same-mtime destination, so a look-alike planted first would stay.
@@ -394,14 +404,15 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
   case $stamp in
     ????-??-01T*) whole= ;;
     *)
-      # The month's names in monthly/, into a file: of them, at most 5 seals named as this script
-      # names one, oldest first and no longer than a seal, are fetched and checked, so names
-      # planted there cost a few small reads at most. Planted seals fail their signature and stop
-      # no copy; enough of them, oldest, could make one copy more.
-      rclone lsf --files-only --format sp --separator ' ' --include "*-$month-*" "$remote/monthly/" >"$work/monthly"
-      LC_ALL=C awk -v month="$month" -v max="$seal_max" '
-        $1 + 0 <= max && $2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }' "$work/monthly" |
-        sort | awk 'NR <= 5' >"$work/candidates"
+      # The month's seals in monthly/: of them, at most 5 named as this script names one, oldest
+      # first and no longer than a seal, are fetched and checked, so names planted there cost a
+      # few small reads at most. Planted seals fail their signature and stop no copy; enough of
+      # them, oldest, could make one copy more. The listing quotes no name, so a line of more than
+      # a size and a name is no seal's.
+      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" "$remote/monthly/" |
+        LC_ALL=C awk -v month="$month" -v max="$seal_max" '
+          NF == 2 && $1 + 0 <= max && $2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }' |
+        sort -u | awk 'NR <= 5' >"$work/candidates"
       whole=
       while read -r candidate; do
         if whole_copy "$candidate" </dev/null; then
