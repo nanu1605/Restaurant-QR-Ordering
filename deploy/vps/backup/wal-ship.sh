@@ -98,6 +98,21 @@ kept() {
   value=$(sed -n 1p "$1" 2>/dev/null || true)
   if digits "$value"; then printf '%s' "$value"; fi
 }
+# The record's values (below), each written where the record is kept, or, when that write fails,
+# as on a disk too full for one more page, in /tmp/wal-ship, the service's tmpfs, which keeps it
+# while the container runs; read from both, the later number counting. So a full disk neither
+# stops the run before its alert nor lets the alert go out every minute (at worst once more after
+# the container restarts). No write here is ':' with a redirection: one that fails ends ash, even
+# within braces.
+note() {
+  { printf '%s\n' "$2" >"$book/$1"; } 2>/dev/null && return 0
+  { mkdir -p "$spare" && printf '%s\n' "$2" >"$spare/$1"; } 2>/dev/null || true
+}
+noted() {
+  printf '%s\n%s\n' "$(kept "$book/$1")" "$(kept "$spare/$1")" |
+    awk '$0 != "" && (max == "" || $0 + 0 > max + 0) { max = $0 } END { print max }'
+}
+unnote() { rm -f "$book/$1" "$spare/$1" 2>/dev/null || true; }
 # The time, in seconds since 1970, of the oldest file waiting (the outbox keeps each raw file's);
 # nothing when none waits.
 oldest() {
@@ -182,11 +197,14 @@ if [ -z "$problem" ]; then
     halted 'the outbox holds WAL files, but no system identifier is kept with them: nothing ships (docs/RUNBOOK.md)'
   elif [ -n "$id" ] && [ "$waiting" -gt 0 ]; then
     halted "db's system identifier is now $current, not the $id kept, and $waiting WAL files wait: nothing ships, so two clusters' WAL never mix (docs/RUNBOOK.md: after a recovery, wal-spool is made new)"
-  else
-    printf '%s\n' "$current" >"$state/system-identifier.new"
-    fsync "$state/system-identifier.new"
-    mv -f "$state/system-identifier.new" "$state/system-identifier"
+  elif { printf '%s\n' "$current" >"$state/system-identifier.new" &&
+    fsync "$state/system-identifier.new" &&
+    mv -f "$state/system-identifier.new" "$state/system-identifier"; } 2>"$work/tool"; then
     id=$current
+  else
+    # Kept, or nothing ships: a full disk, most likely.
+    stopped "db's system identifier, $current, could not be kept in /wal-spool/.ship"
+    detail=$work/tool
   fi
 fi
 
@@ -265,7 +283,7 @@ if [ -z "$problem" ]; then
       break
     fi
     rm -f "$out/$file"
-    printf '%s\n' "$walfile" >"$state/last-sent"
+    note last-sent "$walfile"
   done
 fi
 
@@ -278,20 +296,20 @@ behind=
 [ -z "$since" ] || [ $((now - since)) -le 600 ] || behind=$(((now - since) / 60))
 stuck=
 if [ -n "$current" ] && [ "$failed" -gt "$archived" ]; then
-  first=$(kept "$book/archiver-failing")
+  first=$(noted archiver-failing)
   if [ -z "$first" ]; then
     first=$now
-    printf '%s\n' "$now" >"$book/archiver-failing"
+    note archiver-failing "$now"
   fi
   [ $((now - first)) -lt 600 ] || stuck=$(((now - first) / 60))
 elif [ -n "$current" ]; then
-  rm -f "$book/archiver-failing"
+  unnote archiver-failing
 fi
 
 # What no wait mends, and a db that archives nothing, alert at once.
 cluster=${id:-(unknown)}
 if [ -n "$behind" ] || [ -n "$stuck" ] || [ -n "$idle" ] || [ -n "$urgent" ]; then
-  last=$(kept "$book/alert-sent")
+  last=$(noted alert-sent)
   if [ -z "$last" ] || [ $((now - last)) -ge 3600 ]; then
     reasons=
     [ -z "$behind" ] || reasons="the oldest WAL file waited $behind minutes, $waiting wait now"
@@ -306,23 +324,24 @@ if [ -n "$behind" ] || [ -n "$stuck" ] || [ -n "$idle" ] || [ -n "$urgent" ]; th
         sed -n '1,3s/^\(.\{0,200\}\).*/wal-ship: | \1/p' >&2 || true
     fi
     notify.sh alert "$message"
-    printf '%s\n' "$now" >"$book/alert-sent"
-    : >"$book/alerting"
+    note alert-sent "$now"
+    note alerting "$now"
   fi
 elif { [ -e "$book/alerting" ] || [ -e "$spare/alerting" ]; } && [ -z "$problem" ] && [ -n "$current" ]; then
   message="[menumesh] WAL shipping resumed (cluster $cluster): no WAL file waits over 10 minutes, and db archives"
   echo "wal-ship: $message" >&2
   notify.sh alert "$message"
-  rm -f "$book/alerting" "$spare/alerting"
+  unnote alerting
 fi
 
 # The heartbeat, every 5 minutes while all is well: the cluster and the last WAL file sent, which
 # the monitor's log keeps where the bucket's token can't reach.
 if [ -z "$behind" ] && [ -z "$stuck" ] && [ -z "$idle" ] && [ -z "$problem" ] && [ -n "$current" ]; then
-  last=$(kept "$book/beat")
+  last=$(noted beat)
   if [ -z "$last" ] || [ $((now - last)) -ge 290 ]; then
-    printf '%s\n' "$now" >"$book/beat"
-    last_sent=$(sed -n 1p "$state/last-sent" 2>/dev/null | grep -E "^${WAL}\$" || true)
+    note beat "$now"
+    last_sent=$(for file in "$state/last-sent" "$spare/last-sent"; do sed -n 1p "$file" 2>/dev/null || true; done |
+      grep -E "^${WAL}\$" | sort | tail -n 1 || true)
     HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat "wal $cluster: last sent ${last_sent:-nothing yet}, $waiting waiting"
   fi
 fi

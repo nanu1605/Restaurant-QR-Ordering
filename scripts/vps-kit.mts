@@ -2802,15 +2802,16 @@ function walNames(cluster: string): string[] {
 /**
  * Each object downloaded in the backup's container: the sha256 and bytes of what is in the
  * bucket, and, decrypted with the rehearsal's age key, the WAL file's bytes and the system
- * identifier its header names (offset 24 of a segment).
+ * identifier its header names (offset 24 of a segment). The files go in /var/tmp, on the
+ * container's disk: its /tmp is a small tmpfs, for the scripts' own files.
  */
 function walContents(paths: string[]) {
   const script = [
     'set -eu',
     'for path in "$@"; do',
-    '  rclone cat "backups:$BACKUP_BUCKET/$path" >/tmp/object',
-    '  age --decrypt --identity /run/age/identity.txt </tmp/object | zstd -dcq >/tmp/wal',
-    `  printf '%s %s %s %s %s\\n' "$path" "$(sha256sum </tmp/object | cut -d ' ' -f 1)" "$(wc -c </tmp/object)" "$(wc -c </tmp/wal)" "$(od -An -tu8 -j24 -N8 /tmp/wal | tr -d ' ')"`,
+    '  rclone cat "backups:$BACKUP_BUCKET/$path" >/var/tmp/object',
+    '  age --decrypt --identity /run/age/identity.txt </var/tmp/object | zstd -dcq >/var/tmp/wal',
+    `  printf '%s %s %s %s %s\\n' "$path" "$(sha256sum </var/tmp/object | cut -d ' ' -f 1)" "$(wc -c </var/tmp/object)" "$(wc -c </var/tmp/wal)" "$(od -An -tu8 -j24 -N8 /var/tmp/wal | tr -d ' ')"`,
     'done',
   ].join('\n');
   const run = compose([
@@ -2960,7 +2961,8 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
   );
   walSigned(checks, env, `the shipped WAL of ${cluster}`, shipped.names.slice(-5));
   // The image's base declares a volume for Postgres's data, which the service covers with a
-  // tmpfs: else Docker gives it an anonymous volume, which outlives the container.
+  // tmpfs: else Docker gives it an anonymous volume, which outlives the container. Its /tmp is a
+  // tmpfs too, so a full disk can't stop its scripts before they alert.
   const [mountsJson, tmpfsJson] = docker([
     'inspect',
     '--format',
@@ -2981,8 +2983,8 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
   const volumes = mounts.filter((mount) => mount.Type === 'volume');
   const anonymous = volumes.filter((mount) => !mount.Name?.startsWith(`${PROJECT}_`));
   checks.expect(
-    `the backup service's volumes are the project's own (${volumes.map((mount) => `${mount.Name} at ${mount.Destination}`).join(', ')}), and a tmpfs covers its image's /var/lib/postgresql/data: no anonymous volume`,
-    !anonymous.length && tmpfs.includes('/var/lib/postgresql/data'),
+    `the backup service's volumes are the project's own (${volumes.map((mount) => `${mount.Name} at ${mount.Destination}`).join(', ')}), and a tmpfs covers its image's /var/lib/postgresql/data: no anonymous volume; its /tmp is a tmpfs`,
+    !anonymous.length && tmpfs.includes('/var/lib/postgresql/data') && tmpfs.includes('/tmp'),
     `${mountsJson}\n${tmpfsJson}`,
   );
   // Silent on success, db and the shipper alike: wait out three of the shipper's minutes.
@@ -3261,13 +3263,15 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     /^ {4}image: (rclone\/rclone:\S+)$/m.exec(readFileSync(OVERRIDE, 'utf8'))?.[1] ??
     fail('The rehearsal override has no rclone image');
   const password = randomBytes(12).toString('hex');
+  const full = `${tag}-full`;
   const cleanup = () => {
-    docker(['rm', '--force', pg, s3, `${tag}-lock`]);
+    docker(['rm', '--force', pg, s3, `${tag}-lock`, full]);
     docker(['volume', 'rm', '--force', spool, tmp]);
     docker(['network', 'rm', net]);
   };
-  // Postgres once its image's init is over: Postgres itself is then process 1.
-  const startPostgres = async (archiving: boolean) => {
+  // Postgres once its image's init is over: Postgres itself is then process 1. With an archive
+  // command, it archives through it (/bin/true takes every file).
+  const startPostgres = async (archive?: string) => {
     const run = docker(
       [
         'run',
@@ -3280,7 +3284,7 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
         '--env',
         'POSTGRES_PASSWORD',
         postgres,
-        ...(archiving ? ['-c', 'archive_mode=on', '-c', 'archive_command=/bin/true'] : []),
+        ...(archive ? ['-c', 'archive_mode=on', '-c', `archive_command=${archive}`] : []),
       ],
       undefined,
       { POSTGRES_PASSWORD: password },
@@ -3366,6 +3370,8 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     );
     return lines(`${run.stdout}${run.stderr}`);
   };
+  // A script in the spool, with the shipper's /tmp, where its record goes while the spool can't
+  // keep it.
   const inSpool = (script: string, user = '100:101') =>
     docker([
       'run',
@@ -3375,6 +3381,8 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
       user,
       '--volume',
       `${spool}:/wal-spool`,
+      '--volume',
+      `${tmp}:/tmp`,
       '--entrypoint',
       'sh',
       image,
@@ -3415,9 +3423,12 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
   const shipped = (walfile: string) => objects().some((name) => name.includes(`/${walfile}.`));
   const listing = (folder: string) => lines(inSpool(`ls -A ${folder}`).stdout);
   const kept = () => inSpool('cat /wal-spool/.ship/system-identifier').stdout.trim();
-  // As after a long quiet: no alert in the last hour and no heartbeat in the last 5 minutes.
+  // As after a long quiet: no alert in the last hour and no heartbeat in the last 5 minutes, in
+  // the spool and in /tmp, which the shipper reads too.
   const quiet = () =>
-    inSpool('rm -f /wal-spool/.ship/alert-sent /wal-spool/.ship/alerting /wal-spool/.ship/beat');
+    inSpool(
+      'for at in /wal-spool/.ship /tmp/wal-ship; do rm -f "$at/alert-sent" "$at/alerting" "$at/beat"; done',
+    );
   const says = (log: string[], text: string) => log.some((line) => line.includes(text));
   const alerts = (log: string[]) =>
     log.filter((line) => line.startsWith('wal-ship: [menumesh] WAL is not reaching the bucket'));
@@ -3465,7 +3476,7 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
       },
     );
     if (started.status !== 0) fail(`The shipper's test S3 did not start: ${started.stderr.trim()}`);
-    const cluster = await startPostgres(true);
+    const cluster = await startPostgres('/bin/true');
 
     // A spool still root's and 0755, as Docker makes a volume, then made postgres's as db's
     // wal-spool.sh makes it.
@@ -3631,7 +3642,7 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
 
     // A db that archives nothing, then no db at all.
     docker(['rm', '--force', pg]);
-    const second = await startPostgres(false);
+    const second = await startPostgres();
     quiet();
     const idle = ship();
     docker(['stop', pg]);
@@ -3647,6 +3658,113 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
         objects().some((name) => name.startsWith(`${second}/00000000/000000010000000000000008.`)) &&
         !down.length,
       [...idle, '--', ...down].join('\n'),
+    );
+
+    // A disk too full for the shipper's record (Stop C's review, finding C3): the spool a tmpfs of
+    // 1 MiB filled to its last page, in a container that stays up as the service's does, each run
+    // started in it as crond starts one, with /tmp as compose.yml gives the backup service; db's
+    // archiver fails every file (its command fails until a file is there, as a full disk fails
+    // basic_archive's copy). The run keeps its record in /tmp instead of stopping at its first
+    // write; once db's archiver has failed for 10 minutes (its first failure made 15 minutes old)
+    // it alerts once, and the next run stays quiet within the hour; with room again, and db
+    // archiving, it says it resumed.
+    docker(['rm', '--force', pg]);
+    const third = await startPostgres('test -f /tmp/menumesh-archive-ok');
+    const sql = (...statements: string[]) =>
+      docker([
+        'exec',
+        pg,
+        'psql',
+        '-X',
+        '-At',
+        '-U',
+        'postgres',
+        ...statements.flatMap((statement) => ['-c', statement]),
+      ]).stdout.trim();
+    sql('create table rehearsal_full (x int)', 'insert into rehearsal_full values (1)');
+    sql('select pg_switch_wal()');
+    for (let tries = 0; tries < 30; tries++) {
+      if (sql('select failed_count > 0 from pg_stat_archiver') === 't') break;
+      await sleep(1000);
+    }
+    const tmpOptions = /'\/tmp:([^']+)'/.exec(value('backup', 'tmpfs'))?.[1];
+    const fullSettings = settings();
+    const holder = docker(
+      [
+        'run',
+        '--detach',
+        '--name',
+        full,
+        ...label,
+        '--network',
+        net,
+        '--cap-drop',
+        'ALL',
+        '--security-opt',
+        'no-new-privileges:true',
+        '--add-host',
+        'api.telegram.org:0.0.0.0',
+        '--add-host',
+        'hc-ping.com:0.0.0.0',
+        '--tmpfs',
+        '/wal-spool:size=1m,uid=100,gid=101,mode=0700',
+        ...(tmpOptions ? ['--tmpfs', `/tmp:${tmpOptions}`] : []),
+        ...named(fullSettings),
+        '--entrypoint',
+        'sleep',
+        image,
+        '900',
+      ],
+      undefined,
+      fullSettings,
+    );
+    if (holder.status !== 0) fail(`The full disk's container did not start: ${holder.stderr}`);
+    const inFull = (script: string) =>
+      docker(['exec', '--user', '100:101', full, 'sh', '-c', script]);
+    const shipFull = () => {
+      const run = docker(['exec', '--user', '100:101', full, '/usr/local/bin/wal-ship.sh']);
+      return lines(`${run.stdout}${run.stderr}`);
+    };
+    // The spool as the shipper left it before the disk filled: its cluster kept, its lock there.
+    const filled = inFull(
+      `mkdir -p /wal-spool/.ship/out && printf '%s\\n' ${third} >/wal-spool/.ship/system-identifier && printf '' >/wal-spool/.ship/lock && { head -c 2097152 /dev/zero >/wal-spool/.fill 2>/dev/null || true; } && if printf x >/wal-spool/.probe 2>/dev/null; then echo room; else echo full; fi`,
+    ).stdout.trim();
+    const fullFirst = shipFull();
+    const spared = inFull('cat /tmp/wal-ship/archiver-failing').stdout.trim();
+    inFull(`printf '%s\\n' "$(($(date +%s) - 900))" >/tmp/wal-ship/archiver-failing`);
+    const fullAlert = shipFull();
+    const fullQuiet = shipFull();
+    inFull('rm -f /wal-spool/.fill /wal-spool/.probe');
+    docker(['exec', pg, 'touch', '/tmp/menumesh-archive-ok']);
+    sql('insert into rehearsal_full values (2)', 'select pg_switch_wal()');
+    for (let tries = 0; tries < 90; tries++) {
+      if (
+        sql(
+          'select coalesce(last_archived_time > last_failed_time, false) from pg_stat_archiver',
+        ) === 't'
+      )
+        break;
+      await sleep(1000);
+    }
+    const fullResumed = shipFull();
+    const ownError = (log: string[]) => says(log, 'stopped by an error of its own');
+    checks.expect(
+      `a disk too full for the shipper's record (the spool a 1 MiB tmpfs ${filled === 'full' ? 'filled to its last page' : 'not filled'}, /tmp ${tmpOptions ? `a tmpfs as compose.yml gives the backup service (${tmpOptions})` : 'the container’s own'}), db's archiver failing: the run goes on, its record in /tmp (${fullFirst.join(' / ') || 'nothing printed'}); 15 minutes into the failure one alert ("${alerts(fullAlert)[0]?.split(': ').slice(2).join(': ') ?? ''}"), and the next run quiet; with room again and db archiving, it says it resumed`,
+      filled === 'full' &&
+        !ownError(fullFirst) &&
+        !alerts(fullFirst).length &&
+        /^\d+$/.test(spared) &&
+        alerts(fullAlert).length === 1 &&
+        fullAlert.some((line) =>
+          /db's archiver has failed for 1[56] minutes \(pg_stat_archiver\)$/.test(line),
+        ) &&
+        !ownError(fullAlert) &&
+        !fullQuiet.length &&
+        says(fullResumed, resumed) &&
+        !ownError(fullResumed),
+      [filled, ...fullFirst, '--', ...fullAlert, '--', ...fullQuiet, '--', ...fullResumed].join(
+        '\n',
+      ),
     );
   } finally {
     cleanup();
@@ -4197,7 +4315,8 @@ const otherSigningKey = () =>
 
 /**
  * What the bucket holds of nights, each in a folder: the seal's bytes (latin1), and the sha256 and
- * size of every object named with the night's id, read in the backup's container.
+ * size of every object named with the night's id, read in the backup's container (into /var/tmp:
+ * its /tmp is a small tmpfs).
  */
 function nightsInBucket(nights: readonly (readonly [string, string])[]) {
   const script = [
@@ -4206,8 +4325,8 @@ function nightsInBucket(nights: readonly (readonly [string, string])[]) {
     '  echo "night $folder $night"',
     `  printf 'seal %s\\n' "$(rclone cat --no-traverse "backups:$BACKUP_BUCKET/$folder/seal-$night.txt" </dev/null | base64 -w 0)"`,
     '  rclone lsf --files-only --include "*-$night.*" "backups:$BACKUP_BUCKET/$folder/" </dev/null | while read -r name; do',
-    '    rclone cat --no-traverse "backups:$BACKUP_BUCKET/$folder/$name" </dev/null >/tmp/object',
-    `    printf 'object %s %s %s\\n' "$name" "$(sha256sum </tmp/object | cut -d ' ' -f 1)" "$(wc -c </tmp/object)"`,
+    '    rclone cat --no-traverse "backups:$BACKUP_BUCKET/$folder/$name" </dev/null >/var/tmp/object',
+    `    printf 'object %s %s %s\\n' "$name" "$(sha256sum </var/tmp/object | cut -d ' ' -f 1)" "$(wc -c </var/tmp/object)"`,
     '  done',
     'done',
   ].join('\n');
@@ -4286,18 +4405,18 @@ function sealsChecked(
 
 /**
  * A night's base backup, decrypted (the rehearsal's age key) and decompressed in a one-off of the
- * backup service: its tar's names, backup_label's lines and the system identifier of its
- * backup_manifest.
+ * backup service, into /var/tmp (its /tmp is a small tmpfs): its tar's names, backup_label's lines
+ * and the system identifier of its backup_manifest.
  */
 function baseOf(night: string) {
   const script = [
     'set -eu',
-    `rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/base-${night}.tar.zst.age" >/tmp/base.zst.age`,
-    'age --decrypt --identity /run/age/identity.txt </tmp/base.zst.age | zstd -dcq >/tmp/base.tar',
-    'tar -tf /tmp/base.tar | sed "s/^/name /"',
-    'tar -xOf /tmp/base.tar backup_label | sed "s/^/label /"',
-    `tar -xOf /tmp/base.tar backup_manifest | sed -n 's/^"System-Identifier": \\([0-9]*\\),$/system \\1/p'`,
-    'echo "bytes $(wc -c </tmp/base.tar)"',
+    `rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/base-${night}.tar.zst.age" >/var/tmp/base.zst.age`,
+    'age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dcq >/var/tmp/base.tar',
+    'tar -tf /var/tmp/base.tar | sed "s/^/name /"',
+    'tar -xOf /var/tmp/base.tar backup_label | sed "s/^/label /"',
+    `tar -xOf /var/tmp/base.tar backup_manifest | sed -n 's/^"System-Identifier": \\([0-9]*\\),$/system \\1/p'`,
+    'echo "bytes $(wc -c </var/tmp/base.tar)"',
   ].join('\n');
   const run = compose([
     'run',
@@ -4327,8 +4446,9 @@ function baseOf(night: string) {
 
 /**
  * Commands run in a running service's container with docker exec, at once, as crond runs its
- * jobs there, with how long they took and the most memory the container's cgroup held meanwhile
- * (memory.current, page cache included, read every quarter second).
+ * jobs there, with how long they took, the most memory the container's cgroup held meanwhile
+ * (memory.current, page cache included) and the most its /tmp held (df's used KiB), each read
+ * every quarter second.
  */
 async function inService(container: string, runs: { user?: string; command: string[] }[]) {
   const started = Date.now();
@@ -4351,15 +4471,20 @@ async function inService(container: string, runs: { user?: string; command: stri
     return { out, closed };
   });
   let peakMib = 0;
+  let tmpKib = 0;
   while (children.some(({ out }) => out.status === undefined)) {
-    const bytes = Number(
-      docker(['exec', container, 'cat', '/sys/fs/cgroup/memory.current']).stdout,
+    const [current, , df] = lines(
+      docker(['exec', container, 'sh', '-c', 'cat /sys/fs/cgroup/memory.current && df -Pk /tmp'])
+        .stdout,
     );
+    const bytes = Number(current);
     if (Number.isFinite(bytes)) peakMib = Math.max(peakMib, Math.round(bytes / 1048576));
+    const used = Number(df?.trim().split(/\s+/)[2]);
+    if (Number.isFinite(used)) tmpKib = Math.max(tmpKib, used);
     await sleep(250);
   }
   await Promise.all(children.map(({ closed }) => closed));
-  return { runs: children.map(({ out }) => out), peakMib, took: seconds(started) };
+  return { runs: children.map(({ out }) => out), peakMib, tmpKib, took: seconds(started) };
 }
 
 /**
@@ -4474,7 +4599,8 @@ const BASE_STAND_IN = [
 
 /**
  * The arguments of `compose run` for a one-off of the backup service running backup.sh with the
- * stand-ins date, od and pg_basebackup.
+ * stand-ins date, od and pg_basebackup, copied to /var/tmp/bin: the service's /tmp is a tmpfs,
+ * which runs nothing.
  */
 const standInArgs = (fakes: Record<string, string>) => [
   '--no-deps',
@@ -4486,7 +4612,7 @@ const standInArgs = (fakes: Record<string, string>) => [
   'sh',
   'backup',
   '-c',
-  'mkdir -p /tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /tmp/bin/ && chmod 755 /tmp/bin/date /tmp/bin/od /tmp/bin/pg_basebackup && PATH=/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
+  'mkdir -p /var/tmp/bin && cd /opt/menumesh-rehearsal && cp date od pg_basebackup /var/tmp/bin/ && chmod 755 /var/tmp/bin/date /var/tmp/bin/od /var/tmp/bin/pg_basebackup && PATH=/var/tmp/bin:$PATH exec /usr/local/bin/backup.sh',
 ];
 
 /** A one-off of the backup service running backup.sh with the stand-ins date, od and pg_basebackup. */
@@ -4824,14 +4950,19 @@ async function backupTest() {
     const serviceLine = /^backup (\S+): .*$/m.exec(both.runs[0].stdout);
     const serviceNight = serviceLine?.[1] ?? nextNight;
     const limitMib = Number(value('backup', 'mem_limit').replace(/m$/, ''));
+    // The scripts' small files go in /tmp, a tmpfs that counts in that memory (compose.yml): the
+    // most it held, which must leave three quarters of its size free.
+    const tmpMib = Number(/'\/tmp:size=(\d+)m[,']/.exec(value('backup', 'tmpfs'))?.[1]);
     checks.expect(
-      `a night in the backup service itself, as its crond runs one, with wal-ship.sh at once: exits ${both.runs.map((run) => run.status).join(' and ')} in ${both.took} s, "${serviceLine?.[0] ?? tail(both.runs[0].stdout, 1)}"; the service's memory at most ${both.peakMib} MiB of its ${value('backup', 'mem_limit')} (memory.current, page cache included)`,
+      `a night in the backup service itself, as its crond runs one, with wal-ship.sh at once: exits ${both.runs.map((run) => run.status).join(' and ')} in ${both.took} s, "${serviceLine?.[0] ?? tail(both.runs[0].stdout, 1)}"; the service's memory at most ${both.peakMib} MiB of its ${value('backup', 'mem_limit')} (memory.current, page cache included), its /tmp at most ${both.tmpKib} KiB of its ${tmpMib} MiB tmpfs`,
       both.runs.every((run) => run.status === 0) &&
         serviceLine !== null &&
         serviceNight !== nextNight &&
         !serviceLine[0].includes('kept in monthly') &&
         both.peakMib > 0 &&
-        both.peakMib < limitMib,
+        both.peakMib < limitMib &&
+        tmpMib > 0 &&
+        both.tmpKib < (tmpMib * 1024) / 4,
       both.runs.map((run) => `${run.stdout}${run.stderr}`).join('\n'),
     );
 

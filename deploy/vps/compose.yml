@@ -540,8 +540,11 @@ services:
       # db's archived WAL, shared with db alone: writable, since the shipper removes what it sent.
       - wal-spool:/wal-spool
     # The image's base, Postgres's, declares a volume for a data folder this service never uses:
-    # a tmpfs there keeps Docker from making an anonymous volume that outlives the container.
-    tmpfs: ['/var/lib/postgresql/data:size=1m,mode=0700']
+    # a tmpfs there keeps Docker from making an anonymous volume that outlives the container. The
+    # scripts' own small files (backup.sh's and wal-ship.sh's work folders, the signing helpers'
+    # files, the shipper's record while the spool can't keep it) go in a tmpfs at /tmp, counted in
+    # mem_limit: on the server's disk, a full disk stopped wal-ship.sh before it could alert.
+    tmpfs: ['/var/lib/postgresql/data:size=1m,mode=0700', '/tmp:size=16m,mode=1777']
     networks: [default, data]
     depends_on:
       db: { condition: service_healthy }

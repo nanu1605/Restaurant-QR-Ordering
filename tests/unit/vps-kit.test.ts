@@ -379,10 +379,30 @@ const walSpoolMounts = (text: string) => {
  */
 const backupDataFolder = (text: string, dockerfile: string) =>
   !/^FROM postgres:/m.test(dockerfile) ||
-  value(services(text).get('backup') ?? [], 'tmpfs') ===
-    "['/var/lib/postgresql/data:size=1m,mode=0700']"
+  listOf(services(text).get('backup') ?? [], 'tmpfs').includes(
+    '/var/lib/postgresql/data:size=1m,mode=0700',
+  )
     ? []
     : ['the backup service leaves its image’s /var/lib/postgresql/data to an anonymous volume'];
+
+/**
+ * The backup service's /tmp is a small tmpfs, counted in its mem_limit, open to root's backup.sh
+ * and the shipper's uid 100 alike (1777): their work folders, the signing helpers' files and the
+ * shipper's record while the spool can't keep it never need the server's disk, so a full disk
+ * stops neither script before its alert (Stop C's review, finding C3). vps:backup-test measures a
+ * night in the service with the shipper at once against its size.
+ */
+const backupTmp = (text: string) => {
+  const tmp = listOf(services(text).get('backup') ?? [], 'tmpfs').find((entry) =>
+    entry.startsWith('/tmp:'),
+  );
+  const size = Number(/^\/tmp:size=(\d+)m,mode=1777$/.exec(tmp ?? '')?.[1]);
+  return size >= 1 && size <= 64
+    ? []
+    : [
+        `the backup service’s /tmp is ${tmp ?? 'on the server’s disk'}, not a tmpfs of at most 64m, mode 1777`,
+      ];
+};
 
 /**
  * The backup's signing key goes to the backup service alone; the restores get its public key,
@@ -867,8 +887,28 @@ describe('deploy/vps/compose.yml', () => {
     expect(backupDataFolder(compose, dockerfile)).toEqual([]);
     refuses(
       (text) => backupDataFolder(text, dockerfile),
-      swapIn(compose, 'backup', "    tmpfs: ['/var/lib/postgresql/data:size=1m,mode=0700']\n", ''),
+      swapIn(compose, 'backup', "'/var/lib/postgresql/data:size=1m,mode=0700', ", ''),
       'anonymous volume',
+    );
+  });
+
+  it('keeps the backup scripts’ own files in a small tmpfs, off the server’s disk', () => {
+    expect(backupTmp(compose)).toEqual([]);
+    // As before Stop C's review (finding C3): /tmp on the container's layer, the server's disk.
+    refuses(
+      backupTmp,
+      swapIn(compose, 'backup', ", '/tmp:size=16m,mode=1777'", ''),
+      'server’s disk',
+    );
+    refuses(
+      backupTmp,
+      swapIn(compose, 'backup', "'/tmp:size=16m,mode=1777'", "'/tmp:size=16m,mode=0700'"),
+      'mode 1777',
+    );
+    refuses(
+      backupTmp,
+      swapIn(compose, 'backup', "'/tmp:size=16m,mode=1777'", "'/tmp:size=256m,mode=1777'"),
+      'at most 64m',
     );
   });
 
@@ -2662,6 +2702,45 @@ const walShipper = (script: string) => {
 };
 
 /**
+ * wal-ship.sh's record (alert-sent, alerting, archiver-failing, beat, last-sent) is written through
+ * note(), which keeps a value in /tmp/wal-ship, the service's tmpfs, when the spool's disk takes no
+ * more, and read through noted(), the later of both places: so a full disk neither stops the run
+ * under set -e before its alert nor lets the alert go out every minute (Stop C's review, finding
+ * C3). No other write into the record, but the cluster's identifier (kept, or nothing ships), the
+ * lock and note()'s own; no removal there but unnote()'s; and no ':' with a redirection, whose
+ * failure ends BusyBox ash even within braces.
+ */
+const RECORD_WRITES = [
+  `{ printf '%s\\n' "$2" >"$book/$1"; } 2>/dev/null && return 0`,
+  `{ mkdir -p "$spare" && printf '%s\\n' "$2" >"$spare/$1"; } 2>/dev/null || true`,
+  `elif { printf '%s\\n' "$current" >"$state/system-identifier.new" &&`,
+  'exec 9>>"$book/lock"',
+];
+const shipperRecord = (script: string) => {
+  const lines = code(script).map((line) => line.trim());
+  return [
+    ...lines
+      .filter((line) => />"\$(book|spare|state)\//.test(line) && !RECORD_WRITES.includes(line))
+      .map((line) => `a write into the record can stop the run before its alert: ${line}`),
+    ...lines
+      .filter((line) => /(^|[;&|{(]\s*):\s*>/.test(line))
+      .map((line) => `':' with a redirection, whose failure ends ash: ${line}`),
+    ...lines
+      .filter(
+        (line) =>
+          /\brm -f\b.*"\$(book|spare)\//.test(line) &&
+          line !== 'unnote() { rm -f "$book/$1" "$spare/$1" 2>/dev/null || true; }',
+      )
+      .map((line) => `a removal from the record can stop the run before its alert: ${line}`),
+    ...(['alert-sent', 'beat', 'archiver-failing'].every(
+      (name) => script.includes(`=$(noted ${name})`) && !script.includes(`$(kept "$book/${name}")`),
+    ) && script.includes(`  printf '%s\\n%s\\n' "$(kept "$book/$1")" "$(kept "$spare/$1")" |`)
+      ? []
+      : ['the record is not read from both the spool and /tmp']),
+  ];
+};
+
+/**
  * seal.sh (VPS-43): the private key reaches openssl as PEM text on file descriptor 3, from a
  * here-document (a pipe in BusyBox ash), never in an argument or a file, and leaves the
  * environment of every program the sourcing script runs; a signature counts only in its one
@@ -3034,6 +3113,44 @@ describe('the migrate and backup images', () => {
       walShipper,
       swap(walShipSh, 'HEARTBEAT_URL=${HEARTBEAT_WAL_URL-} notify.sh beat', 'notify.sh beat'),
       'HEARTBEAT_WAL_URL',
+    );
+  });
+
+  it('alerts from a disk too full for the shipper’s record, at most hourly', () => {
+    expect(shipperRecord(walShipSh)).toEqual([]);
+    // As before Stop C's review (finding C3): the first write of a full disk ended the run.
+    refuses(
+      shipperRecord,
+      swap(
+        walShipSh,
+        '    note archiver-failing "$now"\n',
+        `    printf '%s\\n' "$now" >"$book/archiver-failing"\n`,
+      ),
+      'can stop the run before its alert',
+    );
+    refuses(
+      shipperRecord,
+      swap(walShipSh, '    note alerting "$now"\n', '    : >"$book/alerting"\n'),
+      "':' with a redirection",
+    );
+    refuses(
+      shipperRecord,
+      swap(walShipSh, '  unnote alerting\n', '  rm -f "$book/alerting" "$spare/alerting"\n'),
+      'a removal from the record',
+    );
+    refuses(
+      shipperRecord,
+      swap(walShipSh, 'last=$(noted alert-sent)', 'last=$(kept "$book/alert-sent")'),
+      'not read from both',
+    );
+    refuses(
+      shipperRecord,
+      swap(
+        walShipSh,
+        '"$(kept "$book/$1")" "$(kept "$spare/$1")" |',
+        '"$(kept "$book/$1")" \'\' |',
+      ),
+      'not read from both',
     );
   });
 
