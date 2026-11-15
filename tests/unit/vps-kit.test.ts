@@ -4394,7 +4394,7 @@ describe('the migrate and backup images', () => {
   });
 });
 
-// --- the seals, as the harness reads them (scripts/vps-seal.mts) ---
+// --- the seals, as the harness and vps:verify-night read them (scripts/vps-seal.mts) ---
 
 describe('the nights’ seals (VPS-43)', () => {
   const night = '2026-11-01T2030Z-0123abcd';

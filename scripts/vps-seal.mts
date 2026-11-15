@@ -1,8 +1,10 @@
 /**
  * A night's seal and the backup's signatures (docs/DECISIONS.md VPS-43), read with Node's crypto:
- * deploy/vps/backup/seal.sh's rules, kept in a module of their own. scripts/vps-kit.mts holds the
- * shell to the same verdicts (vps:backup-test gives seal_open and sealOf the same texts) and checks
- * every night the rehearsal seals with them. Nothing here reads a file, runs a program or uses the
+ * deploy/vps/backup/seal.sh's rules, kept here once for the two scripts that need them on this
+ * machine. scripts/vps-kit.mts holds the shell to the same verdicts (vps:backup-test gives seal_open
+ * and sealOf the same texts) and checks every night the rehearsal seals with them;
+ * scripts/vps-verify-night.mts checks a night the owner downloaded from the bucket, before its
+ * settings archive goes to a new server. Nothing here reads a file, runs a program or uses the
  * network.
  */
 import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
@@ -129,4 +131,22 @@ export function sealText(
     '',
   ].join('\n');
   return `${body}signature ${signedWith(privateKey, body)}\n`;
+}
+
+/**
+ * Whether a list is one Ed25519 public key or several, as pnpm vps:secrets writes
+ * BACKUP_SIGNING_PUBLIC_KEY: base64 SPKI DER, 60 characters a key, separated by single spaces. The
+ * shapes seal.sh's seal_public_keys_ok takes, each one a key Node's crypto reads.
+ */
+export function publicKeysOk(list: string): boolean {
+  return list.split(' ').every((key) => {
+    if (!/^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/.test(key)) return false;
+    try {
+      const der = Buffer.from(key, 'base64');
+      const publicKey = createPublicKey({ key: der, format: 'der', type: 'spki' });
+      return publicKey.asymmetricKeyType === 'ed25519';
+    } catch {
+      return false;
+    }
+  });
 }
