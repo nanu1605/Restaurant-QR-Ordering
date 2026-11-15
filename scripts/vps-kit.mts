@@ -24,18 +24,21 @@
  *                    logs). A rerun reuses the stack, the secrets and an image nothing changed for;
  *                    --fresh starts from new secrets and empty volumes, --rebuild builds every image.
  *   pnpm vps:backup-test
- *                    the signing helpers against Node's crypto; db's WAL shipped and signed, an
- *                    outage of the shipper alerted and ended, and the shipper's other failures on a
- *                    spool and a bucket of their own; the nightly backup into the local S3, each
- *                    night named by its id (its stamp and 8 random hex characters): a night with a
- *                    stale settings archive, then the month's copy in monthly/ past planted names,
- *                    no second copy, and a 1st's copy;
- *                    a night whose id someone else wrote a name of first, stopped before its first
- *                    upload; the monthly restore test; planted nights and names the restore must
- *                    refuse or not read, each night read from the one folder its age gives; and the
- *                    disaster recovery of the 1st's copy, from monthly/, on the rehearsal's own
- *                    volumes, after a recovery without RESTORE_STAMP is refused, whose new cluster
- *                    ships its WAL under its own identifier.
+ *                    the signing helpers and the seal's reader against Node's crypto; db's WAL
+ *                    shipped and signed, an outage of the shipper alerted and ended, and the
+ *                    shipper's other failures on a spool and a bucket of their own; the nightly
+ *                    backup into the local S3, each night named by its id (its stamp and 8 random
+ *                    hex characters), with a base backup and a signed seal: a night with a stale
+ *                    settings archive, then the month's copy in monthly/ past planted names and a
+ *                    copy sealed by another key, no second copy, a night in the service with its
+ *                    shipper at once, a 1st's copy, and a 1st whose base failed; every seal and the
+ *                    base read as a restore reads them; a night whose id someone else wrote a name
+ *                    of first, stopped before its first upload; the monthly restore test; planted
+ *                    nights and names the restore must refuse or not read, each night read from the
+ *                    one folder its age gives and only as its seal gives it; and the disaster
+ *                    recovery of the 1st's copy, from monthly/, on the rehearsal's own volumes,
+ *                    after a recovery without RESTORE_STAMP is refused, whose new cluster ships its
+ *                    WAL under its own identifier.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
@@ -5176,6 +5179,54 @@ async function backupTest() {
           `restore: the night of ${nextNight}, from daily/, into restore-db\nrestore: ${victim} in daily/ is not the part the backup sealed (its sha256 is not the seal's): someone else wrote to the bucket, and nothing of the night was restored\n`,
       tail(replacedRun.output),
     );
+    // A part made longer after its seal, by 1 MiB: read no further than a byte past the size the
+    // seal gives, and refused for it.
+    const longer = `storage-${serviceNight}.tar.age`;
+    const serviceSeal = sealOf(nights.get(`daily ${serviceNight}`)?.seal ?? '', serviceNight);
+    const sealedBytes =
+      typeof serviceSeal === 'string'
+        ? 0
+        : (serviceSeal.parts.find(({ name }) => name === longer)?.bytes ?? 0);
+    const grown = inBackup(
+      [
+        'set -e',
+        `rclone cat --no-traverse "backups:$BACKUP_BUCKET/daily/${longer}" >/tmp/part`,
+        'head -c 1048576 /dev/zero >>/tmp/part',
+        `rclone copyto /tmp/part "backups:$BACKUP_BUCKET/daily/${longer}"`,
+      ].join('\n'),
+    );
+    if (grown.status !== 0 || !sealedBytes) fail(`Making ${longer} longer failed: ${grown.stderr}`);
+    const longerRun = await refusedRestore(serviceNight, age);
+    checks.expect(
+      `${longer}, 1 MiB longer than its seal gives: the restore test of ${serviceNight} exit ${longerRun.run.status}, "${tail(longerRun.run.stdout, 1)}" (read to a byte past the seal's ${sealedBytes}); no roles step, restore-db ${longerRun.bare ? 'still bare' : 'not bare'}`,
+      longerRun.run.status === 1 &&
+        longerRun.bare &&
+        longerRun.run.stdout ===
+          `restore: the night of ${serviceNight}, from daily/, into restore-db\nrestore: ${longer} in daily/ is not the part the backup sealed (${sealedBytes + 1} bytes, not ${sealedBytes}): someone else wrote to the bucket, and nothing of the night was restored\n`,
+      tail(longerRun.output),
+    );
+    // A night whose seal gives a part more bytes than this disk has free (signed with the
+    // rehearsal's own key, as a backup's seal of a night too big for a new server's disk): refused
+    // before any of its parts but the manifest is downloaded.
+    const huge = daysAgo(7);
+    const hugeParts = plantNight(huge, plantedRoles('copy'), undefined).map((part) =>
+      part.name.startsWith('storage-') ? { ...part, bytes: 999_999_999_999_999 } : part,
+    );
+    putObject(`daily/seal-${huge}.txt`, sealText(huge, undefined, hugeParts, leaked));
+    for (let tries = 0; tries < 20; tries++) {
+      if (bucketNames('daily').includes(`seal-${huge}.txt`)) break;
+      await sleep(1000);
+    }
+    const hugeRun = await refusedRestore(huge, age);
+    checks.expect(
+      `a night whose seal gives its Storage archive 999,999,999,999,999 bytes: its restore test exit ${hugeRun.run.status}, "${tail(hugeRun.run.stdout, 1)}", and nothing else; restore-db ${hugeRun.bare ? 'still bare' : 'not bare'}`,
+      hugeRun.run.status === 1 &&
+        hugeRun.bare &&
+        new RegExp(
+          `^restore: the parts of ${huge} need \\d+ MiB in this container's files, 1 GiB to spare included, and \\d+ MiB are free\\n$`,
+        ).test(hugeRun.run.stdout),
+      tail(hugeRun.output),
+    );
     const unlisted = `config-${failedNight}.tar.age`;
     putObject(`daily/${unlisted}`, 'planted, not age\n');
     for (let tries = 0; tries < 20; tries++) {
@@ -5219,7 +5270,7 @@ async function backupTest() {
     // daily copy: younger than 29 days, it is read from daily/ alone, so with only its monthly/
     // copy left its restore test is refused, saying why (review findings B1 and RV1).
     const removed = inBackup(
-      `rclone delete --include '*-${future}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${forgedNight}.*' --include '*-${unsealed}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
+      `rclone delete --include '*-${future}.*' --include '*-${planted}.*' --include '*-${older}.*' --include '*-${forgedNight}.*' --include '*-${unsealed}.*' --include '*-${huge}.*' --include '*-${night}.*' "backups:$BACKUP_BUCKET/daily/"`,
     );
     if (removed.status !== 0) fail(`Removing nights from daily/ failed: ${removed.stderr.trim()}`);
     // rclone serve s3 lists a folder from a cache of 5 s: wait until daily/ no longer shows them.
