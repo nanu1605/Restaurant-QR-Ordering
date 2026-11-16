@@ -32,13 +32,15 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * names by its seal before deleting it (H1); the drill names each of pitr.sh's refusals of a base
  * whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut stops
  * short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2) and
- * promises no point on the stretch it abandoned (F2), and step 7 deploys a release without a
- * migrate reference, the one before a rewind's after a settings archive from before it (F1), and
- * after a night recovered on the same server the one deploys.log names before its stamp, read in
- * UTC, with Production's token (the fourth re-review's J1). Every rule also refuses a copy with one
- * mistake, as tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the
- * fix. Every phrase is compared with its white space folded, so a sentence wrapped again is still
- * found.
+ * promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only once
+ * every left night's seal before it is out (the fourth re-review's design notes), and step 7
+ * deploys a release without a migrate reference, the one before a rewind's after a settings archive
+ * from before it (F1), and after a night recovered on the same server the one deploys.log names
+ * before its stamp, read in UTC, with Production's token (the fourth re-review's J1). Every rule
+ * also refuses a copy with one mistake, as tests/unit/vps-kit.test.ts does, among them the
+ * RUNBOOK's text as it was before the fix. Every phrase is compared with its white space folded, so
+ * a sentence wrapped again is still found, and a place whose end is missing is reported, never read
+ * to the end of the section.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -533,10 +535,15 @@ const LEAKED = [
  */
 const envLeaked = (runbook: string) =>
   inPlaces(runbook, ['theft', 'tokenBullet', 'vps'], ({ theft, tokenBullet, vps }) => {
-    const lead = flat(theft).slice(0, flat(theft).indexOf('1. **The signing key**'));
+    // The lead-in ends at sub-step 1: with that title gone it is missing, never the whole step,
+    // whose sub-steps would then pass for it (Stop C's fourth re-review, theft design note 3).
+    const lead = part(flat(theft), '5. **If the server itself', '1. **The signing key**');
     return [
+      ...(lead === undefined
+        ? ['the theft’s step 5 has no sub-step 1 (“1. **The signing key**”) to end its lead-in']
+        : []),
       ...[
-        ['the theft’s step 5', lead],
+        ['the theft’s step 5', lead ?? ''],
         ['Rotation’s bullet for the bucket’s token', tokenBullet],
       ].flatMap(([name, text]) => [
         ...(has(text, 'leaked `.env` leaked every value in it')
@@ -1047,7 +1054,9 @@ const cutAdvice = (runbook: string, pitr: string) => {
  * replay never reaches: it follows the rewind's timeline from the fork and stops before its first
  * transaction, at the rewind's point (Stop C's third re-review, finding F2, rehearsed by
  * vps:backup-test). And the refusals need the rewind's history file in the bucket (pitr design
- * note 1).
+ * note 1). Such a point "still ends done" whichever seals were out, though a left night's seal still
+ * in, its base ended before the point, is taken and refused (Stop C's fourth re-review, recovery
+ * design note 4): it ends done once every such seal is out.
  */
 const rewindRoute = (runbook: string) =>
   inPlaces(runbook, ['recovery', 'drill'], ({ recovery, drill }) => {
@@ -1066,6 +1075,15 @@ const rewindRoute = (runbook: string) =>
         ? []
         : [
             'step 5 doesn’t say a point on the stretch the rewind abandoned reaches only the rewind’s point',
+          ]),
+      ...(!steps.includes('It still ends `done`') &&
+      steps.includes(
+        'Once the seal of every left night whose base ended before that point is out, it ends `done`',
+      ) &&
+      steps.includes('one still in is taken and refused, as in the bullet above')
+        ? []
+        : [
+            'step 5 says a point on the stretch the rewind abandoned ends done whichever seals are out',
           ]),
       ...(steps.includes("The refusal needs the rewind's history file in the bucket")
         ? []
@@ -1210,6 +1228,14 @@ const REWRAPPED = [
   "that line's own night id",
   "the month's copies of the months they fall in",
   'as does an id with no seal at all',
+  'one still in is taken and refused',
+  // Read with has() by the earlier rules, but never wrapped here until that re-review (theft design
+  // note 2).
+  'its first key mistyped',
+  'A mistyped later key passes this check',
+  'seal: openssl could not sign probe',
+  "the month's copy is <id>",
+  "kept in monthly/ as the month's copy",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -1688,6 +1714,11 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, 'secrets,\n   the schedulers', 'secrets,\n   the'),
       "the theft’s step 5 leaves the schedulers' heartbeat addresses of a leaked .env as it was",
     );
+    // Sub-step 1 renamed: the lead-in is missing, never the whole step, whose sub-steps would pass
+    // for it (Stop C's fourth re-review, theft design note 3).
+    const renamed = swap(RUNBOOK, '1. **The signing key**', '1. **The key that signs**');
+    refuses(envLeaked, renamed, 'the theft’s step 5 has no sub-step 1');
+    refuses(envLeaked, renamed, 'the theft’s step 5 doesn’t say a leaked .env leaked every value');
   });
 
   it('rebuilds a server that may have been reached as root and takes none of its nights (finding N1)', () => {
@@ -2283,6 +2314,21 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       rewindRoute,
       promised,
       'step 5 doesn’t say the refusal needs the rewind’s history file in the bucket',
+    );
+    // As before the fourth re-review (recovery design note 4): done whichever seals are out.
+    const stillDone = swap(
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' Once the seal of every left night', '\n       Only the time of its last'),
+        ' It still ends `done` (a drill `passed`), and',
+      ),
+      '`passed`), and\n       Only the time of its last',
+      '`passed`), and\n       only the time of its last',
+    );
+    refuses(
+      rewindRoute,
+      stillDone,
+      'step 5 says a point on the stretch the rewind abandoned ends done whichever seals are out',
     );
   });
 

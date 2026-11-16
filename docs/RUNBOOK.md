@@ -1550,10 +1550,10 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      - `signing pair: BACKUP_SIGNING_KEY does not sign what the first key of BACKUP_SIGNING_PUBLIC_KEY checks, so no night could be sealed and no WAL shipped: put in the private key of that first key`:
        a private key of another pair, such as one from before a rotation, or a list shaped as
        keys but not as the kept file has it: its keys out of order (the new key goes first), or
-       its first key mistyped. Put the kept list in as it is first. A mistyped later key passes
-       this check, and only a restore of that key's nights refuses them, as someone else's
-       writing, so compare the list with the kept file's line either way. A private key of the
-       right shape that openssl can't load prints openssl's own lines and
+       its first key mistyped. Put the kept list in as it is first.
+       A mistyped later key passes this check, and only a restore of that key's nights refuses
+       them, as someone else's writing, so compare the list with the kept file's line either way.
+       A private key of the right shape that openssl can't load prints openssl's own lines and
        `seal: openssl could not sign probe` before this one, never a key.
 
   5. The recovery, into new volumes. **First choice, point in time:** `PITR_TARGET` is `latest`, or
@@ -1619,11 +1619,12 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
        point, up to when the rewind ran, reaches the rewind's point at most, whichever seals are
        out, as the old timeline's WAL after the fork is never replayed: the replay follows the
        rewind's timeline from there and stops before its first transaction, which came when the
-       rewind ran. It still ends `done` (a drill `passed`), and only the time of its last
-       transaction, which `pitr.sh` prints with it, shows where, as the rehearsal shows with the
-       seals aside; where the rewind ran more than 30 minutes after that point, and its first WAL
-       file holds no transaction, the late shipper's rule refuses it instead (reasoned, not
-       rehearsed). Only a night's logical recovery holds that stretch;
+       rewind ran. Once the seal of every left night whose base ended before that point is out, it
+       ends `done` (a drill `passed`); one still in is taken and refused, as in the bullet above.
+       Only the time of its last transaction, which `pitr.sh` prints with it, shows where, as the
+       rehearsal shows with the seals aside; where the rewind ran more than 30 minutes after that
+       point, and its first WAL file holds no transaction, the late shipper's rule refuses it
+       instead (reasoned, not rehearsed). Only a night's logical recovery holds that stretch;
      - to get past them (on a new server that lost the old one before step 9's night, or to a point
        of the second kind), the seal of each night a refusal names leaves `daily/`, kept aside so
        that it can go back (its parts may stay), with the admin login as in A stolen or leaked
