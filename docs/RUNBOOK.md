@@ -296,9 +296,9 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   deploying, and for pages opened before a deploy, up to 7 days after it. So a migration must not
   break any deployment from the last 7 days: add columns, tables and functions freely; rename or
   drop only once no deployment from the last 7 days uses the old name.
-- There are no down migrations. To undo, write a new migration; but after a rewind past a bad
-  release on the shared server, make its harmful migration harmless in its own file instead
-  (Backups and restore (VPS), Disaster recovery, step 7).
+- There are no down migrations. To undo, write a new migration; but after a recovery past a bad
+  release on the shared server, a rewind or a night from before it, make its harmful migration
+  harmless in its own file instead (Backups and restore (VPS), Disaster recovery, step 7).
 - To see what a deploy would apply: `pnpm exec supabase link --project-ref <ref>` then
   `pnpm exec supabase db push --dry-run`.
 - **Once per environment after the super-admin metrics migration** (stop 12b,
@@ -1564,17 +1564,28 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      a time before the loss as `YYYY-MM-DDTHH:MM:SSZ` or with an offset such as `+05:30`, at most
      14 days back: for a deletion the minute just before it, and for a bad release a time before
      its deploy began, as its line in `deploys.log` comes only after its migrations ran. That is
-     before its `deploying <ref> to web (menumesh production)` line in
-     `sudo journalctl -t app-deploy --utc -o short-iso`, or at the latest the stamp (UTC,
-     `YYYYMMDDTHHMMSSZ`) in the name of its pre-deploy dump,
-     `/srv/menumesh/predeploy/production-<stamp>-postgres.dump.age`, made before its migrations.
-     After a rewind past a bad release, no release made since goes out again until its harmful
-     migration is made harmless (step 7). It restores the database alone, from the newest sealed
-     night's base and the bucket's signed WAL after it. On the same server `db-data` and
-     `wal-spool` go, with everything stopped and `db` and `backup` removed (`storage-data` and
-     `db-config` stay: Storage's files and the image's settings are not in the WAL; the rehearsal
-     proves this order). If the old server still runs, let `backup` ship what waits first
-     (`ls /wal-spool` as in WAL shipping): the spool goes with the volume.
+     before the first `deploying <ref> to web (menumesh production)` line naming it in
+     `sudo journalctl -t app-deploy --utc -o short-iso`, of any attempt, `FAILED` and
+     `ROLLED BACK` ones included, as the migrations an attempt ran stay applied; or the stamp
+     (UTC, `YYYYMMDDTHHMMSSZ`) in the name of the pre-deploy dump that attempt made,
+     `/srv/menumesh/predeploy/production-<stamp>-postgres.dump.age`, made before its migrations;
+     or, closer, before the first `running migrate on migrate-<sha>` line after that one, as no
+     migration runs before it (a `migrate: applied <file>` line comes only after its file
+     committed, and may wait for the end of the run). On a new server, without that journal, it
+     is 35 minutes before the first line naming it in the `deploys.log` step 2 unpacked, as
+     `app-deploy`'s own limits bound an attempt (300 s for each pull and for the dump, 600 s for
+     `migrate`, 120 s for the switch and 120 s for the health wait, twice with a rollback), or
+     as the owner's own note of the day has it. After a recovery to a state from before a bad
+     release's deploy, a rewind past it or a night from before it (the fallback, below), no
+     release made since that deploy began goes out again, ever, and one built from `main` only
+     once its harmful migration is made harmless in its own file (step 7).
+
+     It restores the database alone, from the newest sealed night's base and the bucket's signed
+     WAL after it. On the same server `db-data` and `wal-spool` go, with everything stopped and
+     `db` and `backup` removed (`storage-data` and `db-config` stay: Storage's files and the
+     image's settings are not in the WAL; the rehearsal proves this order). If the old server
+     still runs, let `backup` ship what waits first (`ls /wal-spool` as in WAL shipping): the
+     spool goes with the volume.
 
      ```sh
      sudo app-compose menumesh stop
@@ -1718,54 +1729,75 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup` (on a new server
      this starts `backup`, stopped since step 4, after `db`).
   7. Production's image, by the admin form, and staging's; then
-     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's is the image that
-     was live at the point recovered to, deployed without a migrate reference, as the database
-     already holds its migrations. After a recovery to `latest`, that is the release `images.env`'s
-     `WEB_IMAGE` names, never with the image its `MIGRATE_IMAGE` names, which can still be that of a
-     release a rewind undid, since a rollback by hand passes no migrate reference: its migrate run
-     would apply that release's migrations again. After a night's logical recovery on a new server,
-     it is the release `WEB_IMAGE` names in the `images.env` that step 2 unpacked from that night's
-     own settings archive. After one on the same server (step 5's fallback, as after a point more
-     than 14 days back or a refused point-in-time recovery, or A stolen or leaked bucket token
-     (VPS), step 5), `images.env` is the server's own file, which names any release made since the
-     night, whose migrations the night lacks: production's is the release live at the night, the
-     last production line of `deploys.log` before the night's stamp. After a rewind to a point
-     before a release, such as the bad release it undid, it is the release before it, the last
-     production line of `deploys.log` before that point, and never the entry of `images.env` that
-     the rewind undid: that file still names the release, whose migrate run would apply its
-     migrations again and switch `web` back to it. So too when a rewind past a release came after
-     the night whose settings archive step 2 unpacked, as on a new server that took the way past the
-     nights a rewind left (step 5): that archive's `images.env` and `deploys.log` still name the
-     release the rewind undid, so production's is the release before it, the last production line of
-     the archive's `deploys.log` before the rewind's point.
+     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's release follows
+     from the recovered state, whatever kind of recovery brought it back, in this order:
 
-     `deploys.log` is `/srv/menumesh/deploys.log`, on a new server the one step 2 unpacked, and
-     no script cuts it, so it still names an old night's release. Its lines are in UTC, each image
-     as `<tag>@sha256:<digest>`: `2026-12-17T04:30:12Z production web <old> -> <new> by ops`.
-     Compare them with the night's stamp, or with the point in UTC, as `pitr.sh` prints it in
-     brackets after a point given with an offset. A line with `FAILED` or `ROLLED BACK` after its
-     two images never left the new one live: the release is its old one. An image no longer on
-     the server, as on any new server or two releases back on the same one, needs the token of
-     Production, step 2 (Deploys on the VPS), but not its migrate reference: without a token
-     `app-deploy` stops at `couldn't pull …` and switches nothing.
+     1. **The release live then**: the one live at the recovered state's last transaction, a
+        night's stamp, the point, or after `latest` the last transaction `pitr.sh` printed,
+        deployed without a migrate reference, as the database already holds its migrations.
+        After a recovery to `latest` on the same server, unless it ended at a cut
+        (`PITR_ACCEPT_CUT`) or before `deploys.log`'s last production line (as when WAL stopped
+        reaching the bucket before the loss), that is the release `images.env`'s `WEB_IMAGE`
+        names, never with the image its `MIGRATE_IMAGE` names, which can still be that of a
+        release a rewind undid, since a rollback by hand passes no migrate reference: its
+        migrate run would apply that release's migrations again. Otherwise it is the new image
+        of the last production line of `deploys.log` before that time. On the same server that
+        is the server's own `deploys.log`, as `images.env` is the server's own file, which names
+        any release made since, whose migrations the recovered state lacks: after a night, the
+        last production line of `deploys.log` before the night's stamp. On a new server it is
+        the `deploys.log` step 2 unpacked, which ends at its archive, made at 20:20 UTC: after a
+        night's logical recovery, it is the release `WEB_IMAGE` names in the `images.env` that
+        step 2 unpacked from that night's own settings archive, and a release made since the
+        archive is only in the owner's own note of the day. After a rewind to a point before a
+        release, such as the bad release it undid, it is the release before it, the last
+        production line of `deploys.log` before that point, and never the entry of `images.env`
+        that the rewind undid: that file still names the release, whose migrate run would apply
+        its migrations again and switch `web` back to it. So too when a rewind past a release
+        came after the night whose settings archive step 2 unpacked, as on a new server that
+        took the way past the nights a rewind left (step 5): that archive's `images.env` and
+        `deploys.log` still name the release the rewind undid, so production's is the release
+        before it, the last production line of the archive's `deploys.log` before the rewind's
+        point.
 
-     ```sh
-     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh production \
-       prod-vX.Y.Z@sha256:<digest>
-     ```
+        `deploys.log` is `/srv/menumesh/deploys.log`, on a new server the one step 2 unpacked,
+        and no script cuts it, so it still names an old night's release. Its lines are in UTC,
+        each image as `<tag>@sha256:<digest>`:
+        `2026-12-17T04:30:12Z production web <old> -> <new> by ops`. Compare them with the
+        night's stamp, or with the point in UTC, as `pitr.sh` prints it in brackets after a
+        point given with an offset, and with the last transaction it prints, in UTC too. A line
+        with `FAILED` or `ROLLED BACK` after its two images never left the new one live:
+        the release is its old one. An image no longer on the server, as on any new server or
+        two releases back on the same one, needs the token of Production, step 2 (Deploys on the
+        VPS), but not its migrate reference: without a token `app-deploy` stops at
+        `couldn't pull …` and switches nothing.
 
-     After a night, or a rewind past a loss no release caused (a deletion), the newest release that
-     stayed live since then goes out again by Production, step 2, with its own migrate reference,
-     the one its **VPS release** run printed: its migrate run applies every migration the recovered
-     database lacks. On the same server that is the release `images.env`'s `WEB_IMAGE` named before
-     step 7's deploy, the new image of the last production line of `deploys.log` before it that is
-     neither `FAILED` nor `ROLLED BACK`; on a new server, the owner's own note of the day, never the
-     **VPS release** runs alone, which list each release built, not whether it stayed live. After a
-     rewind past a bad release, no release made since the point goes out, as each holds that
-     release's migrations, and neither does any release built from `main` until the harmful
-     migration is made harmless in its own file, under its own version (Database migrations). Never
-     delete the file: hosted staging's history holds that version, and `migrate.sh` refuses a
-     database with a version its image lacks (exit 2).
+        ```sh
+        read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh production \
+          prod-vX.Y.Z@sha256:<digest>
+        ```
+
+     2. **From before a bad release's deploy**: where the recovered state is from before a bad
+        release's deploy began, or at least before its migrations ran (step 5), whatever kind of
+        recovery brought it back, a rewind past it, a night from before it, or `latest` that
+        ended at a cut before it, no release made since that deploy began goes out again, ever,
+        as each holds that release's migrations, and neither does any release built from `main`
+        until the harmful migration is made harmless in its own file, under its own version
+        (Database migrations). Never delete the file: hosted staging's history holds that version,
+        and `migrate.sh` refuses a database with a version its image lacks (exit 2). In 3 the
+        release that stayed live is then the one live just before that deploy began, read from
+        `deploys.log` as in 1.
+
+     3. **The release that stayed live**: if a release went live since the recovered state's
+        time and stayed live, the newest of them goes out again by Production, step 2, with its
+        own migrate reference, the one its **VPS release** run printed: its migrate run applies
+        every migration the recovered database lacks, the older releases' among them. On the
+        same server that is the release `images.env`'s `WEB_IMAGE` named before step 7's deploy,
+        the new image of the last production line of `deploys.log` that is neither `FAILED` nor
+        `ROLLED BACK`, when that line is later than that time; on a new server, the owner's own
+        note of the day, never the **VPS release** runs alone, which list each release built,
+        not whether it stayed live. One older than step 1's, as after a rollback by hand since,
+        goes out as step 1's did instead, without a migrate reference, as the database holds
+        step 1's migrations. If none did, or it is step 1's own, step 1's deploy is all.
 
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
      password manager, then the site and redaction files from this repository, the leak test, and
