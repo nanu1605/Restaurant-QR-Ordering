@@ -1335,9 +1335,12 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   settings, what `ALTER SYSTEM` set there: the base carries them, and they wait aside. It takes
   about 5 seconds on the rehearsal and ends with
   `pitr test passed: the night of <id> and the WAL after it, replayed to <point>, its last transaction at <UTC>`;
-  for `latest` that last transaction must be within about 12 minutes of the drill's start. For a
-  point instead, add `-e PITR_TARGET=<point>`: `YYYY-MM-DDTHH:MM:SSZ`, or with an offset such as
-  `+05:30`. It restores no files and writes nothing to the bucket. Its failure lines:
+  for `latest` that last transaction must be within about 12 minutes of the drill's start. Check
+  that id against the backup's own journal line, as for the restore test (Last night's backup): a
+  night that none of the backup's own records names is a sign of theft (A stolen or leaked bucket
+  token (VPS)). For a point instead, add `-e PITR_TARGET=<point>`: `YYYY-MM-DDTHH:MM:SSZ`, or with
+  an offset such as `+05:30`. It restores no files and writes nothing to the bucket. Its failure
+  lines:
   - `the chain of WAL files is cut at <file>: …`: a WAL file is missing or isn't the backup's, with
     the backup's WAL after it: someone else wrote to or removed from the bucket (A stolen or leaked
     bucket token (VPS)); the line names the file;
@@ -1847,11 +1850,13 @@ first. Take it as stolen when a restore, or `pnpm vps:verify-night` on a downloa
 prints `the chain of WAL files is cut`, when a night stops with `someone else wrote to the bucket`,
 when a step of the month's copy fails on a lock's refusal, or at the same step night after night
 (Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when a
-restore test, drill or recovery takes a night that none of the backup's own records names (its
-journal or alert lines; after a rebuild, the backup monitor's log), names one stamped later than
-now (`restore: not taking the night of <id>, stamped later than now`), or passes over a night
+restore test, drill or recovery takes a night that none of the backup's own records names (on the
+same server the journal's lines, never a Telegram message; after a rebuild, the backup monitor's
+pings from the server's own address inside the night's window: step 2), names one stamped later
+than now (`restore: not taking the night of <id>, stamped later than now`), or passes over a night
 (`pitr: not taking the night of <id>: its seal …, so it is not the backup's`) or WAL objects
-(`<n> objects passed over, not the backup's`, n above 0) as not the backup's, when the
+(`<n> objects passed over, not the backup's`, n above 0, or once a key has left the list, n above
+what the first drill since printed) as not the backup's, when the
 bucket holds names the backup never writes, or when the token was seen anywhere it shouldn't be. A
 flood of names slows every listing; a large one can stop the job's check for the month's copy,
 failing each night after its uploads with the alert, and the restore test unasked, while a named
@@ -1866,7 +1871,7 @@ restore lists nothing.
    `[menumesh] backup failed (exit …) at <id>: …` line a night that failed, its seal up or not:
 
    ```sh
-   sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -30d -o cat
+   sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -180d --utc -o short-iso
    ```
 
    Such a line, an alert or a ping only keeps the night it names, and never condemns one: a leaked
@@ -1911,11 +1916,20 @@ restore lists nothing.
    chain names one written over or deleted). A line only keeps an id from going, never a version
    put over the backup's: step 4 then finds the night it tests whole.
 
-   A seal a list verifies that no record of the backup names (the journal's lines and alert lines,
-   and the backup monitor's log, which outlives a rebuild) means, where those records are whole (no
-   reach as root, and no night of the 30 days killed after its seal, which leaves no line at all:
-   the monitor alerted on it), that a key of that list signed a night the backup never ran: take
-   that key for stolen (step 5). That id stays all the same, as any whose seal a list verifies.
+   A seal a list verifies that no record of the backup names means, where those records are whole
+   and reach its stamp (no reach as root, and not a night killed after its seal, which leaves no
+   line at all: the monitor alerted on it), that a key of that list signed a night the
+   backup never ran: take that key for stolen (step 5). On the same server those records are the
+   journal's lines above, over its 180 days, never a Telegram message; only where the journal can't
+   reach, after a rebuild, the backup monitor's log, and in it only a ping from the server's own
+   address inside the night's window (from its stamp to about 2 hours after), as sub-step 4 reads
+   it. An older month's copy, stamped before the records reach, is judged by its seal alone and is
+   no sign of theft. A ping or alert naming a night the whole journal does not name, or two
+   `backup` pings in one night's window but for a run by hand, is itself a sign the `.env` leaked
+   (step 5). To find which key of a list of several signed a seal, check it with each key of the
+   list alone, in a file of one key each: only the signer's gets past the seal, the others print
+   `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. That id stays all the same, as any
+   whose seal a list verifies.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only what step 2 found to be the holder's (seals every list
