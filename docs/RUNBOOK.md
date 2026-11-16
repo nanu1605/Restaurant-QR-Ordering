@@ -1561,14 +1561,20 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
        `seal: openssl could not sign probe` before this one, never a key.
 
   5. The recovery, into new volumes. **First choice, point in time:** `PITR_TARGET` is `latest`, or
-     the minute just before the loss (a bad release, a deletion) as `YYYY-MM-DDTHH:MM:SSZ` or with
-     an offset such as `+05:30`, at most 14 days back. After a rewind past a bad release, no release
-     made since goes out again until its harmful migration is made harmless (step 7). It restores
-     the database alone, from the newest sealed night's base and the bucket's signed WAL after it.
-     On the same server `db-data` and `wal-spool` go, with everything stopped and `db` and `backup`
-     removed (`storage-data` and `db-config` stay: Storage's files and the image's settings are not
-     in the WAL; the rehearsal proves this order). If the old server still runs, let `backup` ship
-     what waits first (`ls /wal-spool` as in WAL shipping): the spool goes with the volume.
+     a time before the loss as `YYYY-MM-DDTHH:MM:SSZ` or with an offset such as `+05:30`, at most
+     14 days back: for a deletion the minute just before it, and for a bad release a time before
+     its deploy began, as its line in `deploys.log` comes only after its migrations ran. That is
+     before its `deploying <ref> to web (menumesh production)` line in
+     `sudo journalctl -t app-deploy --utc -o short-iso`, or at the latest the stamp (UTC,
+     `YYYYMMDDTHHMMSSZ`) in the name of its pre-deploy dump,
+     `/srv/menumesh/predeploy/production-<stamp>-postgres.dump.age`, made before its migrations.
+     After a rewind past a bad release, no release made since goes out again until its harmful
+     migration is made harmless (step 7). It restores the database alone, from the newest sealed
+     night's base and the bucket's signed WAL after it. On the same server `db-data` and
+     `wal-spool` go, with everything stopped and `db` and `backup` removed (`storage-data` and
+     `db-config` stay: Storage's files and the image's settings are not in the WAL; the rehearsal
+     proves this order). If the old server still runs, let `backup` ship what waits first
+     (`ls /wal-spool` as in WAL shipping): the spool goes with the volume.
 
      ```sh
      sudo app-compose menumesh stop

@@ -1196,12 +1196,27 @@ const cutAdvice = (runbook: string, pitr: string) => {
  * vps:backup-test). And the refusals need the rewind's history file in the bucket (pitr design
  * note 1). Such a point "still ends done" whichever seals were out, though a left night's seal still
  * in, its base ended before the point, is taken and refused (Stop C's fourth re-review, recovery
- * design note 4): it ends done once every such seal is out.
+ * design note 4): it ends done once every such seal is out. The point for a bad release was the
+ * minute before the loss, which an owner reads off deploys.log, whose line app-deploy writes only
+ * after the release's migrations and its switch (Stop C's fifth re-review, deploy design note 1):
+ * it is now a time before the deploy began, from app-deploy's "deploying" line in the journal or
+ * the stamp of its pre-deploy dump.
  */
 const rewindRoute = (runbook: string) =>
   inPlaces(runbook, ['recovery', 'drill'], ({ recovery, drill }) => {
     const steps = flat(recovery);
     return [
+      ...(!steps.includes('the minute just before the loss (a bad release, a deletion)') &&
+      steps.includes(
+        'for a bad release a time before its deploy began, as its line in `deploys.log` comes only after its migrations ran',
+      ) &&
+      steps.includes('before its `deploying <ref> to web (menumesh production)` line in') &&
+      steps.includes('`sudo journalctl -t app-deploy --utc -o short-iso`') &&
+      steps.includes('`/srv/menumesh/predeploy/production-<stamp>-postgres.dump.age`')
+        ? []
+        : [
+            'step 5 rewinds past a bad release to a point read off deploys.log, whose line comes after its migrations ran',
+          ]),
       ...(steps.includes('across the fork, or to that point')
         ? ['step 5 promises the way past reaches a point on the stretch the rewind abandoned']
         : []),
@@ -2646,6 +2661,25 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
+  it('rewinds past a bad release to a time before its deploy began, never one read off deploys.log (Stop C’s fifth re-review, deploy design note 1)', () => {
+    expect(rewindRoute(RUNBOOK)).toEqual([]);
+    const problem =
+      'step 5 rewinds past a bad release to a point read off deploys.log, whose line comes after its migrations ran';
+    // As the fourth re-review left it: the minute just before the loss, a bad release's or not.
+    const point = cut(RUNBOOK, '\n     a time before the loss as', '\n     After a rewind past');
+    refuses(
+      rewindRoute,
+      swap(
+        RUNBOOK,
+        point,
+        '\n     the minute just before the loss (a bad release, a deletion) as `YYYY-MM-DDTHH:MM:SSZ` or with\n     an offset such as `+05:30`, at most 14 days back.',
+      ),
+      problem,
+    );
+    // Where to read the deploy's start left out.
+    refuses(rewindRoute, swap(RUNBOOK, after(point, ' That is\n'), ''), problem);
+  });
+
   it('deploys a recovered release without a migrate reference, the one before a rewind’s after an archive from before it (finding F1)', () => {
     expect(releaseDeployed(RUNBOOK)).toEqual([]);
     // As before the third re-review: after latest or a night, the release images.env names with
@@ -2768,7 +2802,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
             '     database lacks; never the release a rewind undid.',
           ].join('\n'),
         ),
-        ' After a rewind past a bad release, no release\n     made since goes out again until its harmful migration is made harmless (step 7).',
+        '\n     After a rewind past a bad release, no release made since goes out again until its harmful\n     migration is made harmless (step 7).',
         '',
       ),
       '; but after a rewind past a bad\n  release on the shared server, make its harmful migration harmless in its own file instead\n  (Backups and restore (VPS), Disaster recovery, step 7).',
