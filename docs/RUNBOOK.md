@@ -1188,7 +1188,7 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   id of this month, or `, kept in monthly/ as the month's copy` on the night that made it:
 
   ```sh
-  sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -25d -o cat | grep "month's copy" | tail -1
+  sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -25d -o cat | grep -E "the month's copy is |kept in monthly/" | tail -1
   ```
 
   The night that made the copy also says `kept in monthly/ as the month's copy` in a line of its
