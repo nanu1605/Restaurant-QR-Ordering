@@ -512,12 +512,14 @@ fi
 # backup's end is followed in that file by whatever was written before the segment switch that
 # ends the backup, which a fork after the end would abandon too. With the fork past that file,
 # pg_wal holds no WAL file at a position where the replay reads another timeline than the base's.
+# Timelines are matched as text, as positions are compared: awk takes a field such as 000000E1 for
+# a number, 0 in its exponent notation, and so for the same timeline as 000000E2.
 base_last=$(LC_ALL=C awk -v tli="$tli" -v first="$first" '
   BEGIN { last = first }
   substr($0, 1, 8) == tli && substr($0, 9, 16) "" > last "" { last = substr($0, 9, 16) }
   END { print last }' "$work/base-wal")
 problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" -v last="$base_last" '
-  $1 == tli { on = NR; next }
+  $1 "" == tli "" { on = NR; next }
   on && NR == on + 1 && $2 "" <= last "" { left = $2 }
   END {
     if (!on) print "is not one of them"

@@ -3184,7 +3184,7 @@ const BASE_CHECK = [
   '  substr($0, 1, 8) == tli && substr($0, 9, 16) "" > last "" { last = substr($0, 9, 16) }',
   `  END { print last }' "$work/base-wal")`,
   `problem=$(LC_ALL=C awk -v tli="$tli" -v first="$first" -v last="$base_last" '`,
-  '  $1 == tli { on = NR; next }',
+  '  $1 "" == tli "" { on = NR; next }',
   '  on && NR == on + 1 && $2 "" <= last "" { left = $2 }',
   '  END {',
   '    if (!on) print "is not one of them"',
@@ -3199,6 +3199,11 @@ const TODAYS_BASE_CHECK = [
   '  on && NR == on + 1 && $2 "" < first "" { left = $2 }',
   `  END { if (!on) print "is not one of them"; else if (left != "") print "was left for a later one at " left ", before the base began" }' "$work/lineage")`,
 ].join('\n');
+/**
+ * The base's timeline found in the lineage as text (Stop C's re-review, pitr design note 1): awk
+ * reads a field such as 000000E1 as a number, 0 in its exponent notation, as it reads 000000E2.
+ */
+const TIMELINE_MATCHED = '  $1 "" == tli "" { on = NR; next }\n';
 /** The refusal of the base, which nothing written to db-data may precede. */
 const BASE_REFUSED =
   '  die "the base backup of $night is of the timeline $tli, from $start, which $problem:';
@@ -3225,8 +3230,9 @@ const CUT_INSTEAD =
  * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6). A base whose timeline
  * the replay leaves for the next before the last WAL file the base brought along is refused before
  * anything is written: Postgres could read on along the abandoned timeline from those files
- * (Stop C's re-review, finding M1). A recovery to a point that a cut chain stops short of names
- * PITR_ACCEPT_CUT for a recovery to latest, which is refused without it.
+ * (Stop C’s re-review, finding M1). A recovery to a point that a cut chain stops short of names
+ * PITR_ACCEPT_CUT for a recovery to latest, which is refused without it. The base's timeline is
+ * found in the lineage as text, as positions are compared, never as the number awk would read.
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -3371,6 +3377,11 @@ const pitrRules = (script: string) => {
       ? []
       : [
           'a base is taken whose timeline the replay leaves before the base ended, inside the WAL it brought along, or it is refused after db-data is written',
+        ]),
+    ...(script.includes(TIMELINE_MATCHED)
+      ? []
+      : [
+          'the base’s timeline is found in the lineage as awk reads it, a number, so that 000000E1 and 000000E2, both 0 in its exponent notation, are one timeline',
         ]),
     ...(script.includes(CUT_INSTEAD) &&
     script.includes('($short): recover to an earlier point, $instead"')
@@ -5078,6 +5089,16 @@ describe('the migrate and backup images', () => {
       `[ "$mode" != --into ] || writing=yes${refusal}`,
     );
     refuses(pitrRules, late, 'or it is refused after db-data is written');
+  });
+
+  it('finds the base’s timeline in the lineage as text (Stop C’s re-review, pitr design note 1)', () => {
+    // Today's line: awk compares two fields that read as numbers as numbers, so a base of timeline
+    // 000000E1 takes 000000E2's line, and the check reads the begin of the timeline after that.
+    refuses(
+      pitrRules,
+      swap(pitrSh, TIMELINE_MATCHED, '  $1 == tli { on = NR; next }\n'),
+      'found in the lineage as awk reads it, a number',
+    );
   });
 
   it('names PITR_ACCEPT_CUT when a cut chain stops a recovery short of its point (Stop C’s re-review)', () => {
