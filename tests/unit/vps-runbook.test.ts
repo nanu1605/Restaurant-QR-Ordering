@@ -50,7 +50,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * R2, H1 and H2, and its theft design notes), the server's own pings counted on the same server
  * too, the journal's reach read off its first line, a ping's window run to the next night's, a
  * night that sent no ping taking no key, and only pings naming different ids in one window a sign
- * (the eighth re-review's T1, T2, H1 and H2); the drill names each of pitr.sh's refusals of
+ * (the eighth re-review's T1, T2, H1 and H2), and every key of the list on the server since the
+ * trouble kept apart with the stolen one, the list's first among them (T3); the drill names each
+ * of pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
  * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
@@ -449,7 +451,12 @@ const oneRunKey = (runbook: string) =>
  * still took that list for the new key alone (Stop C's third re-review, finding G3): the night by
  * hand names a month's copy an older key of the list recorded, and a night from before the trouble
  * that such a key signed is checked with the kept list and recovered with .env's, which the stolen
- * key's file refuses.
+ * key's file refuses. Where an older key of the list signed, step 2 put the list's first key alone
+ * in that file, and the other places still kept only the older keys that may have leaked: a key
+ * between them on the server since the trouble went into no file (Stop C's eighth re-review,
+ * finding T3). The file now holds the stolen key and every other key of the list whose private half
+ * was on the server since the trouble could have begun, the list's first among them, in sub-step 1's
+ * format line, sub-step 4, 2.2 and Rotation, and step 2 says why.
  */
 const theftList = (runbook: string) =>
   inPlaces(
@@ -464,11 +471,34 @@ const theftList = (runbook: string) =>
         : ['the theft’s step 5 doesn’t keep the older keys that never leaked after the new one']),
       ...(has(
         theft,
+        '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each key of the list it does not keep>`',
+      ) ||
+      has(
+        theft,
         '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`',
       )
         ? []
         : [
             'the theft’s step 5 doesn’t keep an older key that may have leaked apart with the stolen one',
+          ]),
+      ...(has(
+        theft,
+        "The stolen key and every other key of the list whose private half was on the server since the trouble could have begun, the list's first among them, are kept apart",
+      ) &&
+      has(theft, 'Then recover it, when a key of that file signed it') &&
+      has(
+        check,
+        "That file holds the stolen key and every other key the list held whose private half was on the server since the trouble could have begun, its first among them (that section's step 5)",
+      ) &&
+      has(
+        rotation,
+        "So does every other key of the list whose private half was on the server since the trouble could have begun, the first among them where the thief's was an older one",
+      ) &&
+      !has(theft, '<each older key that may have leaked>') &&
+      !has(rotation, 'So does an older key whose private half may have leaked with it')
+        ? []
+        : [
+            'the stolen key’s file leaves out a key of the list that was on the server since the trouble, the list’s first or one between, so its nights from before the trouble are refused by every list',
           ]),
       ...(has(
         check,
@@ -495,7 +525,7 @@ const theftList = (runbook: string) =>
           ]),
       ...(has(
         check,
-        'That file is for a night the stolen key, or an older key that may have leaked, signed: one that an older key of the kept list signed is checked with the kept list',
+        'signed: one that an older key of the kept list signed is checked with the kept list',
       )
         ? []
         : [
@@ -1364,11 +1394,21 @@ const oldCopies = (runbook: string) =>
             ]),
         ...(has(
           cleanup,
-          "Where that is not the list's first key, as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5)",
-        )
+          "Where that is not the list's first key, as from an old copy of `.env`,",
+        ) &&
+        (has(cleanup, "the first goes into the stolen key's file with it (step 5)") ||
+          has(cleanup, "the first among them, goes into the stolen key's file with it (step 5)"))
           ? []
           : [
               'the stolen-token steps keep the list’s first key nowhere when an older key of the list signed a night the backup never ran',
+            ]),
+        ...(has(
+          cleanup,
+          "Where that is not the list's first key, as from an old copy of `.env`, each other key of the list whose private half was on the server since the trouble could have begun, the first among them, goes into the stolen key's file with it (step 5)",
+        ) && !has(cleanup, "the first goes into the stolen key's file with it")
+          ? []
+          : [
+              'the stolen-token steps put only the list’s first key into the stolen key’s file with the one that signed, though every key of the list on the server since the trouble may have leaked',
             ]),
         ...(taken.includes(
           "`<n> objects passed over, not the backup's`, n above 0, or once a key has left the list, n above what the first drill since printed",
@@ -2082,7 +2122,7 @@ const REWRAPPED = [
   "reaches the rewind's point at most",
   'see step 7 for the release',
   'a rollback by hand passes no migrate reference',
-  'or an older key that may have leaked',
+  'that the stolen key, or an older',
   'sealed and then failed at the end',
   'its keys out of order',
   // Read by the rules of the fourth re-review.
@@ -2105,7 +2145,7 @@ const REWRAPPED = [
   'night takes the same two `-e`',
   'the list whose private half had left the server',
   'never the stolen key',
-  '<each older key that may have leaked>`',
+  '<each key of the list it does not keep>`',
   'holds the new key first, then only the older keys',
   'the trouble could have begun stays',
   "the list still holds recorded this month's copy",
@@ -2225,7 +2265,7 @@ const REWRAPPED = [
   "An older month's copy, stamped before the records reach",
   'list of several signed a seal, check it with each key of the list alone, in a file of one key',
   "each: only the signer's gets past the seal",
-  "as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5)",
+  'as from an old copy of `.env`, each other key of the list whose private half was on the server',
   'or once a key has left the list, n above',
   "that id against the backup's own journal line, as for the restore test",
   // The versions put back: the backup's own removal's markers kept, a seal's version from the
@@ -2263,6 +2303,15 @@ const REWRAPPED = [
   'never a Telegram message',
   'Two `backup` lines',
   "from the server's own address and inside its night (from its stamp to the next night's)",
+  // The stolen key's file: every key of the list on the server since the trouble, its first among
+  // them, in step 2, sub-step 1, sub-step 4, 2.2 and Rotation.
+  "the first among them, goes into the stolen key's file with it",
+  "Where that is not the list's first key,",
+  'the list whose private half was on the server since the trouble could have begun, the list',
+  'Then recover it, when a key of that file signed it',
+  'That file holds the stolen key and every other key the list held whose private half was',
+  'signed: one that an older key of the kept list',
+  'So does every other key of the list whose private half was on the',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -2584,7 +2633,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       theftList,
       swap(
         RUNBOOK,
-        '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`',
+        '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each key of the list it does not keep>`',
         '`BACKUP_SIGNING_PUBLIC_KEY=<the old public key>`',
       ),
       'the theft’s step 5 doesn’t keep an older key that may have leaked apart with the stolen one',
@@ -2623,7 +2672,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       theftList,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, '        That file is for a night the stolen key', "That archive's `.env`"),
+        cut(RUNBOOK, '        That file holds the stolen key', "That archive's `.env`"),
         '        ',
       ),
       'step 2.2 checks a night an older key of the kept list signed with the stolen key’s file',
@@ -4274,6 +4323,67 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ],
     ])
       refuses(theftRecords, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('keeps apart every key of the list that was on the server since the trouble, the list’s first among them, wherever the stolen key’s file is defined (Stop C’s eighth re-review, finding T3)', () => {
+    expect(theftList(RUNBOOK)).toEqual([]);
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    const file = 'the stolen key’s file leaves out a key of the list that was on the server since';
+    const first = 'the stolen-token steps put only the list’s first key into the stolen key’s file';
+    // As the seventh re-review's fixes left them: step 2 put the list's first key alone in that
+    // file, and sub-step 1, sub-step 4, 2.2 and Rotation spoke of the older keys that may have
+    // leaked.
+    const before = swap(
+      swap(
+        swap(
+          swap(
+            swap(
+              RUNBOOK,
+              cut(RUNBOOK, ' So does every other key of the list', ' while one whose private half'),
+              ' So does an older key whose private half may have leaked with it,\n ',
+            ),
+            cut(
+              RUNBOOK,
+              '        That file holds the stolen key',
+              '\n        night, and that file',
+            ),
+            '        That file is for a night the stolen key, or an older key that may have leaked, signed:\n        one that an older key of the kept list signed is checked with the kept list, as any',
+          ),
+          cut(RUNBOOK, " Where that is not the list's first key,", ' That id stays all the same'),
+          " Where that is not the list's first key,\n   as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5), as its\n   private half was on the server since the trouble could have begun.",
+        ),
+        cut(RUNBOOK, ' The stolen key and every other key of', ' in a file\n      of their own'),
+        ' The stolen key, and any older key\n      that may have leaked with it, are kept apart, as\n      `BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`',
+      ),
+      'Then recover it, when a key of that file signed it,',
+      'Then recover it, when the stolen key or an older key that may have leaked signed it,',
+    );
+    refuses(theftList, before, file);
+    refuses(oldCopies, before, first);
+    // Each clause dropped or turned in turn.
+    for (const [from, to] of [
+      [", the first among them where the thief's was an older\n  one,", ','],
+      ['<each key of the list it does not keep>`', '<each older key that may have leaked>`'],
+      [", the list's\n      first among them,", ''],
+      [
+        'Then recover it, when a key of that file signed it,',
+        'Then recover it, when the stolen key signed it,',
+      ],
+      [", its first among them (that section's\n        step 5),", ','],
+    ])
+      refuses(theftList, swap(RUNBOOK, from, to), file);
+    for (const [from, to] of [
+      [', the first among them, goes into', ' goes into'],
+      [
+        cut(
+          RUNBOOK,
+          'each other key of the list whose private half',
+          ', the first among them, goes',
+        ),
+        'each other key of the list that may have leaked',
+      ],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), first);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {

@@ -931,8 +931,9 @@ recreates them; a `restart` keeps the old values.
   the old ones stay readable while its public key stays in the list. Drop an old key from the list
   when none of its nights is left. A key a thief may have held leaves the list at once, though the
   real nights it signed go with it: anything it signed could be the thief's, and a point-in-time
-  recovery has no other guard. So does an older key whose private half may have leaked with it,
-  while one whose private half had left the server before the trouble could have begun stays,
+  recovery has no other guard. So does every other key of the list whose private half was on the
+  server since the trouble could have begun, the first among them where the thief's was an older
+  one, while one whose private half had left the server before the trouble could have begun stays,
   after the new key. Their public keys are then kept apart, in a file of their own marked stolen,
   for the one-run uses of A stolen or leaked bucket token (VPS), step 5. Each time, the whole new
   list, as `BACKUP_SIGNING_PUBLIC_KEY=<list>`, takes the place of the kept one, in its file of its
@@ -1457,8 +1458,10 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         pnpm vps:verify-night <id> <folder> --keys <the stolen key's file>
         ```
 
-        That file is for a night the stolen key, or an older key that may have leaked, signed:
-        one that an older key of the kept list signed is checked with the kept list, as any
+        That file holds the stolen key and every other key the list held whose private half was
+        on the server since the trouble could have begun, its first among them (that section's
+        step 5), and is for a night one of them signed: one that an older key of the kept list
+        signed is checked with the kept list, as any
         night, and that file refuses it. That archive's `.env` holds the values of before the
         trouble, the stolen key in its list among them: 2.4 puts in the kept list and the private
         half of its first key, never the stolen one it holds, and each value rotated since (the
@@ -1954,9 +1957,9 @@ restore lists nothing.
    list of several signed a seal, check it with each key of the list alone, in a file of one key
    each: only the signer's gets past the seal, the others print
    `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. Where that is not the list's first key,
-   as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5), as its
-   private half was on the server since the trouble could have begun. That id stays all the same, as
-   any whose seal a list verifies.
+   as from an old copy of `.env`, each other key of the list whose private half was on the server
+   since the trouble could have begun, the first among them, goes into the stolen key's file with it
+   (step 5). That id stays all the same, as any whose seal a list verifies.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only what step 2 found to be the holder's (seals every list
@@ -1996,9 +1999,10 @@ restore lists nothing.
       manager, and in `BACKUP_SIGNING_PUBLIC_KEY` the new public key first, then each older key of
       the list whose private half had left the server before the trouble could have begun (it
       left at the rotation that replaced it), never the stolen key. The same line takes the kept
-      list's place in its file of its own beside the age key. The stolen key, and any older key
-      that may have leaked with it, are kept apart, as
-      `BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>` in a file
+      list's place in its file of its own beside the age key. The stolen key and every other key of
+      the list whose private half was on the server since the trouble could have begun, the list's
+      first among them, are kept apart, as
+      `BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each key of the list it does not keep>` in a file
       of their own marked stolen, never in the kept list's file or the age key's: from then on no
       restore, drill or point-in-time recovery takes a night or a WAL file one of them signed, the
       real ones included, unless that file's list is given for one run.
@@ -2046,9 +2050,8 @@ restore lists nothing.
       of that night's objects that went up before the trouble (its seal, its settings archive and
       its parts) the current ones again, with the admin login, before anything of it is downloaded
       or recovered: one signed with the stolen key could have been put over each, and the stolen
-      key's file would take it. Then recover it, when the stolen key or an older key that may have
-      leaked signed it, with that file's list given for that one run, quoted as it may hold several
-      keys, and never put back in `.env`:
+      key's file would take it. Then recover it, when a key of that file signed it, with that file's
+      list given for that one run, quoted as it may hold several keys, and never put back in `.env`:
 
       ```sh
       sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<id> -e "BACKUP_SIGNING_PUBLIC_KEY=<the stolen key's file's list>" -v /run/age:/run/age:ro recover
