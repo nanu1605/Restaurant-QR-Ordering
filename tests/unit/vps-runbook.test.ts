@@ -9,7 +9,7 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * The steps of docs/RUNBOOK.md's "The shared server (VPS)" that no script runs: the owner follows
  * them by hand, on the server or in a disaster, so a step that went missing would show only then.
  * These text rules pin the procedure fixes of Stop C's re-reviews (docs/DECISIONS.md VPS-60 to
- * VPS-65, VPS-67, VPS-68 to VPS-76 and VPS-78 to VPS-98): every backup.sh run by hand comes right
+ * VPS-65, VPS-67, VPS-68 to VPS-76 and VPS-78 to VPS-101): every backup.sh run by hand comes right
  * after a settings archive made for it, and a new server enables the archive's timer (finding V3);
  * disaster recovery's step 2.4 puts the signing key's private half in, and step 4 stops backup
  * until db runs (V4) and checks the signing pair with SIGNING_PAIR_CHECK, character for character
