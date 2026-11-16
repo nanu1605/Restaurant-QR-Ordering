@@ -24,7 +24,8 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * reached as root is rebuilt with none of its nights taken (N1) and no private key put on it, its
  * backup key counted as stolen too once it was there (G1), its new pair made before the rebuild and
  * put in before the archive's timer and backup start (the fourth re-review's K1), and 2.4 puts the
- * newest backup public key in .env, whatever the archive held (the fifth re-review's M4); the key
+ * newest backup public key in .env, whatever the archive held (the fifth re-review's M4), before
+ * the conf is checked against that same key (the seventh re-review's design notes); the key
  * list is kept in a file of its own, never in the age key's (design note 4); the month's copy is
  * named by either of the backup's lines (B1), each step of it that fails is quoted, with what it
  * found, and the way to the stolen-token steps (R1), where a line, an alert or a ping only keeps
@@ -32,7 +33,8 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * checked with each list, never by the journal (H1, and the fifth re-review's M2 and M3, which undo
  * E1's and K2's deletion of the names an alert lists), and step 3 lifts no lock after a reach as
  * root until the rebuild (the fifth re-review's M1), when step 2 is done again, as root could write
- * until then (the sixth re-review's theft design note 3); under versioning step 2 puts back every
+ * until then (the sixth re-review's theft design note 3), only after the revocation (the seventh
+ * re-review's design notes); under versioning step 2 puts back every
  * version written over the backup's own, or deleted, whether or not a line keeps its night (the
  * sixth re-review's P2), but for the delete markers of the backup's own removal, a seal's version
  * taken from the backup's own run and two that verify taking their key for stolen, what was put
@@ -663,7 +665,9 @@ const after = (text: string, from: string) => {
  * them, is done again once the token is revoked, before step 3. Step 3 now waits for the only token
  * that can write or delete, as disaster recovery's read-only token for a download may stay (theft
  * design note 4), and sub-step 5 says the reached server alerts from the revocation on, and gets
- * no token (finding P3).
+ * no token (finding P3). Two orders no rule held are held now (Stop C's seventh re-review, its
+ * design notes): 2.4 makes .env's key the newest before the conf is checked against "that same
+ * key", never the archive's, and sub-step 5 does step 2 again only after the revocation.
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
@@ -679,6 +683,12 @@ const rootKeys = (runbook: string) =>
       const pair = after(fifth, "If the backup key's private half was on that server since");
       const keys = flat(keyList);
       const conf = keys.indexOf("grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf");
+      const newest = keys.indexOf(
+        '`BACKUP_AGE_RECIPIENT` becomes the newest backup public key here',
+      );
+      const revoked = fifth.indexOf(
+        "step 1's token is revoked before Disaster recovery, step 2, reads the bucket",
+      );
       return [
         ...(has(theftTest, 'they run on the rebuilt server only')
           ? []
@@ -809,6 +819,22 @@ const rootKeys = (runbook: string) =>
           ? []
           : [
               'step 2 judges the bucket only while root may still write to it with step 1’s token, so what root wrote since stays',
+            ]),
+        ...(newest >= 0 &&
+        newest < conf &&
+        keys.includes(
+          'first check that it is that same key: the two commands print the same `age1…` key',
+        ) &&
+        !keys.includes('that same key, the archive')
+          ? []
+          : [
+              'step 2.4 checks the admin’s conf against the backup key the archive held, or before .env holds the newest one',
+            ]),
+        ...(revoked >= 0 &&
+        revoked < fifth.indexOf('so only then is step 2 done again, its versions among them')
+          ? []
+          : [
+              'the theft’s step 5 does step 2 again before step 1’s token is revoked, while root may still write with it',
             ]),
         ...(fifth.includes('that is expected, and it gets no token')
           ? []
@@ -2070,6 +2096,9 @@ const REWRAPPED = [
   "(by a stolen key's file only for a night from before its theft; after a leaked",
   'for a WAL file, its first, as nobody can name one before its upload',
   'Delete what someone else put over it to make it',
+  // The orders the seventh re-review's design notes found unpinned: 2.4's newest key before the
+  // conf's check of that same key.
+  'two commands print the same `age1…` key',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -3802,6 +3831,49 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       [cut(RUNBOOK, ' Check\n  that id against', ' For a point instead'), '', drillNight],
     ])
       refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('makes .env’s backup key the newest before the conf is checked against that same key, and judges the bucket again only after the revocation (Stop C’s seventh re-review, design notes)', () => {
+    expect(rootKeys(RUNBOOK)).toEqual([]);
+    const conf =
+      'step 2.4 checks the admin’s conf against the backup key the archive held, or before .env holds the newest one';
+    const order = 'the theft’s step 5 does step 2 again before step 1’s token is revoked';
+    // The conf checked against the archive's key.
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        'first check that it is that same key: the',
+        "first check that it is that same key, the archive's: the",
+      ),
+      conf,
+    );
+    // The newest key put in only after the conf's check and the timer.
+    const newestKey = cut(
+      RUNBOOK,
+      ' `BACKUP_AGE_RECIPIENT`\n        becomes the newest',
+      '\n\n        Then, on a new server',
+    );
+    const timers = "        systemctl list-timers 'app-config-archive@*'\n        ```\n";
+    refuses(
+      rootKeys,
+      swap(swap(RUNBOOK, newestKey, ''), timers, `${timers}\n       ${newestKey}\n`),
+      conf,
+    );
+    // Step 2 done again before the revocation, with step 3's sentence kept.
+    refuses(
+      rootKeys,
+      swap(
+        swap(
+          RUNBOOK,
+          ', so only then is\n      step 2 done again, its versions among them, and only then does step 3 lift a lock.',
+          ', so only then does step 3 lift a lock.',
+        ),
+        " The bucket's token goes new once more,",
+        " First, so only then is step 2 done again, its versions among them. The bucket's token goes new once more,",
+      ),
+      order,
+    );
   });
 
   it('keeps the delete markers of the backup’s own removal, takes a seal’s version from its own run and two that verify for a stolen key, and deletes what was put over (Stop C’s seventh re-review, findings R3, R6 and R5, theft design notes)', () => {
