@@ -25,6 +25,7 @@ import {
   seedFiles,
   serviceKey as key,
   serviceMounts,
+  SIGNING_PAIR_CHECK,
   statsMib,
   WAL_FILE,
   walMessage,
@@ -4980,6 +4981,26 @@ describe('the nights’ seals (VPS-43)', () => {
     expect(recordVerdict(record, night, good, otherPublic)).toBe(
       "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys",
     );
+  });
+
+  it('checks a restored signing pair with the backup’s own self-check, in one line between single quotes (Stop C’s re-review, finding V2)', () => {
+    // The owner runs it as `sudo app-compose menumesh run --rm --no-deps -T backup sh -c '<it>'`:
+    // nothing in it may end those quotes or be expanded by the owner's shell, and it prints a
+    // fixed line, never a variable. It sources seal.sh where the image installs it, and its
+    // seal_self_check is the one backup.sh and wal-ship.sh run before they sign anything.
+    expect(SIGNING_PAIR_CHECK).not.toMatch(/['`$\\!\n]/);
+    expect(SIGNING_PAIR_CHECK).toMatch(
+      /^\. \/usr\/local\/share\/menumesh\/seal\.sh; if seal_self_check; then echo "signing pair: [^"]+"; else echo "signing pair: [^"]+" >&2; exit 1; fi$/,
+    );
+    expect(kit('backup/Dockerfile')).toContain(
+      'COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/',
+    );
+    expect(kit('backup/seal.sh')).toContain('\nseal_self_check() {\n');
+    for (const script of ['backup.sh', 'wal-ship.sh']) {
+      expect(code(kit(`backup/${script}`)).some((line) => line.includes('seal_self_check'))).toBe(
+        true,
+      );
+    }
   });
 });
 

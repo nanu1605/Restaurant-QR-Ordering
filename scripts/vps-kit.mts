@@ -41,7 +41,10 @@
  *                    a night's seal and settings archive checked on this
  *                    machine by pnpm vps:verify-night, as the owner checks them before a new
  *                    server gets the archive, and an archive put over the night's own and one
- *                    under a night that sealed none refused; a night whose id someone else wrote
+ *                    under a night that sealed none refused; after a rotation and after a theft
+ *                    of the signing key, the nights that check takes, a night by hand without a
+ *                    fresh settings archive refused with the one before it, and the signing
+ *                    pair's check on a restored .env; a night whose id someone else wrote
  *                    a name of first, stopped before its first upload; the monthly restore test;
  *                    planted nights and names the restore must refuse or not read, each night
  *                    read from the one folder its age gives and only as its seal gives it; and the
@@ -4534,6 +4537,298 @@ function verifyNightProof(
   }
 }
 
+/** What the signing pair's check prints when the pair is one, and when it is not. */
+const PAIR_SIGNS =
+  'signing pair: BACKUP_SIGNING_KEY signs what the first key of BACKUP_SIGNING_PUBLIC_KEY checks';
+const PAIR_REFUSED =
+  'signing pair: BACKUP_SIGNING_KEY does not sign what the first key of BACKUP_SIGNING_PUBLIC_KEY checks, so no night could be sealed and no WAL shipped: put in the private key of that first key';
+
+/**
+ * The signing pair's check (Stop C's re-review, finding V2), for a server whose .env a recovery
+ * restored or a rotation changed. A restored .env from before a rotation holds the private key of
+ * before it, and the kept list put in its place begins with the new key: backup.sh would then stop
+ * every night before its first upload, and wal-ship.sh ship nothing. In a one-off of the backup
+ * service, with .env's values, this signs a probe with BACKUP_SIGNING_KEY and checks it with the
+ * first key of BACKUP_SIGNING_PUBLIC_KEY, as both do before they sign anything (seal.sh's
+ * seal_self_check), and prints one line, neither key. Nothing of the kit runs on a new server
+ * before the backup image is there (disaster recovery, step 4: app-deploy pulls it; the service
+ * says pull_policy: never), and nothing on the owner's machine holds the restored .env: so the owner
+ * runs it right after step 4, with backup stopped, before anything is signed:
+ *
+ *   sudo app-compose menumesh run --rm --no-deps -T backup sh -c '<this>'
+ *
+ * It holds no single quote, so that it goes between that command's own.
+ */
+export const SIGNING_PAIR_CHECK = `. /usr/local/share/menumesh/seal.sh; if seal_self_check; then echo "${PAIR_SIGNS}"; else echo "${PAIR_REFUSED}" >&2; exit 1; fi`;
+
+/** A compose run's own lines about its containers left out of what a one-off printed. */
+const ownLines = (stderr: string) =>
+  lines(stderr)
+    .filter((line) => !/^ ?(Container|Network|Volume) /.test(line.trim()))
+    .join('\n');
+
+/**
+ * A rotation and a theft of the signing key, as the RUNBOOK's steps take them (Stop C's re-review,
+ * findings V1 and V2). A new pair stands for the one a rotation makes, and the rehearsal's own key,
+ * which signed every night so far (`older` among them, whole), for the old one, after a theft the
+ * stolen one. backup.sh runs by hand, as the RUNBOOK runs it, with the new pair given with -e, as
+ * .env would hold it: the rehearsal's own .env is never changed, and the nights made here go from
+ * the bucket at the end, so whatever comes after finds the bucket as it was.
+ *
+ * A routine rotation keeps the old key after the new one ("<new> <old>"): with a fresh settings
+ * archive (the host's app-config-archive, its stand-in here), the night by hand is whole and names
+ * the month's copy the old key recorded, and pnpm vps:verify-night with that whole list, kept beside
+ * the age key, passes it and `older`. Then the theft, from the old key's nights alone: the old key
+ * leaves the list at once ("<new>"). backup.sh by hand at an hour when the host's archive of 20:20
+ * is more than 2 hours old seals none, and the kept list refuses that night (name the night before
+ * it) and `older`, which the stolen key signed: so no night would pass disaster recovery's step 2
+ * on a new server. With the archive made first, the night of the new key seals one, is the month's
+ * copy again (no copy the stolen key recorded counts now) and passes with the kept list alone;
+ * `older` passes with a file of the stolen key alone, which refuses the new key's night.
+ *
+ * Last the signing pair's check (SIGNING_PAIR_CHECK) on a restored .env: the private key of before
+ * the rotation, or the stolen one, with the kept list put in, refused in one plain line, as
+ * backup.sh then stops before its first upload; the new pair passes; no key is printed.
+ */
+async function keyTheftProof(checks: Checks, env: Record<string, string>, older: string) {
+  const sum = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+  const pair = generateKeyPairSync('ed25519');
+  const newKey = pair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+  const newPublic = pair.publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+  const oldPublic = env.BACKUP_SIGNING_PUBLIC_KEY;
+  const keys = [newKey, newPublic, env.BACKUP_SIGNING_KEY, oldPublic];
+  // What a check line or its detail may show of a run: never a key, though none is printed.
+  const masked = (text: string) =>
+    keys.reduce((said, key) => said.replaceAll(key, '<a key>'), text);
+  const printsKey = (text: string) => keys.some((key) => text.includes(key));
+  // The nights made here, which go from the bucket at the end.
+  const made: string[] = [];
+  const unmake = (ids: string[]) => {
+    const named = ids.filter((id) => NIGHT_ID.test(id));
+    if (!named.length) return;
+    const include = named.map((id) => `--include '*-${id}.*'`).join(' ');
+    const run = inBackup(
+      `rclone delete ${include} "backups:$BACKUP_BUCKET/daily/" && rclone delete ${include} "backups:$BACKUP_BUCKET/monthly/"`,
+    );
+    if (run.status !== 0) fail(`Removing ${named.join(', ')} failed: ${run.stderr.trim()}`);
+  };
+  // backup.sh by hand, signed with the new pair and the given list.
+  const byHand = (list: string) => {
+    const run = compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '-e',
+      `BACKUP_SIGNING_KEY=${newKey}`,
+      '-e',
+      `BACKUP_SIGNING_PUBLIC_KEY=${list}`,
+      'backup',
+      '/usr/local/bin/backup.sh',
+    ]);
+    const alert = lines(run.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
+    const said = nightSaid(run.stdout);
+    const id = said.night || /^\[menumesh\] backup failed \(exit \d+\) at (\S+): /.exec(alert)?.[1];
+    made.push(id ?? '');
+    return { ...run, said, alert, id: id ?? '' };
+  };
+  const ofNight = (folder: string, id: string) =>
+    bucketNames(folder).filter((name) => name.includes(`-${id}.`));
+  // A night's names in a folder once they are the ones wanted: rclone serve s3 lists a folder
+  // from a cache of 5 s.
+  const settled = async (folder: string, id: string, want: string[]) => {
+    for (let tries = 0; tries < 20; tries++) {
+      const found = ofNight(folder, id);
+      if (found.join(' ') === want.join(' ')) return found;
+      await sleep(1000);
+    }
+    return ofNight(folder, id);
+  };
+  const scratch = mkdtempSync(join(tmpdir(), 'menumesh-kit-theft-'));
+  try {
+    const keyFile = (name: string, list: string) => {
+      const path = join(scratch, name);
+      writeFileSync(path, `BACKUP_SIGNING_PUBLIC_KEY=${list}\n`);
+      return path;
+    };
+    const routine = keyFile('routine.txt', `${newPublic} ${oldPublic}`);
+    const kept = keyFile('kept.txt', newPublic);
+    const stolen = keyFile('stolen.txt', oldPublic);
+    // pnpm vps:verify-night on a night's seal and settings archive, downloaded from daily/ by name
+    // into a folder of their own, as the owner downloads them; whether it passed them whole.
+    let folders = 0;
+    const verify = (id: string, keyList: string) => {
+      const folder = join(scratch, `night-${++folders}`);
+      mkdirSync(folder);
+      const names = [`seal-${id}.txt`, `config-${id}.tar.age`];
+      const got = bucketObjects(names.map((name) => `daily/${name}`));
+      for (const name of names) {
+        const bytes = got.get(`daily/${name}`);
+        if (bytes?.length) writeFileSync(join(folder, name), bytes);
+      }
+      const run = vpsVerifyNight([id, folder, '--keys', keyList]);
+      const archive = got.get(`daily/config-${id}.tar.age`) ?? Buffer.alloc(0);
+      const passed =
+        run.status === 0 &&
+        run.stderr === '' &&
+        archive.length > 0 &&
+        run.stdout ===
+          [
+            `verify-night: config-${id}.tar.age is the part the backup sealed (${archive.length} bytes, sha256 ${sum(archive)})`,
+            `verify-night: the seal of ${id} is signed by the backup's key, and the 1 part here matches it: copy config-${id}.tar.age to the server, where sha256sum must print ${sum(archive)} for it before it is unpacked`,
+            '',
+          ].join('\n');
+      return { ...run, passed, line: tail(run.stdout, 1) || tail(run.stderr, 1) };
+    };
+    const unsigned = (id: string) =>
+      `verify-night: the night of ${id} is not signed by the backup's key: its seal (seal-${id}.txt) is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys, so someone else wrote to the bucket, and nothing in the folder can be trusted\n`;
+    const detail = (...runs: Run[]) =>
+      masked(runs.map((run) => `${run.stdout}${run.stderr}`).join('\n--\n'));
+
+    // A routine rotation: the whole list, the new key first.
+    standInArchive(env);
+    const rotated = byHand(`${newPublic} ${oldPublic}`);
+    const rotatedOwn = verify(rotated.id, routine);
+    const rotatedOlder = verify(older, routine);
+    checks.expect(
+      `a routine rotation of the signing key (Stop C's re-review, finding V1): a new pair, its public key first and the old one kept ("<new> <old>"), the host's settings archive made (app-config-archive's stand-in), then backup.sh by hand: exit ${rotated.status}, "${rotated.said.last || rotated.alert}"; pnpm vps:verify-night with that whole list, kept beside the age key, passes it ("${rotatedOwn.line}") and ${older}, which the old key signed`,
+      rotated.status === 0 &&
+        NIGHT_ID.test(rotated.id) &&
+        rotated.said.said.length === 1 &&
+        /, the month's copy is \S+$/.test(rotated.said.last) &&
+        rotatedOwn.passed &&
+        rotatedOlder.passed,
+      detail(rotated, rotatedOwn, rotatedOlder),
+    );
+    // The theft starts from the old key's nights alone, as when no rotation came before it.
+    unmake([rotated.id]);
+
+    // The theft, the stolen key out of the list at once: backup.sh by hand at an hour when the
+    // host's archive of 20:20 is more than 2 hours old, as the RUNBOOK's step had it.
+    const stale = standInArchive(env);
+    const hoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
+    utimesSync(stale, hoursAgo, hoursAgo);
+    const unarchived = byHand(newPublic);
+    const unarchivedDaily = await settled('daily', unarchived.id, nightParts(unarchived.id, false));
+    const unarchivedOwn = verify(unarchived.id, kept);
+    const unarchivedOlder = verify(older, kept);
+    checks.expect(
+      `after a theft of the signing key, the stolen key out of the list at once ("<new>"), backup.sh by hand with the host's settings archive more than 2 hours old, as the RUNBOOK's step had it: exit ${unarchived.status}, "${unarchived.alert}", so its seal lists none; pnpm vps:verify-night with the kept list refuses it ("${unarchivedOwn.line}") and the night before it, ${older}, which the stolen key signed ("${unarchivedOlder.line}"): no night would pass disaster recovery's step 2 on a new server`,
+      unarchived.status === 1 &&
+        NIGHT_ID.test(unarchived.id) &&
+        unarchived.alert ===
+          `[menumesh] backup failed (exit 1) at ${unarchived.id}: the settings archive ${slash(stale).split('/').pop()} is more than 2 hours old` &&
+        unarchivedDaily.join(' ') === nightParts(unarchived.id, false).join(' ') &&
+        unarchivedOwn.status === 1 &&
+        unarchivedOwn.stdout === '' &&
+        unarchivedOwn.stderr ===
+          `verify-night: the night of ${unarchived.id} has no settings archive in its seal (config-${unarchived.id}.tar.age): its backup had none fresh enough, and anything under that name is someone else's: name the night before it\n` &&
+        unarchivedOlder.status === 1 &&
+        unarchivedOlder.stdout === '' &&
+        unarchivedOlder.stderr === unsigned(older),
+      detail(unarchived, unarchivedOwn, unarchivedOlder),
+    );
+
+    // The theft's steps as they go now: the host's settings archive first, then backup.sh by hand.
+    standInArchive(env);
+    const archived = byHand(newPublic);
+    const archivedDaily = await settled('daily', archived.id, nightParts(archived.id, true));
+    const archivedMonthly = await settled('monthly', archived.id, copyParts(archived.id));
+    const archivedOwn = verify(archived.id, kept);
+    checks.expect(
+      `the theft's steps, the host's settings archive made first (sudo systemctl start app-config-archive@menumesh.service; its stand-in here), then backup.sh by hand: exit ${archived.status}, "${archived.said.said.join('", then "')}", the month's copy again, as no copy the stolen key recorded counts now: its ${archivedDaily.length} objects in daily/, ${archivedMonthly.length} in monthly/; pnpm vps:verify-night with the kept list alone passes it: "${archivedOwn.line}"`,
+      archived.status === 0 &&
+        NIGHT_ID.test(archived.id) &&
+        archived.said.said.length === 2 &&
+        archived.said.kept(archived.id) &&
+        archived.said.last.endsWith(KEPT) &&
+        archivedDaily.join(' ') === nightParts(archived.id, true).join(' ') &&
+        archivedMonthly.join(' ') === copyParts(archived.id).join(' ') &&
+        archivedOwn.passed,
+      `${detail(archived, archivedOwn)}\n${archivedDaily.join('\n')}\n${archivedMonthly.join('\n')}`,
+    );
+    const olderStolen = verify(older, stolen);
+    const archivedStolen = verify(archived.id, stolen);
+    checks.expect(
+      `${older}, from before the trouble: pnpm vps:verify-night with a file that holds the stolen key alone, kept apart, passes it ("${olderStolen.line}"), and refuses the new key's night ("${archivedStolen.line}"): that file takes only the nights from before the trouble`,
+      olderStolen.passed &&
+        archivedStolen.status === 1 &&
+        archivedStolen.stdout === '' &&
+        archivedStolen.stderr === unsigned(archived.id),
+      detail(olderStolen, archivedStolen),
+    );
+
+    // The signing pair's check on a restored .env, as the owner runs it (Stop C's re-review,
+    // finding V2): .env's own private key stands for the one of before the rotation, or the stolen
+    // one, with the kept list put in.
+    const pairCheck = (values: Record<string, string>) => {
+      const run = compose([
+        'run',
+        '--rm',
+        '--no-deps',
+        '-T',
+        ...Object.entries(values).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
+        'backup',
+        'sh',
+        '-c',
+        SIGNING_PAIR_CHECK,
+      ]);
+      return { ...run, stderr: ownLines(run.stderr) };
+    };
+    const beforeRotation = pairCheck({ BACKUP_SIGNING_PUBLIC_KEY: `${newPublic} ${oldPublic}` });
+    const stolenKept = pairCheck({ BACKUP_SIGNING_PUBLIC_KEY: newPublic });
+    const rotatedPair = pairCheck({
+      BACKUP_SIGNING_KEY: newKey,
+      BACKUP_SIGNING_PUBLIC_KEY: `${newPublic} ${oldPublic}`,
+    });
+    const theftPair = pairCheck({
+      BACKUP_SIGNING_KEY: newKey,
+      BACKUP_SIGNING_PUBLIC_KEY: newPublic,
+    });
+    // What the night does with the pair of before the rotation: it stops before its first upload.
+    const night = compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '-e',
+      `BACKUP_SIGNING_PUBLIC_KEY=${newPublic} ${oldPublic}`,
+      'backup',
+      '/usr/local/bin/backup.sh',
+    ]);
+    const nightAlert = lines(night.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
+    const nightId =
+      /^\[menumesh\] backup failed \(exit \d+\) at (\S+): /.exec(nightAlert)?.[1] ?? '';
+    made.push(nightId);
+    const runs = [beforeRotation, stolenKept, rotatedPair, theftPair, night];
+    checks.expect(
+      `the signing pair's check on a restored .env (Stop C's re-review, finding V2), a one-off of the backup service as the owner runs it (app-compose menumesh run --rm --no-deps -T backup sh -c '…'): the private key of before a rotation with the list of after it ("<new> <old>"): exit ${beforeRotation.status}, "${masked(beforeRotation.stderr)}", as backup.sh so stops before its first upload ("${masked(nightAlert)}", nothing of its night in daily/); the stolen key with the kept list after a theft: exit ${stolenKept.status}; the new pair with either list: exit ${rotatedPair.status} and ${theftPair.status}, "${masked(rotatedPair.stdout.trim())}"; no key printed`,
+      beforeRotation.status === 1 &&
+        beforeRotation.stdout === '' &&
+        beforeRotation.stderr === PAIR_REFUSED &&
+        stolenKept.status === 1 &&
+        stolenKept.stdout === '' &&
+        stolenKept.stderr === PAIR_REFUSED &&
+        rotatedPair.status === 0 &&
+        rotatedPair.stdout === `${PAIR_SIGNS}\n` &&
+        rotatedPair.stderr === '' &&
+        theftPair.status === 0 &&
+        theftPair.stdout === `${PAIR_SIGNS}\n` &&
+        theftPair.stderr === '' &&
+        night.status === 1 &&
+        NIGHT_ID.test(nightId) &&
+        nightAlert ===
+          `[menumesh] backup failed (exit 1) at ${nightId}: BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded` &&
+        ofNight('daily', nightId).length === 0 &&
+        !runs.some((run) => printsKey(`${run.stdout}${run.stderr}`)),
+      detail(...runs),
+    );
+    unmake(made);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 /**
  * A night's base backup, decrypted (the rehearsal's age key) and decompressed in a one-off of the
  * backup service, into /var/tmp (its /tmp is a small tmpfs): its tar's names, backup_label's lines
@@ -5540,6 +5835,9 @@ async function backupTest() {
     // to a new server (disaster recovery, step 2): the slowed base's night, whole, and the night
     // whose settings archive was stale, which sealed none (Stop C's review, finding D1).
     verifyNightProof(checks, env, nights, slowNight, failedNight);
+    // Which nights that check takes after a rotation and after a theft of the signing key, and the
+    // signing pair's check on a restored .env (Stop C's re-review, findings V1 and V2).
+    await keyTheftProof(checks, env, slowNight);
 
     // The night's base backup, as a point-in-time recovery reads it: a tar with backup_label,
     // backup_manifest and, under pg_wal/, the WAL it needs from the file its seal names, of the
@@ -6340,7 +6638,7 @@ const badSignature = () => randomBytes(64).toString('base64url');
 /**
  * A settings archive in backup-out, the folder backup.sh reads as /config-out, as the host's
  * app-config-archive leaves one: an age-encrypted tar of stand-in settings, stamped now, so that
- * the drills' nights pass whole. What backup-out held goes first.
+ * the drills' nights pass whole. What backup-out held goes first. Its path on this machine.
  */
 function standInArchive(env: Record<string, string>) {
   const out = join(MIRROR, 'backup-out');
@@ -6363,6 +6661,7 @@ function standInArchive(env: Record<string, string>) {
     env.BACKUP_AGE_RECIPIENT,
   ]);
   if (made.status !== 0) fail(`The stand-in settings archive failed: ${made.stderr}`);
+  return join(out, `config-${stamp}.tar.age`);
 }
 
 /**
