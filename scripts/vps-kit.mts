@@ -7256,16 +7256,18 @@ age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dc
       `${tail(cut.stdout, 40)}\n${cut.stderr}`,
     );
     // A point past the cut, the drop's second and one more: the replay runs out of the WAL it was
-    // given at the cut, short of the point, and is told that a recovery to latest goes no further
-    // unless PITR_ACCEPT_CUT names the cut (Stop C's re-review, the pitr design notes).
+    // given at the cut, short of the point. The drill is told to recover to an earlier point or to
+    // latest, and never of PITR_ACCEPT_CUT, which it does not read (Stop C's re-reviews, finding
+    // T1); what a recovery is told is checked at the rewind, below.
     const pastCut = `${new Date(Date.parse(droppedAt) + 1000).toISOString().slice(0, 19)}Z`;
     const short = await drill(pastCut);
     checks.expect(
-      `pitr-test to ${pastCut}, past the drop, with that byte still changed: exit ${short.status}, "${tail(short.stdout, 1)}"`,
+      `pitr-test to ${pastCut}, past the drop, with that byte still changed: exit ${short.status}, "${tail(short.stdout, 1)}", and no word of PITR_ACCEPT_CUT (finding T1)`,
       short.status === 1 &&
         !short.stdout.includes('pitr test passed') &&
+        !short.stdout.includes('PITR_ACCEPT_CUT') &&
         short.stdout.endsWith(
-          `pitr: the replay reached the end of the WAL it was given before the first transaction past ${pastCut} (the chain of WAL files is cut at ${pending}): recover to an earlier point, or to latest with PITR_ACCEPT_CUT=${pending}, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)\n`,
+          `pitr: the replay reached the end of the WAL it was given before the first transaction past ${pastCut} (the chain of WAL files is cut at ${pending}): recover to an earlier point, or to latest\n`,
         ),
       `${tail(short.stdout, 40)}\n${short.stderr}`,
     );

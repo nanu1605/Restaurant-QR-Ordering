@@ -789,12 +789,15 @@ if [ -z "$ready" ]; then
   if grep -q 'recovery ended before configured recovery target was reached' "$work/replay.log"; then
     # Why the WAL it was given ended there: a cut, the end of the bucket's WAL, or the first WAL
     # file uploaded more than 30 minutes past the point, which can still hold WAL from before it
-    # when the shipper was down then and sent it late. A recovery to latest goes no further past a
-    # cut: it is refused, unless PITR_ACCEPT_CUT names the cut, and then ends there.
+    # when the shipper was down then and sent it late. A recovery to latest starts from the newest
+    # night, whose base can lie past the cut, so it may never meet it; where it does, it is refused
+    # there, unless PITR_ACCEPT_CUT names the cut, and then ends there. Only a recovery is told so:
+    # the drill never reads PITR_ACCEPT_CUT.
     instead='or to latest'
     if [ -n "$cut" ]; then
       short="the chain of WAL files is cut at $gap"
-      instead="or to latest with PITR_ACCEPT_CUT=$gap, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)"
+      [ "$mode" = --test ] ||
+        instead="or to latest; if that recovery is cut at $gap too, it ends there only with PITR_ACCEPT_CUT=$gap"
     elif [ -n "$end" ]; then
       short="the WAL in the bucket ends at $last"
     else

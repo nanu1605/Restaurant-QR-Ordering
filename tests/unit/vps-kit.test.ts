@@ -3207,9 +3207,26 @@ const TIMELINE_MATCHED = '  $1 "" == tli "" { on = NR; next }\n';
 /** The refusal of the base, which nothing written to db-data may precede. */
 const BASE_REFUSED =
   '  die "the base backup of $night is of the timeline $tli, from $start, which $problem:';
-/** What a recovery to a point that a cut chain stops short of is told to do instead. */
-const CUT_INSTEAD =
-  '      instead="or to latest with PITR_ACCEPT_CUT=$gap, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)"';
+/**
+ * What a recovery to a point that a cut chain stops short of is told to do instead (Stop C's
+ * re-reviews, finding T1): latest, which starts from the newest night, whose base can lie past the
+ * cut, and where it meets the cut goes on to it only with PITR_ACCEPT_CUT; the drill, which never
+ * reads PITR_ACCEPT_CUT, is not told of it.
+ */
+const CUT_ADVICE =
+  'instead="or to latest; if that recovery is cut at $gap too, it ends there only with PITR_ACCEPT_CUT=$gap"';
+const CUT_INSTEAD = [
+  '      short="the chain of WAL files is cut at $gap"',
+  '      [ "$mode" = --test ] ||',
+  `        ${CUT_ADVICE}`,
+  '',
+].join('\n');
+/** The advice as it was before finding T1: true only when latest starts from the point's night. */
+const TODAYS_CUT_INSTEAD = [
+  '      short="the chain of WAL files is cut at $gap"',
+  '      instead="or to latest with PITR_ACCEPT_CUT=$gap, which ends at the cut (without it, a recovery to latest is refused while the chain is cut there)"',
+  '',
+].join('\n');
 
 /**
  * pitr.sh (VPS-43): everything it prints through the filter restore.sh has; a recovery only to a
@@ -3230,9 +3247,10 @@ const CUT_INSTEAD =
  * unless PITR_ACCEPT_CUT names the WAL file it is cut at (review finding D6). A base whose timeline
  * the replay leaves for the next before the last WAL file the base brought along is refused before
  * anything is written: Postgres could read on along the abandoned timeline from those files
- * (Stop C’s re-review, finding M1). A recovery to a point that a cut chain stops short of names
- * PITR_ACCEPT_CUT for a recovery to latest, which is refused without it. The base's timeline is
- * found in the lineage as text, as positions are compared, never as the number awk would read.
+ * (Stop C’s re-review, finding M1). A recovery to a point that a cut chain stops short of is told
+ * that a recovery to latest, should it be cut there too, ends there only with PITR_ACCEPT_CUT; the
+ * drill, which never reads it, is not told of it (finding T1). The base's timeline is found in the
+ * lineage as text, as positions are compared, never as the number awk would read.
  */
 const REPLAY_FLAGS = [
   '-c shared_preload_libraries= ',
@@ -3265,6 +3283,11 @@ const pitrRules = (script: string) => {
   const writes = script.indexOf('[ "$mode" != --into ] || writing=yes');
   const shortOfEnd = script.indexOf('  if [ "$restored" != "$from_bucket" ]; then');
   const baseRefused = script.indexOf(BASE_REFUSED);
+  // The end-of-WAL refusal's branch for a cut: what follows its short reason.
+  const cutBranch =
+    /\n {6}short="the chain of WAL files is cut at \$gap"\n([\s\S]*?)\n {4}elif /.exec(
+      script,
+    )?.[1] ?? '';
   return [
     ...(script.includes(String.raw`LC_ALL=C tr -d '\000-\010\013-\037\177-\377' <"$fifo" &`) &&
     script.indexOf('exec >"$fifo" 2>&1') < script.indexOf('mode=${1-}') &&
@@ -3383,12 +3406,16 @@ const pitrRules = (script: string) => {
       : [
           'the base’s timeline is found in the lineage as awk reads it, a number, so that 000000E1 and 000000E2, both 0 in its exponent notation, are one timeline',
         ]),
-    ...(script.includes(CUT_INSTEAD) &&
+    ...(cutBranch.includes(CUT_ADVICE) &&
     script.includes('($short): recover to an earlier point, $instead"')
       ? []
       : [
-          'a recovery to a point that a cut chain stops short of is pointed to latest without PITR_ACCEPT_CUT',
+          'a recovery to a point that a cut chain stops short of is not told that latest, which may start past the cut, ends there only if it meets it, and then only with PITR_ACCEPT_CUT',
         ]),
+    ...(!cutBranch.includes('PITR_ACCEPT_CUT') ||
+    cutBranch.startsWith('      [ "$mode" = --test ] ||\n')
+      ? []
+      : ['the drill names PITR_ACCEPT_CUT, which it never reads']),
   ];
 };
 
@@ -5101,7 +5128,25 @@ describe('the migrate and backup images', () => {
     );
   });
 
-  it('names PITR_ACCEPT_CUT when a cut chain stops a recovery short of its point (Stop C’s re-review)', () => {
+  it('tells a recovery to a point that a cut chain stops short of what latest does at the cut, and not the drill (Stop C’s re-reviews, finding T1)', () => {
+    expect(pitrSh).toContain(CUT_INSTEAD);
+    const problem = 'ends there only if it meets it, and then only with PITR_ACCEPT_CUT';
+    // Today's line: a recovery to latest said to end at the cut, though one from a newer night
+    // never meets it, and the drill told so too.
+    const today = swap(pitrSh, CUT_INSTEAD, TODAYS_CUT_INSTEAD);
+    refuses(pitrRules, today, problem);
+    refuses(pitrRules, today, 'the drill names PITR_ACCEPT_CUT');
+    // The advice as it should be, but the drill told it too.
+    refuses(
+      pitrRules,
+      swap(
+        pitrSh,
+        '      [ "$mode" = --test ] ||\n        instead="or to latest; if',
+        '      instead="or to latest; if',
+      ),
+      'the drill names PITR_ACCEPT_CUT',
+    );
+    // As before the re-review: no word of PITR_ACCEPT_CUT.
     refuses(
       pitrRules,
       swap(
@@ -5109,7 +5154,7 @@ describe('the migrate and backup images', () => {
         '($short): recover to an earlier point, $instead"',
         '($short): recover to an earlier point, or to latest"',
       ),
-      'pointed to latest without PITR_ACCEPT_CUT',
+      problem,
     );
   });
 
