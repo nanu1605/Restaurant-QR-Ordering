@@ -31,7 +31,10 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * the night it names and every other id is judged by its seal alone, downloaded byte for byte and
  * checked with each list, never by the journal (H1, and the fifth re-review's M2 and M3, which undo
  * E1's and K2's deletion of the names an alert lists), and step 3 lifts no lock after a reach as
- * root until the rebuild (the fifth re-review's M1); the drill names each of pitr.sh's refusals of
+ * root until the rebuild (the fifth re-review's M1); a night a restore test or drill takes that no
+ * record names, one stamped later than now and one passed over are signs of theft, and a seal a
+ * list verifies that no record names takes its key for stolen (the sixth re-review's P1, which
+ * puts back the sign the fifth took away); the drill names each of pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
  * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
@@ -1003,7 +1006,11 @@ const copySteps = (runbook: string, backup: string) => {
  * its form, goes; an older version a list verifies comes back in its place, after a leaked .env
  * only one from before the trouble (theft design note 2); a pass or a refusal past the seal keeps
  * the id, as step 3 keeps the backup's own month's copies (theft design note 1); and no trigger
- * takes ids no line names.
+ * takes ids no line names. With that trigger gone, a restore test or drill that took a night no
+ * record names, signed by a key stolen unnoticed, led nowhere near these steps, and neither did a
+ * night stamped later than now nor one, or WAL objects, the drill passed over (Stop C's sixth
+ * re-review, finding P1, and theft design note 6): each is a trigger now, which condemns nothing,
+ * and step 2 takes the key that signed a seal no whole record names for stolen.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(runbook, ['stolen', 'cleanup', 'remove'], ({ stolen, cleanup, remove }) => {
@@ -1078,6 +1085,27 @@ const oldCopies = (runbook: string) =>
         ? []
         : [
             'the stolen-token steps take ids no journal line names for a sign of a stolen token, as every night before a rebuild is',
+          ]),
+      ...(taken.includes(
+        "when a restore test, drill or recovery takes a night that none of the backup's own records names",
+      ) &&
+      taken.includes('`restore: not taking the night of <id>, stamped later than now`') &&
+      taken.includes(
+        "`pitr: not taking the night of <id>: its seal …, so it is not the backup's`",
+      ) &&
+      taken.includes("`<n> objects passed over, not the backup's`, n above 0")
+        ? []
+        : [
+            'the stolen-token steps take no night a restore takes that no record names, or stamped later than now, or a night or WAL objects passed over, for a sign of a stolen token',
+          ]),
+      ...(has(cleanup, 'A seal a list verifies that no record of the backup names') &&
+      has(
+        cleanup,
+        'that a key of that list signed a night the backup never ran: take that key for stolen (step 5)',
+      )
+        ? []
+        : [
+            'the stolen-token steps keep trusting the key that signed a night no record of the backup names',
           ]),
     ];
   });
@@ -1686,6 +1714,13 @@ const REWRAPPED = [
   'the first `running migrate on migrate-<sha>` line after that one',
   '35 minutes before the first line naming it in the `deploys.log` step 2 unpacked',
   'note of the day has it',
+  // The signs of theft and step 2's stolen key.
+  "a night that none of the backup's own records names",
+  '`restore: not taking the night of <id>, stamped later than now`',
+  "`pitr: not taking the night of <id>: its seal …, so it is not the backup's`",
+  "`<n> objects passed over, not the backup's`, n above 0",
+  'A seal a list verifies that no record of the backup names',
+  'that a key of that list signed a night the backup never ran',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -2784,6 +2819,51 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         "The backup's own nights and WAL stay.",
         'the stolen-token step 3 deletes the backup’s own nights, month’s copies or WAL',
       ],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('takes a night no record names, or one stamped later than now or passed over, for a sign of theft, and its key for stolen (Stop C’s sixth re-review, finding P1, theft design note 6)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    const trigger =
+      'the stolen-token steps take no night a restore takes that no record names, or stamped later than now, or a night or WAL objects passed over, for a sign of a stolen token';
+    const key =
+      'the stolen-token steps keep trusting the key that signed a night no record of the backup names';
+    // As the fifth re-review left them: neither the trigger nor step 2's sentence.
+    const before = swap(
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          ' when a\nrestore test, drill or recovery takes',
+          ' when the\nbucket holds names',
+        ),
+        '',
+      ),
+      cut(RUNBOOK, '\n\n   A seal a list verifies that no record', '\n\n3. **Remove what'),
+      '',
+    );
+    refuses(oldCopies, before, trigger);
+    refuses(oldCopies, before, key);
+    // Each sign dropped in turn, and the key kept.
+    for (const [from, to, problem] of [
+      [
+        'restore test, drill or recovery takes a night that none of the backup',
+        'restore test, drill or recovery takes a night that none of the bucket',
+        trigger,
+      ],
+      [
+        ' names one stamped later than\nnow (`restore: not taking the night of <id>, stamped later than now`),',
+        '',
+        trigger,
+      ],
+      [
+        "\n(`pitr: not taking the night of <id>: its seal …, so it is not the backup's`)",
+        '',
+        trigger,
+      ],
+      ["\n(`<n> objects passed over, not the backup's`, n above 0)", '', trigger],
+      ['take\n   that key for stolen (step 5)', 'keep\n   that key in the list', key],
     ])
       refuses(oldCopies, swap(RUNBOOK, from, to), problem);
   });

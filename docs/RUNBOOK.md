@@ -1840,7 +1840,12 @@ first. Take it as stolen when a restore, or `pnpm vps:verify-night` on a downloa
 `backslash commands are restricted` or `holds links or special files`, when a drill or recovery
 prints `the chain of WAL files is cut`, when a night stops with `someone else wrote to the bucket`,
 when a step of the month's copy fails on a lock's refusal, or at the same step night after night
-(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when the
+(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when a
+restore test, drill or recovery takes a night that none of the backup's own records names (its
+journal or alert lines; after a rebuild, the backup monitor's log), names one stamped later than
+now (`restore: not taking the night of <id>, stamped later than now`), or passes over a night
+(`pitr: not taking the night of <id>: its seal …, so it is not the backup's`) or WAL objects
+(`<n> objects passed over, not the backup's`, n above 0) as not the backup's, when the
 bucket holds names the backup never writes, or when the token was seen anywhere it shouldn't be. A
 flood of names slows every listing; a large one can stop the job's check for the month's copy,
 failing each night after its uploads with the alert, and the restore test unasked, while a named
@@ -1887,6 +1892,12 @@ restore lists nothing.
    restored, nor the WAL replayed past that file, until its older version is made current again
    (the restore test, step 4, names the part, and a cut chain the file). The drill passes over any
    other name in `wal/` whose signature does not verify (it names how many): a cost only.
+
+   A seal a list verifies that no record of the backup names (the journal's lines and alert lines,
+   and the backup monitor's log, which outlives a rebuild) means, where those records are whole (no
+   reach as root, and no night of the 30 days killed after its seal, which leaves no line at all:
+   the monitor alerted on it), that a key of that list signed a night the backup never ran: take
+   that key for stolen (step 5). That id stays all the same, as any whose seal a list verifies.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only what step 2 found to be the holder's (seals every list
