@@ -1788,67 +1788,62 @@ first. Take it as stolen when a restore, or `pnpm vps:verify-night` on a downloa
 `backslash commands are restricted` or `holds links or special files`, when a drill or recovery
 prints `the chain of WAL files is cut`, when a night stops with `someone else wrote to the bucket`,
 when a step of the month's copy fails on a lock's refusal, or at the same step night after night
-(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when `daily/`
-holds ids no journal line names (step 2), or the bucket names the backup never writes, or when the
-token was seen anywhere it shouldn't be. A flood of names slows every listing; a large one can stop
-the job's check for the month's copy, failing each night after its uploads with the alert, and the
-restore test unasked, while a named restore lists nothing.
+(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when the
+bucket holds names the backup never writes, or when the token was seen anywhere it shouldn't be. A
+flood of names slows every listing; a large one can stop the job's check for the month's copy,
+failing each night after its uploads with the alert, and the restore test unasked, while a named
+restore lists nothing.
 
 1. **Rotate the token** with the bucket's admin login, never on the server: a new token for this
    bucket only, into `.env`, then `sudo app-compose menumesh up -d backup` (Rotation), and the old
    token revoked. Nothing more can be written with it.
 
-2. **Check the last nights** against the backup's own lines. Each `backup <id>: …` line in the
-   journal names a whole night, as the backup monitor's log does, and each
+2. **Check the bucket's nights** by their seals. The backup's own lines name its nights: each
+   `backup <id>: …` line in the journal a whole night, as the backup monitor's log does, and each
    `[menumesh] backup failed (exit …) at <id>: …` line a night that failed, its seal up or not:
 
    ```sh
    sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -30d -o cat
    ```
 
-   The lines shown name `daily/`'s nights and the month's copies of the months they fall in. Names
-   the backup never writes and floods are the token holder's, in any folder. In `daily/`, so are ids
-   no line names, but those stamped before these 30 days (no restore reads them, and the removal
-   takes them). So are the names a night's alert lists after
-   `someone else wrote to the bucket: monthly/ holds`, though the backup writes such names: they
-   were there before the night's own (Last night's backup). Take them only from that alert's line in
-   the journal, never from a Telegram message alone, as a leaked `.env` holds the bot's token; only
-   when each name carries that line's own night id, as `backup.sh` lists no other night's names
-   there; and only when that night, stamped in these 30 days, has no `backup <id>:` line. Left in
-   `monthly/`, one under a night's record name, beside that night's own seal, makes a pair that
-   later nights try, and five such pairs make every later night of the month copy itself again:
-   extra copies, a cost only. So where root may have reached the server (step 5), as root can write
-   the journal, take no deletion in `monthly/` from it at all.
-
-   `monthly/` keeps each month's copy 366 days and the journal its lines 180 to 187 days, so an id
-   there that no line shown names can still be the backup's: an older month's copy, or a night
-   stopped at a step of its copy, its parts and seal left there. Download its `seal-<id>.txt` and
-   `config-<id>.tar.age` from `monthly/` into an empty folder, as in Disaster recovery, step 2.1,
-   and check them on the owner's machine as in step 2.2, with the kept list's file, then, if that
-   refuses the seal, with the stolen key's file where there is one (step 5):
+   Such a line, an alert or a ping only keeps the night it names, and never condemns one: a leaked
+   `.env` holds the bot's token and the monitor's address, root can write or empty the journal, a
+   rebuilt server's journal begins at the rebuild, and a night stopped after its seal has none. So
+   nothing goes because no line names it, or because an alert names it. Every other id in `daily/`
+   and `monthly/` is judged by its seal alone. Download its `seal-<id>.txt` and
+   `config-<id>.tar.age` from that folder into an empty folder, as in Disaster recovery, step 2.1,
+   with the provider's download, byte for byte and never from a text preview, and check that the
+   seal's size is the one the bucket lists (else download it again). Then check them on the owner's
+   machine as in step 2.2, with the kept list's file, then, if that refuses the seal, with each
+   stolen key's file kept (one for each theft: step 5):
 
    ```sh
    pnpm vps:verify-night <id> <folder> --keys <the list's file>
    ```
 
-   An id whose seal both refuse, `the night of <id> is not signed by the backup's key: its seal …`,
-   has a seal of the token holder's: delete it, or, where the bucket kept an older version of it
-   from before the trouble, make that one current again instead, as for a part put over its own. Its
-   other objects stay, a record beside it among them, which alone is no candidate: a copy stopped
-   before its seal leaves its parts there, and under versioning that record may be the backup's.
-   They cost only room until the 366-day removal, as does an id with no seal at all. A pass, or a
-   refusal past the seal (of the settings archive or a part), means a key of the list signed its
-   seal: that id stays. So only these go from `monthly/`: such seals, names the backup never writes,
-   floods, and the names such an alert lists. A part put over its own, in a night the journal names,
-   is refused by its seal, so that night can't be restored until the part is put back (the restore
-   test, step 4, says which part).
-   In `wal/`, a name whose signature does not verify is the holder's: the drill passes it over
-   (it names how many) and a cut chain names the file.
+   Only a seal that every list refuses, as
+   `its seal (seal-<id>.txt) is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys` or for its form
+   (any other words after `its seal (seal-<id>.txt)`, which a copy saved with CRLF line ends or cut
+   short gets too: hence the size), is the token holder's: delete it, or, where the bucket kept an
+   older version of it that a list verifies, make that one current again instead (after a leaked
+   `.env`, step 5, only a version from before the trouble, as the stolen key could sign a later
+   one). Its record and parts stay, as they may be the backup's: a cost only, until the backup's
+   own removal, as does an id with no seal at all. A pass, or a refusal past the seal (of the
+   settings archive or a part), means a key of a list signed its seal: that id stays. Names the
+   backup never writes, and floods, are the holder's, in any folder. A part put over its own is
+   refused by its seal, and a WAL file put over its own by its signature, so that night can't be
+   restored, nor the WAL replayed past that file, until its older version is made current again
+   (the restore test, step 4, names the part, and a cut chain the file). The drill passes over any
+   other name in `wal/` whose signature does not verify (it names how many): a cost only.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
-   of the folder that holds it, delete only those objects (planted nights, names and WAL objects,
-   floods), by the names step 2 found, and put the rule back as it was (29 days on `daily/`, 365 on
-   `monthly/`, 15 on `wal/`). The backup's own nights, month's copies and WAL stay.
+   of the folder that holds it, delete only what step 2 found to be the holder's (seals every list
+   refuses, names the backup never writes, floods), or make its older version current where step 2
+   says so, and put the rule back as it was (29 days on `daily/`, 365 on `monthly/`, 15 on `wal/`).
+   The backup's own nights, month's copies and WAL stay. Where root may have reached the
+   server (step 5), lift no lock while a token that server held or could read is valid: this step
+   waits for sub-step 5's rebuild, once step 1's token is revoked and the bucket's only token is the
+   rebuilt server's, which the reached one never held.
 
 4. **A restore test of a named night**, the newest the journal names, with
    `-e RESTORE_STAMP=<id>` (Backups and restore (VPS)), then the point-in-time drill. Record the
@@ -1870,7 +1865,8 @@ restore test unasked, while a named restore lists nothing.
    outlives the rebuild (sub-step 5) goes on it: step 4's restore test and drill, the two that
    close Rotation's signing key step, and sub-step 4's recovery and restore test put the backup
    key's private half on its ramfs, so they run on the rebuilt server only. So, with the token and
-   the bucket's admin steps above:
+   the bucket's admin steps above (step 3, where root may have reached the server, only after
+   sub-step 5's rebuild):
 
    1. **The signing key**, rotated with the stolen key out of the list at once (Secrets (VPS),
       Rotation): in `BACKUP_SIGNING_KEY` the new private key, which also goes into the password
@@ -1955,8 +1951,10 @@ restore test unasked, while a named restore lists nothing.
       `.env` and in the kept list's file, is the fresh key first, then the older keys of sub-step 1
       (none when the backup key counts as stolen too, below), without the key the reached server
       held, which goes into no list and not into the stolen key's file, and no night that key
-      signed is used. The bucket's token, the heartbeat addresses and the bot's token go new once
-      more, and what else the reached server held is Rotation's (Secrets (VPS)).
+      signed is used. The bucket's token goes new once more, into the rebuilt server's `.env`
+      alone, and step 1's token is revoked: only then does step 3 lift a lock, as root could read
+      step 1's token in the reached server's `.env`. The heartbeat addresses and the bot's token go
+      new once more too, and what else the reached server held is Rotation's (Secrets (VPS)).
 
       If the backup key's private half was on that server since the trouble could have begun (a
       monthly restore test or drill, a recovery, step 4), the backup key counts as stolen too: it
