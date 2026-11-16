@@ -1787,10 +1787,10 @@ first. Take it as stolen when a restore, or `pnpm vps:verify-night` on a downloa
 `backslash commands are restricted` or `holds links or special files`, when a drill or recovery
 prints `the chain of WAL files is cut`, when a night stops with `someone else wrote to the bucket`,
 when a step of the month's copy fails on a lock's refusal, or at the same step night after night
-(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when the
-bucket holds ids no journal line names or names the backup never writes, or when the token was
-seen anywhere it shouldn't be. A flood of names slows every listing; a large one can stop the
-job's check for the month's copy, failing each night after its uploads with the alert, and the
+(Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when `daily/`
+holds ids no journal line names (step 2), or the bucket names the backup never writes, or when the
+token was seen anywhere it shouldn't be. A flood of names slows every listing; a large one can stop
+the job's check for the month's copy, failing each night after its uploads with the alert, and the
 restore test unasked, while a named restore lists nothing.
 
 1. **Rotate the token** with the bucket's admin login, never on the server: a new token for this
@@ -1798,27 +1798,54 @@ restore test unasked, while a named restore lists nothing.
    token revoked. Nothing more can be written with it.
 
 2. **Check the last nights** against the backup's own lines. Each `backup <id>: …` line in the
-   journal names a whole night, as the backup monitor's log does:
+   journal names a whole night, as the backup monitor's log does, and each
+   `[menumesh] backup failed (exit …) at <id>: …` line a night that failed, its seal up or not:
 
    ```sh
    sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -30d -o cat
    ```
 
-   Ids in the bucket that no line names, names the backup never writes and floods are the token
-   holder's. So are the names a night's alert lists after
+   The lines shown name `daily/`'s nights and the month's copies of the months they fall in. Names
+   the backup never writes and floods are the token holder's, in any folder. In `daily/`, so are ids
+   no line names, but those stamped before these 30 days (no restore reads them, and the removal
+   takes them). So are the names a night's alert lists after
    `someone else wrote to the bucket: monthly/ holds`, though the backup writes such names: they
-   were there before the night's own (Last night's backup). Left in `monthly/`, one under a
-   night's record name, beside that night's own seal, makes a pair that later nights try, and
-   five such pairs make every later night of the month copy itself again. A part put over its
-   own, in a night the journal names, is refused by its seal, so that night can't be restored
-   until the part is put back (the restore test, step 4, says which part).
+   were there before the night's own (Last night's backup). Take them only from that alert's line in
+   the journal, never from a Telegram message alone, as a leaked `.env` holds the bot's token; only
+   when each name carries that line's own night id, as `backup.sh` lists no other night's names
+   there; and only when that night, stamped in these 30 days, has no `backup <id>:` line. Left in
+   `monthly/`, one under a night's record name, beside that night's own seal, makes a pair that
+   later nights try, and five such pairs make every later night of the month copy itself again:
+   extra copies, a cost only. So where root may have reached the server (step 5), as root can write
+   the journal, take no deletion in `monthly/` from it at all.
+
+   `monthly/` keeps each month's copy 366 days and the journal its lines 180 to 187 days, so an id
+   there that no line shown names can still be the backup's: an older month's copy, or a night
+   stopped at a step of its copy, its parts and seal left there. Download its `seal-<id>.txt` and
+   `config-<id>.tar.age` from `monthly/` into an empty folder, as in Disaster recovery, step 2.1,
+   and check them on the owner's machine as in step 2.2, with the kept list's file, then, if that
+   refuses the seal, with the stolen key's file where there is one (step 5):
+
+   ```sh
+   pnpm vps:verify-night <id> <folder> --keys <the list's file>
+   ```
+
+   An id whose seal both refuse, `the night of <id> is not signed by the backup's key: its seal …`,
+   has a seal of the token holder's, and a record beside it is theirs too, as the backup records
+   only a seal of its own; its other objects stay, as a copy stopped before its seal leaves its
+   parts there, and cost only room until the 366-day removal, as does an id with no seal at all. A
+   pass, or a refusal past the seal (of the settings archive or a part), means a key of the list
+   signed its seal: that id stays. So only these go from `monthly/`: such seals and records, names
+   the backup never writes, floods, and the names such an alert lists. A part put over its own, in a
+   night the journal names, is refused by its seal, so that night can't be restored until the part
+   is put back (the restore test, step 4, says which part).
    In `wal/`, a name whose signature does not verify is the holder's: the drill passes it over
    (it names how many) and a cut chain names the file.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only those objects (planted nights, names and WAL objects,
    floods), by the names step 2 found, and put the rule back as it was (29 days on `daily/`, 365 on
-   `monthly/`, 15 on `wal/`). The backup's own nights and WAL stay.
+   `monthly/`, 15 on `wal/`). The backup's own nights, month's copies and WAL stay.
 
 4. **A restore test of a named night**, the newest the journal names, with
    `-e RESTORE_STAMP=<id>` (Backups and restore (VPS)), then the point-in-time drill. Record the

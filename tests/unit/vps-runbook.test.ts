@@ -27,15 +27,18 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * kept in a file of its own, never in the age key's (design note 4); the month's copy is named by
  * either of the backup's lines (B1), each step of it that fails is quoted, with what it found, and
  * the way to the stolen-token steps (R1), which take the names a stopped night's alert lists for
- * the token holder's (E1); the drill names each of pitr.sh's refusals of a base whose timeline a
- * rewind left (M1), the recovery quotes what pitr.sh tells a point a cut stops short of (T1), the
- * way past the nights a rewind left takes out each one's seal in turn (T2) and promises no point on
- * the stretch it abandoned (F2), and step 7 deploys a release without a migrate reference, the one
- * before a rewind's after a settings archive from before it (F1), and after a night recovered on
- * the same server the one deploys.log names before its stamp, read in UTC, with Production's token
- * (the fourth re-review's J1). Every rule also refuses a copy with one mistake, as
- * tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the fix. Every
- * phrase is compared with its white space folded, so a sentence wrapped again is still found.
+ * the token holder's (E1), but only from the journal, each name of that line's own night, and never
+ * after a reach as root (the fourth re-review's K2), and check an id of monthly/ that no line shown
+ * names by its seal before deleting it (H1); the drill names each of pitr.sh's refusals of a base
+ * whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut stops
+ * short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2) and
+ * promises no point on the stretch it abandoned (F2), and step 7 deploys a release without a
+ * migrate reference, the one before a rewind's after a settings archive from before it (F1), and
+ * after a night recovered on the same server the one deploys.log names before its stamp, read in
+ * UTC, with Production's token (the fourth re-review's J1). Every rule also refuses a copy with one
+ * mistake, as tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the
+ * fix. Every phrase is compared with its white space folded, so a sentence wrapped again is still
+ * found.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -794,6 +797,31 @@ const copyFindings = (backup: string) =>
     .map((line) => line.replaceAll('$night', '<id>').replaceAll('$name', '<name>'));
 
 /**
+ * Whether every name backup.sh looks up before a line that stops a night on a name someone else
+ * wrote is one of that night's own: each part `expected` gains, and each name the three lookups add
+ * to it, carries `$night`. So such a line lists that night's names alone.
+ */
+const ownNamesLookedUp = (backup: string) => {
+  const parts = [...backup.matchAll(/\bexpected="([^"]*)"/g)]
+    .flatMap((match) => match[1].split(' '))
+    .filter((name) => name !== '$expected');
+  const lookups = [...backup.matchAll(/\bthere=\$\(([\s\S]*?)\|\s*held /g)].map(
+    (match) => match[1],
+  );
+  const named = lookups.flatMap((lookup) =>
+    [...lookup.matchAll(/"([^"$]*\$[^"]*)"/g)]
+      .map((match) => match[1])
+      .filter((name) => !name.startsWith('${')),
+  );
+  return (
+    lookups.length === 3 &&
+    parts.length > 0 &&
+    named.length > 0 &&
+    [...parts, ...named].every((name) => name.includes('-$night.'))
+  );
+};
+
+/**
  * A name put under one of tonight's monthly/ names failed the copy with a reason that never said
  * so, and the RUNBOOK sent every such alert to wait for the next night (Stop C's second re-review,
  * finding R1): Last night's backup quotes each reason backup.sh gives a step of the copy and the
@@ -815,6 +843,9 @@ const copySteps = (runbook: string, backup: string) => {
     ...(endings.length
       ? []
       : ['backup.sh stops no night on a name of its copy already in monthly/']),
+    ...(ownNamesLookedUp(backup)
+      ? []
+      : ['backup.sh looks up a name of another night before a line that says someone holds it']),
     ...inPlaces(runbook, ['lastNight', 'restoreTest', 'stolen', 'cleanup'], (texts) => {
       const night = flat(texts.lastNight);
       const test = flat(texts.restoreTest);
@@ -837,6 +868,20 @@ const copySteps = (runbook: string, backup: string) => {
         )
           ? []
           : ['the stolen-token steps leave the names a stopped night’s alert lists in the bucket']),
+        ...(has(
+          texts.cleanup,
+          "Take them only from that alert's line in the journal, never from a Telegram message alone",
+        ) &&
+        has(texts.cleanup, "only when each name carries that line's own night id") &&
+        has(texts.cleanup, 'and only when that night, stamped in these 30 days, has no') &&
+        has(
+          texts.cleanup,
+          'where root may have reached the server (step 5), as root can write the journal, take no deletion in `monthly/` from it at all',
+        )
+          ? []
+          : [
+              'the stolen-token steps delete from monthly/ any names an alert lists, from a Telegram message or of another night',
+            ]),
         ...reasons
           .filter((reason) => !night.includes(`\`${reason}\``))
           .map((reason) => `Last night’s backup doesn’t quote the copy’s step “${reason}”`),
@@ -871,6 +916,65 @@ const copySteps = (runbook: string, backup: string) => {
     }),
   ];
 };
+
+/**
+ * The stolen-token step 2 took every id in the bucket that no line of its 30 days' journal names for
+ * the token holder's, and step 3 deletes those past the folder's lock. But monthly/ keeps each
+ * month's copy 366 days, each night's line names only its own month's copy, and the journal keeps
+ * 180 to 187 days: up to ten genuine month's copies were the holder's (Stop C's fourth re-review,
+ * finding H1). Now the lines shown name daily/'s nights and the copies of their months; daily/'s ids
+ * no line names, failed nights' alert lines among the lines, are the holder's but for those stamped
+ * before the 30 days; an id of monthly/ no line shown names is checked by its seal and settings
+ * archive with pnpm vps:verify-night, and only a seal both lists refuse goes, with its record; and
+ * the triggers take only daily/'s ids for a sign of a stolen token.
+ */
+const oldCopies = (runbook: string) =>
+  inPlaces(runbook, ['stolen', 'cleanup'], ({ stolen, cleanup }) => {
+    const taken = part(flat(stolen), 'Take it as stolen when', "shouldn't be.") ?? '';
+    return [
+      ...(has(cleanup, 'Ids in the bucket that no line names')
+        ? [
+            'the stolen-token steps take every id no line shown names for the token holder’s, older month’s copies among them',
+          ]
+        : []),
+      ...(has(
+        cleanup,
+        "The lines shown name `daily/`'s nights and the month's copies of the months",
+      ) &&
+      has(
+        cleanup,
+        'In `daily/`, so are ids no line names, but those stamped before these 30 days',
+      ) &&
+      has(cleanup, '`[menumesh] backup failed (exit …) at <id>: …` line a night that failed')
+        ? []
+        : [
+            'the stolen-token steps take a night of daily/ that failed, or is older than the journal shown, for the token holder’s',
+          ]),
+      ...(has(
+        cleanup,
+        "so an id there that no line shown names can still be the backup's: an older month's copy",
+      ) &&
+      has(
+        cleanup,
+        'Download its `seal-<id>.txt` and `config-<id>.tar.age` from `monthly/` into an empty folder, as in Disaster recovery, step 2.1',
+      ) &&
+      has(cleanup, "pnpm vps:verify-night <id> <folder> --keys <the list's file>") &&
+      has(cleanup, "with the stolen key's file where there is one") &&
+      has(cleanup, "`the night of <id> is not signed by the backup's key: its seal …`") &&
+      has(cleanup, 'as does an id with no seal at all') &&
+      has(cleanup, 'So only these go from `monthly/`: such seals and records')
+        ? []
+        : [
+            'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
+          ]),
+      ...(taken.includes('`daily/` holds ids no journal line names') &&
+      !taken.includes('bucket holds ids no journal line names')
+        ? []
+        : [
+            'the stolen-token steps take any id of the bucket no journal line names, a month’s copy among them, for a sign of a stolen token',
+          ]),
+    ];
+  });
 
 /** What pitr.sh says of a base whose timeline the replay leaves before it began or ended. */
 const leftEndings = (pitr: string) =>
@@ -1102,6 +1206,10 @@ const REWRAPPED = [
   'Its lines are in UTC',
   'never left the new one live',
   'but not its migrate reference',
+  'never from a Telegram message alone',
+  "that line's own night id",
+  "the month's copies of the months they fall in",
+  'as does an id with no seal at all',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -1963,8 +2071,102 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // As before it (finding E1): the names a stopped night's alert lists left in the bucket.
     refuses(
       steps,
-      swap(RUNBOOK, cut(RUNBOOK, ' So are the names a night', ' A part put over its'), ''),
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' So are the names a night', '\n\n   `monthly/` keeps each month'),
+        '',
+      ),
       'the stolen-token steps leave the names a stopped night’s alert lists in the bucket',
+    );
+  });
+
+  it('takes a stopped night’s listed names for the token holder’s only from the journal, as backup.sh lists them (finding K2)', () => {
+    const steps = (text: string) => copySteps(text, BACKUP);
+    expect(ownNamesLookedUp(BACKUP)).toBe(true);
+    expect(steps(RUNBOOK)).toEqual([]);
+    // As before the fourth re-review: any names an alert lists, read anywhere, of any night.
+    const before = swap(
+      RUNBOOK,
+      cut(RUNBOOK, ' So are the names a night', '\n\n   `monthly/` keeps each month'),
+      [
+        " So are the names a night's alert lists after",
+        '   `someone else wrote to the bucket: monthly/ holds`, though the backup writes such names: they',
+        "   were there before the night's own (Last night's backup). Left in `monthly/`, one under a",
+        "   night's record name, beside that night's own seal, makes a pair that later nights try, and",
+        '   five such pairs make every later night of the month copy itself again.',
+      ].join('\n'),
+    );
+    refuses(
+      steps,
+      before,
+      'the stolen-token steps delete from monthly/ any names an alert lists, from a Telegram message or of another night',
+    );
+    // Each limit dropped in turn.
+    for (const [from, to] of [
+      ['never from a Telegram message alone', 'or from a Telegram message'],
+      ["carries that line's own night id", 'is listed'],
+      ['stamped in these 30 days, has no', 'stamped in these 30 days, has'],
+      ['take no deletion in `monthly/` from it at all', 'take them all the same'],
+    ])
+      refuses(
+        steps,
+        swap(RUNBOOK, from, to),
+        'the stolen-token steps delete from monthly/ any names an alert lists',
+      );
+    // A lookup of backup.sh that named another night's name before its "holds" line.
+    refuses(
+      (text) => copySteps(RUNBOOK, text),
+      swap(
+        BACKUP,
+        'there=$(echo "copy-$night.txt" | held',
+        'there=$(echo "copy-$whole.txt" | held',
+      ),
+      'backup.sh looks up a name of another night before a line that says someone holds it',
+    );
+  });
+
+  it('checks an id of monthly/ no line shown names by its seal before deleting it, and takes only daily/’s ids for a sign (finding H1)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    // As before the fourth re-review: every id no line of the 30 days' journal names, in any
+    // folder, the token holder's, and a sign of a stolen token.
+    const before = swap(
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '2. **Check the last nights**', '\n   In `wal/`, a name whose signature'),
+        [
+          "2. **Check the last nights** against the backup's own lines. Each `backup <id>: …` line in the",
+          "   journal names a whole night, as the backup monitor's log does:",
+          '',
+          '   ```sh',
+          '   sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -30d -o cat',
+          '   ```',
+          '',
+          '   Ids in the bucket that no line names, names the backup never writes and floods are the token',
+          "   holder's. So are the names a night's alert lists after",
+          '   `someone else wrote to the bucket: monthly/ holds`, though the backup writes such names: they',
+          "   were there before the night's own (Last night's backup). Left in `monthly/`, one under a",
+          "   night's record name, beside that night's own seal, makes a pair that later nights try, and",
+          '   five such pairs make every later night of the month copy itself again. A part put over its',
+          "   own, in a night the journal names, is refused by its seal, so that night can't be restored",
+          '   until the part is put back (the restore test, step 4, says which part).',
+        ].join('\n'),
+      ),
+      'when `daily/`\nholds ids no journal line names (step 2), or the bucket names the backup never writes, or when the\n',
+      'when the\nbucket holds ids no journal line names or names the backup never writes, or when the\n',
+    );
+    for (const problem of [
+      'the stolen-token steps take every id no line shown names for the token holder’s',
+      'the stolen-token steps take a night of daily/ that failed, or is older than the journal shown, for the token holder’s',
+      'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
+      'the stolen-token steps take any id of the bucket no journal line names',
+    ])
+      refuses(oldCopies, before, problem);
+    // An id with no seal in monthly/ taken for the holder's, as a copy stopped before its seal
+    // leaves the backup's own parts there.
+    refuses(
+      oldCopies,
+      swap(RUNBOOK, ', as does an id with no seal at all.', '.'),
+      'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
     );
   });
 
@@ -2206,6 +2408,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(listApart(rewrapped)).toEqual([]);
     expect(copyNamed(rewrapped)).toEqual([]);
     expect(copySteps(rewrapped, BACKUP)).toEqual([]);
+    expect(oldCopies(rewrapped)).toEqual([]);
     expect(baseRefusals(rewrapped, PITR)).toEqual([]);
     expect(cutAdvice(rewrapped, PITR)).toEqual([]);
     expect(rewindRoute(rewrapped)).toEqual([]);
