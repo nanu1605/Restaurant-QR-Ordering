@@ -7019,9 +7019,13 @@ function pitrRuns(age: string[]) {
  * setting set aside (review finding S1); at the rewind, recover-pitr to latest with the cut refuses
  * before it writes, PITR_ACCEPT_CUT names the cut to go on (review finding D6); and after the fork,
  * a timeline-2 object removed where timeline 1 holds the same position is named as the cut on
- * timeline 2, not threaded over by timeline 1's abandoned file (review finding C2). The re-review's
- * add: a drill to a point past the cut is told that latest goes past it only with PITR_ACCEPT_CUT,
- * and, last, a rewind to a point while the newest night's base ran (finding M1, forkInBaseProof).
+ * timeline 2, not threaded over by timeline 1's abandoned file (review finding C2). The re-reviews
+ * add: a drill to a point past the cut is told to recover to an earlier point or to latest, and
+ * never of PITR_ACCEPT_CUT, which it does not read; at the rewind, with a night newer than the
+ * point's whose base lies past the cut, a recovery to that point is told that latest, should it be
+ * cut there too, ends there only with PITR_ACCEPT_CUT, and latest from the newer night refuses
+ * PITR_ACCEPT_CUT and goes through without it (finding T1); and, last, a rewind to a point while
+ * the newest night's base ran (finding M1, forkInBaseProof).
  */
 async function pitrProof(checks: Checks, env: Record<string, string>, age: string[]) {
   const cluster = clusterId();
@@ -7279,6 +7283,31 @@ age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dc
       fail(`Putting ${realPending} back failed: ${put.stderr.trim()}`);
     }
 
+    // Stop C's re-reviews, finding T1: a night newer than the night of the points above, its base
+    // past the drop, for the recoveries at the rewind below. A recovery to latest starts from it,
+    // so it never meets a cut at rows B's WAL file.
+    const newerRun = await measured(`${PROJECT}-backup-${process.pid}`, [
+      '--no-deps',
+      '-T',
+      'backup',
+      '/usr/local/bin/backup.sh',
+    ]);
+    const newer = nightSaid(newerRun.stdout).night;
+    const newerSealed = NIGHT_ID.test(newer)
+      ? sealOf(nightsInBucket([['daily', newer]]).get(`daily ${newer}`)?.seal ?? '', newer)
+      : 'no night';
+    const newerStart = typeof newerSealed === 'string' ? '' : (newerSealed.base?.walfile ?? '');
+    checks.expect(
+      `a night newer than ${night}, after the drop (finding T1): backup.sh exit ${newerRun.status} in ${newerRun.took} s, ${newer || 'no night'}, its base from ${newerStart || '?'}, past ${dropped}`,
+      newerRun.status === 0 &&
+        NIGHT_ID.test(newer) &&
+        newer > night &&
+        newerStart.slice(0, 8) === dropped.slice(0, 8) &&
+        newerStart.slice(8) > dropped.slice(8),
+      `${newerRun.stdout}${newerRun.stderr}`,
+    );
+    if (!NIGHT_ID.test(newer)) fail(`The newer night did not run:\n${tail(newerRun.stderr)}`);
+
     // recover-pitr refuses db's own db-data, and a run without the point.
     let run = await recoverPitr(point);
     checks.expect(
@@ -7332,6 +7361,68 @@ age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dc
     );
     if (reflip.status !== 0)
       fail(`Re-changing a byte of ${realPending} failed: ${reflip.stderr.trim()}`);
+
+    // Stop C's re-reviews, finding T1: the night of a point past the cut is older than the newest,
+    // whose base lies past the cut. A recovery to that point runs out of WAL at the cut and is told
+    // to recover to latest, which, should it be cut there too, ends there only with PITR_ACCEPT_CUT;
+    // from the newer night it never is: PITR_ACCEPT_CUT naming the cut is refused there, and
+    // without it the recovery to latest goes through. Then the newer night goes from daily/, so
+    // that the night of the points is the newest again for the checks of D6 below.
+    const pointShort = await recoverPitr(pastCut);
+    const pointSaid = lines(pointShort.stdout);
+    checks.expect(
+      `recover-pitr to ${pastCut}, past the cut, with ${newer} newer than its night (finding T1): exit ${pointShort.status}, "${pointSaid.at(-2) ?? ''}", then "${pointSaid.at(-1) ?? ''}"`,
+      pointShort.status === 1 &&
+        pointShort.stdout.includes(`pitr: to ${pastCut}, from the night of ${night}: `) &&
+        pointSaid.at(-2) ===
+          `pitr: the replay reached the end of the WAL it was given before the first transaction past ${pastCut} (the chain of WAL files is cut at ${pending}): recover to an earlier point, or to latest; if that recovery is cut at ${pending} too, it ends there only with PITR_ACCEPT_CUT=${pending}` &&
+        pointSaid.at(-1) ===
+          'pitr: the recovery stopped after it began to write to db-data: make db-data new (docs/RUNBOOK.md, Disaster recovery) before recovering again',
+      `${tail(pointShort.stdout, 30)}\n${pointShort.stderr}`,
+    );
+    const pointCleared = docker(['volume', 'rm', `${PROJECT}_db-data`]);
+    if (pointCleared.status !== 0) fail(`docker volume rm db-data: ${pointCleared.stderr.trim()}`);
+    const notCut = await recoverPitr('latest', pending);
+    const notCutEntries = dbDataEntries();
+    checks.expect(
+      `recover-pitr to latest with PITR_ACCEPT_CUT=${pending}, from ${newer}, past the cut (finding T1): exit ${notCut.status}, db-data holds ${notCutEntries} entries, "${tail(notCut.stdout, 1)}"`,
+      notCut.status === 1 &&
+        notCutEntries === 0 &&
+        notCut.stdout.includes(
+          `pitr: to the latest WAL in the bucket, from the night of ${newer}: `,
+        ) &&
+        notCut.stdout.endsWith(
+          `pitr: PITR_ACCEPT_CUT is ${pending}, but the chain of WAL files is not cut: run again without it, to recover to the latest WAL in the bucket; nothing was written to db-data\n`,
+        ),
+      `${tail(notCut.stdout, 20)}\n${notCut.stderr}`,
+    );
+    const pastIt = await recoverPitr('latest');
+    checks.expect(
+      `recover-pitr to latest without it, from ${newer} (finding T1): exit ${pastIt.status} in ${pastIt.took} s, ${pastIt.stdout.includes('cut at') ? 'a cut named' : 'no cut named'}; "${lines(pastIt.stdout).find((line) => line.startsWith('pitr: the cluster ')) ?? ''}"`,
+      pastIt.status === 0 &&
+        pastIt.stdout.includes(
+          `pitr: to the latest WAL in the bucket, from the night of ${newer}: `,
+        ) &&
+        !pastIt.stdout.includes('cut at') &&
+        pastIt.stdout.endsWith(
+          'point-in-time recovery to the latest WAL in the bucket done: start db with a new wal-spool (its entrypoint gives the files to its own postgres, uid 100, and it archives the new timeline), then auth, rest, realtime, storage, api-gw, web, scheduler and backup (docs/RUNBOOK.md)\n',
+        ),
+      `${tail(pastIt.stdout, 20)}\n${pastIt.stderr}`,
+    );
+    const latestCleared = docker(['volume', 'rm', `${PROJECT}_db-data`]);
+    if (latestCleared.status !== 0)
+      fail(`docker volume rm db-data: ${latestCleared.stderr.trim()}`);
+    const newerGone = inBackup(
+      `rclone delete --include '*-${newer}.*' "backups:$BACKUP_BUCKET/daily/"`,
+    );
+    if (newerGone.status !== 0)
+      fail(`Removing ${newer} from daily/ failed: ${newerGone.stderr.trim()}`);
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until the listing no longer shows it.
+    for (let tries = 0; tries < 20; tries++) {
+      if (!bucketNames('daily').some((name) => name.includes(newer))) break;
+      await sleep(1000);
+    }
+
     const refusedLatest = await recoverPitr('latest');
     const refusedEmpty = dbDataEntries();
     checks.expect(
