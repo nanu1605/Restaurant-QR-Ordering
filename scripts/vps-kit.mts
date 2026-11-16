@@ -53,7 +53,8 @@
  *                    ships its WAL under its own identifier; then point-in-time recovery on it:
  *                    drills to a point and to latest, cut chains and PITR_ACCEPT_CUT, a rewind and
  *                    the replay across it, and a rewind to a point while the newest night's base
- *                    ran, whose base is then refused.
+ *                    ran, whose base is then refused with the night after it, each seal kept aside
+ *                    in turn until the night before recovers across the fork.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
@@ -7709,9 +7710,18 @@ age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dc
  * begin inside the slowed base's own WAL. pitr.sh refuses that base before anything is written:
  * pitr-test to latest, and, with the new timeline's first WAL object removed, recover-pitr to
  * latest with PITR_ACCEPT_CUT naming that cut, which without the refusal reads rows D on from the
- * base's own pg_wal and says done. Then the object goes back and the slowed night goes from
+ * base's own pg_wal and says done. Then the object goes back and the slowed night's seal leaves
  * daily/, so that the night before recovers to latest across the fork, rows D left out; a night
  * of the timeline that recovery made, and a drill to latest from it, leave the rehearsal whole.
+ *
+ * Stop C's re-reviews, finding T2: a third night, its base after rows D, so that the rewind leaves
+ * two nights behind it. The way past them, as the RUNBOOK gives it: a recovery to latest takes the
+ * newest and refuses it ("before the base began"), its seal goes aside, the next refusal names the
+ * slowed night ("before the base ended"), its seal goes aside too, and the night before recovers
+ * across the fork. A point before the rewind's own, after the night before's base, is reached from
+ * that night; a point on the rewind's timeline is reached from it too while both seals stay aside.
+ * Put back before a night of the recovery's timeline exists, they make a drill to that point and
+ * one to latest take the third night and refuse it again; once that night exists, latest passes.
  */
 async function forkInBaseProof(checks: Checks, env: Record<string, string>, age: string[]) {
   const { drill, recoverPitr, dbDataEntries } = pitrRuns(age);
@@ -7797,6 +7807,44 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     );
     return { sum: sum ?? '', text };
   };
+  // A night's seal kept aside, out of daily/, as the RUNBOOK has the owner take it out with the
+  // admin login, so that pitr.sh no longer sees the night; and put back, byte for byte.
+  const sealAside = async (id: string) => {
+    const path = `daily/seal-${id}.txt`;
+    const saved = inBackup(
+      `set -e -o pipefail\nrclone cat --no-traverse "backups:$BACKUP_BUCKET/${path}" | base64 -w 0\nrclone deletefile "backups:$BACKUP_BUCKET/${path}"`,
+    ).stdout.trim();
+    if (!saved) fail(`Keeping ${path} aside failed`);
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until the listing no longer shows it.
+    for (let tries = 0; tries < 20; tries++) {
+      if (!bucketNames('daily').includes(`seal-${id}.txt`)) break;
+      await sleep(1000);
+    }
+    return saved;
+  };
+  const sealBack = async (id: string, saved: string) => {
+    const path = `daily/seal-${id}.txt`;
+    const put = inBackup(
+      `set -e -o pipefail\nbase64 -d | rclone rcat "backups:$BACKUP_BUCKET/${path}"\nrclone cat --no-traverse "backups:$BACKUP_BUCKET/${path}" | base64 -w 0`,
+      saved,
+    );
+    if (put.status !== 0 || put.stdout.trim() !== saved) {
+      fail(`Putting ${path} back failed: ${put.stderr.trim()}`);
+    }
+    for (let tries = 0; tries < 20; tries++) {
+      if (bucketNames('daily').includes(`seal-${id}.txt`)) break;
+      await sleep(1000);
+    }
+  };
+  // A point a second past db's clock, with a pause on each side, so that it falls between the
+  // writes before and after it.
+  const pointNow = [
+    'select pg_sleep(1.2);',
+    `select 'P ' || to_char((date_trunc('second', clock_timestamp()) + interval '1 second') at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');`,
+    'select pg_sleep(1.5);',
+  ];
+  const pointOf = (said: string[]) =>
+    said.find((line) => line.startsWith('P '))?.slice(2) ?? fail(`No point: ${said.join(' / ')}`);
 
   compose(['stop', 'web', 'scheduler']);
   let whole = false;
@@ -7808,6 +7856,9 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     const tlOld = timelineOf();
     const before = await backupNight();
     const beforeNight = nightSaid(before.stdout).night;
+    // Stop C's re-reviews, finding T2: a point after that night's base and before rows C, so
+    // before the rewind's own point T2, which a recovery reaches from that night, short of the fork.
+    const early = pointOf(dbSql(pointNow.join('\n')));
     // The slowed night sorts after it: a night's id begins with its minute.
     while (stampOf(daemonNow()) === stampPart(beforeNight)) await sleep(1000);
     // The writes go in once the base streams its files, after its checkpoint: the WAL it brings
@@ -7881,6 +7932,29 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     const shippedD = await walShipped(cluster, [inD], 200);
     if (shippedD.found[0] === undefined) fail(`${inD}, rows D's WAL file, is not in the bucket`);
 
+    // Stop C's re-reviews, finding T2: a third night on the old timeline, its base past rows D, so
+    // that the rewind to T2 leaves two nights behind it, the slowed one and this one, not one.
+    while (stampOf(daemonNow()) === stampPart(slowNight)) await sleep(1000);
+    const third = await backupNight();
+    const thirdNight = nightSaid(third.stdout).night;
+    const thirdSealed = NIGHT_ID.test(thirdNight)
+      ? sealOf(
+          nightsInBucket([['daily', thirdNight]]).get(`daily ${thirdNight}`)?.seal ?? '',
+          thirdNight,
+        )
+      : 'no night';
+    const thirdStart = typeof thirdSealed === 'string' ? '' : (thirdSealed.base?.walfile ?? '');
+    checks.expect(
+      `a third night on timeline ${tlOld} (${thirdNight || 'none'}), after rows D (finding T2): exit ${third.status}, its base from ${thirdStart || '?'}, past the slowed base's own WAL (to ${last})`,
+      third.status === 0 &&
+        NIGHT_ID.test(thirdNight) &&
+        thirdNight > slowNight &&
+        thirdStart.slice(0, 8) === name8(tlOld) &&
+        thirdStart.slice(8) > last,
+      `${third.stdout}${third.stderr}`,
+    );
+    if (!NIGHT_ID.test(thirdNight)) fail(`The third night did not run:\n${tail(third.stderr)}`);
+
     // The rewind to T2: everything stops, db-data and wal-spool go, the recovery fills a new
     // db-data, and db, started on it, archives the new timeline.
     stopAll();
@@ -7929,23 +8003,24 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     );
     if (!fork) fail(`${history} names no fork: ${historyRead.text.join(' / ')}`);
 
-    // Rows E on the new timeline, a WAL file each: its first, the fork's, and two after it.
+    // Rows E on the new timeline, a WAL file each: its first, the fork's, and two after it; and,
+    // after row 100, a point on that timeline (finding T2).
     const tlNew = name8(timeline);
     const forkFile = `${tlNew}${fork}`;
-    const inE =
-      dbSql(
-        [
-          'insert into public.rehearsal_pitr_fork values (100);',
-          'select pg_switch_wal() is not null;',
-          'insert into public.rehearsal_pitr_fork values (101);',
-          'select pg_switch_wal() is not null;',
-          'insert into public.rehearsal_pitr_fork values (102);',
-          "select 'E ' || pg_walfile_name(pg_current_wal_lsn());",
-          'select pg_switch_wal() is not null;',
-        ].join('\n'),
-      )
-        .find((line) => line.startsWith('E '))
-        ?.slice(2) ?? '';
+    const saidE = dbSql(
+      [
+        'insert into public.rehearsal_pitr_fork values (100);',
+        'select pg_switch_wal() is not null;',
+        ...pointNow,
+        'insert into public.rehearsal_pitr_fork values (101);',
+        'select pg_switch_wal() is not null;',
+        'insert into public.rehearsal_pitr_fork values (102);',
+        "select 'E ' || pg_walfile_name(pg_current_wal_lsn());",
+        'select pg_switch_wal() is not null;',
+      ].join('\n'),
+    );
+    const inE = saidE.find((line) => line.startsWith('E '))?.slice(2) ?? '';
+    const late = pointOf(saidE);
     const shippedE = await walShipped(cluster, [forkFile, inE], 240);
     const forkObject = shippedE.found[0] ?? '';
     if (!forkObject || shippedE.found[1] === undefined || inE <= forkFile) {
@@ -7954,12 +8029,49 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
       );
     }
 
-    // The slowed night is the newest, and its base's timeline is left at the fork, inside the WAL
-    // it brought along: refused before anything is replayed or written.
-    const refusal = `pitr: the base backup of ${slowNight} is of the timeline ${name8(tlOld)}, from ${start}, which was left for a later one at ${fork}, before the base ended: the replay goes through the timelines up to ${tlNew}, the latest whose history file is in the bucket, so it can't start from this base, and nothing was replayed`;
+    // What pitr.sh says of a night of the old timeline, which the rewind left at the fork.
+    const leftAtFork = (id: string, from: string, when: 'began' | 'ended', newest: string) =>
+      `pitr: the base backup of ${id} is of the timeline ${name8(tlOld)}, from ${from}, which was left for a later one at ${fork}, before the base ${when}: the replay goes through the timelines up to ${newest}, the latest whose history file is in the bucket, so it can't start from this base, and nothing was replayed`;
+    // Stop C's re-reviews, finding T2: the third night is the newest, and the rewind left its
+    // timeline at the fork, before its base began: a recovery to latest takes it and refuses it
+    // before anything is written. A point before the rewind's own takes the night before the slowed
+    // one, whose base ended before that point, and reaches it on the old timeline, short of the fork.
+    const thirdRefused = await drill('latest');
+    checks.expect(
+      `pitr-test to latest, from the third night, the newest, whose timeline the rewind left at ${fork}, before its base began (finding T2): exit ${thirdRefused.status}, nothing replayed, "${tail(thirdRefused.stdout, 1)}"`,
+      thirdRefused.status === 1 &&
+        thirdRefused.stdout.includes(
+          `pitr: to the latest WAL in the bucket, from the night of ${thirdNight}: `,
+        ) &&
+        !thirdRefused.stdout.includes('pitr: replaying') &&
+        thirdRefused.stdout.endsWith(`${leftAtFork(thirdNight, thirdStart, 'began', tlNew)}\n`),
+      `${tail(thirdRefused.stdout, 30)}\n${thirdRefused.stderr}`,
+    );
+    const toEarly = await drill(early);
+    const earlyRows = pitrCounts(toEarly.stdout).find((line) =>
+      line.startsWith('table public.rehearsal_pitr_fork '),
+    );
+    checks.expect(
+      `pitr-test to ${early}, after ${beforeNight}'s base and before rows C, so before the rewind's point (finding T2): exit ${toEarly.status} in ${toEarly.took} s, ${earlyRows ?? 'no rows'}, "${tail(toEarly.stdout, 1)}"`,
+      toEarly.status === 0 &&
+        toEarly.stdout.includes(`pitr: to ${early}, from the night of ${beforeNight}: `) &&
+        earlyRows === 'table public.rehearsal_pitr_fork 0' &&
+        toEarly.stdout.includes(
+          `pitr test passed: the night of ${beforeNight} and the WAL after it, replayed to ${early}`,
+        ),
+      `${tail(toEarly.stdout, 30)}\n${toEarly.stderr}`,
+    );
+
+    // The way past the nights the rewind left, as the RUNBOOK has it: the newest refused night's
+    // seal kept aside, out of daily/, and the next one's after its own refusal.
+    const thirdSaved = await sealAside(thirdNight);
+
+    // The slowed night is now the newest daily/ shows, and its base's timeline is left at the fork,
+    // inside the WAL it brought along: refused before anything is replayed or written.
+    const refusal = leftAtFork(slowNight, start, 'ended', tlNew);
     const drilled = await drill('latest');
     checks.expect(
-      `pitr-test to latest, from the slowed night, the newest, whose timeline is left at ${fork} inside the WAL its base brought along (Stop C's re-review, finding M1): exit ${drilled.status}, nothing replayed, "${tail(drilled.stdout, 1)}"`,
+      `pitr-test to latest with ${thirdNight}'s seal kept aside, from the slowed night, now the newest, whose timeline is left at ${fork} inside the WAL its base brought along (Stop C's re-review, finding M1): exit ${drilled.status}, nothing replayed, "${tail(drilled.stdout, 1)}"`,
       drilled.status === 1 &&
         drilled.stdout.includes(
           `pitr: to the latest WAL in the bucket, from the night of ${slowNight}: `,
@@ -7991,8 +8103,8 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
       `${tail(accepted.stdout, 30)}\n${accepted.stderr}`,
     );
 
-    // The object back, and the slowed night gone from daily/: the night before is the newest, and
-    // its base ended before the fork.
+    // The object back, and the slowed night's seal kept aside too: the night before is the newest
+    // daily/ shows, and its base ended before the fork.
     const putBack = inBackup(
       `base64 -d | rclone rcat "backups:$BACKUP_BUCKET/${forkObject}" && rclone cat --no-traverse "backups:$BACKUP_BUCKET/${forkObject}" | base64 -w 0`,
       savedFork,
@@ -8000,17 +8112,10 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     if (putBack.status !== 0 || putBack.stdout.trim() !== savedFork) {
       fail(`Putting ${forkObject} back failed: ${putBack.stderr.trim()}`);
     }
-    const gone = inBackup(
-      `rclone delete --include '*-${slowNight}.*' "backups:$BACKUP_BUCKET/daily/"`,
-    );
-    if (gone.status !== 0) fail(`Removing ${slowNight} from daily/ failed: ${gone.stderr.trim()}`);
-    // rclone serve s3 lists a folder from a cache of 5 s: wait until both listings show it.
+    const slowSaved = await sealAside(slowNight);
+    // rclone serve s3 lists a folder from a cache of 5 s: wait until the listing shows it.
     for (let tries = 0; tries < 20; tries++) {
-      if (
-        walNames(cluster).includes(forkObject) &&
-        !bucketNames('daily').some((name) => name.includes(slowNight))
-      )
-        break;
+      if (walNames(cluster).includes(forkObject)) break;
       await sleep(1000);
     }
     // db-data as the refused run left it, empty, or with what it replayed had it not refused.
@@ -8026,7 +8131,7 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     startAll();
     const back = rows();
     checks.expect(
-      `with ${forkFile}'s object back and the slowed night gone from daily/, recover-pitr to latest from the night before (${beforeNight}), across the fork: exit ${recovered.status} in ${recovered.took} s, the cluster on timeline ${finalTimeline}; db on it with ${back.said}, rows D left out as the rewind left them`,
+      `with ${forkFile}'s object back and the slowed night's seal kept aside too, recover-pitr to latest from the night before (${beforeNight}), across the fork: exit ${recovered.status} in ${recovered.took} s, the cluster on timeline ${finalTimeline}; db on it with ${back.said}, rows D left out as the rewind left them`,
       recovered.stdout.includes(
         `pitr: to the latest WAL in the bucket, from the night of ${beforeNight}: `,
       ) &&
@@ -8040,8 +8145,55 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
       `${tail(recovered.stdout, 30)}\n${recovered.stderr}`,
     );
 
+    // Stop C's re-reviews, finding T2. With the recovery's own timeline's history file in the
+    // bucket: a point on the rewind's timeline, after row 100, past the base of both nights the
+    // rewind left, is reached from the night before the slowed one while their seals stay aside.
+    const finalHistory = `${name8(finalTimeline)}.history`;
+    const historyShipped = await walShipped(cluster, [finalHistory], 200);
+    if (historyShipped.found[0] === undefined) fail(`${finalHistory} is not in the bucket`);
+    const toLate = await drill(late);
+    const lateRows = pitrCounts(toLate.stdout).find((line) =>
+      line.startsWith('table public.rehearsal_pitr_fork '),
+    );
+    checks.expect(
+      `pitr-test to ${late}, on timeline ${timeline} after row 100, with both seals kept aside (finding T2): exit ${toLate.status} in ${toLate.took} s, ${lateRows ?? 'no rows'} (rows C and row 100), "${tail(toLate.stdout, 1)}"`,
+      toLate.status === 0 &&
+        toLate.stdout.includes(`pitr: to ${late}, from the night of ${beforeNight}: `) &&
+        lateRows === 'table public.rehearsal_pitr_fork 4' &&
+        toLate.stdout.includes(
+          `pitr test passed: the night of ${beforeNight} and the WAL after it, replayed to ${late}`,
+        ),
+      `${tail(toLate.stdout, 30)}\n${toLate.stderr}`,
+    );
+    // Both seals back before a night of the new timeline exists: the third night is the newest
+    // again, and the newest whose base ended before that point, so a drill to the point and one to
+    // latest both take it, and refuse it.
+    await sealBack(slowNight, slowSaved);
+    await sealBack(thirdNight, thirdSaved);
+    const backRefusal = leftAtFork(thirdNight, thirdStart, 'began', name8(finalTimeline));
+    const lateRefused = await drill(late);
+    checks.expect(
+      `with both seals back, pitr-test to ${late} takes the third night, whose base ended before it, and refuses it (finding T2): exit ${lateRefused.status}, nothing replayed, "${tail(lateRefused.stdout, 1)}"`,
+      lateRefused.status === 1 &&
+        lateRefused.stdout.includes(`pitr: to ${late}, from the night of ${thirdNight}: `) &&
+        !lateRefused.stdout.includes('pitr: replaying') &&
+        lateRefused.stdout.endsWith(`${backRefusal}\n`),
+      `${tail(lateRefused.stdout, 30)}\n${lateRefused.stderr}`,
+    );
+    const latestRefused = await drill('latest');
+    checks.expect(
+      `with both seals back, before a night of timeline ${finalTimeline} exists, pitr-test to latest takes the third night again and refuses it (finding T2): exit ${latestRefused.status}, nothing replayed, "${tail(latestRefused.stdout, 1)}"`,
+      latestRefused.status === 1 &&
+        latestRefused.stdout.includes(
+          `pitr: to the latest WAL in the bucket, from the night of ${thirdNight}: `,
+        ) &&
+        !latestRefused.stdout.includes('pitr: replaying') &&
+        latestRefused.stdout.endsWith(`${backRefusal}\n`),
+      `${tail(latestRefused.stdout, 30)}\n${latestRefused.stderr}`,
+    );
+
     // The rehearsal whole again: web and the scheduler, a night of the new timeline, a row on it
-    // shipped, and the drill to latest from that night.
+    // shipped, and the drill to latest from that night, the seals back.
     const since = Date.now();
     compose(['up', '-d', '--no-deps', 'web', 'scheduler']);
     whole = true;
@@ -8055,7 +8207,7 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     const closingDrill = await drill('latest');
     const counted = pitrCounts(closingDrill.stdout);
     checks.expect(
-      `a night of timeline ${finalTimeline} (${closingNight || 'none'}): exit ${closing.status}; a row on it in ${onFinal ?? '?'}, shipped within ${shippedFinal.took} s; pitr-test to latest from that night: exit ${closingDrill.status}, rows C, E and that row there (${counted.find((line) => line.startsWith('table public.rehearsal_pitr_fork ')) ?? 'no rows'}), "${tail(closingDrill.stdout, 1)}"`,
+      `a night of timeline ${finalTimeline} (${closingNight || 'none'}): exit ${closing.status}; a row on it in ${onFinal ?? '?'}, shipped within ${shippedFinal.took} s; pitr-test to latest from that night, both seals back (finding T2): exit ${closingDrill.status}, rows C, E and that row there (${counted.find((line) => line.startsWith('table public.rehearsal_pitr_fork ')) ?? 'no rows'}), "${tail(closingDrill.stdout, 1)}"`,
       closing.status === 0 &&
         NIGHT_ID.test(closingNight) &&
         closingDrill.status === 0 &&
