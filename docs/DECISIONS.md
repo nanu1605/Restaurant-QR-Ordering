@@ -8248,8 +8248,8 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   checked against `.env` first (VPS-87; since VPS-93 once `.env` holds the newest backup public
   key, whatever the archive held), every older signing key leaving the list for the stolen key's
   file; the restore test, the drill and the recovery of the night from before the trouble run on
-  the rebuilt server only (VPS-79); and no lock of the bucket is lifted before that rebuild, once
-  the token step 1 put into the reached server's `.env` is revoked and the bucket's only token is
+  the rebuilt server only (VPS-79); and the token step 1 put into the reached server's `.env` is
+  revoked before the rebuild reads the bucket, no lock of it lifted until the bucket's only token is
   the rebuilt server's (VPS-91). What else that server held, the payment keys among them, is
   Rotation's, item by item, and outside these steps; none of it is rehearsed.
 - A dead shipper fills the spool with a whole 16 MiB file for each minute that wrote anything,
@@ -8389,12 +8389,13 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   and the conf's check before the archive's timer (VPS-87), and the stolen-token step 2's limits on
   an alert's names and its check of `monthly/`'s ids with `pnpm vps:verify-night` (VPS-88, VPS-89);
   and those the fifth re-review added: the judgement of every id no line keeps by its seal,
-  downloaded byte for byte at the bucket's size, and step 3 after a reach as root only once the
-  rebuild has revoked step 1's token (VPS-91), the newest release that stayed live sent out again,
-  and none after a rewind past a bad release until its migration is harmless (VPS-92), the newest
-  backup public key put in at 2.4 (VPS-93), and a bad release's point read from `app-deploy`'s
-  journal line or its pre-deploy dump (VPS-94). The list they keep, the new key first and the older
-  keys that never leaked after it, is held by a unit test of `pnpm vps:verify-night` (VPS-73).
+  downloaded byte for byte at the bucket's size, and, after a reach as root, step 1's token revoked
+  before the rebuild reads the bucket and step 3 only after (VPS-91), the newest release that stayed
+  live sent out again, and none after a rewind past a bad release until its migration is harmless
+  (VPS-92), the newest backup public key put in at 2.4 (VPS-93), and a bad release's point read from
+  `app-deploy`'s journal line or its pre-deploy dump (VPS-94). The list they keep, the new key first
+  and the older keys that never leaked after it, is held by a unit test of `pnpm vps:verify-night`
+  (VPS-73).
 - Not proved here, only the server can: R2's locks on the `wal/` prefix, a production-sized base
   and drill (the 1g tmpfs, the 2-hour bound, the window's length), the WAL heartbeat monitor, the
   disk the spool and the restore's downloads need, and a night downloaded byte for byte from the
@@ -9825,26 +9826,29 @@ deploy design note 2, as only the owner's note of the day says what its clause w
   keeps them (VPS-76). Where root may have reached the server, no lock is lifted while a token that
   server held or could read is valid: step 3 waits for sub-step 5's rebuild, once step 1's token is
   revoked and the bucket's only token is the rebuilt server's, as step 5's lead-in and sub-step 5
-  say. The other way, step 1 keeping the new token off the reached server with `backup` stopped
-  there, would leave its WAL spool to fill the disk while production still runs on it, and would
-  rework sub-steps 1 to 3. The names an alert lists after
-  `someone else wrote to the bucket: monthly/ holds` now stay, VPS-82's cost of extra copies for the
-  rest of their month, which an alert a leaked bot token can send no longer decides.
+  say. Sub-step 5 revokes it before disaster recovery's step 2 reads the bucket (seen while fixing
+  M1): with it, under versioning, root could put a night of the stolen key over the versions 2.1
+  makes current, which the stolen key's file would take. The other way, step 1 keeping the new token
+  off the reached server with `backup` stopped there, would leave its WAL spool to fill the disk
+  while production still runs on it, and would rework sub-steps 1 to 3. The names an alert lists
+  after `someone else wrote to the bucket: monthly/ holds` now stay, VPS-82's cost of extra copies
+  for the rest of their month, which an alert a leaked bot token can send no longer decides.
 
   `oldCopies` refuses round 5's `daily/` sentence and its bare quote, and needs the principles'
   sentences, the download and size clauses, the signature's ending, each stolen key's file, the
   older-version clause, the pass clause, step 3's month's copies, and a trigger with no ids no line
   names: 8 problems on `aec5f24`'s RUNBOOK. `copySteps` drops E1's and K2's requirements, whose
   sentences went, and refuses "the names a night's alert lists" instead: 1 problem. `rootKeys` needs
-  M1's three places, step 3, the lead-in and sub-step 5: 1 problem. Theft design note 1's clauses
-  that keep the backup's own objects are pinned, each removed giving `aec5f24`'s rules nothing on
-  its RUNBOOK, as the review found, and the new ones a problem on the fix: step 3's "month's
-  copies", "A pass, or a refusal past the seal … that id stays" and the older-version clause in
-  `oldCopies`, disaster recovery's step 1 sentence on the new pair and 2.4's remedy in `rootKeys`
-  (VPS-93). `ownNamesLookedUp` is unchanged: it still holds Last night's backup's word that such an
-  alert lists that night's own names. Reasoned from the RUNBOOK, the two scripts and the server
-  team's source, not rehearsed (Left open (Stop C)). (cf4867b "docs: judge the stolen-token cleanup
-  by seals alone")
+  M1's three places, step 3, the lead-in and sub-step 5, and the revocation before step 2: 2
+  problems. Theft design note 1's clauses that keep the backup's own objects are pinned, each
+  removed giving `aec5f24`'s rules nothing on its RUNBOOK, as the review found, and the new ones a
+  problem on the fix: step 3's "month's copies", "A pass, or a refusal past the seal … that id
+  stays" and the older-version clause in `oldCopies`, disaster recovery's step 1 sentence on the new
+  pair and 2.4's remedy in `rootKeys` (VPS-93). `ownNamesLookedUp` is unchanged: it still holds Last
+  night's backup's word that such an alert lists that night's own names. Reasoned from the RUNBOOK,
+  the two scripts and the server team's source, not rehearsed (Left open (Stop C)). (cf4867b "docs:
+  judge the stolen-token cleanup by seals alone"; bb05659 "docs: revoke step 1's token before a
+  rebuild reads the bucket")
 
 - **VPS-92 · L1 and L2 · After a rewind past a bad release, step 7 sent out again the later
   releases, which hold its migrations, and every release made since, a rolled-back one among them
@@ -9933,8 +9937,8 @@ deploy design note 2, as only the owner's note of the day says what its clause w
 **After the fixes of round 6**, which changed only documents, text rules and comments: `pnpm lint`,
 `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,216 in 70 files (`vps-runbook` 29,
 the others as they were); `pnpm vps:check` 53 checks, 0 failed, after these documents changed
-`compose.yml`'s header. The text rules report 18 problems on the RUNBOOK of `aec5f24`
-(`oldCopies` 8, `releaseDeployed` 6, `rootKeys` 2, `copySteps` 1 and `rewindRoute` 1) and none on
+`compose.yml`'s header. The text rules report 19 problems on the RUNBOOK of `aec5f24`
+(`oldCopies` 8, `releaseDeployed` 6, `rootKeys` 3, `copySteps` 1 and `rewindRoute` 1) and none on
 the fix; `aec5f24`'s rules report none on its RUNBOOK and 4 on the fix, each the requirement of a
 sentence this round removed or renamed (`copySteps` and `oldCopies` step 2's old title, `rootKeys`
 "becomes the new pair's public key here", `releaseDeployed` round 5's closing sentence). No
