@@ -30,7 +30,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * (M1), the recovery quotes what pitr.sh tells a point a cut stops short of (T1), the way past the
  * nights a rewind left takes out each one's seal in turn (T2) and promises no point on the stretch
  * it abandoned (F2), and step 7 deploys a release without a migrate reference, the one before a
- * rewind's after a settings archive from before it (F1). Every rule also refuses a copy with one
+ * rewind's after a settings archive from before it (F1), and after a night recovered on the same
+ * server the one deploys.log names before its stamp, read in UTC, with Production's token (the
+ * fourth re-review's J1). Every rule also refuses a copy with one
  * mistake, as tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the
  * fix. Every phrase is compared with its white space folded, so a sentence wrapped again is still
  * found.
@@ -928,6 +930,10 @@ const rewindRoute = (runbook: string) =>
     ];
   });
 
+/** The deploy of a release image no longer on the server: Production's token, no migrate reference. */
+const RELEASE_BY_TOKEN = `read -rs PAT && printf '%s\\n' "$PAT" | sudo app-deploy menumesh production \\
+  prod-vX.Y.Z@sha256:<digest>`;
+
 /**
  * Step 7 deployed, after a recovery to latest or of a night, the release images.env names "with
  * its migrate image". A rollback by hand passes no migrate reference, so MIGRATE_IMAGE can still be
@@ -935,7 +941,13 @@ const rewindRoute = (runbook: string) =>
  * rewind left, the settings archive is from before the rewind, its images.env and deploys.log
  * naming the release it undid, whose migrations would run again (Stop C's third re-review, finding
  * F1, VPS-55's outcome). Step 7 deploys without a migrate reference, the release before the one a
- * rewind undid when the archive is from before it, and the way past sends the owner there.
+ * rewind undid when the archive is from before it, and the way past sends the owner there. But
+ * after a night's logical recovery on the same server images.env is the server's own file, which
+ * names a release made since the night, whose migrations the night lacks, and no migrate run
+ * brought them (Stop C's fourth re-review, finding J1): step 7 takes that night's release from the
+ * last production line of deploys.log before its stamp, compares in UTC, reads a failed or
+ * rolled-back line's old image as the one live, deploys with Production's token, which an image no
+ * longer on the server needs, and sends the releases made since out again with their migrations.
  */
 const releaseDeployed = (runbook: string) =>
   inPlaces(runbook, ['release', 'recovery'], ({ release, recovery }) => [
@@ -948,6 +960,41 @@ const releaseDeployed = (runbook: string) =>
     ...(has(release, 'with its migrate image')
       ? ['step 7 still deploys a release with its migrate image after a recovery']
       : []),
+    ...(!has(release, "or of a night, that is the release `images.env`'s `WEB_IMAGE` names") &&
+    has(release, "`images.env` is the server's own file") &&
+    has(release, "the last production line of `deploys.log` before the night's stamp")
+      ? []
+      : [
+          'step 7 deploys, after a night recovered on the same server, the release `images.env` names, one made since the night',
+        ]),
+    ...(has(
+      release,
+      "the release `WEB_IMAGE` names in the `images.env` that step 2 unpacked from that night's own settings archive",
+    )
+      ? []
+      : [
+          'step 7 doesn’t take a new server’s night’s release from that night’s own settings archive',
+        ]),
+    ...(has(release, 'Its lines are in UTC') &&
+    has(release, 'or with the point in UTC, as `pitr.sh` prints it')
+      ? []
+      : ['step 7 compares the lines of `deploys.log` with a time that may not be in UTC']),
+    ...(has(
+      release,
+      'A line with `FAILED` or `ROLLED BACK` after its two images never left the new one live',
+    )
+      ? []
+      : ['step 7 takes the new image of a failed or rolled-back deploy for the one live']),
+    ...(has(release, `${RELEASE_BY_TOKEN}\n\`\`\``) && has(release, 'but not its migrate reference')
+      ? []
+      : [
+          'step 7 deploys a release image no longer on the server without the token app-deploy needs to pull it',
+        ]),
+    ...(/migrate-<sha>/.test(release) ? ['step 7 deploys a release with a migrate reference'] : []),
+    ...(has(release, 'whose migrate run applies what the recovered database lacks') &&
+    has(release, 'never the release a rewind undid')
+      ? []
+      : ['step 7 leaves the releases made since the point recovered to undeployed']),
     ...(has(
       release,
       'So too when a rewind past a release came after the night whose settings archive',
@@ -993,6 +1040,11 @@ const REWRAPPED = [
   'sealed and then failed at the end',
   "the names a night's alert lists",
   'its keys out of order',
+  // Read by the rules of the fourth re-review.
+  "before the night's stamp",
+  'Its lines are in UTC',
+  'never left the new one live',
+  'but not its migrate reference',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -1928,6 +1980,64 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '',
       ),
       'the way past the nights a rewind left doesn’t send the owner to step 7 for the release',
+    );
+  });
+
+  it('deploys after a night recovered on the same server the release live at that night, from deploys.log in UTC, with the token (finding J1)', () => {
+    expect(releaseDeployed(RUNBOOK)).toEqual([]);
+    // As before the fourth re-review: after latest or any night, the release images.env names,
+    // which on the same server is a release made since the night, and nothing of how to read
+    // deploys.log or of the token a pull needs.
+    const before = swap(
+      RUNBOOK,
+      cut(RUNBOOK, "\n  7. Production's image", '\n  8. The edge'),
+      [
+        "\n  7. Production's image, by the admin form, and staging's; then",
+        "     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's is the image that",
+        '     was live at the point recovered to, deployed without a migrate reference (Deploys on the VPS,',
+        '     Rolling back by hand), as the database already holds its migrations. After a recovery to',
+        "     `latest`, or of a night, that is the release `images.env`'s `WEB_IMAGE` names, never with",
+        '     the image its `MIGRATE_IMAGE` names, which can still be that of a release a rewind undid,',
+        '     since a rollback by hand passes no migrate reference: its migrate run would apply that',
+        "     release's migrations again. After a rewind to a point before a release, such as the bad",
+        '     release it undid, it is the release before it, the last production line of `deploys.log`',
+        '     before that point, and never the entry of `images.env` that the rewind undid: that file',
+        '     still names the release, whose migrate run would apply its migrations again and switch `web`',
+        '     back to it. So too when a rewind past a release came after the night whose settings archive',
+        '     step 2 unpacked, as on a new server that took the way past the nights a rewind left (step',
+        "     5): that archive's `images.env` and `deploys.log` still name the release the rewind undid,",
+        "     so production's is the release before it, the last production line of the archive's",
+        "     `deploys.log` before the rewind's point.",
+      ].join('\n'),
+    );
+    for (const problem of [
+      'step 7 deploys, after a night recovered on the same server, the release `images.env` names, one made since the night',
+      'step 7 doesn’t take a new server’s night’s release from that night’s own settings archive',
+      'step 7 compares the lines of `deploys.log` with a time that may not be in UTC',
+      'step 7 takes the new image of a failed or rolled-back deploy for the one live',
+      'step 7 deploys a release image no longer on the server without the token app-deploy needs to pull it',
+      'step 7 leaves the releases made since the point recovered to undeployed',
+    ])
+      refuses(releaseDeployed, before, problem);
+    // The same-server sentence alone put back to the unqualified one.
+    refuses(
+      releaseDeployed,
+      swap(
+        RUNBOOK,
+        'After a recovery to `latest`, that is the release',
+        'After a recovery to `latest`, or of a night, that is the release',
+      ),
+      'step 7 deploys, after a night recovered on the same server, the release `images.env` names',
+    );
+    // The token's command with the migrate reference of Production, step 2.
+    refuses(
+      releaseDeployed,
+      swap(
+        RUNBOOK,
+        '       prod-vX.Y.Z@sha256:<digest>\n     ```\n\n     The releases made since then',
+        '       prod-vX.Y.Z@sha256:<digest> migrate-<sha>@sha256:<digest>\n     ```\n\n     The releases made since then',
+      ),
+      'step 7 deploys a release with a migrate reference',
     );
   });
 

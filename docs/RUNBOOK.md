@@ -1687,20 +1687,45 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      this starts `backup`, stopped since step 4, after `db`).
   7. Production's image, by the admin form, and staging's; then
      `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's is the image that
-     was live at the point recovered to, deployed without a migrate reference (Deploys on the VPS,
-     Rolling back by hand), as the database already holds its migrations. After a recovery to
-     `latest`, or of a night, that is the release `images.env`'s `WEB_IMAGE` names, never with
-     the image its `MIGRATE_IMAGE` names, which can still be that of a release a rewind undid,
-     since a rollback by hand passes no migrate reference: its migrate run would apply that
-     release's migrations again. After a rewind to a point before a release, such as the bad
-     release it undid, it is the release before it, the last production line of `deploys.log`
-     before that point, and never the entry of `images.env` that the rewind undid: that file
-     still names the release, whose migrate run would apply its migrations again and switch `web`
-     back to it. So too when a rewind past a release came after the night whose settings archive
-     step 2 unpacked, as on a new server that took the way past the nights a rewind left (step
-     5): that archive's `images.env` and `deploys.log` still name the release the rewind undid,
-     so production's is the release before it, the last production line of the archive's
-     `deploys.log` before the rewind's point.
+     was live at the point recovered to, deployed without a migrate reference, as the database
+     already holds its migrations. After a recovery to `latest`, that is the release `images.env`'s
+     `WEB_IMAGE` names, never with the image its `MIGRATE_IMAGE` names, which can still be that of a
+     release a rewind undid, since a rollback by hand passes no migrate reference: its migrate run
+     would apply that release's migrations again. After a night's logical recovery on a new server,
+     it is the release `WEB_IMAGE` names in the `images.env` that step 2 unpacked from that night's
+     own settings archive. After one on the same server (step 5's fallback, as after a point more
+     than 14 days back or a refused point-in-time recovery, or A stolen or leaked bucket token
+     (VPS), step 5), `images.env` is the server's own file, which names any release made since the
+     night, whose migrations the night lacks: production's is the release live at the night, the
+     last production line of `deploys.log` before the night's stamp. After a rewind to a point
+     before a release, such as the bad release it undid, it is the release before it, the last
+     production line of `deploys.log` before that point, and never the entry of `images.env` that
+     the rewind undid: that file still names the release, whose migrate run would apply its
+     migrations again and switch `web` back to it. So too when a rewind past a release came after
+     the night whose settings archive step 2 unpacked, as on a new server that took the way past the
+     nights a rewind left (step 5): that archive's `images.env` and `deploys.log` still name the
+     release the rewind undid, so production's is the release before it, the last production line of
+     the archive's `deploys.log` before the rewind's point.
+
+     `deploys.log` is `/srv/menumesh/deploys.log`, on a new server the one step 2 unpacked, and
+     no script cuts it, so it still names an old night's release. Its lines are in UTC, each image
+     as `<tag>@sha256:<digest>`: `2026-12-17T04:30:12Z production web <old> -> <new> by ops`.
+     Compare them with the night's stamp, or with the point in UTC, as `pitr.sh` prints it in
+     brackets after a point given with an offset. A line with `FAILED` or `ROLLED BACK` after its
+     two images never left the new one live: the release is its old one. An image no longer on
+     the server, as on any new server or two releases back on the same one, needs the token of
+     Production, step 2 (Deploys on the VPS), but not its migrate reference: without a token
+     `app-deploy` stops at `couldn't pull …` and switches nothing.
+
+     ```sh
+     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh production \
+       prod-vX.Y.Z@sha256:<digest>
+     ```
+
+     The releases made since then go out again in turn, oldest first, each by Production, step 2,
+     with the line its **VPS release** run printed, whose migrate run applies what the recovered
+     database lacks; never the release a rewind undid.
+
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
      password manager, then the site and redaction files from this repository, the leak test, and
      DNS to the new address.
