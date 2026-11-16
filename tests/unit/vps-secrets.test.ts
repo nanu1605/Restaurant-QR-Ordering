@@ -494,13 +494,17 @@ describe('pnpm vps:secrets', () => {
     const checked = await cli('--check', out);
     expect(checked.code).toBe(1);
     expect(checked.output).toContain('.env: STAGING_DB_PASSWORD is still to fill in');
-    // The signing pair's public half is printed once, for the owner to keep with the age key; the
-    // check prints neither half, and no other value is printed at all.
+    // The signing pair's public half is printed once, for the owner to keep beside the age key, in
+    // a file of its own: age reads the file of its key as keys and comments alone (Stop C's
+    // re-review, design note 4). The check prints neither half, and no other value is printed.
     const { BACKUP_SIGNING_PUBLIC_KEY: publicKey } = parseEnv(
       readFileSync(join(out, '.env'), 'utf8'),
     ) as Values;
     expect(written.output).toContain(`\n  BACKUP_SIGNING_PUBLIC_KEY=${publicKey}\n`);
-    expect(written.output).toContain('Keep its public half with the age key, offline');
+    expect(written.output).toContain(
+      "Keep its public half beside the age key, offline, in a file of its own and never in the age key's file",
+    );
+    expect(written.output).not.toContain('with the age key');
     expect(checked.output).not.toContain(publicKey);
     for (const secret of secretsIn(out).filter((value) => value.length >= 8)) {
       if (secret !== publicKey) expect(written.output + checked.output).not.toContain(secret);

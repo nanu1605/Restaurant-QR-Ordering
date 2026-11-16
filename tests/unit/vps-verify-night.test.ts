@@ -14,6 +14,7 @@ import {
   sealText,
   signedWith,
 } from '../../scripts/vps-seal.mts';
+import { ageKeyPair } from '../../scripts/vps-secrets.mts';
 import {
   fileKeys,
   givenKeys,
@@ -352,10 +353,10 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
       [`  BACKUP_SIGNING_PUBLIC_KEY=${own.publicKey}\r\n`, own.publicKey],
       [`﻿BACKUP_SIGNING_PUBLIC_KEY="${list}"\n`, list],
       [`BACKUP_SIGNING_PUBLIC_KEY='${list}'`, list],
-      [`# kept with the age key, 2026-11-13\n\n${list}\n`, list],
-      // Beside the age key in one file: the other lines are left unread.
+      [`# kept beside the age key, 2026-11-13\n\n${list}\n`, list],
+      // Another line beside the BACKUP_SIGNING_PUBLIC_KEY= line is left unread.
       [
-        `# created: 2026-11-13T00:00:00Z\n# public key: age1example\nAGE-SECRET-KEY-1EXAMPLE\nBACKUP_SIGNING_PUBLIC_KEY=${list}\n`,
+        `# public key of the age key: age1example\nKeep this list apart from the age key.\nBACKUP_SIGNING_PUBLIC_KEY=${list}\n`,
         list,
       ],
     ];
@@ -364,6 +365,51 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
         keys,
       });
     }
+  });
+
+  it('refuses a key file that holds an age key, saying the list goes in a file of its own', () => {
+    // age reads the file of its key as keys, comments and blank lines alone, so a restore given a
+    // file that also holds the list refuses it: the list is never kept there, and a key file that
+    // holds the age key is the wrong file (Stop C's re-review, design note 4). The refusal holds
+    // nothing of the file.
+    const { identityFile } = ageKeyPair();
+    const identity = identityFile.trimEnd().split('\n')[2];
+    expect(identity).toMatch(/^AGE-SECRET-KEY-1[02-9AC-HJ-NP-Z]{58}$/);
+    const list = `${own.publicKey} ${other.publicKey}`;
+    const refusal = {
+      ok: false,
+      line: "verify-night: the keys file holds an age key: keep the BACKUP_SIGNING_PUBLIC_KEY list in a file of its own, never in the age key's file, where age takes nothing but keys, comments and blank lines",
+    };
+    const dir = temporary();
+    const files = [
+      // The age key's file with the list in it, after the key or before it.
+      `${identityFile}BACKUP_SIGNING_PUBLIC_KEY=${list}\n`,
+      `BACKUP_SIGNING_PUBLIC_KEY=${list}\n\n${identityFile}`,
+      // The age key's own file, given for the list's.
+      identityFile,
+      // The key's line alone, in either case, indented and saved on Windows, beside a bare list.
+      `${identity}\n`,
+      `${identity.toLowerCase()}\n`,
+      `  ${identity}\r\n${list}\r\n`,
+      // A plugin's key, as age-plugin-yubikey writes one.
+      `AGE-PLUGIN-YUBIKEY-1QXZ6SZ\nBACKUP_SIGNING_PUBLIC_KEY=${list}\n`,
+    ];
+    for (const [n, text] of files.entries()) {
+      const path = join(dir, `keys-${n}.txt`);
+      writeFileSync(path, text);
+      expect(fileKeys(Buffer.from(text, 'utf8'))).toEqual({
+        problem:
+          "holds an age key: keep the BACKUP_SIGNING_PUBLIC_KEY list in a file of its own, never in the age key's file, where age takes nothing but keys, comments and blank lines",
+      });
+      expect(givenKeys({ file: path })).toEqual(refusal);
+      // Before anything of the folder is read: here, a folder that isn't.
+      expect(verifyNight(night, join(dir, 'not-there'), { file: path })).toEqual(refusal);
+    }
+    // A comment that names the age key's public half is no key, and a file of the list alone is
+    // the list's.
+    expect(fileKeys(Buffer.from(`# beside the age key age1example\n${list}\n`))).toEqual({
+      keys: list,
+    });
   });
 
   it('refuses a bad key file, a bad key, and no keys at all, before it reads the folder', () => {
@@ -407,6 +453,7 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     const x25519 = generateKeyPairSync('x25519')
       .publicKey.export({ format: 'der', type: 'spki' })
       .toString('base64');
+    // An age key where the list goes is refused as an age key (the test above).
     for (const keys of [
       own.publicKey.slice(0, -2),
       own.privateKey,
@@ -414,7 +461,7 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
       `${own.publicKey}  ${other.publicKey}`,
       `BACKUP_SIGNING_PUBLIC_KEY="${own.publicKey} "`,
       `BACKUP_SIGNING_PUBLIC_KEY=`,
-      'AGE-SECRET-KEY-1EXAMPLE',
+      'BACKUP_SIGNING_PUBLIC_KEY=AGE-SECRET-KEY-1EXAMPLE',
     ]) {
       expect(givenKeys({ file: file('keys.txt', `${keys}\n`) })).toEqual({
         ok: false,
@@ -438,11 +485,13 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     });
     expect(givenKeys({})).toEqual({
       ok: false,
-      line: 'verify-night: BACKUP_SIGNING_PUBLIC_KEY is not set: give the list kept with the age key, in a file (--keys <file>) or in BACKUP_SIGNING_PUBLIC_KEY',
+      line: 'verify-night: BACKUP_SIGNING_PUBLIC_KEY is not set: give the list kept beside the age key, in a file of its own (--keys <file>) or in BACKUP_SIGNING_PUBLIC_KEY',
     });
     // The keys are refused before anything of the folder is read: here, a folder that isn't.
     expect(
-      verifyNight(night, join(dir, 'not-there'), { file: file('bad.txt', 'AGE-SECRET-KEY-1X\n') }),
+      verifyNight(night, join(dir, 'not-there'), {
+        file: file('bad.txt', `${own.privateKey}\n`),
+      }),
     ).toEqual({ ok: false, line: `verify-night: ${malformed}` });
   });
 
@@ -527,6 +576,16 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
       code: 1,
       stdout: '',
       stderr: `verify-night: ${config} is not the part the backup sealed (its sha256 is not the seal's): someone else wrote to the bucket, and nothing in the folder can be trusted\n`,
+    });
+    // The age key's file given for the list's, the list in it: one line, none of the file.
+    const { identityFile } = ageKeyPair();
+    const identityKeys = join(temporary(), 'menumesh-backup-key.txt');
+    writeFileSync(identityKeys, `${identityFile}BACKUP_SIGNING_PUBLIC_KEY=${own.publicKey}\n`);
+    expect(await cli([night, dir, '--keys', identityKeys])).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        "verify-night: the keys file holds an age key: keep the BACKUP_SIGNING_PUBLIC_KEY list in a file of its own, never in the age key's file, where age takes nothing but keys, comments and blank lines\n",
     });
     const usage =
       'verify-night: usage: pnpm vps:verify-night <night id> <folder> [--keys <file>]\n';

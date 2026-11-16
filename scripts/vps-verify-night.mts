@@ -15,10 +15,15 @@
  *
  * The folder holds what the owner downloaded of the night, by name: its seal, seal-<id>.txt, its
  * settings archive, config-<id>.tar.age, and any other part of it. The keys are the
- * BACKUP_SIGNING_PUBLIC_KEY list the owner keeps with the age key: from --keys <file>, a file with
- * a BACKUP_SIGNING_PUBLIC_KEY=... line as pnpm vps:secrets prints it, or with the keys alone on one
- * line, separated by single spaces; else from the environment's BACKUP_SIGNING_PUBLIC_KEY. Never
- * from a settings archive, whose .env is what is being checked. The seal is read no further than a
+ * BACKUP_SIGNING_PUBLIC_KEY list the owner keeps beside the age key, in a file of its own: from
+ * --keys <file>, a file with a BACKUP_SIGNING_PUBLIC_KEY=... line as pnpm vps:secrets prints it,
+ * or with the keys alone on one line, separated by single spaces; else from the environment's
+ * BACKUP_SIGNING_PUBLIC_KEY. Never from a settings archive, whose .env is what is being checked,
+ * and never from the age key's file: age reads that file as keys, comments and blank lines alone,
+ * so a restore given it with the list inside would refuse it, and a key file that holds the age
+ * key is refused here (Stop C's re-review, design note 4). After a theft of the signing key the
+ * stolen key leaves that list, and a night from before the trouble is checked with a file of the
+ * stolen key alone, kept apart (finding V1). The seal is read no further than a
  * byte past seal.sh's seal_max, held to seal_open's lines for that night and checked against each
  * key (scripts/vps-seal.mts, which vps:backup-test holds to seal.sh's verdicts). Then the seal must
  * list a settings archive, every file of the folder named as one of the night's parts must be one
@@ -103,13 +108,20 @@ function digest(path: string): { bytes: number; sha256: string } {
 }
 
 /**
+ * The line of an age key, as age-keygen writes one (AGE-SECRET-KEY-1...) or a plugin does
+ * (AGE-PLUGIN-...), in either case: what age reads from the file of its key.
+ */
+const AGE_KEY_LINE = /^AGE-(?:SECRET-KEY|PLUGIN)-/i;
+
+/**
  * The BACKUP_SIGNING_PUBLIC_KEY list a key file holds: the value of its one
  * BACKUP_SIGNING_PUBLIC_KEY=... line, in quotes or not, as pnpm vps:secrets prints it for the owner
  * to keep; with no such line, the keys alone, the file's one line. Blank lines and # comments don't
- * count, nor any other line beside a BACKUP_SIGNING_PUBLIC_KEY= line, which is never read further.
- * A UTF-8 byte order mark and CRLF line ends are taken; any other byte that is not printable ASCII
- * makes the file none. The list as written, or what is wrong with the file, in a few words that
- * hold none of its text.
+ * count, nor any other line beside a BACKUP_SIGNING_PUBLIC_KEY= line, which is never read further,
+ * but an age key's line refuses the file: the list is kept in a file of its own, never in the age
+ * key's, which age reads as keys, comments and blank lines alone. A UTF-8 byte order mark and CRLF
+ * line ends are taken; any other byte that is not printable ASCII makes the file none. The list as
+ * written, or what is wrong with the file, in a few words that hold none of its text.
  */
 export function fileKeys(bytes: Buffer): { keys: string } | { problem: string } {
   if (bytes.length > KEYS_MAX) {
@@ -125,6 +137,12 @@ export function fileKeys(bytes: Buffer): { keys: string } | { problem: string } 
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'));
+  if (kept.some((line) => AGE_KEY_LINE.test(line))) {
+    return {
+      problem:
+        "holds an age key: keep the BACKUP_SIGNING_PUBLIC_KEY list in a file of its own, never in the age key's file, where age takes nothing but keys, comments and blank lines",
+    };
+  }
   const named = kept.filter((line) => line.startsWith('BACKUP_SIGNING_PUBLIC_KEY='));
   if (named.length > 1) return { problem: 'names BACKUP_SIGNING_PUBLIC_KEY more than once' };
   if (named.length === 1) {
@@ -160,7 +178,7 @@ export function givenKeys({ file, environment }: Keys): { keys: string } | Refus
     keys = read.keys;
   } else if (!keys) {
     return refused(
-      'BACKUP_SIGNING_PUBLIC_KEY is not set: give the list kept with the age key, in a file (--keys <file>) or in BACKUP_SIGNING_PUBLIC_KEY',
+      'BACKUP_SIGNING_PUBLIC_KEY is not set: give the list kept beside the age key, in a file of its own (--keys <file>) or in BACKUP_SIGNING_PUBLIC_KEY',
     );
   }
   if (!publicKeysOk(keys)) {

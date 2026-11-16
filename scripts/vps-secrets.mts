@@ -5,8 +5,8 @@
  * (v0.8.4, docker/utils/generate-keys.sh and add-new-auth-keys.sh), with Node's crypto only, and so
  * is the backup's Ed25519 signing pair (VPS-43). The owner's values from other accounts stay empty
  * under a "# FILL IN" line. Files are 0600, and existing files are kept unless --force. No value is
- * ever printed but the signing pair's public half, on the server's run, which the owner keeps with
- * the age key.
+ * ever printed but the signing pair's public half, on the server's run, which the owner keeps
+ * beside the age key, in a file of its own.
  *
  *   pnpm vps:secrets --out <dir>                         the server's .env, env/web.env and
  *                                                        env/web-staging.env
@@ -799,10 +799,12 @@ function write(mode: Mode, out: string, force: boolean) {
         '(the GitHub variable PRODUCTION_SUPABASE_PUBLISHABLE_KEY).',
     );
     // Public, and needed where the server and the bucket's token can't reach: a restore on a new
-    // server checks every night and WAL file against it.
+    // server checks every night and WAL file against it. In a file of its own, since age reads the
+    // file of its key as keys and comments alone, and a restore given both in one would refuse it.
     console.log(
       "  The backup's signing key stays in .env, for the backup service alone. Keep its public half " +
-        'with the age key, offline (a restore on a new server checks the backups against it):',
+        "beside the age key, offline, in a file of its own and never in the age key's file (a restore " +
+        'on a new server checks the backups against it):',
     );
     console.log(`  BACKUP_SIGNING_PUBLIC_KEY=${values[0].BACKUP_SIGNING_PUBLIC_KEY}`);
   }
