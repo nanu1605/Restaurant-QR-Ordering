@@ -8344,7 +8344,9 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   record and parts among them, a cost only until the 366-day removal, as do the objects of an id
   with no seal, which may be a copy stopped before its seal. A record someone else put beside a seal
   of the backup's, VPS-82's pair, goes only when an alert of the journal names it (VPS-88), and
-  costs extra copies for the rest of its month otherwise.
+  costs extra copies for the rest of its month otherwise. The seal of a night the reached server's
+  own key signed after a reach as root is refused by both lists too, and goes: no night that key
+  signed is used (VPS-76).
 - Not rehearsed as the RUNBOOK writes them: the WAL alert's way to a new spool (Docker's part
   checked on throwaway containers, and the harness's recoveries make the spool new the same way:
   VPS-53), the release a recovery deploys without a migrate reference, the one before a rewind's
