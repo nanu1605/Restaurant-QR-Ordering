@@ -9,7 +9,7 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * The steps of docs/RUNBOOK.md's "The shared server (VPS)" that no script runs: the owner follows
  * them by hand, on the server or in a disaster, so a step that went missing would show only then.
  * These text rules pin the procedure fixes of Stop C's re-reviews (docs/DECISIONS.md VPS-60 to
- * VPS-65, VPS-67, VPS-68 to VPS-76 and VPS-78 to VPS-90): every backup.sh run by hand comes right
+ * VPS-65, VPS-67, VPS-68 to VPS-76 and VPS-78 to VPS-94): every backup.sh run by hand comes right
  * after a settings archive made for it, and a new server enables the archive's timer (finding V3);
  * disaster recovery's step 2.4 puts the signing key's private half in, and step 4 stops backup
  * until db runs (V4) and checks the signing pair with SIGNING_PAIR_CHECK, character for character
@@ -23,25 +23,29 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * only by what was recorded before (U5), every value of a leaked .env goes new (G2), and a server
  * reached as root is rebuilt with none of its nights taken (N1) and no private key put on it, its
  * backup key counted as stolen too once it was there (G1), its new pair made before the rebuild and
- * put in before the archive's timer and backup start (the fourth re-review's K1); the key list is
- * kept in a file of its own, never in the age key's (design note 4); the month's copy is named by
- * either of the backup's lines (B1), each step of it that fails is quoted, with what it found, and
- * the way to the stolen-token steps (R1), where a line, an alert or a ping only keeps the night it
- * names and every other id is judged by its seal alone, downloaded byte for byte and checked with
- * each list, never by the journal (H1, and the fifth re-review's M2 and M3, which undo E1's and
- * K2's deletion of the names an alert lists), and step 3 lifts no lock after a reach as root until
- * the rebuild (the fifth re-review's M1); the drill names each of pitr.sh's refusals of a base
- * whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut stops
- * short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2) and
- * promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only once
- * every left night's seal before it is out (the fourth re-review's design notes), and step 7
- * deploys a release without a migrate reference, the one before a rewind's after a settings archive
- * from before it (F1), and after a night recovered on the same server the one deploys.log names
- * before its stamp, read in UTC, with Production's token (the fourth re-review's J1). Every rule
- * also refuses a copy with one mistake, as tests/unit/vps-kit.test.ts does, among them the
- * RUNBOOK's text as it was before the fix. Every phrase is compared with its white space folded, so
- * a sentence wrapped again is still found, and a place whose end is missing is reported, never read
- * to the end of the section.
+ * put in before the archive's timer and backup start (the fourth re-review's K1), and 2.4 puts the
+ * newest backup public key in .env, whatever the archive held (the fifth re-review's M4); the key
+ * list is kept in a file of its own, never in the age key's (design note 4); the month's copy is
+ * named by either of the backup's lines (B1), each step of it that fails is quoted, with what it
+ * found, and the way to the stolen-token steps (R1), where a line, an alert or a ping only keeps
+ * the night it names and every other id is judged by its seal alone, downloaded byte for byte and
+ * checked with each list, never by the journal (H1, and the fifth re-review's M2 and M3, which undo
+ * E1's and K2's deletion of the names an alert lists), and step 3 lifts no lock after a reach as
+ * root until the rebuild (the fifth re-review's M1); the drill names each of pitr.sh's refusals of
+ * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
+ * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
+ * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
+ * once every left night's seal before it is out (the fourth re-review's design notes), a bad
+ * release's point is taken from before its deploy began (the fifth re-review's deploy design
+ * note 1), and step 7 deploys a release without a migrate reference, the one before a rewind's
+ * after a settings archive from before it (F1), and after a night recovered on the same server the
+ * one deploys.log names before its stamp, read in UTC, with Production's token (the fourth
+ * re-review's J1), then sends out again only the newest release that stayed live, and none after a
+ * rewind past a bad release until its migration is made harmless (the fifth re-review's L1 and L2).
+ * Every rule also refuses a copy with one mistake, as tests/unit/vps-kit.test.ts does, among them
+ * the RUNBOOK's text as it was before the fix. Every phrase is compared with its white space
+ * folded, so a sentence wrapped again is still found, and a place whose end is missing is reported,
+ * never read to the end of the section.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
