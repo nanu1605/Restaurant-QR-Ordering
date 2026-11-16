@@ -1972,9 +1972,11 @@ restore lists nothing.
       (none when the backup key counts as stolen too, below), without the key the reached server
       held, which goes into no list and not into the stolen key's file, and no night that key
       signed is used. The bucket's token goes new once more, into the rebuilt server's `.env`
-      alone, and step 1's token is revoked: only then does step 3 lift a lock, as root could read
-      step 1's token in the reached server's `.env`. The heartbeat addresses and the bot's token go
-      new once more too, and what else the reached server held is Rotation's (Secrets (VPS)).
+      alone, and step 1's token is revoked before Disaster recovery, step 2, reads the bucket: root
+      could read it in the reached server's `.env`, and with it put a night of the stolen key over
+      the versions step 2.1 makes current, or delete under a lock step 3 lifts, so only then does
+      step 3 lift a lock. The heartbeat addresses and the bot's token go new once more too,
+      and what else the reached server held is Rotation's (Secrets (VPS)).
 
       If the backup key's private half was on that server since the trouble could have begun (a
       monthly restore test or drill, a recovery, step 4), the backup key counts as stolen too: it

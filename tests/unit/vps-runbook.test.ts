@@ -618,23 +618,25 @@ const after = (text: string, from: string) => {
  * backup key's private half on that server's ramfs; and the rebuilt list kept the older signing
  * keys, whose private halves are in every settings archive that key opens (Stop C's third
  * re-review, finding G1). Where root may have reached the server they run on the rebuilt one only,
- * and a backup key that was on that server since the trouble could have begun counts as stolen
- * too: a new backup pair, and every older key in the stolen key's file, not the rebuilt list. That
- * new pair came only "the same day", while disaster recovery's step 1 fills the admin's
+ * and a backup key that was on that server since the trouble could have begun counts as stolen too:
+ * a new backup pair, and every older key in the stolen key's file, not the rebuilt list. That new
+ * pair came only "the same day", while disaster recovery's step 1 fills the admin's
  * BACKUP_RECIPIENT, which app-config-archive encrypts each archive to, and 2.4 enables its timer:
  * the rebuilt server's first archive, its fresh signing key inside, could go to the stolen key
  * (Stop C's fourth re-review, finding K1). The pair is now made before the recovery begins, in the
  * admin's conf at step 1 and in .env at 2.4, before the timer and backup start, and 2.4 checks the
- * conf against .env first; the list's clauses that keep the older keys out are pinned (theft
- * design note 1), and Rotation says a run across a backup-key switch needs both private keys
- * (theft design note 4). Yet step 3 lifted a folder's lock before the rebuild, while root could
- * read the token step 1 put into the reached server's .env and delete under that lock with it
- * (Stop C's fifth re-review, finding M1): step 3, step 5's lead-in and sub-step 5 now lift no lock
- * until the rebuild, once step 1's token is revoked and the bucket's only token is the rebuilt
- * server's. And 2.4 settled a conf that differs from .env toward the archive's .env, whose key is
- * the retired one after a rotation of the backup key (finding M4): .env takes the newest backup
- * public key first, whatever the archive held, and the conf must print it; step 1's sentence on
- * the new pair and 2.4's remedy are pinned (theft design note 1).
+ * conf against .env first; the list's clauses that keep the older keys out are pinned (theft design
+ * note 1), and Rotation says a run across a backup-key switch needs both private keys (theft design
+ * note 4). Yet step 3 lifted a folder's lock before the rebuild, while root could read the token
+ * step 1 put into the reached server's .env and delete under that lock with it (Stop C's fifth
+ * re-review, finding M1): step 3, step 5's lead-in and sub-step 5 now lift no lock until the
+ * rebuild, once step 1's token is revoked and the bucket's only token is the rebuilt server's; and
+ * sub-step 5 revokes it before disaster recovery's step 2 reads the bucket, as with it root could
+ * put a night of the stolen key over the versions 2.1 makes current (seen while fixing M1). And 2.4
+ * settled a conf that differs from .env toward the archive's .env, whose key is the retired one
+ * after a rotation of the backup key (finding M4): .env takes the newest backup public key first,
+ * whatever the archive held, and the conf must print it; step 1's sentence on the new pair and
+ * 2.4's remedy are pinned (theft design note 1).
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
@@ -757,6 +759,13 @@ const rootKeys = (runbook: string) =>
           ? []
           : [
               'step 3 lifts a folder’s lock while a token the server reached as root could read is valid',
+            ]),
+        ...(fifth.includes(
+          "step 1's token is revoked before Disaster recovery, step 2, reads the bucket",
+        )
+          ? []
+          : [
+              'the theft’s step 5 leaves step 1’s token valid while disaster recovery makes the night’s versions current and downloads it',
             ]),
       ];
     },
@@ -969,27 +978,28 @@ const copySteps = (runbook: string, backup: string) => {
 };
 
 /**
- * The stolen-token step 2 took every id in the bucket that no line of its 30 days' journal names for
- * the token holder's, and step 3 deletes those past the folder's lock. But monthly/ keeps each
+ * The stolen-token step 2 took every id in the bucket that no line of its 30 days' journal names
+ * for the token holder's, and step 3 deletes those past the folder's lock. But monthly/ keeps each
  * month's copy 366 days, each night's line names only its own month's copy, and the journal keeps
  * 180 to 187 days: up to ten genuine month's copies were the holder's (Stop C's fourth re-review,
- * finding H1). Now the lines shown name daily/'s nights and the copies of their months; daily/'s ids
- * no line names, failed nights' alert lines among the lines, are the holder's but for those stamped
- * before the 30 days; an id of monthly/ no line shown names is checked by its seal and settings
- * archive with pnpm vps:verify-night, and only a seal both lists refuse goes (or its version from
- * before the trouble comes back), the rest of that id staying, its record among them, which under
- * versioning may be the backup's; and the triggers take only daily/'s ids for a sign of a stolen
- * token. Still the journal condemned daily/'s ids, though a rebuilt server's begins at the rebuild,
- * root can empty it and a night stopped after its seal has no line (Stop C's fifth re-review,
- * finding M2); a seal verify-night refused for its form, as after a CRLF or cut-short download, went
- * as one signed by no key, since both refusals open alike (finding M3); and the stolen key's file
- * was one, though each theft leaves one (theft design note 3). Now a line, an alert or a ping only
- * keeps the night it names, every other id of daily/ and monthly/ is judged by its seal alone,
- * downloaded byte for byte at the size the bucket lists, with the kept list and each stolen key's
- * file, and only a seal every list refuses as signed by none of the keys, or for its form, goes; an
- * older version a list verifies comes back in its place, after a leaked .env only one from before
- * the trouble (theft design note 2); a pass or a refusal past the seal keeps the id, as step 3 keeps
- * the backup's own month's copies (theft design note 1); and no trigger takes ids no line names.
+ * finding H1). Now the lines shown name daily/'s nights and the copies of their months; daily/'s
+ * ids no line names, failed nights' alert lines among the lines, are the holder's but for those
+ * stamped before the 30 days; an id of monthly/ no line shown names is checked by its seal and
+ * settings archive with pnpm vps:verify-night, and only a seal both lists refuse goes (or its
+ * version from before the trouble comes back), the rest of that id staying, its record among them,
+ * which under versioning may be the backup's; and the triggers take only daily/'s ids for a sign of
+ * a stolen token. Still the journal condemned daily/'s ids, though a rebuilt server's begins at the
+ * rebuild, root can empty it and a night stopped after its seal has no line (Stop C's fifth
+ * re-review, finding M2); a seal verify-night refused for its form, as after a CRLF or cut-short
+ * download, went as one signed by no key, since both refusals open alike (finding M3); and the
+ * stolen key's file was one, though each theft leaves one (theft design note 3). Now a line, an
+ * alert or a ping only keeps the night it names, every other id of daily/ and monthly/ is judged by
+ * its seal alone, downloaded byte for byte at the size the bucket lists, with the kept list and
+ * each stolen key's file, and only a seal every list refuses as signed by none of the keys, or for
+ * its form, goes; an older version a list verifies comes back in its place, after a leaked .env
+ * only one from before the trouble (theft design note 2); a pass or a refusal past the seal keeps
+ * the id, as step 3 keeps the backup's own month's copies (theft design note 1); and no trigger
+ * takes ids no line names.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(runbook, ['stolen', 'cleanup', 'remove'], ({ stolen, cleanup, remove }) => {
@@ -1475,6 +1485,7 @@ const REWRAPPED = [
   "waits for sub-step 5's rebuild",
   'where root may have reached the server, only after',
   "goes new once more, into the rebuilt server's",
+  "step 1's token is revoked before",
   'only keeps the night it names, and never condemns one',
   'nothing goes because no line names it',
   'is judged by its seal alone',
@@ -2185,23 +2196,28 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
     const oldToken =
       " The bucket's token, the heartbeat addresses and the bot's token go new once\n      more,";
-    refuses(
-      rootKeys,
+    const before = swap(
       swap(
-        swap(
-          swap(RUNBOOK, step3, after(ROUND_5_CLEANUP, '3. **Remove what the token holder wrote**')),
-          lead,
-          ':',
-        ),
-        token,
-        oldToken,
+        swap(RUNBOOK, step3, after(ROUND_5_CLEANUP, '3. **Remove what the token holder wrote**')),
+        lead,
+        ':',
       ),
-      problem,
+      token,
+      oldToken,
     );
-    // Each of the three put back alone.
+    const early =
+      'the theft’s step 5 leaves step 1’s token valid while disaster recovery makes the night’s versions current and downloads it';
+    refuses(rootKeys, before, problem);
+    refuses(rootKeys, before, early);
+    // Each of the three put back alone, and step 1's token revoked only at step 3.
     refuses(rootKeys, swap(RUNBOOK, after(step3, ' Where root may have reached the'), ''), problem);
     refuses(rootKeys, swap(RUNBOOK, lead, ':'), problem);
     refuses(rootKeys, swap(RUNBOOK, token, oldToken), problem);
+    refuses(
+      rootKeys,
+      swap(RUNBOOK, ' before Disaster recovery, step 2, reads the bucket', ''),
+      early,
+    );
   });
 
   it('puts the newest backup public key in .env at 2.4, whatever the archive held, and the same in the conf (Stop C’s fifth re-review, finding M4)', () => {
