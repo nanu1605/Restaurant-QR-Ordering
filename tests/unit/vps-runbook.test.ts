@@ -932,8 +932,10 @@ const copySteps = (runbook: string, backup: string) => {
  * finding H1). Now the lines shown name daily/'s nights and the copies of their months; daily/'s ids
  * no line names, failed nights' alert lines among the lines, are the holder's but for those stamped
  * before the 30 days; an id of monthly/ no line shown names is checked by its seal and settings
- * archive with pnpm vps:verify-night, and only a seal both lists refuse goes, with its record; and
- * the triggers take only daily/'s ids for a sign of a stolen token.
+ * archive with pnpm vps:verify-night, and only a seal both lists refuse goes (or its version from
+ * before the trouble comes back), the rest of that id staying, its record among them, which under
+ * versioning may be the backup's; and the triggers take only daily/'s ids for a sign of a stolen
+ * token.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(runbook, ['stolen', 'cleanup'], ({ stolen, cleanup }) => {
@@ -969,7 +971,8 @@ const oldCopies = (runbook: string) =>
       has(cleanup, "with the stolen key's file where there is one") &&
       has(cleanup, "`the night of <id> is not signed by the backup's key: its seal …`") &&
       has(cleanup, 'as does an id with no seal at all') &&
-      has(cleanup, 'So only these go from `monthly/`: such seals and records')
+      has(cleanup, 'So only these go from `monthly/`: such seals, names the backup never writes') &&
+      has(cleanup, 'Its other objects stay, a record beside it among them')
         ? []
         : [
             'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
@@ -2197,6 +2200,16 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(
       oldCopies,
       swap(RUNBOOK, ', as does an id with no seal at all.', '.'),
+      'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
+    );
+    // A refused seal's record deleted with it, though under versioning it may be the backup's.
+    refuses(
+      oldCopies,
+      swap(
+        RUNBOOK,
+        'Its other\n   objects stay, a record beside it among them',
+        'Its record goes too, and its other\n   objects stay',
+      ),
       'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
     );
   });

@@ -1832,14 +1832,16 @@ restore test unasked, while a named restore lists nothing.
    ```
 
    An id whose seal both refuse, `the night of <id> is not signed by the backup's key: its seal …`,
-   has a seal of the token holder's, and a record beside it is theirs too, as the backup records
-   only a seal of its own; its other objects stay, as a copy stopped before its seal leaves its
-   parts there, and cost only room until the 366-day removal, as does an id with no seal at all. A
-   pass, or a refusal past the seal (of the settings archive or a part), means a key of the list
-   signed its seal: that id stays. So only these go from `monthly/`: such seals and records, names
-   the backup never writes, floods, and the names such an alert lists. A part put over its own, in a
-   night the journal names, is refused by its seal, so that night can't be restored until the part
-   is put back (the restore test, step 4, says which part).
+   has a seal of the token holder's: delete it, or, where the bucket keeps versions, make its
+   version from before the trouble current again instead, as for a part put over its own. Its other
+   objects stay, a record beside it among them, which alone is no candidate: a copy stopped before
+   its seal leaves its parts there, and under versioning that record may be the backup's. They cost
+   only room until the 366-day removal, as does an id with no seal at all. A pass, or a refusal past
+   the seal (of the settings archive or a part), means a key of the list signed its seal: that id
+   stays. So only these go from `monthly/`: such seals, names the backup never writes, floods, and
+   the names such an alert lists. A part put over its own, in a night the journal names, is refused
+   by its seal, so that night can't be restored until the part is put back (the restore test,
+   step 4, says which part).
    In `wal/`, a name whose signature does not verify is the holder's: the drill passes it over
    (it names how many) and a cut chain names the file.
 
