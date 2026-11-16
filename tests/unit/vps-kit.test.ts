@@ -49,7 +49,7 @@ import {
 } from '../../scripts/vps-seal.mts';
 
 /**
- * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-101) is checked by the
+ * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-105) is checked by the
  * server's own code only when the owner installs it, and some of it only when it first runs there.
  * These text rules pin what each file must keep, so a change that would break the contract, leak a
  * secret or undo a decision fails in CI first. Every rule is also run on a copy with one mistake

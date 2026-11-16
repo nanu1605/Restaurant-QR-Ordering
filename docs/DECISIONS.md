@@ -4376,15 +4376,15 @@ CI and the deploys come in later stops: Stop B writes them and rehearses them on
 (VPS-31 to VPS-42), Stop C adds WAL archiving, signed nights and point-in-time recovery (VPS-43 to
 VPS-45, its review's fixes VPS-46 to VPS-58, the re-review's VPS-59 to VPS-67, the second
 re-review's VPS-68 to VPS-77, the third re-review's VPS-78 to VPS-85, the fourth's VPS-86 to
-VPS-90, the fifth's VPS-91 to VPS-94, the sixth's VPS-95 to VPS-98 and the seventh's VPS-99 to
-VPS-101), and Vercel stays production until the cut-over. The server's contract arrived on
-2026-11-08, with adjustments the same day, and wins over the first plans where they differ (VPS-24).
-The owner's answers: live screens refresh by themselves at the first stale tap and other pages show
-a Refresh toast (VPS-8); no background update check (VPS-11); the export size cap is fine for now
-(VPS-6); single-slot deploys with a 25 s stop (VPS-22); production deploys run by the owner on the
-server (VPS-23); and, for Stop A2 (2026-11-08), a menu reader that cannot answer stops the reading
-with Try again, and a page that fails twice is left out (VPS-30), and a restaurant that joins a
-running announcement is emailed within a minute (VPS-28).
+VPS-90, the fifth's VPS-91 to VPS-94, the sixth's VPS-95 to VPS-98, the seventh's VPS-99 to VPS-101
+and the eighth's VPS-102 to VPS-105), and Vercel stays production until the cut-over. The server's
+contract arrived on 2026-11-08, with adjustments the same day, and wins over the first plans where
+they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale tap
+and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export size
+cap is fine for now (VPS-6); single-slot deploys with a 25 s stop (VPS-22); production deploys run
+by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08), a menu reader that cannot answer
+stops the reading with Try again, and a page that fails twice is left out (VPS-30), and a restaurant
+that joins a running announcement is emailed within a minute (VPS-28).
 
 ### App changes and the web image (Stop A)
 
