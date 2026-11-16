@@ -10369,11 +10369,12 @@ and the intro), as were the range the RUNBOOK, `deploy/vps/README.md`, `docs/SPE
   widened its bad-release case to a night from before it but kept "no release made since the point
   goes out", against item 2's release live just before that deploy began (Q3). The review found
   clauses no rule held: item 2's "In 3 the release that stayed live is then the one live just before
-  that deploy began", item 1's "on the same server" and "or before `deploys.log`'s last production
-  line", 2.4's newest backup key before the conf's check against "that same key", never the
-  archive's (round 7's intro said each such clause was pinned), and sub-step 5's second step 2 after
-  the revocation; and no step asked for the owner's own note of the day that a new server's step 5
-  and items 1 and 3 go by (the design notes).
+  that deploy began" and its "or at least before its migrations ran", item 3's "when that line is
+  later than that time", item 1's "on the same server" and "or before `deploys.log`'s last
+  production line", 2.4's newest backup key before the conf's check against "that same key", never
+  the archive's (round 7's intro said each such clause was pinned), sub-step 5's second step 2 after
+  the revocation, and the alerts sub-step 5 quotes (P3's); and no step asked for the owner's own
+  note of the day that a new server's step 5 and items 1 and 3 go by (the design notes).
 
   Item 3's gloss is now "the new image of the last production line of `deploys.log` before step 7's
   deploy that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line), when that
@@ -10386,12 +10387,15 @@ and the intro), as were the range the RUNBOOK, `deploy/vps/README.md`, `docs/SPE
   item 1's clauses and the note; `rewindRoute` needs step 5's parenthesis as it now ends: 3 problems
   on `b003e13`'s RUNBOOK (`releaseDeployed` 2, `rewindRoute` 1), and a refusal test rebuilds
   `b003e13`'s item 3, step 5's clause, Production, step 2, and Rolling back by hand. `rootKeys`
-  needs 2.4's order and "that same key:", refusing ", the archive's", and sub-step 5's rerun after
-  the revocation; `b003e13`'s text is right there, so a refusal test of three mutants proves them.
-  Each clause pinned this round, 32 in all, dropped or turned alone on the final RUNBOOK, gives
-  `b003e13`'s rules nothing and the new ones a problem. Reasoned from `app-deploy`'s source at
-  `66fe8b3` and the review's probe, not rehearsed. (4e33362 "docs: read step 7's release before its
-  own deploy"; 3b8e86d "test: pin step 2.4's key order and step 2's rerun")
+  needs 2.4's order and "that same key:", refusing ", the archive's", sub-step 5's rerun after the
+  revocation, and the alerts it quotes, which the test also finds in `wal-ship.sh` (289) and
+  `backup.sh` (94); `b003e13`'s text is right there, so a refusal test of five mutants proves them,
+  and `releaseDeployed` needs item 2's and item 3's clauses too. Each clause pinned this round, 36
+  in all, dropped or turned alone on the final RUNBOOK, gives `b003e13`'s rules nothing and the new
+  ones a problem. Reasoned from `app-deploy`'s source at `66fe8b3` and the review's probe, not
+  rehearsed. (4e33362 "docs: read step 7's release before its own deploy"; 3b8e86d "test: pin step
+  2.4's key order and step 2's rerun"; e65795f "test: pin the last clauses the re-review found
+  loose")
 
 **After the fixes of round 8**, which changed only documents, text rules and comments: `pnpm lint`,
 `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,224 in 70 files (`vps-runbook` 37,
@@ -10399,8 +10403,8 @@ the others as they were); `pnpm vps:check` 53 checks, 0 failed, after these docu
 `compose.yml`'s header. The text rules report 12 problems on the RUNBOOK of `b003e13` (`oldCopies`
 9, `releaseDeployed` 2 and `rewindRoute` 1) and none on the fix; `b003e13`'s rules report none on
 either, as each fix kept the phrases they read. Every rule stays at none on the RUNBOOK's VPS part
-reflowed at 100, 90, 80, 72 and 64 columns, or joined. The re-wrap test wraps 161 phrases where it
-had 131: 30 new, a piece of each phrase the new checks read, and one moved to a piece of the same
+reflowed at 100, 90, 80, 72 and 64 columns, or joined. The re-wrap test wraps 165 phrases where it
+had 131: 34 new, a piece of each phrase the new checks read, and one moved to a piece of the same
 phrase that stands on one line in the new text; the `has()` phrases left out are the 18 the rules
 refuse. No rehearsal ran again: no script, service or limit changed, so the fourth re-review's runs
 at `6effdd9` stand (`pnpm vps:rehearse --fresh` 40 checks, `pnpm vps:backup-test` 126 in 2,063 s,
