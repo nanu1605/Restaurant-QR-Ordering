@@ -9670,15 +9670,16 @@ in Left open (Stop C), as no record off the server names what its clause would n
   list, then with the stolen key's file where there is one. That is the least download that settles
   it: the tool checks the seal's signature first, needs the settings archive beside it for a pass
   and reads no record. Only a seal both refuse as "is not signed by the backup's key: its seal …"
-  goes, or, where the bucket keeps versions, its version from before the trouble comes back; the
-  rest of that id stays, its record among them, which alone is no candidate and under versioning may
-  be the backup's, and an id with no seal stays, as a copy stopped before its seal leaves the
-  backup's parts there, a cost only until the 366-day removal. So only such seals, names the backup
-  never writes, floods and the names an alert lists with VPS-88's limits go from `monthly/`, and
-  step 3 keeps the backup's month's copies. The trigger takes `daily/`'s ids alone. The new text
-  rule `oldCopies`: 4 problems on `6effdd9`'s RUNBOOK, with refusals of a seal-less id and of a
-  record deleted with its seal. Left open (Stop C) says what stays. (5881ba0; 57344cf "docs: keep a
-  refused seal's record in monthly/")
+  goes, or, where the bucket kept an older version of it from before the trouble, that one comes
+  back; the rest of that id stays, its record among them, which alone is no candidate and under
+  versioning may be the backup's, and an id with no seal stays, as a copy stopped before its seal
+  leaves the backup's parts there, a cost only until the 366-day removal. So only such seals, names
+  the backup never writes, floods and the names an alert lists with VPS-88's limits go from
+  `monthly/`, and step 3 keeps the backup's month's copies. The trigger takes `daily/`'s ids alone.
+  The new text rule `oldCopies`: 4 problems on `6effdd9`'s RUNBOOK, with refusals of a seal-less id
+  and of a record deleted with its seal. Left open (Stop C) says what stays. (5881ba0; 57344cf
+  "docs: keep a refused seal's record in monthly/" and 62af280 "docs: bring back a refused seal's
+  older version only if kept")
 - **VPS-90 · Design notes · A point on the stretch a rewind abandoned ends done only with the seals
   out, and the text rules wrap and end where they read (RUNBOOK, VPS-83, VPS-84, Left open
   (Stop C)):**
