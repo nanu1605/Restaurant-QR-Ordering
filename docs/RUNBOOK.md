@@ -1010,18 +1010,20 @@ install the site file, then change DNS last.
      kept), runs `migrate` for at most 10 minutes (a failure switches nothing), switches `web` and
      waits up to 120 s for it to turn healthy. If it never does, `app-deploy` goes back to the
      previous image by itself and alerts. Migrations that ran stay applied either way. Then note,
-     off the server, the time the deploy began (UTC), the release and whether it stayed live: that
-     is the owner's own note of the day, which a recovery on a new server goes by (Backups and
-     restore (VPS), Disaster recovery, steps 5 and 7).
+     off the server, the time the deploy began (UTC), read from its `deploying` line
+     (`sudo journalctl -t app-deploy --utc -o short-iso`) rather than from memory, the time it went
+     live, from its new line in `deploys.log` (`sudo tail -1 /srv/menumesh/deploys.log`), the
+     release and whether it stayed live: that is the owner's own note of the day, which a recovery
+     on a new server goes by (Backups and restore (VPS), Disaster recovery, steps 5 and 7).
 
   3. From this machine: `SMOKE_URL=https://menumesh.in EXPECTED_VERSION=<commit> pnpm smoke`.
 
 - **Rolling back by hand:** `sudo tail -5 /srv/menumesh/deploys.log` names the previous image, and
   deploying it again without a migrate reference brings it back. An image still on the server needs
   no token: `sudo app-deploy menumesh production prod-vX.Y.W@sha256:<digest>`. Note it off the
-  server too, as for a release (Production, step 2): the time (UTC), the release brought back,
-  and that the one rolled back did not stay live. Migrations are never undone, which is why they
-  stay backward-compatible for one release (Database migrations).
+  server too, as for a release (Production, step 2): the times it began and went live (UTC), the
+  release brought back, and that the one rolled back did not stay live. Migrations are never
+  undone, which is why they stay backward-compatible for one release (Database migrations).
 - **When to deploy:** no deploys, and no merges to `main` (every merge deploys staging), from 02:55
   to 03:30 or from 08:40 to 08:50 IST: those are the daily run and the digest. Releases also avoid
   12:00 to 15:30 and 19:00 to 23:30 IST, and maintenance runs 01:00 to 07:00 IST (VPS-24).
@@ -1767,28 +1769,29 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         the `deploys.log` step 2 unpacked, which ends at its archive, made at 20:20 UTC: after a
         night's logical recovery, it is the release `WEB_IMAGE` names in the `images.env` that
         step 2 unpacked from that night's own settings archive, and a release made since the
-        archive is only in the owner's own note of the day. After a rewind to a point before a
-        release, such as the bad release it undid, it is the release before it, the last
-        production line of `deploys.log` before that point, and never the entry of `images.env`
-        that the rewind undid: that file still names the release, whose migrate run would apply
-        its migrations again and switch `web` back to it. So too when a rewind past a release
-        came after the night whose settings archive step 2 unpacked, as on a new server that
-        took the way past the nights a rewind left (step 5): that archive's `images.env` and
-        `deploys.log` still name the release the rewind undid, so production's is the release
-        before it, the last production line of the archive's `deploys.log` before the rewind's
-        point.
+        archive is only in the owner's own notes of each deploy since it. After a rewind to a point
+        before a release, such as the bad release it undid, it is the release before it, the last
+        production line of `deploys.log` before that point, and never the entry of `images.env` that
+        the rewind undid: that file still names the release, whose migrate run would apply its
+        migrations again and switch `web` back to it. So too when a rewind past a release came after
+        the night whose settings archive step 2 unpacked, as on a new server that took the way past
+        the nights a rewind left (step 5): that archive's `images.env` and `deploys.log` still name
+        the release the rewind undid, so production's is the release before it, the last production
+        line of the archive's `deploys.log` before the rewind's point.
 
         `deploys.log` is `/srv/menumesh/deploys.log`, on a new server the one step 2 unpacked,
         and no script cuts it, so it still names an old night's release. Its lines are in UTC,
         each image as `<tag>@sha256:<digest>`:
         `2026-12-17T04:30:12Z production web <old> -> <new> by ops`. Compare them with the
         night's stamp, or with the point in UTC, as `pitr.sh` prints it in brackets after a
-        point given with an offset, and with the last transaction it prints, in UTC too. A line
-        with `FAILED` or `ROLLED BACK` after its two images never left the new one live:
-        the release is its old one. An image no longer on the server, as on any new server or
-        two releases back on the same one, needs the token of Production, step 2 (Deploys on the
-        VPS), but not its migrate reference: without a token `app-deploy` stops at
-        `couldn't pull …` and switches nothing.
+        point given with an offset, and with the last transaction it prints, in UTC too. On a new
+        server the owner's notes count a release as live at a time, or as gone live since it, by the
+        time it went live, as these lines do; step 5's bound goes by the time its deploy began. A
+        line with `FAILED` or `ROLLED BACK` after its two images never left the new one live: the
+        release is its old one. An image no longer on the server, as on any new server or two
+        releases back on the same one, needs the token of Production, step 2 (Deploys on the VPS),
+        but not its migrate reference: without a token `app-deploy` stops at `couldn't pull …` and
+        switches nothing.
 
         ```sh
         read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh production \
@@ -1813,10 +1816,12 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         same server that is the release `images.env`'s `WEB_IMAGE` named before step 7's deploy,
         the new image of the last production line of `deploys.log` before step 7's deploy
         that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line), when
-        that line is later than that time; on a new server, the owner's own note of the day,
-        never the **VPS release** runs alone, which list each release built, not whether it
-        stayed live. One older than step 1's, as after a rollback by hand since, goes out as
-        step 1's did instead, without a migrate reference, as the database holds step 1's
+        that line is later than that time; on a new server, the one the owner's own notes of each
+        deploy since step 2's archive leave live, step 7's own not counted, or with none since, the
+        one that archive's `deploys.log` leaves live, read as on the same server, when it went live
+        later than that time, never the **VPS release** runs alone, which list each release built,
+        not whether it stayed live. One older than step 1's, as after a rollback by hand since, goes
+        out as step 1's did instead, without a migrate reference, as the database holds step 1's
         migrations. If none did, or it is step 1's own, step 1's deploy is all.
 
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
