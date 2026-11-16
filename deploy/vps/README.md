@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-58. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-67. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -56,7 +56,9 @@ only.
 - **The night** (`backup.sh`, 20:30 UTC): the roles, each database, Storage, a manifest, the
   settings archive and a base backup of the whole cluster, each age-encrypted to the owner's key,
   then `seal-<id>.txt`, the list of parts with their sha256 and sizes, signed by
-  `BACKUP_SIGNING_KEY`. Under `daily/` in the bucket, a month's copy under `monthly/`.
+  `BACKUP_SIGNING_KEY`. Under `daily/` in the bucket, a month's copy under `monthly/`, ended by
+  `copy-<id>.txt`, a signed record that the copy is whole, without which no copy counts as the
+  month's; the night's line names the month's copy.
 - **The WAL** (`wal-ship.sh`, every minute): `db` hands each finished WAL file to the `wal-spool`
   volume (`basic_archive`, at least once a minute); the shipper compresses, encrypts, signs and
   uploads it to `wal/<cluster>/…`, alerts when it can't, and pings `HEARTBEAT_WAL_URL` every 5
@@ -73,13 +75,15 @@ only.
   newest sealed base plus the signed WAL after it, replayed with the image's Postgres to a target
   within 14 days or to the latest, without the live cluster's `ALTER SYSTEM` settings. A recovery
   to the latest whose chain of WAL files is cut is refused before it writes, unless
-  `PITR_ACCEPT_CUT` names the cut. `wal-fetch.sh` is its `restore_command`; `seal.sh` is the
-  shared seal and signature code.
+  `PITR_ACCEPT_CUT` names the cut, and so is a base whose timeline a rewind left before the base
+  ended. `wal-fetch.sh` is its `restore_command`; `seal.sh` is the shared seal and signature code.
 
 The public signing key (`BACKUP_SIGNING_PUBLIC_KEY`, one or several, space-separated) is in every
-service that reads the bucket; the private key is in `backup` alone. `pnpm vps:secrets` makes the
-pair and prints the public half for the owner to keep beside the age key, and after each rotation
-the whole list in its place.
+service that reads the bucket; the private key is in `backup` alone, and in the owner's password
+manager. `pnpm vps:secrets` makes the pair and prints the public half for the owner to keep beside
+the age key, in a file of its own and never in the age key's file, and after each rotation the
+whole list in its place. A one-off of the backup image checks that the two halves in `.env` are a
+pair, as the RUNBOOK's disaster recovery and rotation run it.
 
 ## First install, in order
 
@@ -110,13 +114,13 @@ the whole list in its place.
 ## Checking it here first
 
 None of the checks needs the server. `pnpm test` pins what each file must keep
-(`tests/unit/vps-kit.test.ts`, and `tests/unit/vps-verify-night.test.ts` for
-`pnpm vps:verify-night`). `pnpm vps:check` runs the server's own `app-apply` checks on this
-folder, as root in a throwaway container, with `test/menumesh.conf` as `/etc/apps/menumesh.conf`,
-then the contract's extra rules, Caddy's and Envoy's own validation and shellcheck. `pnpm vps:edge`
-puts the server's Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers.
-Both need only Docker. Run them before every install, after copying the server team's files again
-if those changed.
+(`tests/unit/vps-kit.test.ts`, `tests/unit/vps-verify-night.test.ts` for `pnpm vps:verify-night`,
+and `tests/unit/vps-runbook.test.ts` for the RUNBOOK's steps that no script runs). `pnpm vps:check`
+runs the server's own `app-apply` checks on this folder, as root in a throwaway container, with
+`test/menumesh.conf` as `/etc/apps/menumesh.conf`, then the contract's extra rules, Caddy's and
+Envoy's own validation and shellcheck. `pnpm vps:edge` puts the server's Caddy tree with
+`menumesh.caddy` in front of stub apps and tests how it answers. Both need only Docker. Run them
+before every install, after copying the server team's files again if those changed.
 
 `pnpm vps:rehearse` runs the whole stack on Docker Desktop as project `menumesh-rehearsal`, the way
 the install and `app-deploy` would: `compose.yml` in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
@@ -128,9 +132,11 @@ sends every third-party host the code could call to a sinkhole. `pnpm vps:backup
 WAL shipper, its outage and its failure paths (a full disk among them), then the nightly backup
 into that S3 with each night sealed, named by its id, its stamp and 8 random hex characters (a
 night with a stale settings archive, then the month's copy in `monthly/`, past objects named like
-its parts too, and a night whose id someone else wrote a name of first, stopped before its first
+its parts too, and with its signed record, a copy without one or with one someone else put in
+copied again, and a night whose id someone else wrote a name of first, stopped before its first
 upload), the monthly restore test, the disaster recovery's check of a downloaded night with
-`pnpm vps:verify-night` (and its refusal of settings archives of someone else's), planted nights
+`pnpm vps:verify-night` (and its refusal of settings archives of someone else's), a rotation and a
+theft of the signing key with the night by hand and the signing pair's check, planted nights
 and names the restore must refuse or not read (each night is read from the one folder its age
 gives: `daily/` under 29 days, `monthly/` past that), and then the disaster recovery of a month's
 copy two months old, from `monthly/`, after one without `RESTORE_STAMP` is refused: the
@@ -139,8 +145,9 @@ stack starts on them. Last, the point-in-time drill to a point and to the latest
 written and a table dropped, over a base holding an `ALTER SYSTEM` setting too, restores that
 refuse a night another key sealed, a recovery to the latest refused at a cut and taken to it with
 `PITR_ACCEPT_CUT`, a recovery to a point into new `db-data` and `wal-spool` with the stack started
-on it, and a gap on the new timeline that an abandoned one's file must not fill. `pnpm vps:down`
-removes the project (its images too with `--images`), and nothing else.
+on it, a gap on the new timeline that an abandoned one's file must not fill, and a rewind to a
+point inside the newest night's base, which the drill and a recovery to the latest then refuse.
+`pnpm vps:down` removes the project (its images too with `--images`), and nothing else.
 
 ## Where the borrowed files come from
 
