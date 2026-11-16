@@ -4441,10 +4441,10 @@ function plantArchive(path: string) {
  * archive becomes a new server's settings, config/db/wal-spool.sh among them, which db runs as
  * root, and nothing of the kit can run there before it: so the owner downloads it and the night's
  * seal from the bucket by name, and pnpm vps:verify-night checks them here against the
- * BACKUP_SIGNING_PUBLIC_KEY list kept with the age key. A whole night passes, naming its archive's
- * sha256. An archive of someone else's making, as large as the sealed one, put over that night's
- * own (the rehearsal's S3 takes overwrites, as a bucket with versioning does) with its real seal
- * kept, is refused, though the listing that step 2 checked alone before takes it; and so is a
+ * BACKUP_SIGNING_PUBLIC_KEY list kept beside the age key. A whole night passes, naming its
+ * archive's sha256. An archive of someone else's making, as large as the sealed one, put over that
+ * night's own (the rehearsal's S3 takes overwrites, as a bucket with versioning does) with its real
+ * seal kept, is refused, though the listing that step 2 checked alone before takes it; and so is a
  * night whose seal lists no settings archive, with one planted under its name, which such a night
  * leaves free even under locks that refuse overwrites. The night's own archive is put back after.
  */

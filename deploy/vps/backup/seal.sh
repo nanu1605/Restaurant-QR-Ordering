@@ -5,9 +5,10 @@
 # DER, the backup service's alone), and a restore checks each signature against
 # BACKUP_SIGNING_PUBLIC_KEY (base64 SPKI DER): one key, or several separated by single spaces with
 # the private key's own first, so that after a rotation the old key stays and the backups it
-# signed still restore. The owner keeps the public key with the age key, where the bucket's token
-# can't reach. age proves nothing about who encrypted a file: whoever holds the bucket's token and
-# the age public key can encrypt one, but only the backup can sign one.
+# signed still restore. The owner keeps that list beside the age key, in a file of its own (age
+# reads the file of its key as keys and comments alone), where the bucket's token can't reach. age
+# proves nothing about who encrypted a file: whoever holds the bucket's token and the age public
+# key can encrypt one, but only the backup can sign one.
 #
 #   seal_sign <file>                 the signature of the file's bytes, base64url without padding
 #                                    (86 characters), on stdout
