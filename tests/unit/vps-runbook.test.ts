@@ -9,30 +9,38 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * The steps of docs/RUNBOOK.md's "The shared server (VPS)" that no script runs: the owner follows
  * them by hand, on the server or in a disaster, so a step that went missing would show only then.
  * These text rules pin the procedure fixes of Stop C's re-reviews (docs/DECISIONS.md VPS-60 to
- * VPS-65, VPS-67 and VPS-68 to VPS-76): every backup.sh run by hand comes right after a settings
- * archive made for it, and a new server enables the archive's timer (finding V3); disaster
- * recovery's step 2.4 puts the signing key's private half in, and step 4 stops backup until db
- * runs (V4) and checks the signing pair with SIGNING_PAIR_CHECK, character for character (V2),
- * quoting each line it prints, as the night's and the shipper's alerts quote the values that are
- * no keys (U4); step 2.2 takes a night from before a theft of the signing key with the stolen key's
- * file (V1), its versions of before the trouble made current before anything of it is downloaded
- * or recovered (U1), and its logical recovery gets that file's list for the one run (U2); after a
- * theft the list keeps the older keys that never leaked (U3), the backup's own records go new and
- * name a night from before only by what was recorded before (U5), and a server reached as root is
- * rebuilt with none of its nights taken (N1); the key list is kept in a file of its own, never in
- * the age key's (design note 4); the month's copy is named by either of the backup's lines (B1),
- * and each step of it that fails is quoted with the way to the stolen-token steps (R1); the drill
- * names each of pitr.sh's refusals of a base whose timeline a rewind left (M1), the recovery quotes
- * what pitr.sh tells a point a cut stops short of (T1), and the way past the nights a rewind left
- * takes out each one's seal in turn (T2). Every rule also refuses a copy with one mistake, as
- * tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the fix. Every
- * phrase is compared with its white space folded, so a sentence wrapped again is still found.
+ * VPS-65, VPS-67, VPS-68 to VPS-76 and VPS-78 to VPS-85): every backup.sh run by hand comes right
+ * after a settings archive made for it, and a new server enables the archive's timer (finding V3);
+ * disaster recovery's step 2.4 puts the signing key's private half in, and step 4 stops backup
+ * until db runs (V4) and checks the signing pair with SIGNING_PAIR_CHECK, character for character
+ * (V2), quoting each line it prints, as the night's and the shipper's alerts quote the values that
+ * are no keys (U4), and says what else the pair's refusal can mean (the third re-review's design
+ * notes); step 2.2 takes a night from before a theft of the signing key with the stolen key's file
+ * (V1), its versions of before the trouble made current before anything of it is downloaded or
+ * recovered (U1), and its logical recovery gets that file's list for the one run (U2), but a night
+ * an older key of the kept list signed takes the kept list (G3); after a theft the list keeps the
+ * older keys that never leaked (U3), the backup's own records go new and name a night from before
+ * only by what was recorded before (U5), every value of a leaked .env goes new (G2), and a server
+ * reached as root is rebuilt with none of its nights taken (N1) and no private key put on it, its
+ * backup key counted as stolen too once it was there (G1); the key list is kept in a file of its
+ * own, never in the age key's (design note 4); the month's copy is named by either of the backup's
+ * lines (B1), each step of it that fails is quoted, with what it found, and the way to the
+ * stolen-token steps (R1), which take the names a stopped night's alert lists for the token
+ * holder's (E1); the drill names each of pitr.sh's refusals of a base whose timeline a rewind left
+ * (M1), the recovery quotes what pitr.sh tells a point a cut stops short of (T1), the way past the
+ * nights a rewind left takes out each one's seal in turn (T2) and promises no point on the stretch
+ * it abandoned (F2), and step 7 deploys a release without a migrate reference, the one before a
+ * rewind's after a settings archive from before it (F1). Every rule also refuses a copy with one
+ * mistake, as tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the
+ * fix. Every phrase is compared with its white space folded, so a sentence wrapped again is still
+ * found.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
 const PITR = readFileSync(join('deploy', 'vps', 'backup', 'pitr.sh'), 'utf8');
 const BACKUP = readFileSync(join('deploy', 'vps', 'backup', 'backup.sh'), 'utf8');
 const SHIPPER = readFileSync(join('deploy', 'vps', 'backup', 'wal-ship.sh'), 'utf8');
+const SEAL = readFileSync(join('deploy', 'vps', 'backup', 'seal.sh'), 'utf8');
 
 /** `text` with `from` replaced by `to`; `from` must occur exactly once, so the bad copy applies. */
 function swap(text: string, from: string, to: string): string {
@@ -79,6 +87,7 @@ const PLACES = {
   vps: ['## The shared server (VPS)', '\n## Razorpay live switch'],
   firstKey: ['1. **The backup key**', '2. **The bucket:**'],
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
+  tokenBullet: ["- The bucket's token, Telegram and the heartbeat addresses", '- The backup key:'],
   rotation: ['- The signing key (after the server may have been reached', "- Staging's password"],
   lastNight: ["- **Last night's backup:**", '- **The monthly restore test**'],
   restoreTest: ['- **The monthly restore test**', '- **The monthly point-in-time drill**'],
@@ -91,8 +100,11 @@ const PLACES = {
   backupImage: ['\n  4. The backup image that `images.env` names', '\n  5. The recovery'],
   fallback: ["**The fallback, a night's logical recovery**", '\n  6. `wal-spool` must be new'],
   start: ['\n  6. `wal-spool` must be new', '\n  7. '],
+  release: ["\n  7. Production's image", '\n  8. The edge'],
   rerun: ['\n  9. The key off the ramfs', '### A stolen or leaked bucket token (VPS)'],
   stolen: ['### A stolen or leaked bucket token (VPS)', '1. **Rotate the token**'],
+  cleanup: ['2. **Check the last nights**', '3. **Remove what the token holder wrote**'],
+  theftTest: ['4. **A restore test of a named night**', '5. **If the server itself may have been'],
   theft: ['5. **If the server itself may have been reached**', '### Logs and alerts (VPS)'],
   walAlerts: ['- **WAL alerts**', '### Checking the kit here'],
 } as const;
@@ -216,13 +228,18 @@ const PAIR_COMMAND = `sudo app-compose menumesh run --rm --no-deps -T backup sh 
 const PAIR_SIGNS = /echo "([^"]+)";/.exec(SIGNING_PAIR_CHECK)?.[1] ?? '';
 /** Every line SIGNING_PAIR_CHECK prints, the pass and each refusal. */
 const PAIR_LINES = [...SIGNING_PAIR_CHECK.matchAll(/echo "([^"]+)"/g)].map((match) => match[1]);
+/** What seal.sh prints when openssl can't sign the check's probe with a key of the right shape. */
+const OPENSSL_LINE = 'seal: openssl could not sign probe';
 
 /**
  * A settings archive from before a rotation holds the private key of before it, which the kept
  * list put in its place no longer begins with: backup.sh would seal no night and wal-ship.sh ship
  * no WAL (finding V2). So step 2.4 puts in BACKUP_SIGNING_KEY's private half from the password
  * manager, where Rotation keeps the new one, and step 4 checks the pair with SIGNING_PAIR_CHECK as
- * it is, before step 5, once the backup image is there.
+ * it is, before step 5, once the backup image is there. The pair's refusal also comes for a list
+ * shaped as keys but not the kept one, out of order or with its first key mistyped, while a later
+ * key mistyped passes, and a private key openssl can't load prints openssl's lines and seal.sh's
+ * before it (Stop C's third re-review, docs design note 3 and backup design note 1): step 4 says so.
  */
 const pairChecked = (runbook: string) =>
   inPlaces(
@@ -238,9 +255,17 @@ const pairChecked = (runbook: string) =>
       ...(PAIR_SIGNS && has(backupImage, `\`${PAIR_SIGNS}\``)
         ? []
         : ['step 4 doesn’t say what the signing pair’s check prints for a pair']),
-      ...(has(rotation, 'password manager') && /Disaster recovery,\s+step 4/.test(rotation)
+      ...(has(rotation, 'password manager') && has(rotation, 'Disaster recovery, step 4')
         ? []
         : ['Rotation doesn’t keep the new private key in the password manager and check the pair']),
+      ...(has(backupImage, 'its keys out of order (the new key goes first)') &&
+      has(backupImage, 'its first key mistyped') &&
+      has(backupImage, 'A mistyped later key passes this check')
+        ? []
+        : ['step 4 blames the private key alone for a list shaped as keys but not the kept one']),
+      ...(has(backupImage, `\`${OPENSSL_LINE}\``)
+        ? []
+        : ['step 4 promises one line where a private key openssl can’t load prints more']),
     ],
   );
 
@@ -373,40 +398,78 @@ const oneRunKey = (runbook: string) =>
  * older key kept for its nights, whose private half had left the server at its own rotation, was
  * dropped and kept nowhere (Stop C's second re-review, finding U3): the new key comes first, then
  * each older key that left the server before the trouble could have begun, never the stolen one,
- * and an older key that may have leaked goes into the stolen key's file with it.
+ * and an older key that may have leaked goes into the stolen key's file with it. Two statements
+ * still took that list for the new key alone (Stop C's third re-review, finding G3): the night by
+ * hand names a month's copy an older key of the list recorded, and a night from before the trouble
+ * that such a key signed is checked with the kept list and recovered with .env's, which the stolen
+ * key's file refuses.
  */
 const theftList = (runbook: string) =>
-  inPlaces(runbook, ['theft', 'check', 'rotation'], ({ theft, check, rotation }) => [
-    ...(has(
-      theft,
-      'the new public key first, then each older key of the list whose private half had left the server before the trouble could have begun',
-    ) && has(theft, 'never the stolen key')
-      ? []
-      : ['the theft’s step 5 doesn’t keep the older keys that never leaked after the new one']),
-    ...(has(
-      theft,
-      '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`',
-    )
-      ? []
-      : [
-          'the theft’s step 5 doesn’t keep an older key that may have leaked apart with the stolen one',
-        ]),
-    ...(has(
-      check,
-      'holds the new key first, then only the older keys whose private half had left the server',
-    )
-      ? []
-      : ['step 2.2 doesn’t say the kept list holds the new key first and the older keys after it']),
-    ...(has(
-      rotation,
-      'whose private half had left the server before the trouble could have begun stays',
-    )
-      ? []
-      : ['Rotation drops an older key a thief never held with the stolen one']),
-    ...([theft, check, rotation].some((text) => /the new (?:public )?key alone/.test(flat(text)))
-      ? ['the new list holds the new key alone, which drops every older key and keeps it nowhere']
-      : []),
-  ]);
+  inPlaces(
+    runbook,
+    ['theft', 'check', 'rotation', 'fallback'],
+    ({ theft, check, rotation, fallback }) => [
+      ...(has(
+        theft,
+        'the new public key first, then each older key of the list whose private half had left the server before the trouble could have begun',
+      ) && has(theft, 'never the stolen key')
+        ? []
+        : ['the theft’s step 5 doesn’t keep the older keys that never leaked after the new one']),
+      ...(has(
+        theft,
+        '`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`',
+      )
+        ? []
+        : [
+            'the theft’s step 5 doesn’t keep an older key that may have leaked apart with the stolen one',
+          ]),
+      ...(has(
+        check,
+        'holds the new key first, then only the older keys whose private half had left the server',
+      )
+        ? []
+        : [
+            'step 2.2 doesn’t say the kept list holds the new key first and the older keys after it',
+          ]),
+      ...(has(
+        rotation,
+        'whose private half had left the server before the trouble could have begun stays',
+      )
+        ? []
+        : ['Rotation drops an older key a thief never held with the stolen one']),
+      ...([theft, check, rotation].some((text) => /the new (?:public )?key alone/.test(flat(text)))
+        ? ['the new list holds the new key alone, which drops every older key and keeps it nowhere']
+        : []),
+      ...(has(theft, "unless an older key the list still holds recorded this month's copy") &&
+      !has(theft, "so the first night of the new key is the month's copy again")
+        ? []
+        : [
+            'the theft’s night by hand makes the month’s copy again where an older key of the list recorded it',
+          ]),
+      ...(has(
+        check,
+        'That file is for a night the stolen key, or an older key that may have leaked, signed: one that an older key of the kept list signed is checked with the kept list',
+      )
+        ? []
+        : [
+            'step 2.2 checks a night an older key of the kept list signed with the stolen key’s file',
+          ]),
+      ...(has(fallback, 'that the stolen key, or an older key that may have leaked, signed') &&
+      has(fallback, "One that an older key of the kept list signed is recovered with `.env`'s list")
+        ? []
+        : [
+            'step 5’s fallback recovers a night an older key of the kept list signed with the stolen key’s file',
+          ]),
+      ...(has(
+        theft,
+        "one that an older key of the kept list signed is recovered with `.env`'s list",
+      )
+        ? []
+        : [
+            'the theft’s step 5 recovers a night an older key of the kept list signed with the stolen key’s file',
+          ]),
+    ],
+  );
 
 /**
  * The leaked .env held the backup monitor's address and the Telegram bot's token too, and the
@@ -446,12 +509,51 @@ const theftRecords = (runbook: string) =>
       : ['disaster recovery’s step 2 names a night from before a theft from any record']),
   ]);
 
+/** What a leaked .env held besides the backup's own values, each with Rotation's step for it. */
+const LEAKED = [
+  'both cron secrets',
+  "the schedulers' heartbeat addresses",
+  "hosted staging's pooler login",
+  'the API keys',
+  '`POSTGRES_PASSWORD`',
+];
+
+/**
+ * The theft's step 5 and Rotation's bullet for the bucket's token made only the backup's values of
+ * a leaked .env new, though it held every value Secrets (VPS) lists: the API keys' set, the
+ * database's password, both cron secrets, the schedulers' heartbeat addresses and hosted staging's
+ * pooler login (Stop C's third re-review, finding G2). Both now say a leaked .env leaked every
+ * value in it and send the rest to Rotation, which gains a step for the pooler login.
+ */
+const envLeaked = (runbook: string) =>
+  inPlaces(runbook, ['theft', 'tokenBullet', 'vps'], ({ theft, tokenBullet, vps }) => {
+    const lead = flat(theft).slice(0, flat(theft).indexOf('1. **The signing key**'));
+    return [
+      ...[
+        ['the theft’s step 5', lead],
+        ['Rotation’s bullet for the bucket’s token', tokenBullet],
+      ].flatMap(([name, text]) => [
+        ...(has(text, 'leaked `.env` leaked every value in it')
+          ? []
+          : [`${name} doesn’t say a leaked .env leaked every value in it`]),
+        ...LEAKED.filter((value) => !has(text, value)).map(
+          (value) => `${name} leaves ${value} of a leaked .env as it was`,
+        ),
+      ]),
+      ...(has(vps, "- Hosted staging's pooler login (`STAGING_DB_*`): a new database password")
+        ? []
+        : ['Rotation has no step for hosted staging’s pooler login']),
+    ];
+  });
+
 /**
  * Where the old server may have been reached as root, its night of the new key carries its data
  * folder, ALTER SYSTEM settings and planted files and all, which a point-in-time recovery puts back
  * for db, and the new key went into its .env (Stop C's second re-review, N1): nothing it made after
  * the trouble is trusted, it is rebuilt with a fresh signing pair, and the night from before the
- * trouble is recovered logically.
+ * trouble is recovered logically, as none of that server's nights may be taken by a point-in-time
+ * recovery (the third re-review, docs design note 6: "none … may be taken" alone forbade that
+ * logical recovery too).
  */
 const rootReach = (runbook: string) =>
   inPlaces(runbook, ['theft', 'recovery', 'check'], ({ theft, recovery, check }) => [
@@ -467,13 +569,74 @@ const rootReach = (runbook: string) =>
     has(theft, "goes into no list and not into the stolen key's file")
       ? []
       : ['the theft’s step 5 keeps the signing key the reached server held']),
-    ...(has(recovery, "none of that server's nights may be taken, the new key's included")
+    ...(has(
+      recovery,
+      "none of that server's nights may be taken by a point-in-time recovery, the new key's included",
+    )
       ? []
       : ['disaster recovery’s first choice may start from a night of a server reached as root']),
     ...(has(check, 'nothing it made after the trouble could have begun is taken')
       ? []
       : ['step 2.2 distrusts only the archive of a night a server reached as root made']),
   ]);
+
+/** `text` from the first `from` on, or '' when it is missing. */
+const after = (text: string, from: string) => {
+  const at = text.indexOf(from);
+  return at < 0 ? '' : text.slice(at);
+};
+
+/**
+ * After a possible reach as root the theft's steps still ran the restore test and the drill on the
+ * reached server, at its step 4, at the end of Rotation and in its sub-step 4, each putting the
+ * backup key's private half on that server's ramfs; and the rebuilt list kept the older signing
+ * keys, whose private halves are in every settings archive that key opens (Stop C's third
+ * re-review, finding G1). Where root may have reached the server they run on the rebuilt one only,
+ * and a backup key that was on that server since the trouble could have begun counts as stolen
+ * too: a new backup pair, and every older key in the stolen key's file, not the rebuilt list.
+ */
+const rootKeys = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['theftTest', 'theft', 'rotation', 'check'],
+    ({ theftTest, theft, rotation, check }) => {
+      const steps = flat(theft);
+      const fourth =
+        part(steps, '4. **A night from before the trouble**', '5. **If root may have reached') ??
+        '';
+      const fifth = after(steps, '5. **If root may have reached the server**');
+      return [
+        ...(has(theftTest, 'they run on the rebuilt server only')
+          ? []
+          : [
+              'the stolen-token step 4 runs the restore test and the drill on a server root may still hold',
+            ]),
+        ...(has(theft, 'no private key that outlives the rebuild (sub-step 5) goes on it')
+          ? []
+          : ['the theft’s step 5 puts private keys on a server root may still hold']),
+        ...(has(rotation, 'they run on the rebuilt server only')
+          ? []
+          : ['Rotation runs its closing tests on a server root may still hold']),
+        ...(fourth.includes('run on the rebuilt server only')
+          ? []
+          : ['the theft’s sub-step 4 recovers and tests a night on a server root may still hold']),
+        ...(fifth.includes('the backup key counts as stolen too') &&
+        fifth.includes('a new backup pair')
+          ? []
+          : ['the theft’s step 5 never counts the backup key as stolen after a reach as root']),
+        ...(fifth.includes(
+          "every older key of sub-step 1 goes into the stolen key's file, not the rebuilt list",
+        )
+          ? []
+          : [
+              'the theft’s step 5 keeps the older keys in the rebuilt list, though the backup key opens their private halves',
+            ]),
+        ...(has(check, 'the backup key counts as stolen too')
+          ? []
+          : ['step 2.2 never counts the backup key as stolen after a reach as root']),
+      ];
+    },
+  );
 
 /**
  * On a new server app-deploy's switch starts backup before db exists, whose shipper then alerts
@@ -505,17 +668,20 @@ const backupStopped = (runbook: string) =>
  * age reads the file of its key as keys, comments and blank lines alone, so the key list is kept
  * beside the age key in a file of its own and never inside it (design note 4): nothing of the
  * RUNBOOK's VPS part says "with the age key", and install's steps 1 and 6 and Rotation say so.
+ * Each phrase is read with its white space folded, as every rule's is (Stop C's third re-review,
+ * finding G4: these matched spaces they spelled out, so a sentence wrapped again failed them, and
+ * "with the age key" wrapped again escaped).
  */
 const listApart = (runbook: string) =>
   inPlaces(runbook, ['vps', 'firstKey', 'secrets', 'rotation'], (texts) => [
-    ...[...texts.vps.matchAll(/with the age\s+key/g)].map(
+    ...[...flat(texts.vps).matchAll(/with the age key/g)].map(
       () => 'the RUNBOOK keeps the key list with the age key',
     ),
     ...(['firstKey', 'secrets', 'rotation'] as const)
-      .filter((name) => !/file of its\s+own/.test(texts[name]))
+      .filter((name) => !has(texts[name], 'file of its own'))
       .map((name) => `${name} doesn’t keep the key list in a file of its own`),
-    ...(/never in the age key's\s+file/.test(texts.secrets) &&
-    /never inside\s+`menumesh-backup-key\.txt`/.test(texts.firstKey)
+    ...(has(texts.secrets, "never in the age key's file") &&
+    has(texts.firstKey, 'never inside `menumesh-backup-key.txt`')
       ? []
       : ['install doesn’t keep the key list out of the age key’s file']),
   ]);
@@ -527,14 +693,14 @@ const MADE = "kept in monthly/ as the month's copy";
  * The night that makes the month's copy says so in a line of its own, and every later whole night
  * names the copy it found (finding B1): the monthly check, naming a night 29 days old or more and
  * step 2.1's download from monthly/ take either line, and nobody copies a night by hand, as a copy
- * without its record is never counted.
+ * without its record is never counted, however the sentence that did is wrapped (finding G4).
  */
 const copyNamed = (runbook: string) =>
   inPlaces(runbook, ['restoreTest', 'oldNight', 'download'], (texts) => [
     ...(['restoreTest', 'oldNight', 'download'] as const)
       .filter((name) => !has(texts[name], RELIED) || !has(texts[name], MADE))
       .map((name) => `${name} doesn’t take both of the backup’s lines for the month’s copy`),
-    ...(/its parts first and its\s+seal last/.test(texts.restoreTest)
+    ...(has(texts.restoreTest, 'its parts first and its seal last')
       ? ['the restore test still copies a night to monthly/ by hand']
       : []),
   ]);
@@ -554,26 +720,64 @@ const plantedEndings = (backup: string) =>
   ].map((match) => match[1]);
 
 /**
+ * What the steps of the month's copy find, which the alert gives in place of the step's reason:
+ * each `fail` line of backup.sh from the copy's first step to the removal, but those that stop a
+ * night on a planted name, with the night's id as <id> and a part's name as <name>.
+ */
+const copyFindings = (backup: string) =>
+  [
+    ...(
+      part(backup, "reason='the monthly copy'", "reason='the removal of old copies'") ?? ''
+    ).matchAll(/\bfail (["'])(.+?)\1/g),
+  ]
+    .map((match) => match[2])
+    .filter((line) => !line.includes('$there'))
+    .map((line) => line.replaceAll('$night', '<id>').replaceAll('$name', '<name>'));
+
+/**
  * A name put under one of tonight's monthly/ names failed the copy with a reason that never said
  * so, and the RUNBOOK sent every such alert to wait for the next night (Stop C's second re-review,
  * finding R1): Last night's backup quotes each reason backup.sh gives a step of the copy and the
  * lines that stop a night on a planted name, and sends a lock's refusal or the same step night after
  * night to the stolen-token steps, whose list takes it so; the restore test's remedy says no night
- * was whole only of nights that failed before their seal, and waits for a night of the month.
+ * was whole only of nights that failed before their seal, and waits for a night of the month. Since
+ * the third re-review: Last night's backup quotes every line a step of the copy gives in place of
+ * its reason, one an alert, never a step and what it found together (docs design note 2); the
+ * restore test's remedy names the nights sealed and then failed at the end (docs design note 1);
+ * and the stolen-token steps take the names a stopped night's alert lists for the token holder's,
+ * which the backup writes too and which, left there, can fill the month's candidates (finding E1).
  */
 const copySteps = (runbook: string, backup: string) => {
   const reasons = copyReasons(backup);
   const endings = plantedEndings(backup);
+  const findings = copyFindings(backup);
   return [
     ...(reasons.length ? [] : ['backup.sh gives the month’s copy no step of its own']),
     ...(endings.length
       ? []
       : ['backup.sh stops no night on a name of its copy already in monthly/']),
-    ...inPlaces(runbook, ['lastNight', 'restoreTest', 'stolen'], (texts) => {
+    ...inPlaces(runbook, ['lastNight', 'restoreTest', 'stolen', 'cleanup'], (texts) => {
       const night = flat(texts.lastNight);
       const test = flat(texts.restoreTest);
       const taken = part(flat(texts.stolen), 'Take it as stolen when', "shouldn't be.") ?? '';
       return [
+        ...findings
+          .filter((line) => !night.includes(`\`${line}\``))
+          .map(
+            (line) => `Last night’s backup doesn’t quote what a step of the copy found, “${line}”`,
+          ),
+        ...(night.includes('with what it found') || !night.includes('or in its place')
+          ? ['Last night’s backup reads as if one alert carried a step and what it found']
+          : []),
+        ...(test.includes('Nights sealed and then failed at the end')
+          ? []
+          : ['the restore test says nothing of the nights sealed and then failed at the end']),
+        ...(has(
+          texts.cleanup,
+          "So are the names a night's alert lists after `someone else wrote to the bucket: monthly/ holds`",
+        )
+          ? []
+          : ['the stolen-token steps leave the names a stopped night’s alert lists in the bucket']),
         ...reasons
           .filter((reason) => !night.includes(`\`${reason}\``))
           .map((reason) => `Last night’s backup doesn’t quote the copy’s step “${reason}”`),
@@ -676,11 +880,33 @@ const cutAdvice = (runbook: string, pitr: string) => {
  * was the way past only when the rewind left that night alone (Stop C's second re-review, finding
  * T2). Step 5 takes out the seal of each night a refusal names, in turn, says when the seals go
  * back, and the drill note says a point the rewind left behind is refused after the night by hand.
+ * The way past promised "that point" for a point on the stretch the rewind abandoned, which the
+ * replay never reaches: it follows the rewind's timeline from the fork and stops before its first
+ * transaction, at the rewind's point (Stop C's third re-review, finding F2, rehearsed by
+ * vps:backup-test). And the refusals need the rewind's history file in the bucket (pitr design
+ * note 1).
  */
 const rewindRoute = (runbook: string) =>
   inPlaces(runbook, ['recovery', 'drill'], ({ recovery, drill }) => {
     const steps = flat(recovery);
     return [
+      ...(steps.includes('across the fork, or to that point')
+        ? ['step 5 promises the way past reaches a point on the stretch the rewind abandoned']
+        : []),
+      ...(steps.includes(
+        "or to a point of the second kind on the rewind's timeline (after the rewind ran)",
+      ) &&
+      steps.includes(
+        "a point on the abandoned timeline after the rewind's point, up to when the rewind ran, reaches the rewind's point at most, whichever seals are out",
+      ) &&
+      steps.includes("Only a night's logical recovery holds that stretch")
+        ? []
+        : [
+            'step 5 doesn’t say a point on the stretch the rewind abandoned reaches only the rewind’s point',
+          ]),
+      ...(steps.includes("The refusal needs the rewind's history file in the bucket")
+        ? []
+        : ['step 5 doesn’t say the refusal needs the rewind’s history file in the bucket']),
       ...(steps.includes("every night whose base ended after the rewind's point is out")
         ? []
         : ['step 5 takes only the newest night out of daily/, not every night the rewind left']),
@@ -702,6 +928,43 @@ const rewindRoute = (runbook: string) =>
     ];
   });
 
+/**
+ * Step 7 deployed, after a recovery to latest or of a night, the release images.env names "with
+ * its migrate image". A rollback by hand passes no migrate reference, so MIGRATE_IMAGE can still be
+ * the migrate image of a release a rewind undid; and after the new-server way past the nights a
+ * rewind left, the settings archive is from before the rewind, its images.env and deploys.log
+ * naming the release it undid, whose migrations would run again (Stop C's third re-review, finding
+ * F1, VPS-55's outcome). Step 7 deploys without a migrate reference, the release before the one a
+ * rewind undid when the archive is from before it, and the way past sends the owner there.
+ */
+const releaseDeployed = (runbook: string) =>
+  inPlaces(runbook, ['release', 'recovery'], ({ release, recovery }) => [
+    ...(has(release, "that is the release `images.env`'s `WEB_IMAGE` names") &&
+    has(release, 'since a rollback by hand passes no migrate reference')
+      ? []
+      : [
+          'step 7 deploys the release `images.env` names with the migrate image `images.env` names',
+        ]),
+    ...(has(release, 'with its migrate image')
+      ? ['step 7 still deploys a release with its migrate image after a recovery']
+      : []),
+    ...(has(
+      release,
+      'So too when a rewind past a release came after the night whose settings archive',
+    ) &&
+    has(
+      release,
+      "the last production line of the archive's `deploys.log` before the rewind's point",
+    )
+      ? []
+      : [
+          'step 7 deploys the release a rewind undid after a recovery from a settings archive made before the rewind',
+        ]),
+    ...(has(recovery, 'see step 7 for the release to deploy')
+      ? []
+      : ['the way past the nights a rewind left doesn’t send the owner to step 7 for the release']),
+  ]);
+
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
 const REWRAPPED = [
   'password manager',
@@ -713,6 +976,23 @@ const REWRAPPED = [
   'records made before the trouble could have begun',
   'the seals go back once a night of the timeline that recovery made exists',
   'never by a point-in-time recovery from',
+  // Matched with their spaces spelled out until Stop C's third re-review (finding G4).
+  'file of its own',
+  "never in the age key's file",
+  'never inside `menumesh-backup-key.txt`',
+  'Disaster recovery, step 4',
+  'Disaster recovery,',
+  // Read by the rules of that re-review.
+  'leaked every value in it',
+  'on the rebuilt server only',
+  'counts as stolen too',
+  "reaches the rewind's point at most",
+  'see step 7 for the release',
+  'a rollback by hand passes no migrate reference',
+  'or an older key that may have leaked',
+  'sealed and then failed at the end',
+  "the names a night's alert lists",
+  'its keys out of order',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -833,6 +1113,38 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '  checks it against the first. The new private key also goes into the vault, in the old\n',
       ),
       'Rotation doesn’t keep the new private key in the password manager and check the pair',
+    );
+    // Rotation's sentence wrapped again inside the name of the step it cites (finding G4).
+    expect(
+      pairChecked(
+        swap(
+          RUNBOOK,
+          'Check the pair with the one-off of Disaster recovery,\n  step 4,',
+          'Check the pair with the one-off of Disaster\n  recovery, step 4,',
+        ),
+      ),
+    ).toEqual([]);
+    // As before the third re-review: the pair's refusal glossed as another pair's key alone.
+    expect(SEAL).toContain('echo "seal: openssl could not sign ${1##*/}"');
+    expect(SEAL).toContain('"$seal_probe_dir/probe"');
+    const gloss = swap(
+      RUNBOOK,
+      cut(
+        RUNBOOK,
+        '       a private key of another pair, such as one from before a rotation',
+        '\n\n  5. The recovery',
+      ),
+      '       a private key of another pair, such as one from before a rotation.',
+    );
+    refuses(
+      pairChecked,
+      gloss,
+      'step 4 blames the private key alone for a list shaped as keys but not the kept one',
+    );
+    refuses(
+      pairChecked,
+      gloss,
+      'step 4 promises one line where a private key openssl can’t load prints more',
     );
   });
 
@@ -1020,6 +1332,54 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       'step 2.2 doesn’t say the kept list holds the new key first',
     );
+    // As before the third re-review (finding G3): the night by hand the month's copy again, and
+    // a night an older key of the kept list signed checked and recovered with the stolen key's file.
+    refuses(
+      theftList,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' No\n      copy the stolen key recorded counts', ' A point-in-time recovery'),
+        [
+          ' The',
+          "      night prints `backup <id>: kept in monthly/ as the month's copy`, then",
+          "      `backup <id>: 6 parts, <n> bytes, kept in monthly/ as the month's copy`: no copy the stolen",
+          '      key recorded counts once it is out of the list, so the first night of the new key is the',
+          "      month's copy again.",
+        ].join('\n'),
+      ),
+      'the theft’s night by hand makes the month’s copy again where an older key of the list recorded it',
+    );
+    refuses(
+      theftList,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '        That file is for a night the stolen key', "That archive's `.env`"),
+        '        ',
+      ),
+      'step 2.2 checks a night an older key of the kept list signed with the stolen key’s file',
+    );
+    refuses(
+      theftList,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          '\n     One that an older key of the kept list signed',
+          '\n\n     It refuses while',
+        ),
+        '',
+      ),
+      'step 5’s fallback recovers a night an older key of the kept list signed with the stolen key’s file',
+    );
+    refuses(
+      theftList,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' That file is for such nights alone:', ' Where root\n      may have reached'),
+        '',
+      ),
+      'the theft’s step 5 recovers a night an older key of the kept list signed with the stolen key’s file',
+    );
   });
 
   it('names a night from before a leaked .env only from records made before it, with the backup’s records made new (finding U5)', () => {
@@ -1061,6 +1421,55 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '',
       ),
       'disaster recovery’s step 2 names a night from before a theft from any record',
+    );
+  });
+
+  it('makes every value of a leaked .env new, not only the backup’s (finding G2)', () => {
+    expect(envLeaked(RUNBOOK)).toEqual([]);
+    // As before the third re-review: the backup's values alone, and no step for the pooler login.
+    const before = swap(
+      swap(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, ' And the leaked `.env` leaked every value in it', ' Where root may have'),
+          '',
+        ),
+        cut(
+          RUNBOOK,
+          ': A stolen or leaked bucket token (VPS). A leaked `.env`',
+          '\n- The backup key:',
+        ),
+        ", after which the backup's heartbeat addresses and the bot's token go new with it:\n  A stolen or leaked bucket token (VPS).",
+      ),
+      cut(RUNBOOK, "- Hosted staging's pooler login", "- The bucket's token"),
+      '',
+    );
+    refuses(
+      envLeaked,
+      before,
+      'the theft’s step 5 doesn’t say a leaked .env leaked every value in it',
+    );
+    refuses(
+      envLeaked,
+      before,
+      'the theft’s step 5 leaves both cron secrets of a leaked .env as it was',
+    );
+    refuses(
+      envLeaked,
+      before,
+      'Rotation’s bullet for the bucket’s token doesn’t say a leaked .env leaked every value in it',
+    );
+    refuses(
+      envLeaked,
+      before,
+      'Rotation’s bullet for the bucket’s token leaves `POSTGRES_PASSWORD` of a leaked .env as it was',
+    );
+    refuses(envLeaked, before, 'Rotation has no step for hosted staging’s pooler login');
+    // One value left out of the theft's list.
+    refuses(
+      envLeaked,
+      swap(RUNBOOK, 'secrets,\n   the schedulers', 'secrets,\n   the'),
+      "the theft’s step 5 leaves the schedulers' heartbeat addresses of a leaked .env as it was",
     );
   });
 
@@ -1106,6 +1515,56 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       'step 2.2 distrusts only the archive of a night a server reached as root made',
     );
+    // As before the third re-review (docs design note 6): none of its nights at all, which
+    // forbade the logical recovery the same sentence sends the owner to.
+    refuses(
+      rootReach,
+      swap(
+        RUNBOOK,
+        "nights may be taken by a point-in-time recovery, the new key's included",
+        "nights may be taken, the new key's included",
+      ),
+      'disaster recovery’s first choice may start from a night of a server reached as root',
+    );
+  });
+
+  it('puts no private key on a server root may still hold, and counts its backup key stolen once it was there (finding G1)', () => {
+    expect(rootKeys(RUNBOOK)).toEqual([]);
+    // As before the third re-review: the tests on the reached server, and the backup key and the
+    // older signing keys kept.
+    const sentences: [string, string][] = [
+      [' Where root may have reached the server\n   (step 5)', '\n\n5. **If the server itself'],
+      [' Where root\n  may have reached the server, they run', "\n- Staging's password"],
+      [' Where root may have reached the server, no private key', ' So, with the token and'],
+      [' Where root\n      may have reached the server, this recovery', '\n\n   5. **If root may'],
+      ['\n      (none when the backup key counts as stolen too, below)', ', without the key'],
+      ["\n\n      If the backup key's private half was on", '\n\n### Logs and alerts'],
+      [" If the backup key's private half was on that server since", '\n\n     3. **Unpack**'],
+    ];
+    const before = sentences.reduce(
+      (text, [from, to]) => swap(text, cut(RUNBOOK, from, to), ''),
+      RUNBOOK,
+    );
+    for (const problem of [
+      'the stolen-token step 4 runs the restore test and the drill on a server root may still hold',
+      'the theft’s step 5 puts private keys on a server root may still hold',
+      'Rotation runs its closing tests on a server root may still hold',
+      'the theft’s sub-step 4 recovers and tests a night on a server root may still hold',
+      'the theft’s step 5 never counts the backup key as stolen after a reach as root',
+      'the theft’s step 5 keeps the older keys in the rebuilt list',
+      'step 2.2 never counts the backup key as stolen after a reach as root',
+    ])
+      refuses(rootKeys, before, problem);
+    // The rebuilt list with the older keys though the backup key counts as stolen.
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        "every older\n      key of sub-step 1 goes into the stolen key's file, not the rebuilt list",
+        'every older key of sub-step 1 stays in the rebuilt list',
+      ),
+      'the theft’s step 5 keeps the older keys in the rebuilt list',
+    );
   });
 
   it('stops backup after step 4 on a new server until step 6 starts it after db (finding V4)', () => {
@@ -1144,6 +1603,26 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, "never in the age key's file. A recovery", 'and keep a copy. A recovery'),
       'install doesn’t keep the key list out of the age key’s file',
     );
+    // The same, wrapped where the rule spelled out its space until Stop C's third re-review
+    // (finding G4): such a phrase escaped it, and a harmless wrap of a good one failed it.
+    refuses(
+      listApart,
+      swap(
+        RUNBOOK,
+        "never in the age key's file. A recovery",
+        "never in the age key's file. Keep a copy with the\n   age key. A recovery",
+      ),
+      'the RUNBOOK keeps the key list with the age key',
+    );
+    expect(
+      listApart(
+        swap(
+          RUNBOOK,
+          "   alone in a plain text file of its own, never in the age key's file.",
+          "   alone in a plain text file of\n   its own, never in the\n   age key's file.",
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it('names the month’s copy by either of the backup’s lines (finding B1)', () => {
@@ -1164,6 +1643,17 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         RUNBOOK,
         '  copies itself (A night, above). Nights that failed',
         '  copies itself; else copy a whole night, its parts first and its seal last. Nights that failed',
+      ),
+      'the restore test still copies a night to monthly/ by hand',
+    );
+    // The same, wrapped where the rule spelled out its space until Stop C's third re-review
+    // (finding G4): it escaped the rule then.
+    refuses(
+      copyNamed,
+      swap(
+        RUNBOOK,
+        '  copies itself (A night, above). Nights that failed',
+        '  copies itself; else copy a whole night, its parts\n  first and its seal last. Nights that failed',
       ),
       'the restore test still copies a night to monthly/ by hand',
     );
@@ -1227,6 +1717,59 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         `reason="the seal of the month's copy"`,
       ),
       "doesn’t quote the copy’s step “the seal of the month's copy”",
+    );
+    // Stop C's third re-review: every line a step gives in place of its reason, one an alert.
+    expect(copyFindings(BACKUP)).toEqual([
+      'monthly/<name> is not in the bucket as it went up',
+      "monthly/seal-<id>.txt is not the night's seal",
+      'no sha256 of seal-<id>.txt for the record',
+      'the record could not be signed (openssl)',
+      'monthly/copy-<id>.txt is not in the bucket as it went up',
+    ]);
+    // As before it (docs design note 2): one line unquoted, and a step "with what it found".
+    const found = swap(
+      RUNBOOK,
+      cut(RUNBOOK, "  - `the check of the month's copy`", "\n    the copy's parts and seal are in"),
+      [
+        "  - `the check of the month's copy`, with what it found",
+        '    (`monthly/<name> is not in the bucket as it went up`,',
+        "    `monthly/seal-<id>.txt is not the night's seal`): the copy is there but not as it went up,",
+        '    with no record;',
+        "  - `someone else wrote to the bucket: monthly/ holds copy-<id>.txt before the record of tonight's copy`,",
+        "    or `the record of the month's copy`, with what it found",
+        '    (`the record could not be signed (openssl)`, `monthly/copy-<id>.txt is not in the bucket as it went up`):',
+      ].join('\n'),
+    );
+    refuses(
+      steps,
+      found,
+      'doesn’t quote what a step of the copy found, “no sha256 of seal-<id>.txt for the record”',
+    );
+    refuses(steps, found, 'reads as if one alert carried a step and what it found');
+    // A line backup.sh gains in a step of the copy is a line the RUNBOOK must quote.
+    refuses(
+      (text) => copySteps(RUNBOOK, text),
+      BACKUP.replace(
+        "fail 'the record could not be signed (openssl)'",
+        "fail 'the record could not be signed (openssl, the key)'",
+      ),
+      'doesn’t quote what a step of the copy found, “the record could not be signed (openssl, the key)”',
+    );
+    // As before it (docs design note 1): no word of a night sealed and then failed at the end.
+    refuses(
+      steps,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' Nights sealed and then failed at the end', ' Then the test.'),
+        '',
+      ),
+      'the restore test says nothing of the nights sealed and then failed at the end',
+    );
+    // As before it (finding E1): the names a stopped night's alert lists left in the bucket.
+    refuses(
+      steps,
+      swap(RUNBOOK, cut(RUNBOOK, ' So are the names a night', ' A part put over its'), ''),
+      'the stolen-token steps leave the names a stopped night’s alert lists in the bucket',
     );
   });
 
@@ -1309,6 +1852,83 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       'the drill doesn’t say a point the rewind left behind is refused after the night by hand',
     );
+    // As before the third re-review (finding F2, pitr design note 1): the way past to "that
+    // point", one on the stretch the rewind abandoned reaching "the fork at most", and no word of
+    // the history file the refusals need.
+    const promised = swap(
+      swap(
+        swap(
+          RUNBOOK,
+          ", or to a point of the\n       second kind on the rewind's timeline (after the rewind ran), as the rehearsal shows.",
+          ', or to that point, as\n       the rehearsal shows.',
+        ),
+        cut(RUNBOOK, ' a point on the abandoned timeline after', '\n     - to get past them'),
+        " a point after it, before the base of any of them\n       ended, reaches the fork at most, as the old timeline's WAL after the rewind's point is never\n       replayed (only a night's logical recovery has that stretch);",
+      ),
+      cut(
+        RUNBOOK,
+        '. The refusal needs the',
+        '\n     - a point after the base of any of them ended',
+      ),
+      ';',
+    );
+    refuses(
+      rewindRoute,
+      promised,
+      'step 5 promises the way past reaches a point on the stretch the rewind abandoned',
+    );
+    refuses(
+      rewindRoute,
+      promised,
+      'step 5 doesn’t say a point on the stretch the rewind abandoned reaches only the rewind’s point',
+    );
+    refuses(
+      rewindRoute,
+      promised,
+      'step 5 doesn’t say the refusal needs the rewind’s history file in the bucket',
+    );
+  });
+
+  it('deploys a recovered release without a migrate reference, the one before a rewind’s after an archive from before it (finding F1)', () => {
+    expect(releaseDeployed(RUNBOOK)).toEqual([]);
+    // As before the third re-review: after latest or a night, the release images.env names with
+    // its migrate image, and nothing of a settings archive from before a rewind.
+    const before = swap(
+      RUNBOOK,
+      cut(RUNBOOK, "\n  7. Production's image", '\n  8. The edge'),
+      [
+        "\n  7. Production's image, by the admin form, and staging's; then",
+        "     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's is the image that",
+        '     was live at the point recovered to. After a recovery to `latest`, or of a night, that is the',
+        '     one `images.env` names, deployed with its migrate image (after `latest` the migrations find',
+        '     nothing to apply). After a rewind to a point before a release, such as the bad release it',
+        '     undid, it is the release before it, the last production line of `deploys.log` before that',
+        '     point, deployed without a migrate reference (Deploys on the VPS, Rolling back by hand), and',
+        '     never the entry of `images.env` that the rewind undid: that file still names the release,',
+        '     whose migrate run would apply its migrations again and switch `web` back to it.',
+      ].join('\n'),
+    );
+    refuses(
+      releaseDeployed,
+      before,
+      'step 7 deploys the release `images.env` names with the migrate image `images.env` names',
+    );
+    refuses(releaseDeployed, before, 'step 7 still deploys a release with its migrate image');
+    refuses(
+      releaseDeployed,
+      before,
+      'step 7 deploys the release a rewind undid after a recovery from a settings archive made before the rewind',
+    );
+    // The way past the nights a rewind left without its pointer to step 7.
+    refuses(
+      releaseDeployed,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' On a\n       new server, see step 7', ';\n     - the seals go back'),
+        '',
+      ),
+      'the way past the nights a rewind left doesn’t send the owner to step 7 for the release',
+    );
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
@@ -1326,7 +1946,9 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(oneRunKey(rewrapped)).toEqual([]);
     expect(theftList(rewrapped)).toEqual([]);
     expect(theftRecords(rewrapped)).toEqual([]);
+    expect(envLeaked(rewrapped)).toEqual([]);
     expect(rootReach(rewrapped)).toEqual([]);
+    expect(rootKeys(rewrapped)).toEqual([]);
     expect(backupStopped(rewrapped)).toEqual([]);
     expect(listApart(rewrapped)).toEqual([]);
     expect(copyNamed(rewrapped)).toEqual([]);
@@ -1334,5 +1956,6 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(baseRefusals(rewrapped, PITR)).toEqual([]);
     expect(cutAdvice(rewrapped, PITR)).toEqual([]);
     expect(rewindRoute(rewrapped)).toEqual([]);
+    expect(releaseDeployed(rewrapped)).toEqual([]);
   });
 });
