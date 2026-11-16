@@ -474,9 +474,10 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
       # seal without its record is no candidate: five copies cut short before their records, or
       # five seals someone else put there, filled the 5 and hid a recorded copy behind them, so
       # every later night of the month copied itself again (Stop C's re-review, design note 3).
-      # Planted seals and records fail their signatures and stop no copy; enough of them, oldest,
-      # could make one copy more. The listing quotes no name, so a line of more than a size and a
-      # name is no object's.
+      # Planted seals and records fail their signatures and stop no copy: a seal and a record put
+      # under each of five ids older than the month's copy would at most have each later night of
+      # the month copy itself again, which costs only the copies. The listing quotes no name, so a
+      # line of more than a size and a name is no object's.
       rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" --include "copy-$month-*" "$remote/monthly/" |
         LC_ALL=C awk -v month="$month" -v max="$seal_max" '
           NF == 2 && $1 ~ /^[1-9][0-9]*$/ && $2 ~ ("^(seal|copy)-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") {
