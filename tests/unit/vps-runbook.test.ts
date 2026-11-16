@@ -47,7 +47,10 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * inside the night's window, and only where they reach the seal's stamp, the key found by trying
  * each of the list alone, the drill's count held, once a key has left the list, to the first
  * drill's since, and the drill's night checked as the restore test's (the seventh re-review's R1,
- * R2, H1 and H2, and its theft design notes); the drill names each of pitr.sh's refusals of
+ * R2, H1 and H2, and its theft design notes), the server's own pings counted on the same server
+ * too, the journal's reach read off its first line, a ping's window run to the next night's, a
+ * night that sent no ping taking no key, and only pings naming different ids in one window a sign
+ * (the eighth re-review's T1, T2, H1 and H2); the drill names each of pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
  * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
@@ -520,7 +523,10 @@ const theftList = (runbook: string) =>
  * steps took the night from before the trouble from the monitor's log, where a thief could ping a
  * night of their own (Stop C's second re-review, finding U5): the theft's step 5 keeps the log,
  * makes both heartbeat addresses and the bot's token new, and names that night only from records
- * made before the trouble could have begun; disaster recovery's step 2 says so too.
+ * made before the trouble could have begun; disaster recovery's step 2 says so too. Its window ran
+ * about 2 hours, short of a long base's ping, and two lines in it, a ping curl sent twice among
+ * them, took the night for the thief's (Stop C's eighth re-review, findings T1 and H1): the window
+ * runs to the next night's, and only two lines naming different ids, but for a run by hand, do.
  */
 const theftRecords = (runbook: string) =>
   inPlaces(runbook, ['theft', 'recovery'], ({ theft, recovery }) => [
@@ -544,10 +550,26 @@ const theftRecords = (runbook: string) =>
         ]),
     ...(has(
       theft,
-      "Two `backup` lines in one night's window, or an id that no record from before names, mean a night of the thief's: take the night before it",
-    )
+      "or an id that no record from before names, mean a night of the thief's: take the night before it",
+    ) && has(theft, 'Two `backup` lines')
       ? []
       : ['the theft’s step 5 doesn’t pass over a night a thief may have pinged']),
+    ...(has(
+      theft,
+      "Two `backup` lines naming different ids in one night's window but for a run by hand, or",
+    ) && !has(theft, "Two `backup` lines in one night's window")
+      ? []
+      : [
+          'the theft’s step 5 takes a ping that curl’s retry sent again, the same line, for a night of the thief’s',
+        ]),
+    ...(has(
+      theft,
+      "from the server's own address and inside its night (from its stamp to the next night's)",
+    ) && !has(theft, '(from its stamp to about 2 hours after)')
+      ? []
+      : [
+          'the theft’s step 5 names a night from before the trouble only by a ping within about 2 hours of its stamp, though a long base pings later',
+        ]),
     ...(has(recovery, 'named only from records made before the trouble could have begun')
       ? []
       : ['disaster recovery’s step 2 names a night from before a theft from any record']),
@@ -1101,7 +1123,15 @@ const copySteps = (runbook: string, backup: string) => {
  * key for stolen; each key of the list is tried alone, and where an older one signed, the list's
  * first, which sub-step 1 kept nowhere, goes into the stolen key's file with it (seen while fixing
  * H1); once a key has left the list the count is held to the first drill's since; and the drill's
- * night is checked as the restore test's is.
+ * night is checked as the restore test's is. But after a rebuild a night that failed after its seal,
+ * or whose ping was lost, was named by nothing the records count, so its key was taken for stolen
+ * (Stop C's eighth re-review, finding T1); the journal's reach was its 180 days, though a full
+ * journal or a vacuum cuts it short (T2); a ping curl sent twice was two pings in a window, a sign
+ * (H1); and on the same server a night whose line journald dropped to its rate limit looked planted
+ * (H2). Now a night that sent no ping, as the monitor alerted that day, takes no key; the reach is
+ * read off the first line printed; the window runs to the next night's, the server's own address is
+ * the old server's for its nights, and a ping names the month's copy its line names; only pings
+ * naming different ids in a window are a sign; and the server's own pings count on the same server.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(
@@ -1235,32 +1265,87 @@ const oldCopies = (runbook: string) =>
           : [
               'the stolen-token steps keep trusting the key that signed a night no record of the backup names',
             ]),
-        ...(taken.includes(
-          "(on the same server the journal's lines, never a Telegram message; after a rebuild, the backup monitor's pings from the server's own address inside the night's window: step 2)",
-        ) &&
-        has(
-          cleanup,
-          "On the same server those records are the journal's lines above, over its 180 days, never a Telegram message",
-        ) &&
-        has(
-          cleanup,
-          "only where the journal can't reach, after a rebuild, the backup monitor's log, and in it only a ping from the server's own address inside the night's window",
-        ) &&
-        has(
-          cleanup,
-          "A ping or alert naming a night the whole journal does not name, or two `backup` pings in one night's window but for a run by hand, is itself a sign the `.env` leaked (step 5)",
-        ) &&
+        ...(taken.includes('never a Telegram message; after a rebuild,') &&
+        taken.includes("pings from the server's own address inside the night's window") &&
+        has(cleanup, 'never a Telegram message') &&
+        (has(cleanup, "only where the journal can't reach, after a rebuild, those pings alone") ||
+          has(
+            cleanup,
+            "only where the journal can't reach, after a rebuild, the backup monitor's log, and in it only a ping from the server's own address inside the night's window",
+          )) &&
+        has(cleanup, "from the server's own address inside the night's window") &&
+        has(cleanup, 'is itself a sign the `.env` leaked (step 5)') &&
         !has(cleanup, "(the journal's lines and alert lines, and the backup monitor's log") &&
         !taken.includes("(its journal or alert lines; after a rebuild, the backup monitor's log)")
           ? []
           : [
               'the stolen-token steps count a ping a leaked .env can send, or a Telegram message, among the backup’s records, so a night of the holder’s goes unseen',
             ]),
-        ...(has(cleanup, 'backup --since -180d --utc -o short-iso') &&
+        ...(taken.includes(
+          "(on the same server the journal's lines and the backup monitor's pings from the server's own address inside the night's window, never a Telegram message; after a rebuild, those pings alone: step 2)",
+        ) &&
         has(
           cleanup,
-          'where those records are whole and reach its stamp (no reach as root, and not a night killed after its seal',
+          "never a Telegram message, and the backup monitor's pings from the server's own address inside the night's window",
         ) &&
+        has(
+          cleanup,
+          'which none can send without root, so a night whose line journald dropped to its rate limit is named all the same',
+        ) &&
+        has(cleanup, 'A ping from elsewhere, two `backup` pings')
+          ? []
+          : [
+              'the stolen-token steps count on the same server the journal’s lines alone, so a night whose line journald dropped to its rate limit looks planted and its own ping a sign of a leak',
+            ]),
+        ...(has(
+          cleanup,
+          "and not a night that sent no ping, killed or failed after its seal or its ping lost, as the monitor alerted that day: on the same server the journal's failure line names a failed one, and after a rebuild a night of the old server's on a day the monitor got no ping from its address is judged by its seal alone and is no sign of theft",
+        ) &&
+        !has(
+          cleanup,
+          'and not a night killed after its seal, which leaves no line at all: the monitor alerted on it',
+        )
+          ? []
+          : [
+              'the stolen-token steps take the key of a night that failed after its seal, or lost its ping, for stolen after a rebuild, where no record they count names it',
+            ]),
+        ...(has(
+          cleanup,
+          "(from its stamp to the next night's, so a long base's late ping counts)",
+        ) &&
+        has(
+          cleanup,
+          "the server's own address being the old server's for nights before the rebuild",
+        ) &&
+        has(cleanup, "Such a ping names its own night and the month's copy its line names") &&
+        !has(cleanup, '(from its stamp to about 2 hours after)')
+          ? []
+          : [
+              'the stolen-token steps hold a ping to about 2 hours after its night’s stamp, take the server’s own address for the rebuilt one’s, or never read a ping as naming the month’s copy its line names',
+            ]),
+        ...(has(
+          cleanup,
+          "over its 180 days, or from the first line the command prints where it holds less (a full journal or a vacuum cuts it short: hostwatch's daily `journal:` line gives its oldest line)",
+        ) &&
+        has(
+          cleanup,
+          "an alert naming a night inside the journal's reach that the journal does not name, on a day journald dropped no lines (hostwatch's daily `suppressed:` line)",
+        ) &&
+        !has(cleanup, 'naming a night the whole journal does not name')
+          ? []
+          : [
+              'the stolen-token steps take the journal’s reach for its 180 days, though a full journal or a vacuum cuts it short, or an alert past that reach, or of a day journald dropped lines, for a sign',
+            ]),
+        ...(has(
+          cleanup,
+          "two `backup` pings naming different ids in one night's window but for a run by hand",
+        ) && !has(cleanup, "two `backup` pings in one night's window")
+          ? []
+          : [
+              'the stolen-token steps take a ping that curl’s retry sent again, the same line, for a sign the .env leaked',
+            ]),
+        ...(has(cleanup, 'backup --since -180d --utc -o short-iso') &&
+        has(cleanup, 'where those records are whole and reach its stamp (no reach as root') &&
         has(
           cleanup,
           "An older month's copy, stamped before the records reach, is judged by its seal alone and is no sign of theft",
@@ -1439,6 +1524,41 @@ const ROUND_7_VERSIONS = [
   '   archive beside it); for a WAL file, its first, as nobody can name one before its upload (a cut',
   '   chain names one written over or deleted). A line only keeps an id from going, never a version',
   "   put over the backup's: step 4 then finds the night it tests whole.",
+].join('\n');
+
+/** The trigger's records, as the seventh re-review's fixes left them (fcad52d). */
+const ROUND_8_TRIGGER = [
+  "same server the journal's lines, never a Telegram message; after a rebuild, the backup monitor's",
+  "pings from the server's own address inside the night's window: step 2",
+].join('\n');
+
+/** The stolen-token step 2's stolen key, as the seventh re-review's fixes left it (fcad52d). */
+const ROUND_8_STOLEN_KEY = [
+  '   A seal a list verifies that no record of the backup names means, where those records are whole',
+  '   and reach its stamp (no reach as root, and not a night killed after its seal, which leaves no',
+  '   line at all: the monitor alerted on it), that a key of that list signed a night the',
+  '   backup never ran: take that key for stolen (step 5). On the same server those records are the',
+  "   journal's lines above, over its 180 days, never a Telegram message; only where the journal can't",
+  "   reach, after a rebuild, the backup monitor's log, and in it only a ping from the server's own",
+  "   address inside the night's window (from its stamp to about 2 hours after), as sub-step 4 reads",
+  "   it. An older month's copy, stamped before the records reach, is judged by its seal alone and is",
+  '   no sign of theft. A ping or alert naming a night the whole journal does not name, or two',
+  "   `backup` pings in one night's window but for a run by hand, is itself a sign the `.env` leaked",
+  '   (step 5). To find which key of a list of several signed a seal, check it with each key of the',
+  "   list alone, in a file of one key each: only the signer's gets past the seal, the others print",
+  "   `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. Where that is not the list's first key,",
+  "   as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5), as its",
+  '   private half was on the server since the trouble could have begun. That id stays all the same,',
+  '   as any whose seal a list verifies.',
+].join('\n');
+
+/** The theft's sub-step 4's records of a night from before, as the seventh re-review left them. */
+const ROUND_8_NIGHT_BEFORE = [
+  "      from the server's own address and inside its night (from its stamp to about 2 hours after),",
+  "      or the old server's journal from then, unless root may have reached the server, as root can",
+  "      write the journal; never a ping received since. Two `backup` lines in one night's window, or",
+  "      an id that no record from before names, mean a night of the thief's: take the night before",
+  '      it.',
 ].join('\n');
 
 /** What pitr.sh says of a base whose timeline the replay leaves before it began or ended. */
@@ -2071,7 +2191,7 @@ const REWRAPPED = [
   "`pitr: not taking the night of <id>: its seal …, so it is not the backup's`",
   "`<n> objects passed over, not the backup's`, n above 0",
   'A seal a list verifies that no record of the backup names',
-  'that a key of that list signed a night the',
+  'key of that list signed a night the backup never ran: take that key for stolen (step 5)',
   // The versions put back, the clauses that keep the backup's own, and the bucket judged again.
   "list each folder's versions too",
   'a name with more than one version, or a delete marker',
@@ -2094,17 +2214,17 @@ const REWRAPPED = [
   'server too, as for a release (Production, step 2)',
   // The backup's records a night and a key are judged by, where they reach, the key of a list that
   // signed, the drill's count once a key has left the list, and the drill's night checked.
-  "the journal's lines, never a Telegram message",
-  "pings from the server's own address inside the night's window: step 2",
-  "journal's lines above, over its 180 days, never a Telegram message",
-  "the backup monitor's log, and in it only a ping from the server's own",
-  'A ping or alert naming a night the whole journal does not name',
-  "pings in one night's window but for a run by hand, is itself a sign",
+  "same server the journal's lines and the backup monitor's pings from the server's own address",
+  "inside the night's window, never a Telegram message; after a rebuild, those pings alone:",
+  'over its 180 days, or from the first',
+  "can't reach, after a rebuild, those pings alone",
+  'A ping from elsewhere, two `backup` pings',
+  "different ids in one night's window but for a run by hand",
   'backup --since -180d --utc -o short-iso',
-  'and reach its stamp (no reach as root, and not a night killed after its seal',
+  'and reach its stamp (no reach as root',
   "An older month's copy, stamped before the records reach",
-  'To find which key of a list of several signed a seal',
-  "list alone, in a file of one key each: only the signer's gets past the seal",
+  'list of several signed a seal, check it with each key of the list alone, in a file of one key',
+  "each: only the signer's gets past the seal",
   "as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5)",
   'or once a key has left the list, n above',
   "that id against the backup's own journal line, as for the restore test",
@@ -2127,6 +2247,22 @@ const REWRAPPED = [
   'that line is later than that time; on a new server',
   '`the upload of <walfile> to the bucket failed (rclone)`',
   'backup fails at `reaching the bucket`',
+  // Read by the rules of the eighth re-review, with has() or from folded text: the records on the
+  // same server and after a rebuild, the journal's reach, a night that sent no ping, the window
+  // and what a ping names, and the signs, in step 2 and in sub-step 4.
+  'line the command prints where it holds less (a full journal or a vacuum cuts it short:',
+  'never a Telegram message, and the',
+  "from the server's own address inside the night's window",
+  "the next night's, so a long base's late ping counts)",
+  'which none can send without root, so a',
+  "the server's own address being the old server's",
+  'Such a ping names its own night and the',
+  "its seal or its ping lost, as the monitor alerted that day: on the same server the journal's",
+  "journal's reach that the journal does not name, on a day journald dropped no lines (hostwatch's",
+  'is itself a sign the `.env` leaked (step 5)',
+  'never a Telegram message',
+  'Two `backup` lines',
+  "from the server's own address and inside its night (from its stamp to the next night's)",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -2382,8 +2518,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // As before it: the theft's step 5 said so after its recover command and restore test.
     const versions = cut(
       RUNBOOK,
-      ' Where the bucket keeps versions, make the versions of that night',
-      ' Then\n',
+      ' Where the bucket keeps versions, make the versions',
+      ' Then recover it',
     );
     refuses(
       theftOrder,
@@ -3839,17 +3975,17 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // Each part dropped or turned in turn.
     for (const [from, to, problem] of [
       [
-        "the journal's lines, never a Telegram message;",
-        "the journal's lines and alert lines;",
+        "inside the night's window, never a Telegram message; after a rebuild,",
+        "inside the night's window, and alert lines; after a rebuild,",
         records,
       ],
       [
-        "only a ping from the server's own\n   address inside the night's window",
-        'every ping',
+        "backup monitor's pings from the server's own address inside the night's window (from",
+        "backup monitor's pings (from",
         records,
       ],
-      [cut(RUNBOOK, ' A ping or alert naming a night', ' To find which key'), '', records],
-      [cut(RUNBOOK, " An older month's copy, stamped", ' A ping or alert naming'), '', reach],
+      [cut(RUNBOOK, ' A ping from elsewhere', ' To find which key'), '', records],
+      [cut(RUNBOOK, " An older month's copy, stamped", ' A ping from elsewhere'), '', reach],
       ['and reach its stamp (no reach', '(no reach', reach],
       ['--since -180d --utc -o short-iso', '--since -30d -o cat', reach],
       [cut(RUNBOOK, ' To find which key', " Where that is not the list's first key,"), '', which],
@@ -4039,6 +4175,105 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       [' Then note,\n     off the server,', ' Then note,\n     on the server,', noted],
     ])
       refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('counts the server’s own pings and a night that sent no ping, reads the journal’s reach off its first line, and takes only different ids in a window for a sign (Stop C’s eighth re-review, findings T1, T2, H1 and H2)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    expect(theftRecords(RUNBOOK)).toEqual([]);
+    const records = 'the stolen-token steps count a ping a leaked .env can send';
+    const sameServer = 'the stolen-token steps count on the same server the journal’s lines alone';
+    const noPing =
+      'the stolen-token steps take the key of a night that failed after its seal, or lost its ping';
+    const window = 'the stolen-token steps hold a ping to about 2 hours after its night’s stamp';
+    const reach = 'the stolen-token steps take the journal’s reach for its 180 days';
+    const retried = 'the stolen-token steps take a ping that curl’s retry sent again';
+    const retriedBefore = 'the theft’s step 5 takes a ping that curl’s retry sent again';
+    const lateBefore =
+      'the theft’s step 5 names a night from before the trouble only by a ping within about 2 hours';
+    // As the seventh re-review's fixes left them: the journal's lines alone on the same server,
+    // only a night killed after its seal excepted, the window 2 hours, the reach 180 days, and any
+    // second ping in a window a sign, in step 2 and in sub-step 4.
+    const before = swap(
+      swap(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, "same server the journal's lines and", '), names one stamped later'),
+          ROUND_8_TRIGGER,
+        ),
+        cut(RUNBOOK, '   A seal a list verifies that no record', '\n\n3. **Remove what'),
+        ROUND_8_STOLEN_KEY,
+      ),
+      cut(
+        RUNBOOK,
+        "      from the server's own address and inside its night",
+        ' Where the bucket keeps versions, make',
+      ),
+      ROUND_8_NIGHT_BEFORE,
+    );
+    for (const problem of [sameServer, noPing, window, reach, retried])
+      refuses(oldCopies, before, problem);
+    for (const problem of [retriedBefore, lateBefore]) refuses(theftRecords, before, problem);
+    // Each clause dropped or turned in turn.
+    for (const [from, to, problem] of [
+      [
+        " and the backup monitor's pings from the server's own address\ninside the night's window,",
+        ',',
+        sameServer,
+      ],
+      [cut(RUNBOOK, ', which none can send without root', '; only where the'), '', sameServer],
+      [
+        cut(RUNBOOK, 'and not a night that sent no ping', '), that a'),
+        'and not a night killed after its seal, which leaves no line at all: the monitor alerted on it',
+        noPing,
+      ],
+      [
+        cut(
+          RUNBOOK,
+          ", and after a rebuild a night of the old server's",
+          ' is judged by its seal alone and is no sign of theft)',
+        ) + ' is judged by its seal alone and is no sign of theft',
+        '',
+        noPing,
+      ],
+      [
+        `${cut(RUNBOOK, '(from its stamp to', 'late ping counts)')}late ping counts)`,
+        '(from its stamp to about 2 hours after)',
+        window,
+      ],
+      [cut(RUNBOOK, ", the server's own address being", ', as sub-step 4 reads them'), '', window],
+      [cut(RUNBOOK, ' Such a ping names', " An older month's copy"), '', window],
+      [cut(RUNBOOK, ', or from the first', ', never a Telegram message, and'), '', reach],
+      [
+        cut(RUNBOOK, 'an alert naming a night', ', is itself a sign'),
+        'an alert naming a night the whole journal does not name',
+        reach,
+      ],
+      [cut(RUNBOOK, ', on a day journald', ', is itself a sign'), '', reach],
+      [
+        cut(RUNBOOK, 'A ping from elsewhere, two `backup` pings', " night's window but for a run"),
+        'A ping from elsewhere, two `backup` pings in one',
+        retried,
+      ],
+      [
+        "can't reach, after a rebuild, those pings alone",
+        "can't reach, after a rebuild, the backup monitor's whole log",
+        records,
+      ],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+    for (const [from, to, problem] of [
+      [
+        cut(RUNBOOK, 'Two `backup` lines naming', ' or an id that no record'),
+        "Two `backup` lines in one night's window,",
+        retriedBefore,
+      ],
+      [
+        "inside its night (from its stamp to the next night's)",
+        'inside its night (from its stamp to about 2 hours after)',
+        lateBefore,
+      ],
+    ])
+      refuses(theftRecords, swap(RUNBOOK, from, to), problem);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {

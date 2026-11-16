@@ -1851,8 +1851,9 @@ prints `the chain of WAL files is cut`, when a night stops with `someone else wr
 when a step of the month's copy fails on a lock's refusal, or at the same step night after night
 (Last night's backup), when the WAL alert says a lock refuses what the shipper writes, when a
 restore test, drill or recovery takes a night that none of the backup's own records names (on the
-same server the journal's lines, never a Telegram message; after a rebuild, the backup monitor's
-pings from the server's own address inside the night's window: step 2), names one stamped later
+same server the journal's lines and the backup monitor's pings from the server's own address
+inside the night's window, never a Telegram message; after a rebuild, those pings alone:
+step 2), names one stamped later
 than now (`restore: not taking the night of <id>, stamped later than now`), or passes over a night
 (`pitr: not taking the night of <id>: its seal …, so it is not the backup's`) or WAL objects
 (`<n> objects passed over, not the backup's`, n above 0, or once a key has left the list, n above
@@ -1932,21 +1933,30 @@ restore lists nothing.
    night it tests whole.
 
    A seal a list verifies that no record of the backup names means, where those records are whole
-   and reach its stamp (no reach as root, and not a night killed after its seal, which leaves no
-   line at all: the monitor alerted on it), that a key of that list signed a night the
-   backup never ran: take that key for stolen (step 5). On the same server those records are the
-   journal's lines above, over its 180 days, never a Telegram message; only where the journal can't
-   reach, after a rebuild, the backup monitor's log, and in it only a ping from the server's own
-   address inside the night's window (from its stamp to about 2 hours after), as sub-step 4 reads
-   it. An older month's copy, stamped before the records reach, is judged by its seal alone and is
-   no sign of theft. A ping or alert naming a night the whole journal does not name, or two
-   `backup` pings in one night's window but for a run by hand, is itself a sign the `.env` leaked
-   (step 5). To find which key of a list of several signed a seal, check it with each key of the
-   list alone, in a file of one key each: only the signer's gets past the seal, the others print
+   and reach its stamp (no reach as root, and not a night that sent no ping, killed or failed after
+   its seal or its ping lost, as the monitor alerted that day: on the same server the journal's
+   failure line names a failed one, and after a rebuild a night of the old server's on a day the
+   monitor got no ping from its address is judged by its seal alone and is no sign of theft), that a
+   key of that list signed a night the backup never ran: take that key for stolen (step 5). On the
+   same server those records are the journal's lines above, over its 180 days, or from the first
+   line the command prints where it holds less (a full journal or a vacuum cuts it short:
+   hostwatch's daily `journal:` line gives its oldest line), never a Telegram message, and the
+   backup monitor's pings from the server's own address inside the night's window (from its stamp to
+   the next night's, so a long base's late ping counts), which none can send without root, so a
+   night whose line journald dropped to its rate limit is named all the same; only where the journal
+   can't reach, after a rebuild, those pings alone, the server's own address being the old server's
+   for nights before the rebuild, as sub-step 4 reads them. Such a ping names its own night and the
+   month's copy its line names. An older month's copy, stamped before the records reach, is judged
+   by its seal alone and is no sign of theft. A ping from elsewhere, two `backup` pings naming
+   different ids in one night's window but for a run by hand, or an alert naming a night inside the
+   journal's reach that the journal does not name, on a day journald dropped no lines (hostwatch's
+   daily `suppressed:` line), is itself a sign the `.env` leaked (step 5). To find which key of a
+   list of several signed a seal, check it with each key of the list alone, in a file of one key
+   each: only the signer's gets past the seal, the others print
    `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. Where that is not the list's first key,
    as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5), as its
-   private half was on the server since the trouble could have begun. That id stays all the same,
-   as any whose seal a list verifies.
+   private half was on the server since the trouble could have begun. That id stays all the same, as
+   any whose seal a list verifies.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only what step 2 found to be the holder's (seals every list
@@ -2028,17 +2038,17 @@ restore lists nothing.
       or to a point before it: a night's logical recovery (Disaster recovery, step 5, the
       fallback) of the last night from before the trouble could have begun. Name it only from
       records made before the trouble could have begun: a ping the backup monitor received then,
-      from the server's own address and inside its night (from its stamp to about 2 hours after),
-      or the old server's journal from then, unless root may have reached the server, as root can
-      write the journal; never a ping received since. Two `backup` lines in one night's window, or
-      an id that no record from before names, mean a night of the thief's: take the night before
-      it. Where the bucket keeps versions, make the versions of that night's objects that went up
-      before the trouble (its seal, its settings archive and its parts) the current ones again,
-      with the admin login, before anything of it is downloaded or recovered: one signed with the
-      stolen key could have been put over each, and the stolen key's file would take it. Then
-      recover it, when the stolen key or an older key that may have leaked signed it, with that
-      file's list given for that one run, quoted as it may hold several keys, and never put back
-      in `.env`:
+      from the server's own address and inside its night (from its stamp to the next night's), or
+      the old server's journal from then, unless root may have reached the server, as root can write
+      the journal; never a ping received since. Two `backup` lines naming different ids in one
+      night's window but for a run by hand, or an id that no record from before names, mean a night
+      of the thief's: take the night before it. Where the bucket keeps versions, make the versions
+      of that night's objects that went up before the trouble (its seal, its settings archive and
+      its parts) the current ones again, with the admin login, before anything of it is downloaded
+      or recovered: one signed with the stolen key could have been put over each, and the stolen
+      key's file would take it. Then recover it, when the stolen key or an older key that may have
+      leaked signed it, with that file's list given for that one run, quoted as it may hold several
+      keys, and never put back in `.env`:
 
       ```sh
       sudo app-compose menumesh --profile recover run --rm -e RESTORE_STAMP=<id> -e "BACKUP_SIGNING_PUBLIC_KEY=<the stolen key's file's list>" -v /run/age:/run/age:ro recover
