@@ -55,7 +55,8 @@
  *                    drills to a point and to latest, cut chains and PITR_ACCEPT_CUT, a rewind and
  *                    the replay across it, and a rewind to a point while the newest night's base
  *                    ran, whose base is then refused with the night after it, each seal kept aside
- *                    in turn until the night before recovers across the fork.
+ *                    in turn until the night before recovers across the fork, and a point on the
+ *                    stretch the rewind abandoned reached at the rewind's point at most.
  *   pnpm vps:down [--images]
  *                    removes the rehearsal's containers, networks and volumes (and its three images
  *                    with --images), and nothing else.
@@ -7833,6 +7834,12 @@ age --decrypt --identity /run/age/identity.txt </var/tmp/base.zst.age | zstd -dc
  * that night; a point on the rewind's timeline is reached from it too while both seals stay aside.
  * Put back before a night of the recovery's timeline exists, they make a drill to that point and
  * one to latest take the third night and refuse it again; once that night exists, latest passes.
+ *
+ * Stop C's re-reviews, finding F2: while both seals stay aside, a point on the stretch the rewind
+ * abandoned, after the slowed night's base ended and before the rewind began, is reached at the
+ * rewind's point at most. The replay follows the rewind's timeline from the fork and stops before
+ * its first transaction, which came after the rewind began: its last transaction is the rewind's
+ * own, and rows C alone are there, not the rows C and D the old timeline held at the point.
  */
 async function forkInBaseProof(checks: Checks, env: Record<string, string>, age: string[]) {
   const { drill, recoverPitr, dbDataEntries } = pitrRuns(age);
@@ -8042,6 +8049,16 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
       );
     const shippedD = await walShipped(cluster, [inD], 200);
     if (shippedD.found[0] === undefined) fail(`${inD}, rows D's WAL file, is not in the bucket`);
+    // Stop C's re-reviews, finding F2: a point on the old timeline past T2, after the slowed night's
+    // base ended, where that timeline holds rows C and D: the rewind below abandons it.
+    const abandonedSaid = dbSql(
+      [...pointNow, "select 'N ' || count(*) from public.rehearsal_pitr_fork;"].join('\n'),
+    );
+    const abandoned = pointOf(abandonedSaid);
+    const abandonedHeld = Number(
+      abandonedSaid.find((line) => line.startsWith('N '))?.slice(2) ?? Number.NaN,
+    );
+    const slowEnd = typeof sealed === 'string' ? '' : (sealed.base?.end ?? '');
 
     // Stop C's re-reviews, finding T2: a third night on the old timeline, its base past rows D, so
     // that the rewind to T2 leaves two nights behind it, the slowed one and this one, not one.
@@ -8067,7 +8084,12 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
     if (!NIGHT_ID.test(thirdNight)) fail(`The third night did not run:\n${tail(third.stderr)}`);
 
     // The rewind to T2: everything stops, db-data and wal-spool go, the recovery fills a new
-    // db-data, and db, started on it, archives the new timeline.
+    // db-data, and db, started on it, archives the new timeline. When it began, on db's clock: the
+    // new timeline's transactions all come later.
+    const rewindBegan =
+      dbSql(
+        `select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');`,
+      )[0] ?? '';
     stopAll();
     const removed = docker(['volume', 'rm', `${PROJECT}_db-data`, `${PROJECT}_wal-spool`]);
     if (removed.status !== 0) fail(`docker volume rm: ${removed.stderr.trim()}`);
@@ -8275,6 +8297,52 @@ async function forkInBaseProof(checks: Checks, env: Record<string, string>, age:
           `pitr test passed: the night of ${beforeNight} and the WAL after it, replayed to ${late}`,
         ),
       `${tail(toLate.stdout, 30)}\n${toLate.stderr}`,
+    );
+    // Stop C's re-reviews, finding F2, both seals still aside: a point on the stretch the rewind
+    // abandoned, past T2, after the slowed night's base ended and before the rewind began. The
+    // replay from the night before follows the newest timeline (recovery_target_timeline=latest):
+    // the old timeline up to the fork alone, then the rewind's, whose first transaction came after
+    // the rewind began, past the point. So it stops before that transaction, at the rewind's point:
+    // its last transaction the rewind's own, rows C alone, not the rows C and D the old timeline held
+    // at the point. A late shipper's refusal would come instead only were the chain to end at the
+    // fork's WAL file, uploaded more than 30 minutes past the point, with no transaction in it: here
+    // each WAL file went up within minutes of the point, and the chain runs to the bucket's end.
+    const toAbandoned = await drill(abandoned);
+    const abandonedRows = pitrCounts(toAbandoned.stdout).find((line) =>
+      line.startsWith('table public.rehearsal_pitr_fork '),
+    );
+    // The replay's own lines, as pitr.sh shows them: where it stopped, and its last transaction.
+    const lastDone = (output: string) =>
+      /^pitr: \| last completed transaction was at log time (.+)$/m.exec(output)?.[1] ?? '';
+    const stopLine =
+      /^pitr: \| (recovery stopping before (?:commit|abort) of transaction \d+, time (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d)\S*)$/m.exec(
+        toAbandoned.stdout,
+      );
+    const stoppedAt = stopLine ? `${stopLine[2]}T${stopLine[3]}Z` : '';
+    const rewindLast = lastDone(rewind.stdout);
+    const lastSecond = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d)/.exec(rewindLast);
+    const lastAt = lastSecond ? `${lastSecond[1]}T${lastSecond[2]}Z` : '';
+    checks.expect(
+      `pitr-test to ${abandoned}, on the stretch of timeline ${tlOld} the rewind abandoned (past T2 ${point}, after the slowed night's base ended at ${slowEnd || '?'}, before the rewind began at ${rewindBegan || '?'}; ${abandonedHeld} rows of rehearsal_pitr_fork there, rows C and D), both seals kept aside (finding F2): exit ${toAbandoned.status} in ${toAbandoned.took} s, from the night before (${beforeNight}), no WAL file uploaded more than 30 minutes past the point; the replay follows timeline ${timeline} from the fork and stops before its first transaction ("${stopLine?.[1] ?? 'no stop'}"), its last transaction the rewind's own ("${lastDone(toAbandoned.stdout) || 'none'}"): ${abandonedRows ?? 'no rows'}, rows C alone, "${tail(toAbandoned.stdout, 1)}"`,
+      toAbandoned.status === 0 &&
+        toAbandoned.stdout.includes(`pitr: to ${abandoned}, from the night of ${beforeNight}: `) &&
+        toAbandoned.stdout.includes(
+          ', none of it uploaded more than 30 minutes past the point\n',
+        ) &&
+        slowEnd !== '' &&
+        slowEnd < abandoned &&
+        point < abandoned &&
+        abandoned < rewindBegan &&
+        abandonedHeld === 10 &&
+        stoppedAt > rewindBegan &&
+        rewindLast !== '' &&
+        lastDone(toAbandoned.stdout) === rewindLast &&
+        abandonedRows === 'table public.rehearsal_pitr_fork 3' &&
+        lastAt !== '' &&
+        toAbandoned.stdout.endsWith(
+          `pitr test passed: the night of ${beforeNight} and the WAL after it, replayed to ${abandoned}, its last transaction at ${lastAt}\n`,
+        ),
+      `${tail(toAbandoned.stdout, 30)}\n${toAbandoned.stderr}\nthe rewind's last transaction: ${rewindLast}`,
     );
     // Both seals back before a night of the new timeline exists: the third night is the newest
     // again, and the newest whose base ended before that point, so a drill to the point and one to
