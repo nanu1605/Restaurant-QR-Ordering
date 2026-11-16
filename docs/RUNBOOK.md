@@ -912,7 +912,11 @@ recreates them; a `restart` keeps the old values.
   pooler login and, in the planned window below, the API keys and `POSTGRES_PASSWORD`.
 - The backup key: a new pair, the admin's `BACKUP_RECIPIENT` and the owner's `BACKUP_AGE_RECIPIENT`
   changed the same day, then `up -d backup`. Keep the old private key while its backups (366 days)
-  can be needed.
+  can be needed. A night's settings archive (20:20 UTC, to `BACKUP_RECIPIENT`), its parts (20:30
+  UTC, to `BACKUP_AGE_RECIPIENT`) and the WAL already in the outbox at `up -d backup` can then be
+  on either side of the switch, so a restore test, drill or recovery that reads backups from both
+  sides needs both private keys in `identity.txt`, one after the other (age tries each): with one,
+  it stops at the first file only the other opens.
 - The signing key (after the server may have been reached, or yearly if the owner likes): a new pair
   from a fresh `pnpm vps:secrets --out <new folder>` (those two values only). In `BACKUP_SIGNING_KEY`
   put the new private key, and in `BACKUP_SIGNING_PUBLIC_KEY` the new public key **first**, then a
@@ -1377,7 +1381,9 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   counters; a night's logical recovery is the fallback, and the only way to bring Storage's files
   back on a new server:
   1. A new server: the admin's part of First install, with new deploy keys and the new host key in
-     `VPS_KNOWN_HOSTS`. If the old server may still run, stop its `cloudflared` first.
+     `VPS_KNOWN_HOSTS`. If the old server may still run, stop its `cloudflared` first. Where the
+     backup key counts as stolen (2.2), its new pair is made before this step, and the admin's
+     `BACKUP_RECIPIENT` (First install, step 9) is the new public key.
   2. The night's id, from the backup's own records and never from the names in the bucket, since
      anyone holding the bucket's token can add a night under any stamp: the journal's
      `backup <id>: …` lines if the old server still runs, else the backup monitor's log, where each
@@ -1453,8 +1459,11 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         step 5). If the backup key's private half was on that server since the trouble could
         have begun (a monthly restore test or drill, a recovery, or step 4 of A stolen or leaked
         bucket token (VPS)), the backup key counts as stolen too: this server then also gets a
-        new backup pair, and every older key leaves the kept list for the stolen key's file, as
-        that section's step 5 says.
+        new backup pair, made before this recovery began, its public key the admin's
+        `BACKUP_RECIPIENT` from step 1 and `.env`'s `BACKUP_AGE_RECIPIENT` from 2.4, before the
+        settings archive's timer and `backup` start, so that nothing this server makes is
+        encrypted to the stolen key (the old private key still opens this night); and every
+        older key leaves the kept list for the stolen key's file, as that section's step 5 says.
 
      3. **Unpack** it on the server, once that one file is copied to `~/incoming` and the private
         key is on a ramfs (as above): `sha256sum` must print the sha256 the pass named, or nothing
@@ -1482,11 +1491,22 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         it and checks it against the list's first key, so no night would be sealed and no WAL
         shipped. The pair is checked once the backup image is here, right after step 4. After a
         theft of the signing key, an archive from before the trouble lacks the new key and holds
-        the stolen one: both as 2.2 says, and the kept list goes in.
+        the stolen one: both as 2.2 says, and the kept list goes in. Where the backup key counts
+        as stolen too (2.2), `BACKUP_AGE_RECIPIENT` becomes the new pair's public key here.
 
         Then, on a new server, the settings archive's timer, whose drop-in the admin made in step
-        1 (First install, step 13), so that every night has a fresh archive; the second command
-        shows its next run, at 20:20 UTC:
+        1 (First install, step 13), so that every night has a fresh archive. Each archive is
+        encrypted to the admin's `BACKUP_RECIPIENT`, so first check that it is the key `.env`'s
+        `BACKUP_AGE_RECIPIENT` names, the new pair's public key where the backup key counts as
+        stolen (2.2): the two commands print the same `age1…` key, or the admin puts that one in
+        the conf (root's, 0644, which holds the public key only) before the timer goes on:
+
+        ```sh
+        grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf
+        sudo grep '^BACKUP_AGE_RECIPIENT=' /srv/menumesh/.env
+        ```
+
+        Then the timer; the second command shows its next run, at 20:20 UTC:
 
         ```sh
         sudo systemctl enable --now app-config-archive@menumesh.timer
@@ -1912,10 +1932,13 @@ restore test unasked, while a named restore lists nothing.
       monthly restore test or drill, a recovery, step 4), the backup key counts as stolen too: it
       opens the settings archives of the nights each older key signed, and their `.env` holds that
       key's private half. So the new server also gets a new backup pair, made as in First install,
-      step 1, its public key the admin's `BACKUP_RECIPIENT` and `.env`'s `BACKUP_AGE_RECIPIENT` the
-      same day (Secrets (VPS), Rotation, the backup key), and the old private key is kept offline
-      for the old backups, the night of sub-step 4 among them, which only it opens; and every older
-      key of sub-step 1 goes into the stolen key's file, not the rebuilt list.
+      step 1, before Disaster recovery begins: its public key goes to the admin for
+      `BACKUP_RECIPIENT` at Disaster recovery, step 1, and into `.env`'s `BACKUP_AGE_RECIPIENT` at
+      step 2.4, before 2.4 checks the admin's conf and enables the settings archive's timer and
+      before step 6 starts `backup`, so that nothing the new server makes is encrypted to the stolen
+      key. The old private key is kept offline for the old backups, the night of sub-step 4 among
+      them, which only it opens (it is the one on the rebuilt server's ramfs for that night); and
+      every older key of sub-step 1 goes into the stolen key's file, not the rebuilt list.
 
 ### Logs and alerts (VPS)
 

@@ -22,20 +22,20 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * older keys that never leaked (U3), the backup's own records go new and name a night from before
  * only by what was recorded before (U5), every value of a leaked .env goes new (G2), and a server
  * reached as root is rebuilt with none of its nights taken (N1) and no private key put on it, its
- * backup key counted as stolen too once it was there (G1); the key list is kept in a file of its
- * own, never in the age key's (design note 4); the month's copy is named by either of the backup's
- * lines (B1), each step of it that fails is quoted, with what it found, and the way to the
- * stolen-token steps (R1), which take the names a stopped night's alert lists for the token
- * holder's (E1); the drill names each of pitr.sh's refusals of a base whose timeline a rewind left
- * (M1), the recovery quotes what pitr.sh tells a point a cut stops short of (T1), the way past the
- * nights a rewind left takes out each one's seal in turn (T2) and promises no point on the stretch
- * it abandoned (F2), and step 7 deploys a release without a migrate reference, the one before a
- * rewind's after a settings archive from before it (F1), and after a night recovered on the same
- * server the one deploys.log names before its stamp, read in UTC, with Production's token (the
- * fourth re-review's J1). Every rule also refuses a copy with one
- * mistake, as tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the
- * fix. Every phrase is compared with its white space folded, so a sentence wrapped again is still
- * found.
+ * backup key counted as stolen too once it was there (G1), its new pair made before the rebuild and
+ * put in before the archive's timer and backup start (the fourth re-review's K1); the key list is
+ * kept in a file of its own, never in the age key's (design note 4); the month's copy is named by
+ * either of the backup's lines (B1), each step of it that fails is quoted, with what it found, and
+ * the way to the stolen-token steps (R1), which take the names a stopped night's alert lists for
+ * the token holder's (E1); the drill names each of pitr.sh's refusals of a base whose timeline a
+ * rewind left (M1), the recovery quotes what pitr.sh tells a point a cut stops short of (T1), the
+ * way past the nights a rewind left takes out each one's seal in turn (T2) and promises no point on
+ * the stretch it abandoned (F2), and step 7 deploys a release without a migrate reference, the one
+ * before a rewind's after a settings archive from before it (F1), and after a night recovered on
+ * the same server the one deploys.log names before its stamp, read in UTC, with Production's token
+ * (the fourth re-review's J1). Every rule also refuses a copy with one mistake, as
+ * tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the fix. Every
+ * phrase is compared with its white space folded, so a sentence wrapped again is still found.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -90,6 +90,7 @@ const PLACES = {
   firstKey: ['1. **The backup key**', '2. **The bucket:**'],
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
   tokenBullet: ["- The bucket's token, Telegram and the heartbeat addresses", '- The backup key:'],
+  backupKey: ['- The backup key:', '- The signing key (after the server may have been reached'],
   rotation: ['- The signing key (after the server may have been reached', "- Staging's password"],
   lastNight: ["- **Last night's backup:**", '- **The monthly restore test**'],
   restoreTest: ['- **The monthly restore test**', '- **The monthly point-in-time drill**'],
@@ -595,18 +596,29 @@ const after = (text: string, from: string) => {
  * keys, whose private halves are in every settings archive that key opens (Stop C's third
  * re-review, finding G1). Where root may have reached the server they run on the rebuilt one only,
  * and a backup key that was on that server since the trouble could have begun counts as stolen
- * too: a new backup pair, and every older key in the stolen key's file, not the rebuilt list.
+ * too: a new backup pair, and every older key in the stolen key's file, not the rebuilt list. That
+ * new pair came only "the same day", while disaster recovery's step 1 fills the admin's
+ * BACKUP_RECIPIENT, which app-config-archive encrypts each archive to, and 2.4 enables its timer:
+ * the rebuilt server's first archive, its fresh signing key inside, could go to the stolen key
+ * (Stop C's fourth re-review, finding K1). The pair is now made before the recovery begins, in the
+ * admin's conf at step 1 and in .env at 2.4, before the timer and backup start, and 2.4 checks the
+ * conf against .env first; the list's clauses that keep the older keys out are pinned (theft
+ * design note 1), and Rotation says a run across a backup-key switch needs both private keys
+ * (theft design note 4).
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
     runbook,
-    ['theftTest', 'theft', 'rotation', 'check'],
-    ({ theftTest, theft, rotation, check }) => {
+    ['theftTest', 'theft', 'rotation', 'check', 'keyList', 'backupKey'],
+    ({ theftTest, theft, rotation, check, keyList, backupKey }) => {
       const steps = flat(theft);
       const fourth =
         part(steps, '4. **A night from before the trouble**', '5. **If root may have reached') ??
         '';
       const fifth = after(steps, '5. **If root may have reached the server**');
+      const pair = after(fifth, "If the backup key's private half was on that server since");
+      const keys = flat(keyList);
+      const conf = keys.indexOf("grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf");
       return [
         ...(has(theftTest, 'they run on the rebuilt server only')
           ? []
@@ -636,6 +648,51 @@ const rootKeys = (runbook: string) =>
         ...(has(check, 'the backup key counts as stolen too')
           ? []
           : ['step 2.2 never counts the backup key as stolen after a reach as root']),
+        ...(pair.includes('made as in First install, step 1, before Disaster recovery begins') &&
+        pair.includes(
+          "its public key goes to the admin for `BACKUP_RECIPIENT` at Disaster recovery, step 1, and into `.env`'s `BACKUP_AGE_RECIPIENT` at step 2.4",
+        ) &&
+        pair.includes(
+          "before 2.4 checks the admin's conf and enables the settings archive's timer and before step 6 starts `backup`",
+        )
+          ? []
+          : [
+              'the theft’s step 5 doesn’t make the new backup pair before the rebuild and put it in before the archive’s timer and backup start',
+            ]),
+        ...(pair.includes('the same day')
+          ? [
+              'the theft’s step 5 puts the new backup pair in only the same day, after the rebuilt server’s first archive may be made',
+            ]
+          : []),
+        ...(has(check, 'new backup pair, made before this recovery began') &&
+        has(check, "before the settings archive's timer and `backup` start")
+          ? []
+          : [
+              'step 2.2 doesn’t put the new backup pair in before the archive’s timer and backup start',
+            ]),
+        ...(fifth.includes('(none when the backup key counts as stolen too, below)')
+          ? []
+          : [
+              'the theft’s step 5 keeps the older keys in the rebuilt list where the backup key counts as stolen',
+            ]),
+        ...(has(check, "every older key leaves the kept list for the stolen key's file")
+          ? []
+          : [
+              'step 2.2 keeps the older keys in the kept list where the backup key counts as stolen',
+            ]),
+        ...(conf >= 0 &&
+        conf < keys.indexOf(TIMER) &&
+        keys.includes("sudo grep '^BACKUP_AGE_RECIPIENT=' /srv/menumesh/.env") &&
+        keys.includes("`BACKUP_AGE_RECIPIENT` becomes the new pair's public key here")
+          ? []
+          : [
+              'step 2.4 enables the archive’s timer without checking that the admin’s conf names .env’s backup key',
+            ]),
+        ...(has(backupKey, 'needs both private keys in `identity.txt`')
+          ? []
+          : [
+              'Rotation’s backup key step doesn’t say a run across the switch needs both private keys',
+            ]),
       ];
     },
   );
@@ -1612,10 +1669,96 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       rootKeys,
       swap(
         RUNBOOK,
-        "every older\n      key of sub-step 1 goes into the stolen key's file, not the rebuilt list",
+        "every older key of sub-step 1 goes into the stolen key's file, not the rebuilt list",
         'every older key of sub-step 1 stays in the rebuilt list',
       ),
       'the theft’s step 5 keeps the older keys in the rebuilt list',
+    );
+  });
+
+  it('makes the new backup pair before a rebuild and puts it in before the archive’s timer and backup start (finding K1)', () => {
+    expect(rootKeys(RUNBOOK)).toEqual([]);
+    // As before the fourth re-review: the new pair "the same day", 2.2 with no time, the timer
+    // enabled with no look at the admin's conf, and Rotation silent on a run across the switch.
+    const before = [
+      [
+        cut(RUNBOOK, "      If the backup key's private half was on", '\n\n### Logs and alerts'),
+        [
+          "      If the backup key's private half was on that server since the trouble could have begun (a",
+          '      monthly restore test or drill, a recovery, step 4), the backup key counts as stolen too: it',
+          '      opens the settings archives of the nights each older key signed, and their `.env` holds that',
+          "      key's private half. So the new server also gets a new backup pair, made as in First install,",
+          "      step 1, its public key the admin's `BACKUP_RECIPIENT` and `.env`'s `BACKUP_AGE_RECIPIENT` the",
+          '      same day (Secrets (VPS), Rotation, the backup key), and the old private key is kept offline',
+          '      for the old backups, the night of sub-step 4 among them, which only it opens; and every older',
+          "      key of sub-step 1 goes into the stolen key's file, not the rebuilt list.",
+        ].join('\n'),
+      ],
+      [
+        cut(
+          RUNBOOK,
+          '        new backup pair, made before this recovery began',
+          '\n\n     3. **Unpack**',
+        ),
+        [
+          "        new backup pair, and every older key leaves the kept list for the stolen key's file, as",
+          "        that section's step 5 says.",
+        ].join('\n'),
+      ],
+      [
+        cut(
+          RUNBOOK,
+          ' Where the backup key counts\n        as stolen too (2.2)',
+          '\n\n        Then, on',
+        ),
+        '',
+      ],
+      [
+        cut(
+          RUNBOOK,
+          '. Each archive is\n        encrypted to',
+          '\n        ```sh\n        sudo systemctl enable',
+        ),
+        '; the second command\n        shows its next run, at 20:20 UTC:\n',
+      ],
+      [cut(RUNBOOK, " A night's settings archive (20:20 UTC", '\n- The signing key (after'), ''],
+    ].reduce((text, [from, to]) => swap(text, from, to), RUNBOOK);
+    for (const problem of [
+      'the theft’s step 5 doesn’t make the new backup pair before the rebuild',
+      'the theft’s step 5 puts the new backup pair in only the same day',
+      'step 2.2 doesn’t put the new backup pair in before the archive’s timer and backup start',
+      'step 2.4 enables the archive’s timer without checking that the admin’s conf names .env’s backup key',
+      'Rotation’s backup key step doesn’t say a run across the switch needs both private keys',
+    ])
+      refuses(rootKeys, before, problem);
+    // The conf checked only after the timer is on.
+    refuses(
+      rootKeys,
+      swap(
+        swap(RUNBOOK, "        grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf\n", ''),
+        `        ${TIMER}\n`,
+        `        ${TIMER}\n        grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf\n`,
+      ),
+      'step 2.4 enables the archive’s timer without checking',
+    );
+    // Theft design note 1: either clause that keeps the older keys out of the list removed.
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        '\n      (none when the backup key counts as stolen too, below), without',
+        ' without',
+      ),
+      'the theft’s step 5 keeps the older keys in the rebuilt list where the backup key counts as stolen',
+    );
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        "; and every\n        older key leaves the kept list for the stolen key's file, as that section's step 5 says.",
+        ", as that section's step 5 says.",
+      ),
+      'step 2.2 keeps the older keys in the kept list where the backup key counts as stolen',
     );
   });
 
