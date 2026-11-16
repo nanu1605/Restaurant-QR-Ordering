@@ -167,6 +167,39 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     }
   });
 
+  it('keeps an older key that never leaked after the new one when a theft follows a rotation (Stop C’s re-review, finding U3)', () => {
+    // K1 signed the nights before a routine rotation to K2; then K2 leaked. The theft's new list
+    // puts the new key K3 first and keeps K1 after it, whose private half had left the server
+    // before the trouble could begin (Rotation keeps each old key whose nights may be needed); the
+    // stolen K2 leaves the list for a file of its own, kept apart. Throwaway pairs, made here.
+    const [k1, k2, k3] = [pair(), pair(), pair()];
+    const dir = temporary();
+    const keyFile = (name: string, text: string) => {
+      writeFileSync(join(dir, name), text);
+      return join(dir, name);
+    };
+    const kept = keyFile('kept.txt', `BACKUP_SIGNING_PUBLIC_KEY=${k3.publicKey} ${k1.publicKey}\n`);
+    const newAlone = keyFile('new-alone.txt', `BACKUP_SIGNING_PUBLIC_KEY=${k3.publicKey}\n`);
+    const stolen = keyFile(
+      'stolen.txt',
+      `# stolen: for one run, nights from before the trouble only\nBACKUP_SIGNING_PUBLIC_KEY=${k2.publicKey}\n`,
+    );
+    const ofK1 = folderOf(sealText(night, base, parts, k1.privateKey));
+    const ofK2 = folderOf(sealText(night, base, parts, k2.privateKey));
+    const taken = { ok: true, lines: passed([partOf(config)]) };
+    const refused = {
+      ok: false,
+      line: notSigned("is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys"),
+    };
+    // A night from before the rotation passes with the new list, and the new key alone drops it.
+    expect(verifyNight(night, ofK1, { file: kept })).toEqual(taken);
+    expect(verifyNight(night, ofK1, { file: newAlone })).toEqual(refused);
+    // A night of the stolen key: refused with the new list, taken only with the stolen key's file.
+    expect(verifyNight(night, ofK2, { file: kept })).toEqual(refused);
+    expect(verifyNight(night, ofK2, { file: stolen })).toEqual(taken);
+    expect(verifyNight(night, ofK1, { file: stolen })).toEqual(refused);
+  });
+
   it('refuses each seal seal_open refuses, in its words, and prints none of its text', () => {
     const otherNight = '2026-11-14T2030Z-3f9c0a1b';
     const cases: [string | Buffer, string][] = [
