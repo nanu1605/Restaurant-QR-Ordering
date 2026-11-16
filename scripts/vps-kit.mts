@@ -3452,6 +3452,36 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
     const wrong = { BACKUP_SIGNING_PUBLIC_KEY: `${other} ${env.BACKUP_SIGNING_PUBLIC_KEY}` };
     quiet();
     segment('000000010000000000000003', cluster);
+    // First a list that is no list of keys (a doubled space), then a private key that is no key
+    // (cut short): each named at once, as the restores name it, where the list's was blamed on the
+    // private key (Stop C's re-review, finding U4); the file stays in the outbox.
+    const doubled = ship({
+      BACKUP_SIGNING_PUBLIC_KEY: `${other}  ${env.BACKUP_SIGNING_PUBLIC_KEY}`,
+    });
+    quiet();
+    const cut = ship({ BACKUP_SIGNING_KEY: env.BACKUP_SIGNING_KEY.slice(0, -1) });
+    quiet();
+    const unshaped = [...doubled, ...cut];
+    checks.expect(
+      `a key list that is no list of keys (a doubled space), then a signing key cut short: nothing uploaded, the file kept in the outbox, one alert at once each, naming the value ("${alerts(doubled)[0]?.split(': ').slice(2).join(': ') ?? ''}"; "${alerts(cut)[0]?.split(': ').slice(2).join(': ') ?? ''}"), no key printed`,
+      alerts(doubled).length === 1 &&
+        says(
+          doubled,
+          `(cluster ${cluster}): BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces): nothing was uploaded`,
+        ) &&
+        alerts(cut).length === 1 &&
+        says(
+          cut,
+          `(cluster ${cluster}): BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER): nothing was uploaded`,
+        ) &&
+        !says(unshaped, 'does not sign') &&
+        listing('/wal-spool/.ship/out').includes('000000010000000000000003.zst.age') &&
+        !shipped('000000010000000000000003') &&
+        ![env.BACKUP_SIGNING_KEY.slice(0, -1), other, env.BACKUP_SIGNING_PUBLIC_KEY].some((key) =>
+          unshaped.join('\n').includes(key),
+        ),
+      [...doubled, '--', ...cut].join('\n'),
+    );
     const refused = ship(wrong);
     const outbox = listing('/wal-spool/.ship/out');
     const again = ship(wrong);
@@ -4598,7 +4628,10 @@ const ownLines = (stderr: string) =>
  *
  * Last the signing pair's check (SIGNING_PAIR_CHECK) on a restored .env: the private key of before
  * the rotation, or the stolen one, with the kept list put in, refused in one plain line, as
- * backup.sh then stops before its first upload; the new pair passes; no key is printed.
+ * backup.sh then stops before its first upload; the new pair passes; a list that is no list of
+ * keys (a doubled space) and a private key that is no key (cut short) are each named in a line of
+ * their own, by the check and by backup.sh, where the list's was blamed on the private key (Stop
+ * C's re-review, finding U4); no key is printed.
  */
 async function keyTheftProof(checks: Checks, env: Record<string, string>, older: string) {
   const sum = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -4606,7 +4639,9 @@ async function keyTheftProof(checks: Checks, env: Record<string, string>, older:
   const newKey = pair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
   const newPublic = pair.publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
   const oldPublic = env.BACKUP_SIGNING_PUBLIC_KEY;
-  const keys = [newKey, newPublic, env.BACKUP_SIGNING_KEY, oldPublic];
+  // The new private key cut short by a character, as a paste that lost one leaves it.
+  const cutKey = newKey.slice(0, -1);
+  const keys = [newKey, cutKey, newPublic, env.BACKUP_SIGNING_KEY, oldPublic];
   // What a check line or its detail may show of a run: never a key, though none is printed.
   const masked = (text: string) =>
     keys.reduce((said, key) => said.replaceAll(key, '<a key>'), text);
@@ -4795,24 +4830,35 @@ async function keyTheftProof(checks: Checks, env: Record<string, string>, older:
       BACKUP_SIGNING_KEY: newKey,
       BACKUP_SIGNING_PUBLIC_KEY: newPublic,
     });
+    // A list that is no list of keys, a doubled space in it, and a private key that is no key, cut
+    // short: each named, never blamed on the other (Stop C's re-review, finding U4).
+    const doubledPair = pairCheck({
+      BACKUP_SIGNING_KEY: newKey,
+      BACKUP_SIGNING_PUBLIC_KEY: `${newPublic}  ${oldPublic}`,
+    });
+    const cutPair = pairCheck({ BACKUP_SIGNING_KEY: cutKey, BACKUP_SIGNING_PUBLIC_KEY: newPublic });
+    // backup.sh by hand with these values: the night's alert and id, as it stops before its first
+    // upload.
+    const nightWith = (values: Record<string, string>) => {
+      const run = compose([
+        'run',
+        '--rm',
+        '--no-deps',
+        '-T',
+        ...Object.entries(values).flatMap(([name, value]) => ['-e', `${name}=${value}`]),
+        'backup',
+        '/usr/local/bin/backup.sh',
+      ]);
+      const alert = lines(run.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
+      const id = /^\[menumesh\] backup failed \(exit \d+\) at (\S+): /.exec(alert)?.[1] ?? '';
+      made.push(id);
+      return { ...run, alert, id };
+    };
     // What the night does with the pair of before the rotation: it stops before its first upload.
-    const night = compose([
-      'run',
-      '--rm',
-      '--no-deps',
-      '-T',
-      '-e',
-      `BACKUP_SIGNING_PUBLIC_KEY=${newPublic} ${oldPublic}`,
-      'backup',
-      '/usr/local/bin/backup.sh',
-    ]);
-    const nightAlert = lines(night.stderr).find((line) => line.startsWith('[menumesh]')) ?? '';
-    const nightId =
-      /^\[menumesh\] backup failed \(exit \d+\) at (\S+): /.exec(nightAlert)?.[1] ?? '';
-    made.push(nightId);
-    const runs = [beforeRotation, stolenKept, rotatedPair, theftPair, night];
+    const night = nightWith({ BACKUP_SIGNING_PUBLIC_KEY: `${newPublic} ${oldPublic}` });
+    const runs = [beforeRotation, stolenKept, rotatedPair, theftPair, doubledPair, cutPair, night];
     checks.expect(
-      `the signing pair's check on a restored .env (Stop C's re-review, finding V2), a one-off of the backup service as the owner runs it (app-compose menumesh run --rm --no-deps -T backup sh -c '…'): the private key of before a rotation with the list of after it ("<new> <old>"): exit ${beforeRotation.status}, "${masked(beforeRotation.stderr)}", as backup.sh so stops before its first upload ("${masked(nightAlert)}", nothing of its night in daily/); the stolen key with the kept list after a theft: exit ${stolenKept.status}; the new pair with either list: exit ${rotatedPair.status} and ${theftPair.status}, "${masked(rotatedPair.stdout.trim())}"; no key printed`,
+      `the signing pair's check on a restored .env (Stop C's re-review, findings V2 and U4), a one-off of the backup service as the owner runs it (app-compose menumesh run --rm --no-deps -T backup sh -c '…'): the private key of before a rotation with the list of after it ("<new> <old>"): exit ${beforeRotation.status}, "${masked(beforeRotation.stderr)}", as backup.sh so stops before its first upload ("${masked(night.alert)}", nothing of its night in daily/); the stolen key with the kept list after a theft: exit ${stolenKept.status}; the new pair with either list: exit ${rotatedPair.status} and ${theftPair.status}, "${masked(rotatedPair.stdout.trim())}"; a list with a doubled space ("<new>  <old>"): exit ${doubledPair.status}, "${masked(doubledPair.stderr)}"; the private key cut short by a character: exit ${cutPair.status}, "${masked(cutPair.stderr)}"; no key printed`,
       beforeRotation.status === 1 &&
         beforeRotation.stdout === '' &&
         beforeRotation.stderr === PAIR_REFUSED &&
@@ -4825,13 +4871,44 @@ async function keyTheftProof(checks: Checks, env: Record<string, string>, older:
         theftPair.status === 0 &&
         theftPair.stdout === `${PAIR_SIGNS}\n` &&
         theftPair.stderr === '' &&
+        doubledPair.status === 1 &&
+        doubledPair.stdout === '' &&
+        doubledPair.stderr === PAIR_LIST &&
+        cutPair.status === 1 &&
+        cutPair.stdout === '' &&
+        cutPair.stderr === PAIR_PRIVATE &&
         night.status === 1 &&
-        NIGHT_ID.test(nightId) &&
-        nightAlert ===
-          `[menumesh] backup failed (exit 1) at ${nightId}: BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded` &&
-        ofNight('daily', nightId).length === 0 &&
+        NIGHT_ID.test(night.id) &&
+        night.alert ===
+          `[menumesh] backup failed (exit 1) at ${night.id}: BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded` &&
+        ofNight('daily', night.id).length === 0 &&
         !runs.some((run) => printsKey(`${run.stdout}${run.stderr}`)),
       detail(...runs),
+    );
+    // The night with either value no key: it stops before its first upload, naming the value as
+    // the restores name it, where it blamed the private key for a list that is no list of keys.
+    const doubledNight = nightWith({
+      BACKUP_SIGNING_KEY: newKey,
+      BACKUP_SIGNING_PUBLIC_KEY: `${newPublic}  ${oldPublic}`,
+    });
+    const cutNight = nightWith({
+      BACKUP_SIGNING_KEY: cutKey,
+      BACKUP_SIGNING_PUBLIC_KEY: newPublic,
+    });
+    checks.expect(
+      `backup.sh with a list that is no list of keys (a doubled space) and with the private key cut short (Stop C's re-review, finding U4): each night stops before its first upload, naming the value: exit ${doubledNight.status}, "${masked(doubledNight.alert)}"; exit ${cutNight.status}, "${masked(cutNight.alert)}"; nothing of either night in daily/, no key printed`,
+      doubledNight.status === 1 &&
+        NIGHT_ID.test(doubledNight.id) &&
+        doubledNight.alert ===
+          `[menumesh] backup failed (exit 1) at ${doubledNight.id}: BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces), so no night could be sealed: nothing was uploaded` &&
+        cutNight.status === 1 &&
+        NIGHT_ID.test(cutNight.id) &&
+        cutNight.alert ===
+          `[menumesh] backup failed (exit 1) at ${cutNight.id}: BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER), so no night could be sealed: nothing was uploaded` &&
+        ofNight('daily', doubledNight.id).length === 0 &&
+        ofNight('daily', cutNight.id).length === 0 &&
+        ![doubledNight, cutNight].some((run) => printsKey(`${run.stdout}${run.stderr}`)),
+      detail(doubledNight, cutNight),
     );
     unmake(made);
   } finally {
