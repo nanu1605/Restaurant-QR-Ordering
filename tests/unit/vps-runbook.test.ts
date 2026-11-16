@@ -180,23 +180,23 @@ const pairChecked = (runbook: string) =>
   );
 
 /**
- * After a theft of the signing key the kept list holds the new key alone, and a night of the new
- * key holds an archive of whatever a host reached as root held: so step 2.2 takes the night from
- * before the trouble, its versions of then made current, checked once with the stolen key's file,
- * which the theft's step 5 keeps apart (finding V1).
+ * After a theft of the signing key the kept list takes only the nights made since, and a night of
+ * the new key holds an archive of whatever a host reached as root held: so step 2.2 takes the night
+ * from before the trouble, its versions of then made current first, checked with the stolen key's
+ * file, which the theft's step 5 keeps apart (finding V1).
  */
 const theftNight = (runbook: string) =>
-  inPlaces(runbook, ['check', 'theft'], ({ check, theft }) => [
+  inPlaces(runbook, ['download', 'check', 'theft'], ({ download, check, theft }) => [
     ...(check.includes("pnpm vps:verify-night <id> <folder> --keys <the stolen key's file>")
       ? []
       : ['step 2.2 doesn’t check a night from before a theft with the stolen key’s file']),
-    ...(/before the trouble the current\s+ones again/.test(check)
+    ...(/before the trouble[^.]*\s+the current\s+ones again/.test(download)
       ? []
-      : ['step 2.2 doesn’t make the night’s versions of before the trouble current first']),
+      : ['step 2 doesn’t make the night’s versions of before the trouble current first']),
     ...(/reached as\s+root/.test(check)
       ? []
       : ['step 2.2 doesn’t say why a night of the new key is not the one after a reach as root']),
-    ...(theft.includes('marked stolen') && /the new public key\s+alone/.test(theft)
+    ...(/marked\s+stolen/.test(theft)
       ? []
       : ['the theft’s step 5 doesn’t keep the stolen key apart, marked stolen, out of the list']),
   ]);
@@ -340,8 +340,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       archiveFirst,
       swap(
         RUNBOOK,
-        `   ${ARCHIVE}\n   sudo journalctl -t app-config-archive`,
-        '   sudo journalctl -t app-config-archive',
+        `      ${ARCHIVE}\n      sudo journalctl -t app-config-archive`,
+        '      sudo journalctl -t app-config-archive',
       ),
       'runs backup.sh by hand with no settings archive made before it',
     );
@@ -394,10 +394,18 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
 
   it('takes a night from before a theft of the signing key with the stolen key’s file, kept apart (finding V1)', () => {
     expect(theftNight(RUNBOOK)).toEqual([]);
-    // As before the re-review: step 2.2 had the kept list alone.
+    // As before the re-review: step 2 had no theft case, the kept list alone.
     const before = swap(
-      RUNBOOK,
-      part(RUNBOOK, '        After a theft of the signing key', '     3. **Unpack**') ?? '',
+      swap(
+        RUNBOOK,
+        part(RUNBOOK, '        After a theft of the signing key', '     3. **Unpack**') ?? '',
+        '',
+      ),
+      part(
+        RUNBOOK,
+        ' For a night from before a theft of the signing key (2.2),',
+        ' Both come from',
+      ) ?? '',
       '',
     );
     refuses(
@@ -408,12 +416,12 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(
       theftNight,
       before,
-      'step 2.2 doesn’t make the night’s versions of before the trouble current first',
+      'step 2 doesn’t make the night’s versions of before the trouble current first',
     );
     refuses(theftNight, before, 'after a reach as root');
     refuses(
       theftNight,
-      swap(RUNBOOK, 'in a file of its own marked stolen', 'aside'),
+      swap(RUNBOOK, 'of their own marked stolen, never', 'of their own, never'),
       'the theft’s step 5 doesn’t keep the stolen key apart',
     );
   });
@@ -472,8 +480,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       copyNamed,
       swap(
         RUNBOOK,
-        '  copies itself (A night, above). Then the test.',
-        '  copies itself; else copy a whole night, its parts first and its seal last. Then the test.',
+        '  copies itself (A night, above). Nights that failed',
+        '  copies itself; else copy a whole night, its parts first and its seal last. Nights that failed',
       ),
       'the restore test still copies a night to monthly/ by hand',
     );
