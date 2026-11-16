@@ -30,8 +30,9 @@
  *                    backup into the local S3, each night named by its id (its stamp and 8 random
  *                    hex characters), with a base backup and a signed seal: a night with a stale
  *                    settings archive, then the month's copy in monthly/, its signed record last,
- *                    past planted names and a copy sealed by another key, no second copy but the
- *                    copy named, a night in the service with its shipper at once, a base a
+ *                    past planted names and a copy and its record signed by another key, which
+ *                    whole_copy refuses at its seal; no second copy but the copy named, a night in
+ *                    the service with its shipper at once, a base a
  *                    checkpoint overtakes, which its slot carries, a 1st's copy, a 1st whose base
  *                    failed, then the month's next night beaten at its own check, a copy without
  *                    its record and copies under records someone else put there, each copied
@@ -4241,11 +4242,13 @@ function plantNight(
 }
 
 /**
- * A whole-looking month's copy planted in monthly/ under a night id of the planter's making: each
- * part a night has, of random bytes past its floor, and a seal that lists them at their sha256
- * and size, with a base line, signed by the given key. Its names.
+ * A whole-looking month's copy planted in monthly/ under a night id of the planter's making, with
+ * its record: each part a night has, of random bytes past its floor; a seal that lists them at
+ * their sha256 and size, with a base line; and, last, a record over that seal's sha256 as
+ * backup.sh builds one; the seal and the record signed by the given key. Its names, its seal's
+ * text and its record's.
  */
-function plantCopy(night: string, key: string): string[] {
+function plantCopy(night: string, key: string) {
   const names = [
     `globals-${night}.sql.age`,
     `storage-${night}.tar.age`,
@@ -4272,8 +4275,80 @@ function plantCopy(night: string, key: string): string[] {
     walfile: '000000010000000000000007',
     cluster: '7',
   };
-  putObject(`monthly/seal-${night}.txt`, sealText(night, base, plantedParts(run.stdout), key));
-  return [...names, `seal-${night}.txt`];
+  const seal = sealText(night, base, plantedParts(run.stdout), key);
+  putObject(`monthly/seal-${night}.txt`, seal);
+  const record = recordText(night, seal, key);
+  putObject(`monthly/copy-${night}.txt`, record);
+  return { names: [...names, `seal-${night}.txt`, `copy-${night}.txt`], seal, record };
+}
+
+/**
+ * What backup.sh makes of monthly/'s candidates for the month's copy, as a whole night of that
+ * month does on any day but the 1st (Stop C's re-reviews, backup design note 3): its listing of the
+ * month's candidates and its whole_copy, cut from the script with held and record_message, run in
+ * a one-off of the backup service on monthly/ as it is, with seal.sh and the databases as a night
+ * has them. Whether it ran on the image's own backup.sh (the sha256 of the image's is the
+ * script's), and each candidate, oldest first, with whole_copy's verdict: whole, or refused at its
+ * seal (seal_open's words), before its seal was opened or past it; and whether its record was
+ * looked up.
+ */
+function copyCandidates(month: string) {
+  const path = join(KIT, 'backup', 'backup.sh');
+  const script = readFileSync(path, 'utf8');
+  const cut = (from: string, to: string) => {
+    const start = script.indexOf(from);
+    const end = start < 0 ? -1 : script.indexOf(to, start + from.length);
+    if (end < 0) fail(`backup.sh holds no ${JSON.stringify(from)} … ${JSON.stringify(to)} to cut`);
+    return script.slice(start, end + to.length);
+  };
+  const run = inBackup(
+    [
+      'set -eu -o pipefail',
+      "sha256sum /usr/local/bin/backup.sh | cut -d ' ' -f 1",
+      '. /usr/local/share/menumesh/seal.sh',
+      'remote="backups:$BACKUP_BUCKET"',
+      'export RCLONE_LOG_LEVEL=ERROR',
+      `month=${month}`,
+      "dbs=$(psql -X -At -v ON_ERROR_STOP=1 -d postgres -c 'select datname from pg_database where datallowconn and not datistemplate order by datname')",
+      cut('\nheld() {\n', '\n}\n'),
+      cut('\nrecord_message() {\n', '\n}\n'),
+      cut('\nwhole_copy() {\n', '\n}\n'),
+      'listed=$(mktemp -d /tmp/candidates.XXXXXX)',
+      'work=$listed',
+      cut(
+        `rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*"`,
+        '>"$work/candidates"\n',
+      ),
+      'while read -r candidate; do',
+      '  work=$(mktemp -d /tmp/candidate.XXXXXX)',
+      '  seal_problem=unopened',
+      '  if whole_copy "$candidate" </dev/null; then',
+      '    verdict=whole',
+      '  elif [ "$seal_problem" = unopened ]; then',
+      '    verdict="refused before its seal was opened"',
+      '  elif [ -n "$seal_problem" ]; then',
+      '    verdict="refused at its seal, which $seal_problem"',
+      '  else',
+      '    verdict="refused past its seal"',
+      '  fi',
+      '  if [ -e "$work/candidate.recorded" ]; then',
+      '    record="its record looked up"',
+      '  else',
+      '    record="its record never looked up"',
+      '  fi',
+      '  echo "$candidate: $verdict; $record"',
+      '  rm -rf "$work"',
+      'done <"$listed/candidates"',
+      'rm -rf "$listed"',
+    ].join('\n'),
+  );
+  const [image, ...said] = lines(run.stdout);
+  return {
+    ran:
+      run.status === 0 && image === createHash('sha256').update(readFileSync(path)).digest('hex'),
+    said,
+    output: `${run.stdout}${run.stderr}`,
+  };
 }
 
 /** A throwaway Ed25519 private key, base64 PKCS #8 DER: someone else's, not the backup's. */
@@ -5386,12 +5461,22 @@ async function backupTest() {
       ].join('\n'),
     );
     if (cleared.status !== 0) fail(`Setting monthly/ up failed: ${cleared.stderr.trim()}`);
-    // And a whole-looking copy of this month, each part a night has at the size its seal gives,
-    // the seal signed by a key not the backup's: a token holder's copy, which must stop no copy
-    // either (VPS-43).
-    const forger = otherSigningKey();
-    const forgedCopy = plantCopy(idOf(`${today.slice(0, 7)}-05T0102Z`), forger);
-    const planted0 = [otherMonth, ...junk, ...forgedCopy].sort();
+    // And a whole-looking copy of this month with its record, each part a night has at the size its
+    // seal gives, the seal and the record over that seal's sha256 signed by a key not the backup's:
+    // a token holder's copy, which must stop no copy either (VPS-43). A seal without its record is
+    // no candidate (Stop C's re-review, design note 3), so the copy has its record: each whole night
+    // of the month but the 1st takes it for a candidate, and whole_copy refuses it at its seal
+    // (Stop C's re-reviews, backup design note 3).
+    const forgerPair = generateKeyPairSync('ed25519');
+    const forger = forgerPair.privateKey
+      .export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const forgerPublic = forgerPair.publicKey
+      .export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    const forgedId = idOf(`${today.slice(0, 7)}-05T0102Z`);
+    const forgedCopy = plantCopy(forgedId, forger);
+    const planted0 = [otherMonth, ...junk, ...forgedCopy.names].sort();
 
     // The month's first night here fails on a settings archive three hours old, after its other
     // uploads, with the alert to a Telegram bot in the sinkhole; such a night is never the month's
@@ -5463,19 +5548,38 @@ async function backupTest() {
       `${good.stdout}${good.stderr}\n${objects.join('\n')}`,
     );
     // The month's first whole night is its copy, whatever its day, past the names planted for the
-    // month (review findings B4, N2 and N3), the whole-looking copy another key sealed and the
-    // failed night's own seal (VPS-43); its record goes last, and the night says so in a line of
-    // its own as soon as the record is up, then in its last (Stop C's re-review, finding B1).
+    // month (review findings B4, N2 and N3), the whole-looking copy and record another key signed
+    // and the failed night's own seal (VPS-43); its record goes last, and the night says so in a
+    // line of its own as soon as the record is up, then in its last (Stop C's re-review, finding
+    // B1). The night's lines say nothing of the candidates it tried, so backup.sh's own listing and
+    // whole_copy then run on monthly/ as the night left it (copyCandidates): the forged copy is a
+    // candidate, refused at its seal before its record is looked up, and the night's own copy is
+    // whole (Stop C's re-reviews, backup design note 3). With the forger's key in the list its seal
+    // and its record would both pass, as Node's crypto reads them: only their signatures refuse
+    // them, the seal's first.
     const monthly = bucketNames('monthly');
+    const candidates = copyCandidates(stampPart(night).slice(0, 7));
+    const refusedSeal = `${forgedId}: refused at its seal, which is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys; its record never looked up`;
+    const forgedVerdicts = [
+      sealVerdict(forgedCopy.seal, forgedId, forgerPublic),
+      recordVerdict(forgedCopy.record, forgedId, forgedCopy.seal, forgerPublic),
+      sealVerdict(forgedCopy.seal, forgedId, env.BACKUP_SIGNING_PUBLIC_KEY),
+      recordVerdict(forgedCopy.record, forgedId, forgedCopy.seal, env.BACKUP_SIGNING_PUBLIC_KEY),
+    ];
+    const notSigned = "is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys";
     checks.expect(
-      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, its seal after its parts and its record last, past the names planted for its month (${junk.slice(0, 2).join(', ')}), a whole-looking copy whose seal another key signed (${forgedCopy.at(-1)}) and the failed night's own seal alone: ${monthly.length} objects; its lines "${summary.said.join('", then "')}"`,
+      `the month's first whole night, stamped on day ${night.slice(8, 10)}, kept whole in monthly/ as the month's copy, its seal after its parts and its record last, past the names planted for its month (${junk.slice(0, 2).join(', ')}), a whole-looking copy with its record, both signed by another key (${forgedId}: its seal and its record, read with Node's crypto, are "${forgedVerdicts[0]}" and "${forgedVerdicts[1]}" by that key's public key, "${forgedVerdicts[2]}" and "${forgedVerdicts[3]}" by BACKUP_SIGNING_PUBLIC_KEY), and the failed night's own seal alone: ${monthly.length} objects; its lines "${summary.said.join('", then "')}"; then backup.sh's own listing and whole_copy on monthly/ (${candidates.ran ? "cut from the image's script" : "not run on the image's script"}${night.slice(8, 10) === '01' ? '; a night of the 1st lists none' : ''}): "${candidates.said.join('", "')}"`,
       night !== '' &&
         summary.said.length === 2 &&
         summary.kept(night) &&
         summary.said[0] === `backup ${night}: kept in monthly/ as the month's copy` &&
         summary.last.endsWith(KEPT) &&
-        monthly.join(' ') === [...plantedMonthly, ...copyParts(night)].sort().join(' '),
-      `${good.stdout}\n${monthly.join('\n')}`,
+        monthly.join(' ') === [...plantedMonthly, ...copyParts(night)].sort().join(' ') &&
+        forgedVerdicts.join(' / ') === ['ok', 'ok', notSigned, notSigned].join(' / ') &&
+        candidates.ran &&
+        candidates.said.join('\n') ===
+          [refusedSeal, `${night}: whole; its record looked up`].sort().join('\n'),
+      `${good.stdout}\n${monthly.join('\n')}\n${candidates.output}`,
     );
     // Each part is age's: its first line is age's header, nothing of the data in plain text. The
     // seal alone is plain text.
@@ -5515,6 +5619,13 @@ async function backupTest() {
         monthlyNext.join(' ') === monthly.join(' '),
       `${next.stdout}${next.stderr}\n${monthlyNext.join('\n')}`,
     );
+    // The forged copy goes from monthly/, its record with it: no record but the backup's may stay
+    // there for the check of every record below.
+    const unforged = inBackup(
+      `rclone delete --include '*-${forgedId}.*' "backups:$BACKUP_BUCKET/monthly/"`,
+    );
+    if (unforged.status !== 0)
+      fail(`Removing ${forgedId} from monthly/ failed: ${unforged.stderr.trim()}`);
 
     // A night in the running backup service, as its crond runs one, with its WAL shipper at work
     // at once (db's WAL written just before): what the two take of the service's memory together,
