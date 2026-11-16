@@ -1907,14 +1907,29 @@ restore lists nothing.
    Where the bucket keeps versions (versioning, or S3 Object Lock), list each folder's versions too,
    delete markers among them, with the admin login in the provider's dashboard: the backup writes
    each name once, so a name with more than one version, or a delete marker, is one someone else
-   wrote over or deleted. For each such name, whether or not a line keeps its night, make current
-   again, with the admin login, its version that is the backup's: for a seal, the newest a list
+   wrote over or deleted, but for the backup's own removal, which in a night's run removes what
+   went up more than 30 days before in `daily/`, 366 days before in `monthly/` and 15 in `wal/`,
+   never a history file. A delete marker over such a version, set during a night's run (from its
+   stamp to its line in the journal), is that removal and stays, as does one over such a version
+   set at another time, which took only what the next night takes, and one with no version left
+   under it. Only a marker over a younger version or a history file, or a second version not alike
+   byte for byte, is someone else's.
+
+   For each such name, whether or not a line keeps its night, make current again, with the admin
+   login, its version that is the backup's: for a seal, the one that went up in the backup's own
+   run, by its upload time against the night's stamp and its line in the journal, and that a list
    verifies as above (by a stolen key's file only for a night from before its theft; after a leaked
    `.env`, step 5, only a version from before the trouble); for a part, the one whose size and
    sha256 its night's seal lists (`pnpm vps:verify-night` checks it, the seal and the settings
    archive beside it); for a WAL file, its first, as nobody can name one before its upload (a cut
-   chain names one written over or deleted). A line only keeps an id from going, never a version
-   put over the backup's: step 4 then finds the night it tests whole.
+   chain names one written over or deleted). Delete what someone else put over it to make it
+   current, where the provider allows, rather than copy it, which puts it up anew: a recovery to a
+   point past a WAL file so copied, and more than 30 minutes before the copy, ends its chain there
+   and is refused (docs/DECISIONS.md VPS-100). Two versions of a seal that a list verifies, not
+   alike byte for byte, mean a key of that list signed one the backup never wrote: take that key
+   for stolen (step 5), after which only a version from before the trouble counts.
+   A line only keeps an id from going, never a version put over the backup's: step 4 then finds the
+   night it tests whole.
 
    A seal a list verifies that no record of the backup names means, where those records are whole
    and reach its stamp (no reach as root, and not a night killed after its seal, which leaves no

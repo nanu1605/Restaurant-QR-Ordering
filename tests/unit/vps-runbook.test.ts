@@ -34,7 +34,10 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * root until the rebuild (the fifth re-review's M1), when step 2 is done again, as root could write
  * until then (the sixth re-review's theft design note 3); under versioning step 2 puts back every
  * version written over the backup's own, or deleted, whether or not a line keeps its night (the
- * sixth re-review's P2); a night a restore test or drill takes that no
+ * sixth re-review's P2), but for the delete markers of the backup's own removal, a seal's version
+ * taken from the backup's own run and two that verify taking their key for stolen, what was put
+ * over deleted rather than copied back where it can be (the seventh re-review's R3, R6 and R5); a
+ * night a restore test or drill takes that no
  * record names, one stamped later than now and one passed over are signs of theft, and a seal a
  * list verifies that no record names takes its key for stolen (the sixth re-review's P1, which
  * puts back the sign the fifth took away), those records being the journal's lines over its 180
@@ -1254,6 +1257,51 @@ const oldCopies = (runbook: string) =>
           : [
               'the drill never checks the night it takes against the backup’s own records, though such a night is a sign of theft',
             ]),
+        ...(has(
+          cleanup,
+          "but for the backup's own removal, which in a night's run removes what went up more than 30 days before in `daily/`, 366 days before in `monthly/` and 15 in `wal/`, never a history file",
+        ) &&
+        has(
+          cleanup,
+          "set during a night's run (from its stamp to its line in the journal), is that removal and stays",
+        ) &&
+        has(
+          cleanup,
+          "Only a marker over a younger version or a history file, or a second version not alike byte for byte, is someone else's",
+        )
+          ? []
+          : [
+              'the stolen-token steps take the delete markers the backup’s own removal leaves for someone else’s deletions, and put back what it removed',
+            ]),
+        ...(has(
+          cleanup,
+          "for a seal, the one that went up in the backup's own run, by its upload time against the night's stamp and its line in the journal, and that a list verifies as above",
+        ) &&
+        has(
+          cleanup,
+          'Two versions of a seal that a list verifies, not alike byte for byte, mean a key of that list signed one the backup never wrote: take that key for stolen (step 5), after which only a version from before the trouble counts',
+        ) &&
+        !has(cleanup, 'for a seal, the newest a list verifies')
+          ? []
+          : [
+              'the stolen-token steps make current the newest seal a list verifies, a stolen key’s put over the backup’s own, and never take two that verify for a sign of theft',
+            ]),
+        ...(has(
+          cleanup,
+          "(by a stolen key's file only for a night from before its theft; after a leaked `.env`, step 5, only a version from before the trouble); for a part, the one whose size and sha256 its night's seal lists",
+        ) && has(cleanup, 'for a WAL file, its first, as nobody can name one before its upload')
+          ? []
+          : [
+              'the stolen-token steps put back a version of a seal, part or WAL file that may not be the backup’s',
+            ]),
+        ...(has(
+          cleanup,
+          'Delete what someone else put over it to make it current, where the provider allows, rather than copy it',
+        )
+          ? []
+          : [
+              'the stolen-token steps copy a WAL file back, which a recovery to a point past it then ends its chain at',
+            ]),
       ];
     },
   );
@@ -1333,6 +1381,21 @@ const ROUND_7_STOLEN_KEY = [
   '   reach as root, and no night of the 30 days killed after its seal, which leaves no line at all:',
   '   the monitor alerted on it), that a key of that list signed a night the backup never ran: take',
   '   that key for stolen (step 5). That id stays all the same, as any whose seal a list verifies.',
+].join('\n');
+
+/** The stolen-token step 2's versions, as the sixth re-review's fixes left them (b003e13). */
+const ROUND_7_VERSIONS = [
+  "   Where the bucket keeps versions (versioning, or S3 Object Lock), list each folder's versions too,",
+  "   delete markers among them, with the admin login in the provider's dashboard: the backup writes",
+  '   each name once, so a name with more than one version, or a delete marker, is one someone else',
+  '   wrote over or deleted. For each such name, whether or not a line keeps its night, make current',
+  "   again, with the admin login, its version that is the backup's: for a seal, the newest a list",
+  "   verifies as above (by a stolen key's file only for a night from before its theft; after a leaked",
+  '   `.env`, step 5, only a version from before the trouble); for a part, the one whose size and',
+  "   sha256 its night's seal lists (`pnpm vps:verify-night` checks it, the seal and the settings",
+  '   archive beside it); for a WAL file, its first, as nobody can name one before its upload (a cut',
+  '   chain names one written over or deleted). A line only keeps an id from going, never a version',
+  "   put over the backup's: step 4 then finds the night it tests whole.",
 ].join('\n');
 
 /** What pitr.sh says of a base whose timeline the replay leaves before it began or ended. */
@@ -1997,6 +2060,16 @@ const REWRAPPED = [
   "list alone, in a file of one key each: only the signer's gets past the seal",
   'or once a key has left the list, n above',
   "that id against the backup's own journal line, as for the restore test",
+  // The versions put back: the backup's own removal's markers kept, a seal's version from the
+  // backup's own run, two that verify taken for a stolen key, and what was put over deleted.
+  "but for the backup's own removal, which in a night's run removes what",
+  'stamp to its line in the journal), is that removal and stays',
+  'Only a marker over a younger version or a history file, or a second version not alike',
+  "for a seal, the one that went up in the backup's own",
+  'Two versions of a seal that a list verifies, not',
+  "(by a stolen key's file only for a night from before its theft; after a leaked",
+  'for a WAL file, its first, as nobody can name one before its upload',
+  'Delete what someone else put over it to make it',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -3206,7 +3279,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ['whether or not a line keeps its night', 'where no line keeps its night', versions],
       ['versions too,\n   delete markers among them,', 'versions too,', versions],
       [
-        ' A line only keeps an id from going, never a version\n   put over the backup',
+        " A line only keeps an id from going, never a version put over the backup's:",
         ' So',
         versions,
       ],
@@ -3727,6 +3800,67 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         count,
       ],
       [cut(RUNBOOK, ' Check\n  that id against', ' For a point instead'), '', drillNight],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('keeps the delete markers of the backup’s own removal, takes a seal’s version from its own run and two that verify for a stolen key, and deletes what was put over (Stop C’s seventh re-review, findings R3, R6 and R5, theft design notes)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    const removal =
+      'the stolen-token steps take the delete markers the backup’s own removal leaves for someone else’s deletions';
+    const newest = 'the stolen-token steps make current the newest seal a list verifies';
+    const kinds =
+      'the stolen-token steps put back a version of a seal, part or WAL file that may not be the backup’s';
+    const copied = 'the stolen-token steps copy a WAL file back';
+    // As the sixth re-review's fixes left it: every delete marker someone else's, the newest seal a
+    // list verifies, and no word of how a version is made current.
+    const before = swap(
+      RUNBOOK,
+      cut(
+        RUNBOOK,
+        '   Where the bucket keeps versions (versioning, or S3 Object Lock)',
+        '\n\n   A seal a list verifies that no record',
+      ),
+      ROUND_7_VERSIONS,
+    );
+    for (const problem of [removal, newest, copied]) refuses(oldCopies, before, problem);
+    // Each choice turned or dropped in turn, the per-kind ones the review found no rule held.
+    const sealChoice = cut(
+      RUNBOOK,
+      "the one that went up in the backup's own",
+      ' (by a stolen key',
+    );
+    for (const [from, to, problem] of [
+      [
+        cut(RUNBOOK, ", but for the backup's own removal,", '\n\n   For each such name'),
+        '.',
+        removal,
+      ],
+      [' is that removal and stays,', ' is put back,', removal],
+      ['younger version or a history file,', 'younger version,', removal],
+      [sealChoice, 'the newest a list verifies as above', newest],
+      [sealChoice, 'the oldest a list verifies as above', newest],
+      [cut(RUNBOOK, ' Two versions of a seal', '\n   A line only keeps'), '', newest],
+      [
+        " (by a stolen key's file only for a night from before its theft; after a leaked\n   `.env`, step 5, only a version from before the trouble)",
+        '',
+        kinds,
+      ],
+      [
+        "for a part, the one whose size and\n   sha256 its night's seal lists",
+        "for a part, the one whose size its night's seal lists",
+        kinds,
+      ],
+      [
+        'for a WAL file, its first, as nobody can name one before its upload',
+        'for a WAL file, its newest',
+        kinds,
+      ],
+      [
+        cut(RUNBOOK, ' Delete what someone else put over it', ' Two versions of a seal'),
+        '',
+        copied,
+      ],
     ])
       refuses(oldCopies, swap(RUNBOOK, from, to), problem);
   });
