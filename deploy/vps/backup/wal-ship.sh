@@ -33,11 +33,11 @@
 # archiver failing for 10 minutes (pg_stat_archiver: db's log keeps nothing of a WAL file that
 # waits), sends one alert (notify.sh) at most hourly, and one "resumed" line once it is over. What
 # no wait mends alerts at once, as often: db not archiving at all, a spool this user can't write,
-# a changed identifier while files wait or a segment of another cluster, a signing key that is not
-# the public key's pair, a setting missing. While all is well, HEARTBEAT_WAL_URL is pinged every 5
-# minutes with the cluster and the last WAL file sent, and the run prints nothing. Its own lines,
-# with an alert and its end, are all it prints, and the failing tool's first lines with them;
-# nothing printed holds a value.
+# a changed identifier while files wait or a segment of another cluster, a signing key or key list
+# that is no key, a signing key that is not the public key's pair, a setting missing. While all is
+# well, HEARTBEAT_WAL_URL is pinged every 5 minutes with the cluster and the last WAL file sent,
+# and the run prints nothing. Its own lines, with an alert and its end, are all it prints, and the
+# failing tool's first lines with them; nothing printed holds a value.
 set -eu -o pipefail
 
 spool=/wal-spool
@@ -249,11 +249,19 @@ if [ -z "$problem" ]; then
 fi
 
 # 2. The outbox into the bucket, each file signed, once the key is seen to be the pair of the
-# public key the restores check. rclone looks up the one name it writes (--no-traverse) and gives
-# up within minutes; the next minute's run tries again.
-if [ -z "$problem" ] && [ -n "$(outbox | sed -n 1p)" ] && ! seal_self_check 2>"$work/tool"; then
-  halted "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks: nothing was uploaded"
-  detail=$work/tool
+# public key the restores check: each value held to its shape first, the list before the private
+# key, and one that is no key named as the restores name it (Stop C's re-review, finding U4).
+# rclone looks up the one name it writes (--no-traverse) and gives up within minutes; the next
+# minute's run tries again.
+if [ -z "$problem" ] && [ -n "$(outbox | sed -n 1p)" ]; then
+  if ! seal_public_keys_ok; then
+    halted "BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces): nothing was uploaded"
+  elif ! seal_private_key_ok; then
+    halted "BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER): nothing was uploaded"
+  elif ! seal_self_check 2>"$work/tool"; then
+    halted "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks: nothing was uploaded"
+    detail=$work/tool
+  fi
 fi
 if [ -z "$problem" ]; then
   for file in $(outbox); do

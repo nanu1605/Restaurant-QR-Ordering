@@ -4537,7 +4537,14 @@ function verifyNightProof(
   }
 }
 
-/** What the signing pair's check prints when the pair is one, and when it is not. */
+/**
+ * What the signing pair's check prints when the list is no list of keys, when the private key is no
+ * key, when the pair is one, and when it is not.
+ */
+const PAIR_LIST =
+  'signing pair: BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces): put the kept list in as it is';
+const PAIR_PRIVATE =
+  'signing pair: BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER): put in the private half of the first key of the kept list';
 const PAIR_SIGNS =
   'signing pair: BACKUP_SIGNING_KEY signs what the first key of BACKUP_SIGNING_PUBLIC_KEY checks';
 const PAIR_REFUSED =
@@ -4550,16 +4557,19 @@ const PAIR_REFUSED =
  * every night before its first upload, and wal-ship.sh ship nothing. In a one-off of the backup
  * service, with .env's values, this signs a probe with BACKUP_SIGNING_KEY and checks it with the
  * first key of BACKUP_SIGNING_PUBLIC_KEY, as both do before they sign anything (seal.sh's
- * seal_self_check), and prints one line, neither key. Nothing of the kit runs on a new server
- * before the backup image is there (disaster recovery, step 4: app-deploy pulls it; the service
- * says pull_policy: never), and nothing on the owner's machine holds the restored .env: so the owner
- * runs it right after step 4, with backup stopped, before anything is signed:
+ * seal_self_check), and prints one line, neither key. Each value is held to its shape first, the
+ * list before the private key, as backup.sh and wal-ship.sh hold them: a list that is no list of
+ * keys (a doubled space, the kept file's whole line pasted after the name) checks no probe, and the
+ * check blamed the private key for it (Stop C's re-review, finding U4). Nothing of the kit runs on
+ * a new server before the backup image is there (disaster recovery, step 4: app-deploy pulls it;
+ * the service says pull_policy: never), and nothing on the owner's machine holds the restored .env:
+ * so the owner runs it right after step 4, with backup stopped, before anything is signed:
  *
  *   sudo app-compose menumesh run --rm --no-deps -T backup sh -c '<this>'
  *
  * It holds no single quote, so that it goes between that command's own.
  */
-export const SIGNING_PAIR_CHECK = `. /usr/local/share/menumesh/seal.sh; if seal_self_check; then echo "${PAIR_SIGNS}"; else echo "${PAIR_REFUSED}" >&2; exit 1; fi`;
+export const SIGNING_PAIR_CHECK = `. /usr/local/share/menumesh/seal.sh; seal_public_keys_ok || { echo "${PAIR_LIST}" >&2; exit 1; }; seal_private_key_ok || { echo "${PAIR_PRIVATE}" >&2; exit 1; }; if seal_self_check; then echo "${PAIR_SIGNS}"; else echo "${PAIR_REFUSED}" >&2; exit 1; fi`;
 
 /** A compose run's own lines about its containers left out of what a one-off printed. */
 const ownLines = (stderr: string) =>

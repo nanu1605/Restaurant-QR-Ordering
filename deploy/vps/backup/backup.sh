@@ -81,8 +81,14 @@ age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" </dev/null >/dev/null 2>&1 ||
   fail 'BACKUP_AGE_RECIPIENT is not an age public key'
 # A night no restore takes is no backup: the seal needs the signing key to be the pair of the key
 # the restores check, so a probe is signed and checked with the first public key before anything
-# goes up.
+# goes up. Each value is held to its shape first, the list before the private key, and one that is
+# no key is named as the restores name it: a list that is no list of keys checks no probe, and its
+# night was blamed on the private key (Stop C's re-review, finding U4).
 reason='the signing key'
+seal_public_keys_ok ||
+  fail "BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces), so no night could be sealed: nothing was uploaded"
+seal_private_key_ok ||
+  fail "BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER), so no night could be sealed: nothing was uploaded"
 seal_self_check ||
   fail "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded"
 reason='reaching the bucket'

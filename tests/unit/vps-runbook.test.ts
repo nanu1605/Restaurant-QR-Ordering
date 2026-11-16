@@ -149,8 +149,8 @@ const archiveFirst = (runbook: string) => [
 
 /** The one-off the owner runs, with SIGNING_PAIR_CHECK between its quotes. */
 const PAIR_COMMAND = `sudo app-compose menumesh run --rm --no-deps -T backup sh -c '${SIGNING_PAIR_CHECK}'`;
-/** What SIGNING_PAIR_CHECK prints for a pair. */
-const PAIR_SIGNS = /echo "([^"]+)"/.exec(SIGNING_PAIR_CHECK)?.[1] ?? '';
+/** What SIGNING_PAIR_CHECK prints for a pair: its one echo to stdout, every other one to stderr. */
+const PAIR_SIGNS = /echo "([^"]+)";/.exec(SIGNING_PAIR_CHECK)?.[1] ?? '';
 
 /**
  * A settings archive from before a rotation holds the private key of before it, which the kept

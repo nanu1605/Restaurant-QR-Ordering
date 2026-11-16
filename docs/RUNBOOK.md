@@ -1447,7 +1447,7 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      prints one line and no key (`--no-deps` keeps `db` from starting):
 
      ```sh
-     sudo app-compose menumesh run --rm --no-deps -T backup sh -c '. /usr/local/share/menumesh/seal.sh; if seal_self_check; then echo "signing pair: BACKUP_SIGNING_KEY signs what the first key of BACKUP_SIGNING_PUBLIC_KEY checks"; else echo "signing pair: BACKUP_SIGNING_KEY does not sign what the first key of BACKUP_SIGNING_PUBLIC_KEY checks, so no night could be sealed and no WAL shipped: put in the private key of that first key" >&2; exit 1; fi'
+     sudo app-compose menumesh run --rm --no-deps -T backup sh -c '. /usr/local/share/menumesh/seal.sh; seal_public_keys_ok || { echo "signing pair: BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces): put the kept list in as it is" >&2; exit 1; }; seal_private_key_ok || { echo "signing pair: BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER): put in the private half of the first key of the kept list" >&2; exit 1; }; if seal_self_check; then echo "signing pair: BACKUP_SIGNING_KEY signs what the first key of BACKUP_SIGNING_PUBLIC_KEY checks"; else echo "signing pair: BACKUP_SIGNING_KEY does not sign what the first key of BACKUP_SIGNING_PUBLIC_KEY checks, so no night could be sealed and no WAL shipped: put in the private key of that first key" >&2; exit 1; fi'
      ```
 
      It must print

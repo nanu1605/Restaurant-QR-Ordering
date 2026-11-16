@@ -2764,6 +2764,82 @@ const walShipSh = kit('backup/wal-ship.sh');
 const sealSh = kit('backup/seal.sh');
 const walSpoolSh = kit('config/db/wal-spool.sh');
 
+/** What backup.sh, wal-ship.sh and the restores say of a list, or a private key, that is no key. */
+const LIST_SHAPE =
+  'BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces)';
+const KEY_SHAPE =
+  'BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets writes it (base64 PKCS #8 DER)';
+
+/**
+ * The signing pair's check (SIGNING_PAIR_CHECK, Stop C's re-review, finding V2) holds the list to
+ * its shape, then the private key, each refused in a line of its own that names it as the
+ * restores do, before the self-check's two lines: a list that is no list of keys checks no probe,
+ * and was blamed on the private key (finding U4).
+ */
+const pairCheckShape = (check: string) => {
+  const shape =
+    /^\. \/usr\/local\/share\/menumesh\/seal\.sh; seal_public_keys_ok \|\| \{ echo "([^"]+)" >&2; exit 1; \}; seal_private_key_ok \|\| \{ echo "([^"]+)" >&2; exit 1; \}; if seal_self_check; then echo "signing pair: [^"]+"; else echo "signing pair: [^"]+" >&2; exit 1; fi$/.exec(
+      check,
+    );
+  return [
+    ...(shape?.[1].startsWith(`signing pair: ${LIST_SHAPE}: `)
+      ? []
+      : ['a list that is no list of keys is not named, before the private key and the self-check']),
+    ...(shape?.[2].startsWith(`signing pair: ${KEY_SHAPE}: `)
+      ? []
+      : ['a private key that is no key is not named, before the self-check']),
+  ];
+};
+
+/**
+ * backup.sh and wal-ship.sh hold the signing values to their shapes before their self-checks,
+ * the list first, each refused in a line of its own that names it as the restores do, before
+ * anything goes up: a list that is no list of keys checks no probe, and was blamed on the private
+ * key (Stop C's re-review, finding U4).
+ */
+const signingShapes = (backup: string, walShip: string) => {
+  const ordered = (
+    script: string,
+    name: string,
+    list: string,
+    key: string,
+    self: string,
+    upload: string,
+  ) => {
+    const [l, k, s, u] = [list, key, self, upload].map((text) => script.indexOf(text));
+    return [
+      ...(l >= 0 && s > l && u > s
+        ? []
+        : [
+            `${name} doesn’t name BACKUP_SIGNING_PUBLIC_KEY when it is no list of keys, before its self-check`,
+          ]),
+      ...(k > l && s > k
+        ? []
+        : [
+            `${name} doesn’t name BACKUP_SIGNING_KEY when it is no key, after the list and before its self-check`,
+          ]),
+    ];
+  };
+  return [
+    ...ordered(
+      backup,
+      'backup.sh',
+      `seal_public_keys_ok ||\n  fail "${LIST_SHAPE}, so no night could be sealed: nothing was uploaded"\n`,
+      `seal_private_key_ok ||\n  fail "${KEY_SHAPE}, so no night could be sealed: nothing was uploaded"\n`,
+      'seal_self_check ||\n  fail "BACKUP_SIGNING_KEY does not sign',
+      'pg_dumpall --globals-only | put',
+    ),
+    ...ordered(
+      walShip,
+      'wal-ship.sh',
+      `  if ! seal_public_keys_ok; then\n    halted "${LIST_SHAPE}: nothing was uploaded"\n`,
+      `  elif ! seal_private_key_ok; then\n    halted "${KEY_SHAPE}: nothing was uploaded"\n`,
+      '  elif ! seal_self_check 2>"$work/tool"; then\n    halted "BACKUP_SIGNING_KEY does not sign',
+      'rclone copyto --checksum',
+    ),
+  ];
+};
+
 /**
  * The image runs wal-ship.sh every minute as db's postgres (uid 100, gid 101), who owns the spool,
  * through gosu, which drops root's two capabilities with it; openssl signs; the signing helpers
@@ -4989,18 +5065,94 @@ describe('the nights’ seals (VPS-43)', () => {
     // fixed line, never a variable. It sources seal.sh where the image installs it, and its
     // seal_self_check is the one backup.sh and wal-ship.sh run before they sign anything.
     expect(SIGNING_PAIR_CHECK).not.toMatch(/['`$\\!\n]/);
-    expect(SIGNING_PAIR_CHECK).toMatch(
-      /^\. \/usr\/local\/share\/menumesh\/seal\.sh; if seal_self_check; then echo "signing pair: [^"]+"; else echo "signing pair: [^"]+" >&2; exit 1; fi$/,
-    );
+    expect(pairCheckShape(SIGNING_PAIR_CHECK)).toEqual([]);
     expect(kit('backup/Dockerfile')).toContain(
       'COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/',
     );
-    expect(kit('backup/seal.sh')).toContain('\nseal_self_check() {\n');
+    for (const helper of ['seal_public_keys_ok', 'seal_private_key_ok', 'seal_self_check']) {
+      expect(kit('backup/seal.sh')).toContain(`\n${helper}() {\n`);
+    }
     for (const script of ['backup.sh', 'wal-ship.sh']) {
       expect(code(kit(`backup/${script}`)).some((line) => line.includes('seal_self_check'))).toBe(
         true,
       );
     }
+    // As before the re-review (finding U4): the self-check alone, so a list that is no list of
+    // keys, which checks no probe, was blamed on the private key.
+    const selfCheckAlone =
+      /^\. \/usr\/local\/share\/menumesh\/seal\.sh; (?:seal_public_keys_ok \|\| \{ echo "[^"]+" >&2; exit 1; \}; )(?:seal_private_key_ok \|\| \{ echo "[^"]+" >&2; exit 1; \}; )/;
+    const today = SIGNING_PAIR_CHECK.replace(
+      selfCheckAlone,
+      '. /usr/local/share/menumesh/seal.sh; ',
+    );
+    expect(today).not.toBe(SIGNING_PAIR_CHECK);
+    refuses(pairCheckShape, today, 'a list that is no list of keys is not named');
+    refuses(pairCheckShape, today, 'a private key that is no key is not named');
+    // The private key held to its shape before the list, so a night with both wrong names the key.
+    const keyFirst = SIGNING_PAIR_CHECK.replace(
+      /(seal_public_keys_ok \|\| \{ echo "[^"]+" >&2; exit 1; \}; )(seal_private_key_ok \|\| \{ echo "[^"]+" >&2; exit 1; \}; )/,
+      '$2$1',
+    );
+    refuses(pairCheckShape, keyFirst, 'a list that is no list of keys is not named');
+    // A line that blames the private key for the list, or names no value.
+    refuses(
+      pairCheckShape,
+      SIGNING_PAIR_CHECK.replace(
+        'BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several',
+        'BACKUP_SIGNING_KEY does not sign what the list checks',
+      ),
+      'a list that is no list of keys is not named',
+    );
+  });
+
+  it('names the signing value that is no key, as the restores name it, before the backup or the shipper signs anything (Stop C’s re-review, finding U4)', () => {
+    expect(signingShapes(backupSh, walShipSh)).toEqual([]);
+    // As before the re-review: the self-check alone, which blamed the private key for a list that
+    // is no list of keys.
+    const backupKeys = backupSh.slice(
+      backupSh.indexOf('seal_public_keys_ok ||\n'),
+      backupSh.indexOf('seal_self_check ||\n'),
+    );
+    const todaysBackup = swap(backupSh, backupKeys, '');
+    refuses(
+      (text) => signingShapes(text, walShipSh),
+      todaysBackup,
+      'backup.sh doesn’t name BACKUP_SIGNING_PUBLIC_KEY',
+    );
+    refuses(
+      (text) => signingShapes(text, walShipSh),
+      todaysBackup,
+      'backup.sh doesn’t name BACKUP_SIGNING_KEY',
+    );
+    const shipKeys = walShipSh.slice(
+      walShipSh.indexOf('  if ! seal_public_keys_ok; then\n'),
+      walShipSh.indexOf('  elif ! seal_self_check 2>"$work/tool"; then\n'),
+    );
+    const todaysShip = swap(
+      swap(walShipSh, shipKeys, ''),
+      '  elif ! seal_self_check 2>"$work/tool"; then\n',
+      '  if ! seal_self_check 2>"$work/tool"; then\n',
+    );
+    refuses(
+      (text) => signingShapes(backupSh, text),
+      todaysShip,
+      'wal-ship.sh doesn’t name BACKUP_SIGNING_PUBLIC_KEY',
+    );
+    refuses(
+      (text) => signingShapes(backupSh, text),
+      todaysShip,
+      'wal-ship.sh doesn’t name BACKUP_SIGNING_KEY',
+    );
+    // The key's shape after the self-check, which then speaks first.
+    refuses(
+      (text) => signingShapes(text, walShipSh),
+      swap(
+        swap(backupSh, backupKeys, ''),
+        '  fail "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY\'s first key checks, so no night could be sealed: nothing was uploaded"\n',
+        `  fail "BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded"\n${backupKeys}`,
+      ),
+      'backup.sh doesn’t name BACKUP_SIGNING_PUBLIC_KEY',
+    );
   });
 });
 
