@@ -8690,7 +8690,7 @@ in place (VPS-43, VPS-52, VPS-58 and its rehearsal paragraph, both Left open lis
   with that WAL object removed and `PITR_ACCEPT_CUT` naming it is refused with `db-data` at 0
   entries; with the object back and the slowed night out of `daily/`, the night before recovers to
   `latest` across the fork (rows C and E, not D); and a night of the new timeline drills clean. With
-  the image of `e8d235e` the two refusals failed: the drill stopped on Postgres's PANIC, and the
+  the image of `e8d235e` those two checks failed: the drill stopped on Postgres's PANIC, and the
   recovery with the cut taken said done with rows D back ("redo done at 0/14000050"). A drill to a
   point past a cut checks the new advice, and the text rule `baseRefusals` holds the drill's failure
   lines to both of `pitr.sh`'s refusals. (084f503 "fix: refuse a base whose timeline forks inside
