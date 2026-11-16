@@ -667,7 +667,8 @@ const after = (text: string, from: string) => {
  * design note 4), and sub-step 5 says the reached server alerts from the revocation on, and gets
  * no token (finding P3). Two orders no rule held are held now (Stop C's seventh re-review, its
  * design notes): 2.4 makes .env's key the newest before the conf is checked against "that same
- * key", never the archive's, and sub-step 5 does step 2 again only after the revocation.
+ * key", never the archive's, and sub-step 5 does step 2 again only after the revocation; and the
+ * alerts sub-step 5 quotes are held to the words wal-ship.sh and backup.sh send.
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
@@ -840,6 +841,12 @@ const rootKeys = (runbook: string) =>
           ? []
           : [
               'the theft’s step 5 says nothing of what the reached server alerts once step 1’s token is revoked',
+            ]),
+        ...(fifth.includes('`the upload of <walfile> to the bucket failed (rclone)`') &&
+        fifth.includes('its nightly backup fails at `reaching the bucket`')
+          ? []
+          : [
+              'the theft’s step 5 quotes alerts the reached server never sends once step 1’s token is revoked',
             ]),
       ];
     },
@@ -1653,8 +1660,9 @@ const RELEASE_BY_TOKEN = `read -rs PAT && printf '%s\\n' "$PAT" | sudo app-deplo
  * 1's release, so the newest release that stayed live never went out (Stop C's seventh re-review,
  * finding Q1): it is the last such line before step 7's deploy, the old image of step 7's own line.
  * The clauses the review found unpinned are held too: item 2's release live just before the bad
- * deploy, and item 1's images.env only after `latest` on the same server that ended neither at a
- * cut nor before deploys.log's last production line; and Production, step 2, and Rolling back by
+ * deploy and its "or at least before its migrations ran", item 3's "when that line is later than
+ * that time", and item 1's images.env only after `latest` on the same server that ended neither at
+ * a cut nor before deploys.log's last production line; and Production, step 2, and Rolling back by
  * hand ask for the owner's own note of the day, which a new server's steps 5 and 7 go by (the
  * deploy design notes).
  */
@@ -1756,7 +1764,10 @@ const releaseDeployed = (runbook: string) =>
       ...(has(release, 'in turn, oldest first')
         ? ['step 7 sends out again every release made since, a rolled-back one among them']
         : []),
-      ...(has(release, "where the recovered state is from before a bad release's deploy began") &&
+      ...(has(
+        release,
+        "where the recovered state is from before a bad release's deploy began, or at least before its migrations ran (step 5)",
+      ) &&
       has(release, 'a rewind past it, a night from before it, or `latest` that ended at a cut') &&
       has(
         release,
@@ -1823,7 +1834,7 @@ const releaseDeployed = (runbook: string) =>
           ]),
       ...(has(
         release,
-        "the new image of the last production line of `deploys.log` before step 7's deploy that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line)",
+        "the new image of the last production line of `deploys.log` before step 7's deploy that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line), when that line is later than that time",
       ) &&
       !has(release, 'the new image of the last production line of `deploys.log` that is neither')
         ? []
@@ -2110,6 +2121,12 @@ const REWRAPPED = [
   // The orders the seventh re-review's design notes found unpinned: 2.4's newest key before the
   // conf's check of that same key.
   'two commands print the same `age1…` key',
+  // And the clauses its design notes found loose besides: item 2's migrations, item 3's time, and
+  // the reached server's alerts as its scripts send them.
+  'or at least before its migrations ran (step 5)',
+  'that line is later than that time; on a new server',
+  '`the upload of <walfile> to the bucket failed (rclone)`',
+  'backup fails at `reaching the bucket`',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -3851,7 +3868,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       refuses(oldCopies, swap(RUNBOOK, from, to), problem);
   });
 
-  it('makes .env’s backup key the newest before the conf is checked against that same key, and judges the bucket again only after the revocation (Stop C’s seventh re-review, design notes)', () => {
+  it('makes .env’s backup key the newest before the conf is checked against that same key, judges the bucket again only after the revocation, and quotes the reached server’s alerts as sent (Stop C’s seventh re-review, design notes)', () => {
     expect(rootKeys(RUNBOOK)).toEqual([]);
     const conf =
       'step 2.4 checks the admin’s conf against the backup key the archive held, or before .env holds the newest one';
@@ -3892,6 +3909,16 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       order,
     );
+    // The reached server's alerts after the revocation, quoted as the scripts send them (P3).
+    const quoted =
+      'the theft’s step 5 quotes alerts the reached server never sends once step 1’s token is revoked';
+    expect(SHIPPER).toContain('stopped "the upload of $walfile to the bucket failed (rclone)"');
+    expect(BACKUP).toContain("reason='reaching the bucket'");
+    for (const [from, to] of [
+      ['`the upload of <walfile> to the bucket failed (rclone)`', '`the WAL could not be shipped`'],
+      ['backup fails at `reaching the bucket`', 'backup fails at `the seal`'],
+    ])
+      refuses(rootKeys, swap(RUNBOOK, from, to), quoted);
   });
 
   it('keeps the delete markers of the backup’s own removal, takes a seal’s version from its own run and two that verify for a stolen key, and deletes what was put over (Stop C’s seventh re-review, findings R3, R6 and R5, theft design notes)', () => {
@@ -4003,6 +4030,12 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         'step 7 takes images.env’s release after `latest` on a new server, or after WAL that stopped',
       ],
       [" (the old image of step 7's own line)", '', stayed],
+      [', when\n        that line is later than that time;', ';', stayed],
+      [
+        ', or at least before its migrations ran (step 5)',
+        '',
+        'step 7 sends out, after a recovery to a state from before a bad release, a later release',
+      ],
       [' Then note,\n     off the server,', ' Then note,\n     on the server,', noted],
     ])
       refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
