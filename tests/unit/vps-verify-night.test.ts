@@ -31,7 +31,8 @@ import {
  * key, before it is copied: the seal read as seal.sh's seal_open reads one (scripts/vps-seal.mts,
  * which vps:backup-test holds to the shell's verdicts), every file named as a part of the night
  * as the seal gives it, and a settings archive listed and there. Each case builds its pair, its
- * parts and its seal here.
+ * parts and its seal here. Stop C's re-review adds what a theft of the signing key leaves (finding
+ * V1) and a key file that holds the age key, which age would refuse to read (design note 4).
  */
 
 const night = '2026-11-13T2030Z-3f9c0a1b';
@@ -143,6 +144,27 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     expect(verdictOf(folderOf(good), other.publicKey)).toBe(
       notSigned("is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys"),
     );
+    // After a theft of the signing key (Stop C's re-review, finding V1), own stands for the key
+    // that signed every night before the trouble, which the thief may hold, and other for the new
+    // pair: the stolen key leaves the kept list at once, so a night from before the trouble is
+    // refused with that list, and passes only with a file that holds the stolen key alone, kept
+    // apart for that one check. A routine rotation keeps the whole list, which takes it too.
+    const dir = temporary();
+    const keyFile = (name: string, keys: string) => {
+      writeFileSync(join(dir, name), `BACKUP_SIGNING_PUBLIC_KEY=${keys}\n`);
+      return join(dir, name);
+    };
+    const before = folderOf(good);
+    expect(verifyNight(night, before, { file: keyFile('kept.txt', other.publicKey) })).toEqual({
+      ok: false,
+      line: notSigned("is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys"),
+    });
+    for (const keys of [own.publicKey, `${other.publicKey} ${own.publicKey}`]) {
+      expect(verifyNight(night, before, { file: keyFile('stolen.txt', keys) })).toEqual({
+        ok: true,
+        lines: passed([partOf(config)]),
+      });
+    }
   });
 
   it('refuses each seal seal_open refuses, in its words, and prints none of its text', () => {
@@ -305,6 +327,53 @@ describe('pnpm vps:verify-night (Stop C’s review, finding D1)', () => {
     // With an archive planted under its name, which such a night leaves free, and without one.
     expect(verdictOf(folderOf(noConfig))).toBe(line);
     expect(verdictOf(folderOf(noConfig, []))).toBe(line);
+
+    // After a theft of the signing key (Stop C's re-review, finding V1): backup.sh by hand with the
+    // new pair, at an hour when the host's settings archive of 20:20 is more than 2 hours old,
+    // seals none, and is refused so with the kept list, which now holds the new key alone; made
+    // after a fresh archive, it seals one and passes. The stolen key's file takes only the nights
+    // from before the trouble.
+    const byHand = '2026-11-14T0930Z-5e1d2c3b';
+    const handConfig = `config-${byHand}.tar.age`;
+    const archive = randomBytes(10440);
+    const handBase: SealBase = { ...base, end: '2026-11-14T09:31:42Z' };
+    const handParts = [
+      `globals-${byHand}.sql.age`,
+      `storage-${byHand}.tar.age`,
+      `manifest-${byHand}.txt.age`,
+      `postgres-${byHand}.dump.age`,
+      `base-${byHand}.tar.zst.age`,
+    ].map((name): SealPart => {
+      const bytes = randomBytes(2048);
+      return { sha256: sum(bytes), bytes: bytes.length, name };
+    });
+    const sealed: SealPart = { sha256: sum(archive), bytes: archive.length, name: handConfig };
+    const handFolder = (listed: SealPart[], archived: boolean) => {
+      const dir = temporary();
+      writeFileSync(
+        join(dir, `seal-${byHand}.txt`),
+        sealText(byHand, handBase, listed, other.privateKey),
+      );
+      if (archived) writeFileSync(join(dir, handConfig), archive);
+      return dir;
+    };
+    const handVerdict = (dir: string, keys: string) => {
+      const verdict = verifyNight(byHand, dir, { environment: keys });
+      return verdict.ok ? verdict.lines : verdict.line;
+    };
+    expect(handVerdict(handFolder(handParts, false), other.publicKey)).toBe(
+      `verify-night: the night of ${byHand} has no settings archive in its seal (${handConfig}): its backup had none fresh enough, and anything under that name is someone else's: name the night before it`,
+    );
+    const whole = handFolder([...handParts, sealed], true);
+    const handPassed = [
+      `verify-night: ${handConfig} is the part the backup sealed (10440 bytes, sha256 ${sealed.sha256})`,
+      `verify-night: the seal of ${byHand} is signed by the backup's key, and the 1 part here matches it: copy ${handConfig} to the server, where sha256sum must print ${sealed.sha256} for it before it is unpacked`,
+    ];
+    expect(handVerdict(whole, other.publicKey)).toEqual(handPassed);
+    expect(handVerdict(whole, `${other.publicKey} ${own.publicKey}`)).toEqual(handPassed);
+    expect(handVerdict(whole, own.publicKey)).toBe(
+      `verify-night: the night of ${byHand} is not signed by the backup's key: its seal (seal-${byHand}.txt) is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys, so someone else wrote to the bucket, and nothing in the folder can be trusted`,
+    );
   });
 
   it('refuses a folder without the night’s seal or its settings archive, or with either not a file', () => {
