@@ -9929,10 +9929,10 @@ deploy design note 2, as only the owner's note of the day says what its clause w
     it as well; and VPS-83 gains the pointer to VPS-90 that VPS-55 and VPS-78 got.
   - Deploy design note 4: `releaseDeployed`'s coverage moved with VPS-92, "oldest first" refused.
   - The re-wrap test now wraps a piece of every phrase a rule reads with `has()`, and of each phrase
-    the new checks read from folded text: 98 phrases where it had 38, four of round 5's gone with
-    their sentences and 64 new. The only phrases of `has()` left out are the ten the rules refuse,
-    which the RUNBOOK no longer holds, and every rule stays at none on the re-wrapped RUNBOOK.
-    (30c4576 "test: wrap every phrase the runbook rules read with has()")
+    the new checks read from folded text: 99 phrases where it had 38, four of round 5's gone with
+    their sentences and 65 new (one with bb05659). The only phrases of `has()` left out are the ten
+    the rules refuse, which the RUNBOOK no longer holds, and every rule stays at none on the
+    re-wrapped RUNBOOK. (30c4576 "test: wrap every phrase the runbook rules read with has()")
 
 **After the fixes of round 6**, which changed only documents, text rules and comments: `pnpm lint`,
 `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,216 in 70 files (`vps-runbook` 29,
