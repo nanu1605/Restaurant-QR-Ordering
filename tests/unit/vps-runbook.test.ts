@@ -51,7 +51,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * too, the journal's reach read off its first line, a ping's window run to the next night's, a
  * night that sent no ping taking no key, and only pings naming different ids in one window a sign
  * (the eighth re-review's T1, T2, H1 and H2), and every key of the list on the server since the
- * trouble kept apart with the stolen one, the list's first among them (T3); the drill names each
+ * trouble kept apart with the stolen one, the list's first among them (T3), and disaster
+ * recovery's night named only by a ping from the old server's own address inside its window, the
+ * night a point-in-time recovery took checked before db starts (T4); the drill names each
  * of pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
@@ -557,6 +559,11 @@ const theftList = (runbook: string) =>
  * about 2 hours, short of a long base's ping, and two lines in it, a ping curl sent twice among
  * them, took the night for the thief's (Stop C's eighth re-review, findings T1 and H1): the window
  * runs to the next night's, and only two lines naming different ids, but for a run by hand, do.
+ * And disaster recovery's step 2 still named the night whose settings archive it unpacks from any
+ * ping in the monitor's log, and from Telegram's failure lines, both of which a leaked .env can send
+ * (finding T4): it reads only a ping from the old server's own address inside its night's window, a
+ * ping from elsewhere sends the owner to the theft's step 5 first, Telegram's lines name no night
+ * there, and step 5 checks the night a point-in-time recovery took before db starts.
  */
 const theftRecords = (runbook: string) =>
   inPlaces(runbook, ['theft', 'recovery'], ({ theft, recovery }) => [
@@ -603,6 +610,28 @@ const theftRecords = (runbook: string) =>
     ...(has(recovery, 'named only from records made before the trouble could have begun')
       ? []
       : ['disaster recovery’s step 2 names a night from before a theft from any record']),
+    ...(has(
+      recovery,
+      "where each ping carries that line (First install, step 3), and in it only a ping from the old server's own address inside its night's window (from its stamp to the next night's), as A stolen or leaked bucket token (VPS), step 2, reads it",
+    ) &&
+    has(
+      recovery,
+      "a ping from elsewhere, or two naming different ids in one night's window but for a run by hand, is a sign the `.env` leaked, so follow that section's step 5 before anything of the bucket is downloaded",
+    ) &&
+    has(recovery, "Telegram's failure lines, which that `.env` can send too, name no night here") &&
+    !has(recovery, "(First install, step 3), and Telegram's failure lines")
+      ? []
+      : [
+          'disaster recovery’s step 2 names the night whose settings archive it unpacks from any ping in the monitor’s log, or a Telegram line, which a leaked .env can send',
+        ]),
+    ...(has(
+      recovery,
+      "Whichever night it took, check the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own records, as step 2 reads them, before step 6 starts `db`: one they don't name, but for a night that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS), step 2), is a sign of theft, and `db` stays stopped while that section is followed",
+    )
+      ? []
+      : [
+          'disaster recovery’s step 5 starts db on the night a point-in-time recovery took without checking it against the backup’s own records',
+        ]),
   ]);
 
 /** What a leaked .env held besides the backup's own values, each with Rotation's step for it. */
@@ -2312,6 +2341,11 @@ const REWRAPPED = [
   'That file holds the stolen key and every other key the list held whose private half was',
   'signed: one that an older key of the kept list',
   'So does every other key of the list whose private half was on the',
+  // Disaster recovery's step 2 named by the old server's own pings, and step 5's night checked.
+  "address inside its night's window (from its stamp to the next night's), as A stolen or leaked",
+  'a ping from elsewhere, or two naming different ids in one',
+  "Telegram's failure lines, which that `.env`",
+  "the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -2732,11 +2766,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       theftRecords,
       swap(
         RUNBOOK,
-        cut(
-          RUNBOOK,
-          ' After a theft of\n     the signing key, a night from before',
-          ' Its `<id>` names',
-        ),
+        cut(RUNBOOK, ' After a theft of the signing key, a night from before', ' Its `<id>` names'),
         '',
       ),
       'disaster recovery’s step 2 names a night from before a theft from any record',
@@ -4285,8 +4315,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         noPing,
       ],
       [
-        `${cut(RUNBOOK, '(from its stamp to', 'late ping counts)')}late ping counts)`,
-        '(from its stamp to about 2 hours after)',
+        `${cut(RUNBOOK, "the night's window (from its stamp to", 'late ping counts)')}late ping counts)`,
+        "the night's window (from its stamp to about 2 hours after)",
         window,
       ],
       [cut(RUNBOOK, ", the server's own address being", ', as sub-step 4 reads them'), '', window],
@@ -4384,6 +4414,70 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ],
     ])
       refuses(oldCopies, swap(RUNBOOK, from, to), first);
+  });
+
+  it('names disaster recovery’s night only by a ping from the old server’s own address inside its window, and checks the night a point-in-time recovery took before db starts (Stop C’s eighth re-review, finding T4)', () => {
+    expect(theftRecords(RUNBOOK)).toEqual([]);
+    const named =
+      'disaster recovery’s step 2 names the night whose settings archive it unpacks from any ping';
+    const started =
+      'disaster recovery’s step 5 starts db on the night a point-in-time recovery took without checking it';
+    // As the seventh re-review's fixes left them: any ping of the monitor's log, and Telegram's
+    // failure lines, named step 2's night, and step 5 said nothing of the night it took.
+    const before = swap(
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          '(First install, step 3), and in it only',
+          ' After a theft of the signing key, a night from before',
+        ),
+        "(First install, step 3), and Telegram's failure lines.",
+      ),
+      cut(RUNBOOK, ' Whichever night it took,', '\n\n     The volumes of a new server'),
+      '',
+    );
+    refuses(theftRecords, before, named);
+    refuses(theftRecords, before, started);
+    // Each clause dropped or turned in turn.
+    for (const [from, to, problem] of [
+      [
+        cut(RUNBOOK, ', and in it only a ping from the old', ', as A stolen or leaked'),
+        ', and any ping',
+        named,
+      ],
+      [
+        "inside its night's window (from its stamp to the next night's), as",
+        "inside its night's window, as",
+        named,
+      ],
+      [
+        cut(RUNBOOK, ': a ping from elsewhere, or two naming', " Telegram's failure lines,"),
+        '.',
+        named,
+      ],
+      [
+        cut(RUNBOOK, ', or two naming different ids in one', ' but for a run by hand, is a sign'),
+        ", or two in one night's window",
+        named,
+      ],
+      [
+        cut(
+          RUNBOOK,
+          " Telegram's failure lines, which",
+          ' After a theft of the signing key, a night',
+        ),
+        '',
+        named,
+      ],
+      [
+        cut(RUNBOOK, ' Whichever night it took,', '\n\n     The volumes of a new server'),
+        '',
+        started,
+      ],
+      ['`db` stays stopped while that section is followed.', '`db` starts all the same.', started],
+    ])
+      refuses(theftRecords, swap(RUNBOOK, from, to), problem);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {

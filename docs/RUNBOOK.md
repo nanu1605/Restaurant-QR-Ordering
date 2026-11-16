@@ -1398,17 +1398,21 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   2. The night's id, from the backup's own records and never from the names in the bucket, since
      anyone holding the bucket's token can add a night under any stamp: the journal's
      `backup <id>: …` lines if the old server still runs, else the backup monitor's log, where each
-     ping carries that line (First install, step 3), and Telegram's failure lines. After a theft of
-     the signing key, a night from before the trouble is named only from records made before the
-     trouble could have begun, since the leaked `.env` let its holder post to the monitor and to
-     Telegram too (A stolen or leaked bucket token (VPS), step 5). Its `<id>` names the settings
-     archive here and the recovery in step 5, which refuses to run without one. (A point-in-time
-     recovery names no night: it takes the newest one itself, so this step's id is for the
-     settings archive.) The archive becomes the server's settings, and `db` runs its
-     `config/db/wal-spool.sh` as root, but none of the kit's scripts can run on the new server
-     before an archive is unpacked there: so it is checked against the night's seal on the owner's
-     own machine first, and only an archive that passes goes to the server (docs/DECISIONS.md
-     VPS-51).
+     ping carries that line (First install, step 3), and in it only a ping from the old server's own
+     address inside its night's window (from its stamp to the next night's), as A stolen or leaked
+     bucket token (VPS), step 2, reads it: a ping from elsewhere, or two naming different ids in one
+     night's window but for a run by hand, is a sign the `.env` leaked, so follow that section's
+     step 5 before anything of the bucket is downloaded. Telegram's failure lines, which that `.env`
+     can send too, name no night here. After a theft of the signing key, a night from before the
+     trouble is named only from records made before the trouble could have begun, since the leaked
+     `.env` let its holder post to the monitor and to Telegram too (A stolen or leaked bucket token
+     (VPS), step 5). Its `<id>` names the settings archive here and the recovery in step 5, which
+     refuses to run without one. (A point-in-time recovery names no night: it takes the newest one
+     itself, so this step's id is for the settings archive.) The archive becomes the server's
+     settings, and `db` runs its `config/db/wal-spool.sh` as root, but none of the kit's scripts can
+     run on the new server before an archive is unpacked there: so it is checked against the night's
+     seal on the owner's own machine first, and only an archive that passes goes to the server
+     (docs/DECISIONS.md VPS-51).
      1. **Download**, on the owner's machine, into an empty folder: the night's `seal-<id>.txt`
         and `config-<id>.tar.age`. For a night from before a theft of the signing key (2.2),
         where the bucket keeps versions, first make the versions of that night's objects that
@@ -1679,7 +1683,11 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      carry that server's data folder, whose `postgresql.auto.conf` a recovery puts back for `db`,
      with any file planted beside it. Recover the last night from before the trouble logically
      instead (the fallback, below, with the stolen key's file for that one run when a key of that
-     file signed it: A stolen or leaked bucket token (VPS), step 5).
+     file signed it: A stolen or leaked bucket token (VPS), step 5). Whichever night it took, check
+     the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own
+     records, as step 2 reads them, before step 6 starts `db`: one they don't name, but for a night
+     that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS),
+     step 2), is a sign of theft, and `db` stays stopped while that section is followed.
 
      The volumes of a new server are new already, but then Storage's files come only from a night:
      do the logical recovery below first (into the new `storage-data`, `db-data` and `db-config`,
