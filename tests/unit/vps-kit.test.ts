@@ -1868,7 +1868,7 @@ const monthlyCopy = (script: string) => {
   );
   const first = script.indexOf('    ????-??-01T*) whole= ;;');
   const listed = script.indexOf(
-    `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" "$remote/monthly/" |`,
+    `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" --include "copy-$month-*" "$remote/monthly/" |`,
   );
   const tried = script.indexOf('>"$work/candidates"');
   const loop = script.indexOf(
@@ -1903,11 +1903,11 @@ const monthlyCopy = (script: string) => {
       ? []
       : ['more than 5 seals in monthly/ are tried']),
     ...(script.includes(
-      String.raw`$2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }`,
-    )
+      String.raw`$2 ~ ("^(seal|copy)-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") {`,
+    ) && script.includes('sealed[substr($2, 6, 25)] = 1')
       ? []
       : ['a whole copy in monthly/ is not looked for by a seal named with a night’s id']),
-    ...(script.includes('          NF == 2 && $1 + 0 <= max && $2 ~ ("^seal-" month')
+    ...(script.includes('          NF == 2 && $1 ~ /^[1-9][0-9]*$/ && $2 ~ ("^(seal|copy)-" month')
       ? []
       : ['a listing line of more than a size and a name is taken for a seal']),
     ...(copy.includes(
@@ -2057,6 +2057,120 @@ const recordsUnread = (files: Record<string, string>) =>
       text.split('\n').some((line) => !/^\s*(#|\/\/|\/?\*)/.test(line) && line.includes('copy-')),
     )
     .map(([name]) => `${name} reads a copy’s record`);
+
+/** The month's copy's names, looked up in monthly/ by name right before the copy goes up. */
+const COPY_LOOKUP = `    there=$({\n      for part in $expected; do echo "\${part%:*}"; done\n      echo "seal-$night.txt"\n      echo "copy-$night.txt"\n    } | held "$remote/monthly" | awk '{ printf "%s%s", sep, $2; sep = " " }')\n`;
+/** The record's name, looked up in monthly/ once more right before the record goes up. */
+const RECORD_LOOKUP = `    there=$(echo "copy-$night.txt" | held "$remote/monthly" | awk '{ printf "%s%s", sep, $2; sep = " " }')\n`;
+const COPY_REFUSED = `      fail "someone else wrote to the bucket: monthly/ holds $there before tonight's copy"\n`;
+const RECORD_REFUSED = `      fail "someone else wrote to the bucket: monthly/ holds $there before the record of tonight's copy"\n`;
+
+/**
+ * Right before the month's copy goes up, each of its names is looked up in monthly/ by its exact
+ * name (held, nothing listed): every part's, the seal's and the record's; and right before the
+ * record goes up, the record's once more. Nobody could know them before the night, and the check
+ * of tonight's names found none there, so one that is there now was put there while the night ran
+ * by someone watching daily/'s listing: the night stops with "someone else wrote to the bucket",
+ * which the RUNBOOK's stolen-token steps take for a theft. Before, locks that refuse overwrites
+ * refused the copy or the record on such an object, and the night failed with "the monthly copy"
+ * or "the record of the month's copy", which never said why (Stop C's re-review, finding R1).
+ */
+const copyNamesFree = (script: string) => {
+  const at = (text: string) => script.indexOf(text);
+  const copying = at('  if [ -z "$whole" ]; then\n');
+  const looked = at(COPY_LOOKUP);
+  const refused = at(`    [ -z "$there" ] ||\n${COPY_REFUSED}`);
+  const parts = at('      rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"');
+  const signed = at('    signature=$(seal_sign "$work/record.message")');
+  const recordLooked = at(RECORD_LOOKUP);
+  const recordRefused = at(`    [ -z "$there" ] ||\n${RECORD_REFUSED}`);
+  const recorded = at(
+    '    rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"',
+  );
+  const checks = script.slice(copying, at(`    reason="the check of the month's copy"`));
+  return [
+    ...(copying >= 0 && looked > copying && refused > looked && parts > refused
+      ? []
+      : [
+          'the month’s copy goes up without its names, its record’s among them, looked up in monthly/ by name right before it, and the night stopped as a theft',
+        ]),
+    ...(signed >= 0 &&
+    recordLooked > signed &&
+    recordRefused > recordLooked &&
+    recorded > recordRefused
+      ? []
+      : [
+          'the record goes up without its name looked up in monthly/ right before it, and the night stopped as a theft',
+        ]),
+    ...(/\brclone lsf\b/.test(checks)
+      ? ['tonight’s names in monthly/ are looked for by a listing, not each by its exact name']
+      : []),
+  ];
+};
+
+/**
+ * Of the month's seals in monthly/, only those with a record there are candidates for the month's
+ * copy, at most 5, oldest first: one listing of both, each named as backup.sh names one, a seal no
+ * longer than a seal and a record than a record, a line of more than a size and a name no
+ * object's. A seal without its record counted toward the 5, so five copies cut short before their
+ * records, or five seals someone else put there, hid a recorded copy behind them, and every later
+ * night of the month copied itself again (Stop C's re-review, design note 3).
+ */
+const recordedCandidates = (script: string) => {
+  const listed = script.indexOf(
+    `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" --include "copy-$month-*" "$remote/monthly/" |\n`,
+  );
+  const listing = listed < 0 ? '' : script.slice(listed, script.indexOf('>"$work/candidates"'));
+  return [
+    ...(listing.includes(
+      String.raw`          NF == 2 && $1 ~ /^[1-9][0-9]*$/ && $2 ~ ("^(seal|copy)-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") {`,
+    )
+      ? []
+      : [
+          'the month’s seals and records in monthly/ are not listed together, each by the name backup.sh gives it',
+        ]),
+    ...(listing.includes(
+      '            if ($2 ~ /^seal-/ && $1 + 0 <= max) sealed[substr($2, 6, 25)] = 1\n',
+    ) &&
+    listing.includes(
+      '            if ($2 ~ /^copy-/ && $1 + 0 <= 256) recorded[substr($2, 6, 25)] = 1\n',
+    )
+      ? []
+      : ['a seal longer than a seal, or a record longer than a record, makes a candidate']),
+    ...(listing.includes('          END { for (id in sealed) if (id in recorded) print id }')
+      ? []
+      : ['a seal without its record counts toward the 5 candidates']),
+    ...(listing.includes(`        sort -u | awk 'NR <= 5'`)
+      ? []
+      : ['more than 5 candidates, or not the oldest, are tried']),
+  ];
+};
+
+/**
+ * whole_copy looks a candidate's seal up by its exact name, no longer than a seal, before it reads
+ * it, as it does the record: rclone cat of a name the folder doesn't hold reads every object under
+ * that name and a slash (Stop C's re-review, design note 7).
+ */
+const sealLookedUp = (script: string) => {
+  const copy = script.slice(
+    script.indexOf('whole_copy() {'),
+    script.indexOf("reason='the monthly copy'"),
+  );
+  const lookedUp = copy.indexOf(
+    '\n  echo "seal-$1.txt" | held "$remote/monthly" >"$work/candidate.sealed" &&\n',
+  );
+  const sized = copy.indexOf(
+    `    LC_ALL=C awk -v name="seal-$1.txt" -v max="$seal_max" '\n      NF == 2 && $2 == name && $1 ~ /^[1-9][0-9]*$/ && $1 + 0 <= max { found = 1 }\n      END { exit found ? 0 : 1 }' "$work/candidate.sealed" &&\n`,
+  );
+  const read = copy.indexOf(
+    'rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt"',
+  );
+  return lookedUp >= 0 && sized > lookedUp && read > sized
+    ? []
+    : [
+        'a candidate’s seal is read before it is looked up by its exact name, no longer than a seal',
+      ];
+};
 
 /**
  * Every rclone copyto writes whatever its destination holds (--no-check-dest). Without it rclone
@@ -3644,8 +3758,8 @@ describe('the migrate and backup images', () => {
       monthlyCopy,
       swap(
         backupSh,
-        '          NF == 2 && $1 + 0 <= max && $2 ~',
-        '          $1 + 0 <= max && $2 ~',
+        '          NF == 2 && $1 ~ /^[1-9][0-9]*$/ && $2 ~',
+        '          $1 ~ /^[1-9][0-9]*$/ && $2 ~',
       ),
       'more than a size and a name is taken for a seal',
     );
@@ -3670,8 +3784,161 @@ describe('the migrate and backup images', () => {
     // As before review finding F1: a whole copy looked for under the stamp alone.
     refuses(
       monthlyCopy,
-      swap(backupSh, 'Z-[0-9a-f]{8}[.]txt$") { print', 'Z[.]txt$") { print'),
+      swap(backupSh, 'Z-[0-9a-f]{8}[.]txt$") {\n', 'Z[.]txt$") {\n'),
       'by a seal named with a night’s id',
+    );
+  });
+
+  it('counts toward the 5 candidates only seals with a record, so five without one hide no recorded copy (Stop C’s re-review, design note 3)', () => {
+    expect(recordedCandidates(backupSh)).toEqual([]);
+    // Today's listing, as before the re-review: the month's seals alone, each a candidate whether
+    // it has a record or not.
+    const listing = backupSh.slice(
+      backupSh.indexOf(
+        `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" --include "copy-$month-*"`,
+      ),
+      backupSh.indexOf(`        sort -u | awk 'NR <= 5' >"$work/candidates"`),
+    );
+    const todays = swap(
+      backupSh,
+      listing,
+      [
+        `      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" "$remote/monthly/" |`,
+        `        LC_ALL=C awk -v month="$month" -v max="$seal_max" '`,
+        String.raw`          NF == 2 && $1 + 0 <= max && $2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }' |`,
+        '',
+      ].join('\n'),
+    );
+    for (const problem of [
+      'are not listed together',
+      'a seal longer than a seal, or a record longer than a record',
+      'a seal without its record counts toward the 5 candidates',
+    ]) {
+      refuses(recordedCandidates, todays, problem);
+    }
+    // Either name taken alone, a record of any size, or no cap.
+    refuses(
+      recordedCandidates,
+      swap(
+        backupSh,
+        '          END { for (id in sealed) if (id in recorded) print id }',
+        '          END { for (id in sealed) print id }',
+      ),
+      'a seal without its record counts toward the 5 candidates',
+    );
+    refuses(
+      recordedCandidates,
+      swap(backupSh, '$2 ~ /^copy-/ && $1 + 0 <= 256)', '$2 ~ /^copy-/)'),
+      'a record longer than a record, makes a candidate',
+    );
+    refuses(
+      recordedCandidates,
+      swap(backupSh, ` --include "copy-$month-*" "$remote/monthly/" |`, ` "$remote/monthly/" |`),
+      'are not listed together',
+    );
+    refuses(
+      recordedCandidates,
+      swap(backupSh, `sort -u | awk 'NR <= 5' >"$work/candidates"`, 'sort -u >"$work/candidates"'),
+      'more than 5 candidates',
+    );
+  });
+
+  it('looks a candidate’s seal up by its exact name before it reads it, as its record (Stop C’s re-review, design note 7)', () => {
+    expect(sealLookedUp(backupSh)).toEqual([]);
+    // Today's whole_copy, as before the re-review: the seal read first.
+    const lookup = backupSh.slice(
+      backupSh.indexOf(
+        '  echo "seal-$1.txt" | held "$remote/monthly" >"$work/candidate.sealed" &&\n',
+      ),
+      backupSh.indexOf(
+        '    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&\n',
+      ),
+    );
+    const todays = swap(
+      swap(backupSh, lookup, ''),
+      '    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&\n',
+      '  rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&\n',
+    );
+    refuses(sealLookedUp, todays, 'a candidate’s seal is read before it is looked up');
+    // Looked up with no size cap, or after the read.
+    refuses(
+      sealLookedUp,
+      swap(backupSh, '$1 ~ /^[1-9][0-9]*$/ && $1 + 0 <= max { found = 1 }', '{ found = 1 }'),
+      'a candidate’s seal is read before it is looked up',
+    );
+    refuses(
+      sealLookedUp,
+      swap(
+        backupSh,
+        `${lookup}    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&\n`,
+        `  rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&\n${lookup.replace('  echo', '    echo')}`,
+      ),
+      'a candidate’s seal is read before it is looked up',
+    );
+  });
+
+  it('stops the night as a theft when a name of the month’s copy or its record is in monthly/ right before it goes up (Stop C’s re-review, finding R1)', () => {
+    expect(copyNamesFree(backupSh)).toEqual([]);
+    // Today's copy, as before the re-review: neither name looked up, so under locks that refuse
+    // overwrites an object put there failed the copy with "the monthly copy", or the record with
+    // "the record of the month's copy".
+    const copyCheck = `    # None of the copy's names may be in monthly/ yet, its record's among them (above).\n${COPY_LOOKUP}    [ -z "$there" ] ||\n${COPY_REFUSED}`;
+    const recordCheck = `    # The record's name, looked up once more right before the record goes up (above).\n${RECORD_LOOKUP}    [ -z "$there" ] ||\n${RECORD_REFUSED}`;
+    const todays = swap(swap(backupSh, copyCheck, ''), recordCheck, '');
+    refuses(copyNamesFree, todays, 'the month’s copy goes up without its names');
+    refuses(copyNamesFree, todays, 'the record goes up without its name looked up');
+    // Each look after its upload, which then can only fail on what it finds.
+    refuses(
+      copyNamesFree,
+      swap(
+        swap(backupSh, copyCheck, ''),
+        `    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"\n`,
+        `    rclone copyto --no-check-dest "$work/seal" "$remote/monthly/seal-$night.txt"\n${copyCheck}`,
+      ),
+      'the month’s copy goes up without its names',
+    );
+    refuses(
+      copyNamesFree,
+      swap(
+        swap(backupSh, recordCheck, ''),
+        '    rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"\n',
+        `    rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"\n${recordCheck}`,
+      ),
+      'the record goes up without its name looked up',
+    );
+    // The record's name left out of the first look, or a failure that doesn't say theft.
+    refuses(
+      copyNamesFree,
+      swap(
+        backupSh,
+        `      echo "seal-$night.txt"\n      echo "copy-$night.txt"\n    } | held`,
+        `      echo "seal-$night.txt"\n    } | held`,
+      ),
+      'the month’s copy goes up without its names',
+    );
+    refuses(
+      copyNamesFree,
+      swap(backupSh, COPY_REFUSED, `      fail "monthly/ holds $there before tonight's copy"\n`),
+      'the month’s copy goes up without its names',
+    );
+    refuses(
+      copyNamesFree,
+      swap(
+        backupSh,
+        RECORD_REFUSED,
+        `      fail "monthly/ holds $there before the record of tonight's copy"\n`,
+      ),
+      'the record goes up without its name looked up',
+    );
+    // A listing of monthly/ for the names.
+    refuses(
+      copyNamesFree,
+      swap(
+        backupSh,
+        `    # None of the copy's names may be in monthly/ yet, its record's among them (above).\n`,
+        `    # None of the copy's names may be in monthly/ yet, its record's among them (above).\n    rclone lsf --files-only --include "*-$night.*" "$remote/monthly/" >"$work/listed"\n`,
+      ),
+      'looked for by a listing',
     );
   });
 

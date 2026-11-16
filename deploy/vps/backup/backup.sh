@@ -394,11 +394,15 @@ sealed_size=$(echo "seal-$night.txt" | held "$day" | awk '{ print $1 }')
 # monthly/ beside its real seal copied from daily/, after its own copy was cut short or by beating
 # its own check after a 1st that failed, passed for its copy and stopped the month's later copies
 # with no alert (Stop C's re-review, the rest of finding S2): they have no record, so the next
-# whole night copies itself. Under locks that refuse overwrites, an object put under one of
-# tonight's monthly/ names while the night runs (its id and sizes show in daily/'s listing from its
-# first upload) refuses that night's copy or record, and the night fails with the alert, as does
-# each later night so stopped. Under versioning, objects of the same sizes put over a recorded
-# copy's parts still pass for them; a restore refuses them by their sha256.
+# whole night copies itself. An object put under one of tonight's monthly/ names while the night
+# runs (its id and sizes show in daily/'s listing from its first upload) made locks that refuse
+# overwrites refuse the night's copy or its record, and the night failed with a reason that never
+# said why: so the copy's names are looked up right before the copy goes up, and the record's
+# again right before the record, and one that is there stops the night saying someone else wrote
+# to the bucket, as the check of tonight's names does (Stop C's re-review, finding R1). One put in
+# after that look still fails the copy, with its step's reason, as does each later night so
+# stopped. Under versioning, objects of the same sizes put over a recorded copy's parts still pass
+# for them; a restore refuses them by their sha256.
 #
 # record_message <night> <seal>: the line a record of that night's copy signs, for the seal the
 # file holds, on stdout.
@@ -408,21 +412,26 @@ record_message() {
   [ "${#record_sum}" -eq 64 ] || return 1
   printf 'menumesh copy 1 %s %s\n' "$1" "$record_sum"
 }
-# whole_copy <night>: whether monthly/ holds that night whole: its seal, at most seal_max bytes, a
-# backup's for that night with a base, a settings archive and a dump of each of tonight's
-# databases; its record, looked up by its exact name before it is read (rclone cat of a name the
-# folder doesn't hold reads every object under that name and a slash), no longer than 256 bytes,
-# and byte for byte the line built here from that night and the very seal file checked above,
-# "signature ", a signature of that line by any of BACKUP_SIGNING_PUBLIC_KEY's keys (as a seal's,
-# so a rotation keeps the copies the old key recorded) and a newline: nothing of the record is
-# taken but the signature, and that only to be checked; and every part the seal lists in monthly/
-# at the size it gives, each looked up by its exact name (held). A listing of monthly/ quotes no
-# name: an object named after a part, a space and more, at the part's size, passed for the part,
-# and with the night's own seal copied there from daily/, stopped every later copy of the month
-# (Stop C's review, finding S2).
+# whole_copy <night>: whether monthly/ holds that night whole: its seal, looked up by its exact
+# name before it is read (rclone cat of a name the folder doesn't hold reads every object under
+# that name and a slash: Stop C's re-review, design note 7), at most seal_max bytes, a backup's
+# for that night with a base, a settings archive and a dump of each of tonight's databases; its
+# record, looked up by its exact name before it is read too, no longer than 256 bytes, and byte for
+# byte the line built here from that night and the very seal file checked above, "signature ", a
+# signature of that line by any of BACKUP_SIGNING_PUBLIC_KEY's keys (as a seal's, so a rotation
+# keeps the copies the old key recorded) and a newline: nothing of the record is taken but the
+# signature, and that only to be checked; and every part the seal lists in monthly/ at the size it
+# gives, each looked up by its exact name (held). A listing of monthly/ quotes no name: an object
+# named after a part, a space and more, at the part's size, passed for the part, and with the
+# night's own seal copied there from daily/, stopped every later copy of the month (Stop C's
+# review, finding S2).
 # shellcheck disable=SC2154 # seal_max and seal_parts: seal.sh's
 whole_copy() {
-  rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&
+  echo "seal-$1.txt" | held "$remote/monthly" >"$work/candidate.sealed" &&
+    LC_ALL=C awk -v name="seal-$1.txt" -v max="$seal_max" '
+      NF == 2 && $2 == name && $1 ~ /^[1-9][0-9]*$/ && $1 + 0 <= max { found = 1 }
+      END { exit found ? 0 : 1 }' "$work/candidate.sealed" &&
+    rclone cat --no-traverse --head "$((seal_max + 1))" "$remote/monthly/seal-$1.txt" >"$work/candidate" &&
     seal_open "$work/candidate" "$1" &&
     record_message "$1" "$work/candidate" >"$work/candidate.message" &&
     echo "copy-$1.txt" | held "$remote/monthly" >"$work/candidate.recorded" &&
@@ -459,14 +468,22 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
   case $stamp in
     ????-??-01T*) whole= ;;
     *)
-      # The month's seals in monthly/: of them, at most 5 named as this script names one, oldest
-      # first and no longer than a seal, are fetched and checked, so names planted there cost a
-      # few small reads at most. Planted seals fail their signature and stop no copy; enough of
-      # them, oldest, could make one copy more. The listing quotes no name, so a line of more than
-      # a size and a name is no seal's.
-      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" "$remote/monthly/" |
+      # The month's seals in monthly/ that have a record there: of them, at most 5, each named as
+      # this script names one, the seal no longer than a seal and the record than a record, oldest
+      # first, are fetched and checked, so names planted there cost a few small reads at most. A
+      # seal without its record is no candidate: five copies cut short before their records, or
+      # five seals someone else put there, filled the 5 and hid a recorded copy behind them, so
+      # every later night of the month copied itself again (Stop C's re-review, design note 3).
+      # Planted seals and records fail their signatures and stop no copy; enough of them, oldest,
+      # could make one copy more. The listing quotes no name, so a line of more than a size and a
+      # name is no object's.
+      rclone lsf --files-only --format sp --separator ' ' --include "seal-$month-*" --include "copy-$month-*" "$remote/monthly/" |
         LC_ALL=C awk -v month="$month" -v max="$seal_max" '
-          NF == 2 && $1 + 0 <= max && $2 ~ ("^seal-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") { print substr($2, 6, 25) }' |
+          NF == 2 && $1 ~ /^[1-9][0-9]*$/ && $2 ~ ("^(seal|copy)-" month "-[0-9][0-9]T[0-9][0-9][0-9][0-9]Z-[0-9a-f]{8}[.]txt$") {
+            if ($2 ~ /^seal-/ && $1 + 0 <= max) sealed[substr($2, 6, 25)] = 1
+            if ($2 ~ /^copy-/ && $1 + 0 <= 256) recorded[substr($2, 6, 25)] = 1
+          }
+          END { for (id in sealed) if (id in recorded) print id }' |
         sort -u | awk 'NR <= 5' >"$work/candidates"
       whole=
       while read -r candidate; do
@@ -478,6 +495,14 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
       ;;
   esac
   if [ -z "$whole" ]; then
+    # None of the copy's names may be in monthly/ yet, its record's among them (above).
+    there=$({
+      for part in $expected; do echo "${part%:*}"; done
+      echo "seal-$night.txt"
+      echo "copy-$night.txt"
+    } | held "$remote/monthly" | awk '{ printf "%s%s", sep, $2; sep = " " }')
+    [ -z "$there" ] ||
+      fail "someone else wrote to the bucket: monthly/ holds $there before tonight's copy"
     for part in $expected; do
       name=${part%:*}
       rclone copyto --no-check-dest "$day/$name" "$remote/monthly/$name"
@@ -512,6 +537,10 @@ if [ -z "$archive_problem" ] && [ -z "$base_problem" ]; then
       cat "$work/record.message"
       printf 'signature %s\n' "$signature"
     } >"$work/record"
+    # The record's name, looked up once more right before the record goes up (above).
+    there=$(echo "copy-$night.txt" | held "$remote/monthly" | awk '{ printf "%s%s", sep, $2; sep = " " }')
+    [ -z "$there" ] ||
+      fail "someone else wrote to the bucket: monthly/ holds $there before the record of tonight's copy"
     rclone copyto --no-check-dest "$work/record" "$remote/monthly/copy-$night.txt"
     recorded=$(echo "copy-$night.txt" | held "$remote/monthly" |
       awk -v name="copy-$night.txt" 'NF == 2 && $2 == name { print $1 }')
