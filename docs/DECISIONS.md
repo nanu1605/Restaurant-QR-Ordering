@@ -4374,15 +4374,15 @@ are safe on Vercel today, plus the Docker image. Stop A2 makes the long backgrou
 Compose, the gateway's Envoy config, the Caddy site file, the scheduler, backups, the image build in
 CI and the deploys come in later stops: Stop B writes them and rehearses them on this machine
 (VPS-31 to VPS-42), Stop C adds WAL archiving, signed nights and point-in-time recovery (VPS-43 to
-VPS-45, its review's fixes VPS-46 to VPS-58 and the re-review's VPS-59 to VPS-67), and Vercel stays
-production until the cut-over. The server's contract arrived on 2026-11-08, with adjustments the
-same day, and wins over the first plans where they differ (VPS-24). The owner's answers: live
-screens refresh by themselves at the first stale tap and other pages show a Refresh toast (VPS-8);
-no background update check (VPS-11); the export size cap is fine for now (VPS-6); single-slot
-deploys with a 25 s stop (VPS-22); production deploys run by the owner on the server (VPS-23); and,
-for Stop A2 (2026-11-08), a menu reader that cannot answer stops the reading with Try again, and a
-page that fails twice is left out (VPS-30), and a restaurant that joins a running announcement is
-emailed within a minute (VPS-28).
+VPS-45, its review's fixes VPS-46 to VPS-58, the re-review's VPS-59 to VPS-67 and the second
+re-review's VPS-68 to VPS-77), and Vercel stays production until the cut-over. The server's
+contract arrived on 2026-11-08, with adjustments the same day, and wins over the first plans where
+they differ (VPS-24). The owner's answers: live screens refresh by themselves at the first stale
+tap and other pages show a Refresh toast (VPS-8); no background update check (VPS-11); the export
+size cap is fine for now (VPS-6); single-slot deploys with a 25 s stop (VPS-22); production
+deploys run by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08), a menu reader that
+cannot answer stops the reading with Try again, and a page that fails twice is left out (VPS-30),
+and a restaurant that joins a running announcement is emailed within a minute (VPS-28).
 
 ### App changes and the web image (Stop A)
 
@@ -7812,9 +7812,13 @@ takes the newest name when none is given.
   that night with the alert, whatever the plant's size and mtime (V1: the job's copies write
   regardless, so the lock refuses and none is kept as the copy). Such a night's parts, listed by
   its id, show the planted name. It takes a live token, and ends with the rotation. **Still holds
-  after Stop C**, and the same for planted seals that make extra month's copies (cost only); since
-  Stop C's re-review the copy's record in `monthly/` is one more such name, and a copy without its
-  record is never counted, so a night so stopped fails loudly, each night it is done (VPS-59).
+  after Stop C**, and the same for planted seals that make extra month's copies (cost only; since
+  Stop C's second re-review each needs a planted record beside it: VPS-77); since Stop C's
+  re-review the copy's record in `monthly/` is one more such name, and a copy without its record is
+  never counted, so a night so stopped fails loudly, each night it is done (VPS-59); and since the
+  second re-review the copy's names are looked up right before it goes up, so such a night stops
+  saying someone else wrote to the bucket, and the RUNBOOK takes a step of the copy refused by a
+  lock, or failing night after night, for a stolen token (VPS-68).
 - A night's age comes from the server's clock, taken once when a restore starts. A clock a day
   behind reads `daily/` a day past its lock; one a day ahead reads a young night that is not a
   month's copy from `monthly/`, where a night planted under its id is restored (both shown in the
@@ -7848,9 +7852,10 @@ key lets a night through the seal: a logical restore still meets the Stop B guar
 rehearsal proves against a night sealed with its own key, but a point-in-time recovery replays a
 base and WAL as they are, with no such guard, so after a theft the key leaves the list and no
 restore or recovery takes what it signed (VPS-57) unless that key, from a file of its own kept
-apart, is given for one run, for a night from before the trouble (VPS-62). The bucket's locks,
-and so what a token holder can delete, still wait for the owner's choice of bucket (B5), and the
-clock is still the server's own.
+apart, is given for one run, for a night from before the trouble (VPS-62), named only from records
+made before the trouble could have begun, with its versions of then made current first (VPS-71,
+VPS-75). The bucket's locks, and so what a token holder can delete, still wait for the owner's
+choice of bucket (B5), and the clock is still the server's own.
 
 ### WAL archiving, signed backups and point-in-time recovery (VPS Stop C)
 
@@ -7876,8 +7881,9 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
        less for each failed base at its old end (see Left open, below).
     3. The proof is an Ed25519 signing key: each night's seal, and a signature in the name of each
        WAL object, can only be made with the private key, which only `backup` holds. The owner
-       keeps the public key beside the age key, in a file of its own (VPS-67), and after a
-       rotation the whole list (VPS-57).
+       keeps the public key beside the age key, in a file of its own (VPS-67), after a rotation
+       the whole list (VPS-57), and after a theft the list without the stolen key, which is kept
+       apart, the older keys that never leaked kept after the new one (VPS-73).
     4. The server drill is monthly, in the RUNBOOK step of the restore test, which it follows.
   - **`db` archives into a spool.** The pinned image ships `basic_archive` and no wal-g, so
     `archive_library=basic_archive` copies each finished file into `/wal-spool` (written, synced,
@@ -7944,11 +7950,12 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   - **What the shipper tells the owner.** One Telegram line, at most an hour apart, when the oldest
     file waits over 10 minutes or `pg_stat_archiver` has failed for 10 minutes; at once for what no
     wait mends: `archive_mode` off, a spool postgres can't write, a variable missing, a signing key
-    that is not the first public key's pair, a segment of another cluster, a changed identifier
-    while files wait, an outbox with no kept identifier. A line after it says WAL shipping
-    resumed. While healthy it pings `HEARTBEAT_WAL_URL` every 5 minutes (the monitor's period 5
-    and grace 10 minutes), which is also what notices a shipper that is not running at all; it
-    falls silent while anything is wrong.
+    that is not the first public key's pair or a signing value that is no key, each named (since
+    VPS-74), a segment of another cluster, a changed identifier while files wait, an outbox with
+    no kept identifier. A line after it says WAL shipping resumed. While healthy it pings
+    `HEARTBEAT_WAL_URL` every 5 minutes (the monitor's period 5 and grace 10 minutes), which is
+    also what notices a shipper that is not running at all; it falls silent while anything is
+    wrong.
   - **The nightly base and the seal** (`backup.sh`). A night is now six parts for one database and
     a seal: the roles, each database, Storage, the manifest, the settings archive (its 2 hours
     checked and its copy made right after the manifest, as in Stop B, so that a base of up to 2
@@ -7975,11 +7982,14 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
     counts a candidate only with that record, when its seal verifies and lists a base, a settings
     archive and a dump of each database, each in `monthly/` under its exact name at its size,
     looked up by that name (since VPS-47; a listing's line, which quotes no name, let look-alike
-    names pass), trying at most 5 of the month's seals, so planted names can't stop the copy. A
-    part is held to its size, not its bytes, and a copy without its record is never counted (Left
-    open (Stop C)). The night that copies says so as soon as its record is up, and every later
-    whole night names the copy it found (VPS-60). WAL older than 15 days goes with the nightly
-    removal, never the history files.
+    names pass), trying at most 5 of the month's seals that have a record there, each seal looked
+    up by its name before it is read (since VPS-77), so planted names can't stop the copy. Right
+    before the copy goes up its names, and its record's again right before the record, are looked
+    up in `monthly/`, and one that is there stops the night as someone else's writing (since
+    VPS-68). A part is held to its size, not its bytes, and a copy without its record is never
+    counted (Left open (Stop C)). The night that copies says so as soon as its record is up, and
+    every later whole night names the copy it found (VPS-60). WAL older than 15 days goes with the
+    nightly removal, never the history files.
 
   - **The base holds its WAL in a slot.** `pg_basebackup` with `-X fetch` reads the WAL last,
     after the data, from `pg_wal`, and `db` removes a file at its first checkpoint after archiving
@@ -8031,7 +8041,8 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
        names ("missing" or "refused"). A later timeline's files without its history file are
        refused before the replay: Postgres would follow the abandoned history. So is a base of a
        timeline the replay doesn't go through, or leaves at or before the last WAL file the base
-       brought along (since VPS-61: a rewind to a point while the base ran).
+       brought along (since VPS-61: a rewind to a point while the base ran), the base's timeline
+       found in the lineage as text (since VPS-77).
     4. **The replay** is the image's own Postgres 17 (Alpine), as postgres, in an empty
        environment, with an empty settings file, socket only, no preload library and
        `restore_command` `wal-fetch.sh`, which decrypts and decompresses one verified file, whole
@@ -8049,11 +8060,14 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
        100; the cluster keeps `archive_mode=on` with an empty command so the new timeline's history
        file and files keep their `.ready` for `db` to archive. A replay that ends before the
        target says why (a cut, the end of the bucket's WAL, a late shipper's 30-minute rule) and
-       tells the owner to recover to an earlier point or to `latest` (after a cut, to `latest`
-       only with `PITR_ACCEPT_CUT`, since VPS-61). A replay to `latest` must end at the chain's
-       last WAL file from the bucket (VPS-48), and a recovery to `latest` whose chain is cut is
-       refused before anything is written to `db-data`, unless `PITR_ACCEPT_CUT` names the WAL
-       file it is cut at (VPS-56); the drill fails on any cut.
+       tells the owner to recover to an earlier point or to `latest`; after a cut a recovery is
+       also told that if that recovery is cut at the same file, it ends there only with
+       `PITR_ACCEPT_CUT` (since VPS-69: `latest` starts from the newest night, whose base may lie
+       past the cut, and VPS-61's advice to take it only with `PITR_ACCEPT_CUT` was then wrong). A
+       replay to `latest` must end at the chain's last WAL file from the bucket (VPS-48), and a
+       recovery to `latest` whose chain is cut is refused before anything is written to `db-data`,
+       unless `PITR_ACCEPT_CUT` names the WAL file it is cut at (VPS-56); the drill fails on any
+       cut.
        Its output goes through `restore.sh`'s control-character filter; it needs the public key; its
        own copy of the age key is on a tmpfs for the replay and removed as soon as it ends.
   - **Why Alpine's Postgres replays.** `restore_command` runs age and zstd for each file, which the
@@ -8144,7 +8158,8 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   to that night, rewinds each counter to it, and loses what customers did after. A point-in-time
   recovery to `latest` after a server loss is the first choice, a night's logical restore the
   fallback (RUNBOOK, Backups and restore (VPS)), and the only way after a theft of the signing key
-  until the new key has signed a night (VPS-57). A rewind to a time keeps the cluster and its
+  until the new key has signed a night (VPS-57), or after the old server may have been reached as
+  root, none of whose nights may be taken (VPS-76). A rewind to a time keeps the cluster and its
   system identifier and starts a new timeline, whose history file `db` archives within a minute.
 
 **Left open (Stop C):**
@@ -8158,18 +8173,30 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   each failed base at the old end shortens the window by a day. The recovery names the first file
   missing.
 - PITR restores the database alone (VPS-43, last bullet), and `db-config` is in no part.
-- After a rewind to a point before the last night's base ended, until the next night the drill
-  and a recovery to `latest` take that base, whose timeline the rewind left, and refuse it: since
-  VPS-48 in `pitr.sh`'s own words ("the base backup of <id> is of the timeline …, which was left
-  for a later one at …, before the base began"), where Postgres refused it before ("not a child of
-  this server's history"), and since VPS-61 also after a rewind to a point while the base ran
-  ("…, before the base ended"), where Postgres stopped mid-replay or, with the fork's WAL file
-  missing, replayed the abandoned timeline and said done. A refused night is not passed over for
-  the one before, which would need its base downloaded and listed before the night is chosen. The
-  RUNBOOK runs `backup.sh` right after such a rewind; on a new server with no newer night, a point
-  before that night's base ended reaches the fork at most, and `latest` past it needs that night's
-  seal out of `daily/` first. And `recovery_target_timeline` is always `latest`: a point on an
-  abandoned timeline's WAL past its fork can't be reached.
+- A rewind to a point leaves every night whose base ended after that point on the timeline it
+  abandoned (strictly, every night whose base's last WAL file is at or past the fork's), and the
+  drill and a recovery that take such a night refuse it: since VPS-48 in `pitr.sh`'s own words
+  ("the base backup of <id> is of the timeline …, which was left for a later one at …, before the
+  base began"), where Postgres refused it before ("not a child of this server's history"), and
+  since VPS-61 also after a rewind to a point while the base ran ("…, before the base ended"),
+  where Postgres stopped mid-replay or, with the fork's WAL file missing, replayed the abandoned
+  timeline and said done. A refused night is not passed over for the one before, which would need
+  its base downloaded and listed before the night is chosen. So until a night of the new timeline
+  exists, `latest` takes the newest of them and is refused, and a point after any of their bases
+  ended and before the first base of the new timeline ended takes one of them and is refused, even
+  once that night exists. The RUNBOOK runs `backup.sh` right after such a rewind; past those
+  nights (a new server that lost the old one before that night, or such a point), the seal of each
+  night a refusal names leaves `daily/` in turn, kept aside, until the newest night whose base
+  ended before the rewind's point recovers across the fork, and the seals go back once a night of
+  the timeline that recovery made exists (VPS-70). A point before the rewind's point reaches it on
+  the old timeline, and one after it but before any of their bases ended reaches the fork at most.
+  Near the fork the 30-minute rule can still cut a point short, as the rewind's first WAL file
+  went up at the rewind: a point less than about 30 minutes before the rewind's point, or one
+  after it more than 30 minutes before the rewind ran, can end its chain with that file, and is
+  refused with the late shipper's reason unless a transaction committed after the point within
+  it (reasoned, not rehearsed: the rehearsal can't make a file go up 30 minutes late without
+  waiting). And `recovery_target_timeline` is always `latest`: a point on an abandoned timeline's
+  WAL past its fork can't be reached.
 - Where no lock holds `wal/`, a token holder who removes every object of the newest timeline, its
   history file with its WAL, leaves no trace of it: the orphan check needs a WAL object or a
   history file of the timeline, and VPS-61's check a history file. A recovery to `latest` then
@@ -8179,7 +8206,19 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
 - If the newest suitable night's base doesn't match its seal, the run stops; no setting names an
   older night, nor a key: `BACKUP_SIGNING_PUBLIC_KEY` decides, so a key that may have leaked
   leaves it, and until the new key has signed a night there is no point-in-time recovery, only
-  a night's logical one (VPS-57).
+  a night's logical one (VPS-57), and after a reach as root none from the reached server's nights
+  (VPS-76).
+- After a leaked `.env`, the night from before the trouble is named only from records made before
+  the trouble could have begun (VPS-75). That rests on the owner's judgement of when it could have
+  begun, on a copy of the backup monitor's log made before its leaked address could push the old
+  pings out, and on the monitor showing each ping's time, source address and body, which is the
+  provider's and not checked here. A thief who planted a night before the first sign, and pinged
+  from the server's own address inside that night's window, passes every check but the time: only
+  a sound guess of when the trouble could have begun keeps that night out.
+- After a reach as root the rebuilt server gets a fresh signing pair and new values for what went
+  into the reached server's `.env` since the trouble (VPS-76). What else that server held, the
+  database's password, the API keys, the payment keys among them, is Rotation's, item by item,
+  and outside these steps; none of it is rehearsed.
 - A dead shipper fills the spool with a whole 16 MiB file for each minute that wrote anything,
   which on this stack is every minute, idle too: about 0.94 GiB an hour, until the server's disk
   and then `db`'s own `pg_wal` fill. Only the WAL heartbeat notices (no ping for 5 plus 10
@@ -8196,20 +8235,26 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
 - `pitr-test`'s 1g tmpfs holds the cluster and the WAL replayed since the last restartpoint (up
   to the source's checkpoint distance): 65 MiB here. A larger or busier production may need a
   bigger tmpfs (counted in the memory limit) or a drill on disk.
-- The month's-copy check tries at most 5 seals: planted well-named seals stamped earlier in the
-  month can hide the real copy, and each later whole night that month copies itself again (cost
-  only). It holds each part to its size, not its bytes, which would cost the month's copy in
-  downloads every night. Objects of a night's sealed sizes under its free names in `monthly/`,
-  beside its real seal copied from `daily/`, no longer pass for its copy: since VPS-59 a copy
-  counts only with its signed record, which only `backup.sh` writes, after its own copy, so the
-  next whole night copies itself. What stays: under locks that refuse overwrites, an object put
-  under one of tonight's `monthly/` names, or its record's, while the night runs (its id and
-  sizes show in `daily/`'s listing from its first upload) refuses that night's copy or record,
-  and the night fails with the alert, and so does every night so stopped: loud every night, never
-  one alert and then silence. Making that impossible needs `monthly/` names nobody can predict, a
-  larger change. Under versioning, objects of the same sizes put over a recorded copy's parts
-  still pass the size check and the record, as the old versions are kept; only reading the bytes
-  would tell, and a restore refuses them by their sha256. A record put over a copy's own, or
+- The month's-copy check tries at most 5 candidates, since VPS-77 only seals that have a record in
+  `monthly/`: five planted pairs, a well-named seal and record under each of five ids stamped
+  earlier in the month, can still hide the real copy, and each later whole night that month
+  copies itself again (cost only); five real copies cut short before their records no longer do.
+  It holds each part to its size, not its bytes, which would cost the month's copy in downloads
+  every night. Objects of a night's sealed sizes under its free names in `monthly/`, beside its
+  real seal copied from `daily/`, no longer pass for its copy: since VPS-59 a copy counts only
+  with its signed record, which only `backup.sh` writes, after its own copy, so the next whole
+  night copies itself. What stays: under locks that refuse overwrites, an object put under one of
+  tonight's `monthly/` names, or its record's, while the night runs (its id and sizes show in
+  `daily/`'s listing from its first upload) stops that night. Since VPS-68 the night says someone
+  else wrote to the bucket, as the copy's names, and the record's again, are looked up right
+  before they go up; only an object put in after its look still fails that step of the copy with
+  the step's own reason (`the monthly copy`, `the record of the month's copy`), as does a look
+  whose rclone run fails. Every night so stopped fails with the alert: loud every night, never one
+  alert and then silence, and the RUNBOOK takes a lock's refusal, or the same step failing two
+  nights running, for a stolen token. Making that impossible needs `monthly/` names nobody can
+  predict, a larger change. Under versioning, objects of the same sizes put over a recorded copy's
+  parts still pass the size check and the record, as the old versions are kept; only reading the
+  bytes would tell, and a restore refuses them by their sha256. A record put over a copy's own, or
   removed, costs one more copy. The first night after VPS-59 copied the current month again, as
   the copies made before have no record, which no restore needs (`restore.sh` reads a copy by its
   names). The Telegram alert of a night that made its copy and then failed at the removal of old
@@ -8227,7 +8272,8 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   owner run `sha256sum`, and no script of the kit can, as none runs on a new server before the
   archive is unpacked. `pnpm vps:verify-night` trusts the key list it is given, which must be the
   one kept offline (VPS-57); it applies no folder or age rule (the signature binds the id, which
-  the owner takes from the journal or the monitor's log), and it leaves alone the folder's files
+  the owner takes from the journal or the monitor's log, after a leaked `.env` only from records
+  made before the trouble could have begun: VPS-75), and it leaves alone the folder's files
   not named as one of the night's parts, so the file copied to the server must be the one it
   checked, which the `sha256sum` catches. A key file that holds an age key is refused (VPS-67),
   but any other line beside its `BACKUP_SIGNING_PUBLIC_KEY=` line is left unread, a
@@ -8251,8 +8297,13 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   restore with the old key given for one run after a theft (`run -e` checked on a throwaway
   service, VPS-57), the host's settings archive started by hand and its timer on a new server
   (the harness puts a stand-in archive in its place: VPS-62, VPS-64), `backup` stopped after a
-  new server's step 4 (read from `app-deploy` and `app-compose`: VPS-65), and the pair's check
-  through `app-compose` (the harness runs the same one-off through Compose: VPS-63).
+  new server's step 4 (read from `app-deploy` and `app-compose`: VPS-65), the pair's check
+  through `app-compose` (the harness runs the same one-off through Compose: VPS-63, VPS-74), and
+  the steps after a theft of the signing key that the second re-review added: a night's versions
+  of before the trouble made current with the admin login (VPS-71), the heartbeat addresses and
+  the bot's token made new and the monitor's log kept (VPS-75), and the rebuild after a reach as
+  root with a fresh pair (VPS-76). The list they keep, the new key first and the older keys that
+  never leaked after it, is held by a unit test of `pnpm vps:verify-night` (VPS-73).
 - Not proved here, only the server can: R2's locks on the `wal/` prefix, a production-sized base
   and drill (the 1g tmpfs, the 2-hour bound, the window's length), the WAL heartbeat monitor, the
   disk the spool and the restore's downloads need, and a night downloaded byte for byte from the
@@ -8519,13 +8570,15 @@ were corrected in place (VPS-43, Left open (Stop C), the Stop B review's Left op
   kept one, so no restore, drill or point-in-time recovery takes what it signed, the real nights
   included. `backup.sh` run by hand gives a night of the new key; until then, or for a point
   before it, the recovery is a night's logical one, of the last night from before the trouble,
-  named by the monitor's log or the journal, with `RESTORE_STAMP` and
-  `-e BACKUP_SIGNING_PUBLIC_KEY=<old key>` for that one run, and under versioning the seal's
-  version from before the theft made the current one first, with the admin login. `pitr.sh` still
-  names no night: the list decides. On a throwaway service (Compose 5.7.0) `run -e` gave the one
-  run the value it named in place of `.env`'s, as the RUNBOOK's command relies on; and the restores
-  take exactly the keys the list holds (`seal.sh`), as their refusal of a night another key sealed
-  shows. (05971e3)
+  named by the monitor's log or the journal (since VPS-75 only by records made before the trouble
+  could have begun), with `RESTORE_STAMP` and `-e BACKUP_SIGNING_PUBLIC_KEY=<old key>` for that
+  one run (since VPS-72 and VPS-73, the stolen key's file's list, quoted), and under versioning
+  the seal's version from before the theft made the current one first, with the admin login
+  (since VPS-71, with its archive's and parts', before the recover command and anything
+  downloaded). `pitr.sh` still names no night: the list decides. On a throwaway service (Compose
+  5.7.0) `run -e` gave the one run the value it named in place of `.env`'s, as the RUNBOOK's
+  command relies on; and the restores take exactly the keys the list holds (`seal.sh`), as their
+  refusal of a night another key sealed shows. (05971e3)
 - **VPS-58 · D8 · The message to the server team had numbers and profiles the kit no longer has,
   low:** the message, not sent yet and kept outside this repository, gave Stop B's 34 checks for
   the rehearsal (40 now), the 53 of `pnpm vps:check` as `app-apply`'s (`app-apply`'s 43 checks
@@ -8610,17 +8663,18 @@ in place (VPS-43, VPS-52, VPS-58 and its rehearsal paragraph, both Left open lis
   copy and no alert ("backup 2025-03-02T2030Z-e6850fd7: 6 parts, 5309718 bytes", every part in
   `monthly/` not as sealed), and the next night none either; with the fix it copied itself. In
   `pnpm vps:backup-test`, with a stand-in rclone that beats a night's own check (`FAKE_PLANT`): the
-  month's first whole night after a 1st whose base failed copies itself over the plant ("backup
+  month's first whole night after a 1st whose base failed copied itself over the plant ("backup
   2026-08-02T2030Z-ab441eec: kept in monthly/ as the month's copy", 8 objects, every part as its
-  seal gives it); a copy whose record is gone, and records someone else put over a copy's own (22
-  bytes of junk, another night's record renamed, one of the night over another seal signed by the
-  backup's key, one signed by another key), are no copy, and the next whole night copies itself each
-  time; after a rotation a night of the new key names the copy the old key recorded; and every
-  record in `monthly/` reads `ok` with Node's crypto (5 records, 204 bytes each). Round 1's case of
-  look-alike names now keeps the copy's seal and record and puts "<part> x" objects in place of its
-  parts, so only the exact-name lookup tells them apart. What stays is in Left open (Stop C).
-  (e2557c6 "fix: count a month's copy only with its signed record"; the drill in e8d235e "test:
-  drill the month's copy records on the rehearsal"; the RUNBOOK in 84f3c3b)
+  seal gives it; since VPS-68 it stops as someone else's writing, naming the planted names, and the
+  next whole night copies itself); a copy whose record is gone, and records someone else put over a
+  copy's own (22 bytes of junk, another night's record renamed, one of the night over another seal
+  signed by the backup's key, one signed by another key), are no copy, and the next whole night
+  copies itself each time; after a rotation a night of the new key names the copy the old key
+  recorded; and every record in `monthly/` reads `ok` with Node's crypto (5 records, 204 bytes
+  each). Round 1's case of look-alike names now keeps the copy's seal and record and puts "<part> x"
+  objects in place of its parts, so only the exact-name lookup tells them apart. What stays is in
+  Left open (Stop C). (e2557c6 "fix: count a month's copy only with its signed record"; the drill in
+  e8d235e "test: drill the month's copy records on the rehearsal"; the RUNBOOK in 84f3c3b)
 - **VPS-60 · B1 · The month's copy was named only by the night's last line (RUNBOOK, VPS-47), low:**
   `backup.sh` printed ", kept in monthly/ as the month's copy" only in its last line, after the
   removal of old copies. A 1st whose removal failed (a provider outage longer than rclone's retries,
@@ -8672,12 +8726,16 @@ in place (VPS-43, VPS-52, VPS-58 and its rehearsal paragraph, both Left open lis
   where the replay reads another timeline, so nothing needs removing from it. A refused night is not
   passed over for the one before (that would need its base downloaded and listed before the night is
   chosen): until a night of the new timeline, the drill and a recovery to `latest` refuse it, which
-  `backup.sh` right after the rewind ends (the RUNBOOK); on a new server with no newer night, a
-  point before that night's base ended reaches the fork at most, and `latest` past the fork needs
-  that night's seal out of `daily/` first. A recovery to a point that a cut stops short is now told
-  that `latest` goes only with `PITR_ACCEPT_CUT` ("…: recover to an earlier point, or to latest with
+  `backup.sh` right after the rewind ends (the RUNBOOK). The way past it this entry gave for a new
+  server with no newer night, a point before that night's base ended reaching the fork at most and
+  `latest` past the fork with that night's seal out of `daily/`, held only when the rewind left
+  that night alone: since VPS-70 the seal of each night a refusal names leaves `daily/` in turn,
+  every night whose base ended after the rewind's point, and the seals go back once a night of the
+  new timeline exists. A recovery to a point that a cut stops short was then told that `latest`
+  goes only with `PITR_ACCEPT_CUT` ("…: recover to an earlier point, or to latest with
   PITR_ACCEPT_CUT=<file>, which ends at the cut (without it, a recovery to latest is refused while
-  the chain is cut there)"), where the other causes keep "or to latest". Two `pitrRules` entries
+  the chain is cut there)"), where the other causes keep "or to latest": wrong whenever a night
+  newer than the point's exists, and since VPS-69 the advice is conditional. Two `pitrRules` entries
   hold the check as `pitr.sh` has it, its refusal before `writing=yes` and the unpack, and the new
   advice; their tests refuse the check as it was, one held to the base's first file, a fork in the
   base's last file passing and the refusal after `writing=yes`: 3 tests fail on `e8d235e`'s
@@ -8706,21 +8764,23 @@ in place (VPS-43, VPS-52, VPS-58 and its rehearsal paragraph, both Left open lis
   seal …: name the night before it", then "… is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys
   …"): with the reached host rebuilt before 20:20, no documented recovery could go on, and the only
   way out, a key file of the stolen key, was described nowhere. Step 5 now rotates with the new
-  public key alone in the list and the kept list's file, the new private key into the password
-  manager too (VPS-63), and keeps the old public key apart, as `BACKUP_SIGNING_PUBLIC_KEY=<old key>`
-  in a file of its own marked stolen, never in the kept list's file or the age key's; it checks the
-  pair, starts `backup`, makes a settings archive of the rotated `.env`
+  public key alone in the list and the kept list's file (since VPS-73 the new key first, then the
+  older keys that never leaked), the new private key into the password manager too (VPS-63), and
+  keeps the old public key apart, as `BACKUP_SIGNING_PUBLIC_KEY=<old key>` in a file of its own
+  marked stolen, never in the kept list's file or the age key's; it checks the pair, starts
+  `backup`, makes a settings archive of the rotated `.env`
   (`sudo systemctl start app-config-archive@menumesh.service`) and only then runs `backup.sh` by
   hand. That night seals the archive, and since no copy the stolen key recorded counts once it is
   out of the list, it is the month's copy again ("backup <id>: kept in monthly/ as the month's
   copy"). Step 2.2 gains the theft case: a night of the new key is checked with the kept list; where
   the host may have been reached as root, its fresh archive holds whatever the host then held, so
   the night to take is the last from before the trouble, its seal's and archive's versions of before
-  then made current first where the bucket keeps versions, checked once with
-  `pnpm vps:verify-night <id> <folder> --keys <the stolen key's file>`; and in step 2.4 the kept
-  list and the new private key go in, never the stolen one the archive holds, with every value
-  rotated since. `tests/unit/vps-verify-night.test.ts` pins what this relies on: a night the stolen
-  key signed is refused with the kept list and passes with a file of the stolen key alone, or with a
+  then made current first where the bucket keeps versions (since VPS-71, before 2.1 downloads them),
+  checked once with `pnpm vps:verify-night <id> <folder> --keys <the stolen key's file>` (since
+  VPS-72 not once: that file's list serves its logical recovery too); and in step 2.4 the kept list
+  and the new private key go in, never the stolen one the archive holds, with every value rotated
+  since. `tests/unit/vps-verify-night.test.ts` pins what this relies on: a night the stolen key
+  signed is refused with the kept list and passes with a file of the stolen key alone, or with a
   rotation's whole list; the night by hand with no settings archive is refused ("name the night
   before it") and passes once it seals one. In `pnpm vps:backup-test`, with a throwaway pair given
   with `-e` as an edited `.env` would give it (the rehearsal's own `.env` is never changed, and the
@@ -8754,21 +8814,22 @@ in place (VPS-43, VPS-52, VPS-58 and its rehearsal paragraph, both Left open lis
   `SIGNING_PAIR_CHECK` of `scripts/vps-kit.mts` between the quotes. It prints "signing pair:
   BACKUP_SIGNING_KEY signs what the first key of BACKUP_SIGNING_PUBLIC_KEY checks", or on stderr,
   exit 1, "… does not sign what …, so no night could be sealed and no WAL shipped: put in the
-  private key of that first key", and no key. It can't run sooner: nothing of the kit runs on a new
-  server before step 4 pulls the backup image (`pull_policy: never`), and the owner's machine never
-  holds the restored `.env`; `--no-deps` keeps `db` from making a new cluster. A routine rotation
-  runs it after editing `.env`, before `up -d backup`. (`pnpm vps:secrets --check` would catch the
-  pair too, but only on a local unpack of the archive, which disaster recovery avoids.) A unit rule
-  holds `SIGNING_PAIR_CHECK` to its shape, with nothing that ends its quotes or that the owner's
-  shell would expand, and `seal.sh` where it sources it; the text rule `pairChecked` holds the
-  RUNBOOK's command to it character for character, step 2.4 to `BACKUP_SIGNING_KEY` and the password
-  manager, and Rotation to both. In `pnpm vps:backup-test`, with the private key of before a
-  rotation and the list of after it: exit 1 and the refusal, as `backup.sh` so stops before its
-  first upload ("… BACKUP_SIGNING_KEY does not sign what BACKUP_SIGNING_PUBLIC_KEY's first key
-  checks, so no night could be sealed: nothing was uploaded"); the stolen key with the kept list
-  after a theft: exit 1; the new pair with either list: the pass line; no key printed. A copy of the
-  harness whose check checked nothing failed it. (e40d7a5; the RUNBOOK in 84f3c3b, its rule in
-  128cba6)
+  private key of that first key", and no key (since VPS-74 it first holds the list and then the
+  private key to their shapes, each refused in a line of its own). It can't run sooner: nothing of
+  the kit runs on a new server before step 4 pulls the backup image (`pull_policy: never`), and the
+  owner's machine never holds the restored `.env`; `--no-deps` keeps `db` from making a new cluster.
+  A routine rotation runs it after editing `.env`, before `up -d backup`.
+  (`pnpm vps:secrets --check` would catch the pair too, but only on a local unpack of the archive,
+  which disaster recovery avoids.) A unit rule holds `SIGNING_PAIR_CHECK` to its shape, with nothing
+  that ends its quotes or that the owner's shell would expand, and `seal.sh` where it sources it;
+  the text rule `pairChecked` holds the RUNBOOK's command to it character for character, step 2.4 to
+  `BACKUP_SIGNING_KEY` and the password manager, and Rotation to both. In `pnpm vps:backup-test`,
+  with the private key of before a rotation and the list of after it: exit 1 and the refusal, as
+  `backup.sh` so stops before its first upload ("… BACKUP_SIGNING_KEY does not sign what
+  BACKUP_SIGNING_PUBLIC_KEY's first key checks, so no night could be sealed: nothing was uploaded");
+  the stolen key with the kept list after a theft: exit 1; the new pair with either list: the pass
+  line; no key printed. A copy of the harness whose check checked nothing failed it. (e40d7a5; the
+  RUNBOOK in 84f3c3b, its rule in 128cba6)
 - **VPS-64 · V3 · Each `backup.sh` the RUNBOOK ran by hand failed on the settings archive's 2 hours
   (RUNBOOK), low:** `backup.sh` takes the newest archive in `/config-out` and fails the night when
   it is missing or more than 2 hours old (VPS-54), and the host makes one at 20:20 UTC only.
@@ -8849,3 +8910,318 @@ of `df12dd8` (30 in all) and none on the fix, and the rest of S2, B1 and M1 were
 on the rehearsal with the scripts from before them (each entry above). A night as a one-off that
 makes the month's copy took 9.3 s and at most 97 MiB of its 320m, and a night in the running service
 with the shipper at once at most 74 to 92 MiB, its `/tmp` at most 80 KiB of the 16 MiB.
+
+### Review fixes, round 3 (VPS Stop C)
+
+A second re-review, of round 2's fixes, `df12dd8` to `3dbbab7`, had a reviewer and a skeptic go over
+each fix again. Eleven held, and two only in part: VPS-61's advice after a cut, which named
+`PITR_ACCEPT_CUT` where a newer night makes it wrong (T1), and D7 (VPS-57, VPS-62), whose steps
+after a theft of the signing key still dropped the older keys that never leaked (U3) and gave the
+logical recovery of a night from before the trouble no key for it (U2). It gave eight new findings,
+R1, T1, T2 and U1 to U5, U1 medium and the rest low; its skeptic one the reviewers missed, N1, which
+a reviewer had raised only as a design note; and design notes, three of which harden the code. All
+are fixed, each a decision below: R1's lookups, U4 and the hardening in the code, each with a unit
+rule that refuses the code as it was and, but for the seal's lookup, a proof on the rehearsal or in
+the backup image's BusyBox; T1 in `pitr.sh`'s advice, with a drill of a newer night; T2 rehearsed
+and written down; U1, U2, U3, U5 and N1 in the RUNBOOK, with a unit test of the list U3 keeps; and
+R1's, T1's and U4's places in the RUNBOOK too. The RUNBOOK's procedure fixes are held by nine new
+text rules (`tests/unit/vps-runbook.test.ts`), each of which reports problems on the RUNBOOK of
+`3dbbab7`, and every rule there now compares text with its white space folded, so a sentence wrapped
+again is still found, and sees every `backup.sh` run by hand, with or without its path, in a block
+or inline (theft-docs design note 2). The entries above that a fix changed were corrected in place
+(VPS-43, VPS-45, VPS-57, VPS-59, VPS-61, VPS-62, VPS-63, both Left open lists, the RUNBOOK,
+`deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and the message).
+
+- **VPS-68 · R1 · A name planted under tonight's copy failed it with a reason that never said so,
+  and the RUNBOOK only waited (RUNBOOK, VPS-59, Left open (Stop C)), low:** under locks that refuse
+  overwrites, an object put under one of tonight's `monthly/` names while the night ran (its id and
+  sizes show in `daily/` from its first upload) made the copy's `copyto` fail, and the night failed
+  with `the monthly copy` (a part or the seal) or `the record of the month's copy`, reasons that
+  never said someone else had written there. The RUNBOOK's list of a night's alerts never quoted the
+  first, said of the second that the next whole night copies itself again, and the restore test's
+  remedy, when no line named a copy, said no night of the month had been whole and to mend the
+  alerts; nothing sent the owner to the stolen-token steps, while a token holder could do it every
+  night, and from day 29 no night of that month could be restored (`restore.sh` reads only
+  `monthly/` past 29 days). `backup.sh` now looks every name of the copy up in `monthly/` by its
+  exact name right before the copy goes up (each part, the seal and the record, one rclone run of a
+  request a name), and the record's again right before the record: one that is there stops the night
+  with "someone else wrote to the bucket: monthly/ holds <names> before tonight's copy" or "… holds
+  copy-<id>.txt before the record of tonight's copy", words the RUNBOOK's "Take it as stolen when"
+  list already names. Stopped at the first, the night is whole in `daily/` and none of its own copy
+  is in `monthly/`; at the second, its parts and seal are there, checked, with no record, and the
+  next whole night copies itself. An object put in after the look still fails that step with its own
+  reason, as does a look whose rclone run fails. A copying night makes one more rclone run of 8
+  requests, and one more request for the record. The RUNBOOK's Last night's backup now quotes each
+  step of the copy, `the monthly copy`, `the check of the month's copy` and
+  `the record of the month's copy`, and both new lines, says what each leaves, and that once may be
+  the provider's, but `someone else wrote to the bucket`, a lock's refusal among rclone's lines in
+  the journal or the same step failing two nights running means someone is putting objects under
+  tonight's names: A stolen or leaked bucket token (VPS), whose "Take it as stolen when" list now
+  takes a step of the copy refused by a lock, or failing night after night. The restore test's
+  remedy says no night was whole only of nights that failed before their seal and sends those that
+  failed at a step of the copy to that text, says the check needs a night of the month (on the 1st
+  before 20:30 UTC the newest line names last month's copy: copy design note 1), and after
+  `the record of the month's copy` with only its confirmation failed the next night may find the
+  record and name the copy (copy design note 2). The unit rule `copyNamesFree` holds both lookups,
+  each before its upload, each refusal naming someone else's writing, and no listing of `monthly/`
+  between: both problems on `3dbbab7`'s `backup.sh`. The text rule `copySteps` holds Last night's
+  backup to every reason `backup.sh` gives a step of the copy and to both lines, with the way to the
+  stolen-token steps, that section's list, and the restore test's remedy: 7 problems on `3dbbab7`'s
+  RUNBOOK. In `pnpm vps:backup-test` a stand-in rclone puts an object under a name of the copy as
+  the seal goes up to `daily/`, or of its record as the seal goes up to `monthly/` (`FAKE_RACE`):
+  exit 1, "[menumesh] backup failed (exit 1) at 2026-05-01T2030Z-910765ee: someone else wrote to the
+  bucket: monthly/ holds globals-2026-05-01T2030Z-910765ee.sql.age before tonight's copy", its 7
+  objects whole in `daily/` and in `monthly/` only the stand-in's; and "… at
+  2026-04-01T2030Z-1b658e56: someone else wrote to the bucket: monthly/ holds
+  copy-2026-04-01T2030Z-1b658e56.txt before the record of tonight's copy", the parts and seal in
+  `monthly/` as they went up. VPS-59's night beaten at its own check now stops so too, naming the
+  seven names the stand-in put there, and the next whole night copies itself ("backup
+  2026-08-03T2030Z-872e3305: kept in monthly/ as the month's copy"). With `3dbbab7`'s `backup.sh`
+  those four checks failed: the copy made over the plant, the record written over the stand-in's,
+  and the next night naming the beaten one's copy. (cc10d74 "fix: refuse planted copy names and
+  count recorded seals only", 8922163 "test: drill planted copy names and the candidate cap"; the
+  RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-69 · T1 · The advice after a cut named `PITR_ACCEPT_CUT` where a recovery to `latest` never
+  meets the cut (VPS-61, RUNBOOK), low:** `d7da83b` told a recovery to a point that a cut stops
+  short of "…: recover to an earlier point, or to latest with PITR_ACCEPT_CUT=<file>, which ends at
+  the cut (without it, a recovery to latest is refused while the chain is cut there)", chosen from
+  the cut alone. A recovery to `latest` takes the newest night, and its chain starts at that night's
+  own base: for any point before the newest night's base ended, the point's night is an older one,
+  and the newer chain starts past the gap or fills it from its base. There `PITR_ACCEPT_CUT=<file>`
+  is refused ("PITR_ACCEPT_CUT is <file>, but the chain of WAL files is not cut: run again without
+  it, to recover to the latest WAL in the bucket; nothing was written to db-data"), and without it
+  the recovery to `latest` goes through: both promises false, where the old "or to latest" was
+  right. The drill printed the same advice, though it never reads `PITR_ACCEPT_CUT`. A recovery is
+  now told "…: recover to an earlier point, or to latest; if that recovery is cut at <file> too, it
+  ends there only with PITR_ACCEPT_CUT=<file>", true whichever night `latest` takes; the drill, and
+  a recovery stopped by the end of the bucket's WAL or a late shipper's 30-minute rule, are told "…,
+  or to latest" as before. Naming the variable only when `daily/` holds no newer seal was not taken:
+  a seal someone else put there, a newer night whose base failed, or one whose chain meets the same
+  cut would each fool the count, and it needs a second listing. The RUNBOOK's step 5 quotes the line
+  and the refusal from a newer night, and VPS-43 and VPS-61 say so. `pitrRules`' `CUT_INSTEAD` holds
+  the cut branch, the drill's guard and the advice, refusing `d7da83b`'s two lines, the guard taken
+  away and the refusal without the advice: on `86cbcff`'s `pitr.sh` 2 tests fail. In
+  `pnpm vps:backup-test`, at the rewind, a night newer than the points' night, its base past the cut
+  (2026-11-16T0644Z-55632c8f): `recover-pitr` to the point past the cut is refused with the new
+  line, then the finish line; `latest` with `PITR_ACCEPT_CUT` naming the cut is refused from the
+  newer night with `db-data` at 0 entries; `latest` without it goes through (exit 0, no cut named);
+  and the drill to the point names no `PITR_ACCEPT_CUT`. With `fc55226`'s `pitr.sh` the drill's
+  check and the recovery's failed, the old advice printed while the newer night lay past the cut,
+  and the other two showed where it led. The text rule `cutAdvice` holds the RUNBOOK to `pitr.sh`'s
+  line and the refusal: 3 problems on `3dbbab7`'s RUNBOOK. (80c995e "fix: tell a cut-short recovery
+  what latest does at the cut", 7ddc81c "test: drill a cut-short recovery with a newer night"; the
+  RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-70 · T2 · The way past a refused night assumed the rewind left only the newest night
+  (RUNBOOK, VPS-61, Left open (Stop C)), low:** the RUNBOOK, Left open and VPS-61 said that on a new
+  server with no newer night a point before that night's base ended takes the night before and
+  reaches the fork at most, and that with that night's seal out of `daily/` the night before
+  recovers to `latest` across the fork. But `pitr.sh` refuses every night whose base's last WAL file
+  is at or past the fork's (VPS-61's check) and picks by seal and base end alone, never passing a
+  refused night over: after a rewind to a point before the night before's base ended (a loss noticed
+  more than a day late), the night before and every night between are refused too, and both routes
+  failed mid-recovery, plainly and with nothing written. What holds, read from `pitr.sh` and
+  rehearsed: a rewind to a point leaves every night whose base ended after it (one whose base ended
+  after the point but before the first transaction after it passes); until a night of the rewind's
+  timeline exists, a recovery or drill to `latest` takes the newest of them and is refused; a point
+  after any of their bases ended and before the first base of the new timeline ended takes one of
+  them and is refused, even once that night exists (on the same server, until step 9's night's base
+  ended: pitr design note 3); a point before the rewind's point takes a night from before it and
+  reaches the point on the old timeline; a point after it but before any of their bases ended
+  reaches the fork at most. The way past: the seal of each night a refusal names leaves `daily/`,
+  kept aside with the admin login, and the run goes again, each run taking the next older night,
+  until the newest night whose base ended before the rewind's point recovers to `latest` across the
+  fork, or to a point of the stretch above; only the seal needs to leave. The seals go back once a
+  night of the timeline that recovery made exists: back before it, `latest` refuses again, and the
+  stretch's points take them again. The RUNBOOK's step 5 and its drill note, Left open (Stop C) and
+  VPS-61 say so; the 30-minute cut near the fork is reasoned, not rehearsed (Left open (Stop C)). No
+  code changed. `pnpm vps:backup-test`'s rewind drill gains a third night on timeline 2 after rows D
+  (2026-11-16T0651Z-55b18691), so the rewind to T2 (timeline 3 from 0000000000000013) leaves two
+  nights: `pitr-test` to `latest` refuses the third ("… which was left for a later one at
+  0000000000000013, before the base began"); a point after the night before's base and before rows C
+  is reached from that night (0 rows of the fork's table); with the third's seal aside the slowed
+  night is refused ("…, before the base ended"); with both seals aside the night before recovers to
+  `latest` across the fork (timeline 4, rows C and E, not D), and a point on timeline 3 after row
+  100 is reached from it (4 rows); with both seals back before a night of timeline 4, that point and
+  `latest` take the third night and are refused; once that night exists, `latest` passes from it
+  with both seals back. These pass on `fc55226`'s scripts too: they pin the documented route, not a
+  fix. The text rule `rewindRoute` holds the RUNBOOK's route and the seals' return: 5 problems on
+  `3dbbab7`'s RUNBOOK. (cb0eb32 "test: rehearse the way past nights a rewind left"; the RUNBOOK in
+  96426d1, its rule in f3562c9)
+- **VPS-71 · U1 · After a theft, a night from before the trouble was downloaded before its versions
+  of then were made current (RUNBOOK, VPS-62), medium:** disaster recovery's step 2.1 downloaded the
+  night's seal and settings archive, and only then did 2.2's theft case say to make the versions of
+  before the trouble the current ones where the bucket keeps versions, and checked the folder
+  already downloaded with the stolen key's file, which passes any seal that key signed. With the
+  leaked `.env` a thief could put new versions over the last nights' seals and archives, signed with
+  the stolen key, an archive of their own encrypted to the age recipient with their `.env`, payment
+  keys and `config/db/wal-spool.sh`: the check passed it, `sha256sum` matched the hash it printed,
+  and on the new server `db` ran their wrapper as root and `web` took their keys. Theft step 5's
+  logical recovery had the same order, its command and restore test before the versions sentence. It
+  needs the signing key stolen and a bucket that keeps versions (or keeps each object's old versions
+  under a retention date); locks that refuse overwrites prevent it. Step 2.1 now makes, for a night
+  from before a theft, the versions of that night's objects that went up before the trouble (its
+  seal, its settings archive and its parts) the current ones with the admin login first, and
+  downloads only then; 2.2 checks that folder; and theft step 5 makes them current before its
+  recover command and its restore test. The text rule `theftOrder` holds both orders: 2 problems on
+  `3dbbab7`'s RUNBOOK. The reviewer's probe passed both a version from before the trouble and one of
+  the stolen key's put over it with the stolen key's file, which is why only the order guards it;
+  the provider's versioning is not rehearsed. (the RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-72 · U2 · Disaster recovery gave the logical recovery of a night from before a theft no key
+  for it (RUNBOOK, VPS-62), low:** step 2.2 checked that night "once" with the stolen key's file,
+  2.4 put the kept list in `.env`, and step 5's fallback, its logical recovery (on a new server also
+  the first pass of the two-pass), ran `recover` with `.env`'s list, which refuses it ("… is signed
+  by none of BACKUP_SIGNING_PUBLIC_KEY's keys, so someone else wrote to the bucket, and nothing of
+  the night was read"); only theft step 5 gave the `-e` form. The fallback now gives a night from
+  before a theft the stolen key's file's list for that one run, quoted as the file may hold several
+  keys, never put back in `.env`, `-e "BACKUP_SIGNING_PUBLIC_KEY=<the stolen key's file's list>"`
+  beside `-e RESTORE_STAMP=<id>`, and a restore test of it the same two `-e`, with its versions of
+  before the trouble current first; step 5's theft sentence sends such a recovery there; 2.2 drops
+  "once". The text rule `oneRunKey`: 4 problems on `3dbbab7`'s RUNBOOK. `run -e` giving the one run
+  its value in place of `.env`'s was checked on a throwaway service (VPS-57). (the RUNBOOK in
+  96426d1, its rule in f3562c9)
+- **VPS-73 · U3 · After a theft the new list dropped every older key and kept it nowhere (RUNBOOK,
+  VPS-57, VPS-62), low:** theft step 5 set the list to "the new public key alone", in `.env` and in
+  the kept list's file, and kept only the stolen key apart. After a routine rotation the list also
+  holds an older key kept for its nights (366 days for the month's copies), whose private half left
+  the server at that rotation: it was dropped and kept in no file, so its month's copies could no
+  longer be restored under any list the RUNBOOK keeps, VPS-57's D10 again on the theft path. The new
+  list is now the new public key first, then each older key of the list whose private half had left
+  the server before the trouble could have begun (Rotation's rule), never the stolen key, in `.env`
+  and the kept list's file; the stolen key, and any older key that may have leaked with it, go into
+  the file kept apart, marked stolen
+  (`BACKUP_SIGNING_PUBLIC_KEY=<the stolen key> <each older key that may have leaked>`), never into
+  the kept list's file or the age key's. Rotation and step 2.2 say the same, and no "alone" is left.
+  `tests/unit/vps-verify-night.test.ts`, "keeps an older key that never leaked after the new one
+  when a theft follows a rotation", with throwaway K1, K2 and K3: a night K1 signed passes with
+  `K3 K1` and is refused with K3 alone; a night of the stolen K2 is refused with `K3 K1` and passes
+  with the stolen key's file, which refuses K1's night. It pins what the wording relies on, and
+  passes before and after, as `vps-verify-night.mts` did not change. The text rule `theftList` holds
+  the wording and refuses "alone": 5 problems on `3dbbab7`'s RUNBOOK, where `theftNight` had
+  required "the new public key alone", a requirement now gone from it. (406289d "test: keep an older
+  key after a theft that follows a rotation"; the RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-74 · U4 · The pair check blamed the private key for a list that was no list of keys (VPS-63,
+  RUNBOOK), low:** `SIGNING_PAIR_CHECK` ran `seal_self_check` alone, whose check of the list gives
+  up without a word on a list not shaped as keys (a doubled space, a space at either end, a key cut
+  short, the kept file's whole line pasted after the name), so the check said the private key does
+  not sign what the first key checks and to put in the private key, which mends nothing; a private
+  key not shaped as one printed `seal.sh`'s own line first. `backup.sh` and the shipper named the
+  pair too. Each now holds the list, then the private key, to their shapes before the self-check,
+  each refused in a line of its own, in the words `restore.sh` and `pitr.sh` use for the list: the
+  check prints "signing pair: BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key or several, as
+  pnpm vps:secrets writes it (base64 SPKI DER, separated by single spaces): put the kept list in as
+  it is" or "signing pair: BACKUP_SIGNING_KEY is not an Ed25519 private key, as pnpm vps:secrets
+  writes it (base64 PKCS #8 DER): put in the private half of the first key of the kept list" on
+  stderr, exit 1, one line (the pass and the pair's refusal unchanged); `backup.sh` fails at
+  `the signing key` before any upload with "BACKUP_SIGNING_PUBLIC_KEY is not one Ed25519 public key
+  or several, …, so no night could be sealed: nothing was uploaded" or the private key's line; the
+  shipper alerts at once with the same words, "…: nothing was uploaded". The suggested words held
+  "kept list's", whose apostrophe would end the owner's single quotes, so they were put without one.
+  The RUNBOOK's step 4 holds the new check and quotes its four lines, saying which value each names
+  and that Compose prints its own `Container …` lines around the check's one (theft-docs design note
+  3), and the night's alerts and the WAL alerts quote the new lines. Unit rules hold the check's
+  shape (`pairCheckShape`: 2 problems on `3dbbab7`'s) and both scripts' order (`signingShapes`: 4);
+  the text rule `pairChecked` holds the RUNBOOK's command to the check, and `valuesNamed` its four
+  lines and the alerts' quotes (7 problems on `3dbbab7`'s RUNBOOK). In `pnpm vps:backup-test` the
+  check with a doubled-space list and with the private key cut short (exit 1, each its own line),
+  `backup.sh` so (each stops before its first upload, naming the value) and the shipper so (one
+  alert at once each, nothing shipped), no key printed: with `3dbbab7`'s scripts the night's and the
+  shipper's checks failed, both naming the pair, and by hand `3dbbab7`'s check blamed the private
+  key for the doubled space. (70cc80d "fix: name the signing value that is not a key", with the
+  RUNBOOK's command, f2f803e "test: drill the signing values that are not keys"; the rest of the
+  RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-75 · U5 · After a leaked `.env`, the records that name the night from before the trouble
+  could be the thief's (RUNBOOK, VPS-57, VPS-62), low:** disaster recovery's step 2 and theft step 5
+  named that night from the backup's own records, the journal or the backup monitor's log, and since
+  VPS-62 the stolen key's file passes any night that key signed. The leaked `.env` that theft step 5
+  starts from also holds `HEARTBEAT_BACKUP_URL`, `HEARTBEAT_WAL_URL` and the Telegram bot's token,
+  and the steps rotated only the bucket's token and the signing key: a thief could add a whole night
+  under a fresh id (new names pass any lock), seal it with the stolen key, ping its `backup <id>: …`
+  line to the monitor and be taken for the last night from before the trouble, under any bucket
+  protection, with VPS-71's outcome. Theft step 5 now first copies the backup monitor's log off it
+  (a monitor keeps only its newest pings, and the leaked address could push the old ones out), makes
+  both heartbeat addresses (new monitors, the old kept for their logs) and the bot's token new with
+  the bucket's token (Rotation), and names a night from before the trouble only from records made
+  before the trouble could have begun: a ping the monitor received then, from the server's own
+  address, inside its night (from its stamp to about 2 hours after), or the old server's journal
+  from then, unless root may have reached it, as root can write the journal; never a ping received
+  since. Two `backup` lines in one night's window, or an id no record from before names, are the
+  thief's, and the night before is taken. Disaster recovery's step 2 and 2.2 say so too, and
+  Rotation's bullet for the bucket's token sends a leaked `.env` there. The text rule
+  `theftRecords`: 7 problems on `3dbbab7`'s RUNBOOK. That the monitor shows each ping's time, source
+  address and body is the provider's, not checked here (Left open (Stop C)). (the RUNBOOK in
+  96426d1, its rule in f3562c9)
+- **VPS-76 · N1 · After a possible reach as root, the first choice recovered the reached server's
+  own night (RUNBOOK, VPS-46, VPS-62), low:** step 2.2 and theft step 5 distrusted the night run by
+  hand after the rotation where the server may have been reached as root, but for its settings
+  archive alone. Disaster recovery's first choice, a point-in-time recovery to `latest`, starts from
+  the newest night the kept list verifies, which, once the night by hand exists, is that night: its
+  base is `pg_basebackup` of the reached server's data folder, whose `postgresql.auto.conf`
+  `pitr.sh` puts back for `db` after the replay (VPS-46), with any file planted beside it (a library
+  loaded through `shared_preload_libraries`, which `db`'s command line doesn't pin), and the new key
+  itself went into that server's `.env`, where a holder still there could seal a base and WAL of
+  their own. The RUNBOOK sent the owner to a logical recovery only until that night existed. Theft
+  step 5 and disaster recovery now say that after a possible reach as root nothing the reached
+  server made after the trouble could have begun is trusted. It is rebuilt; the last night from
+  before the trouble is checked with the stolen key's file and recovered logically with that file's
+  list for the one run (step 5's fallback), never by a point-in-time recovery from the reached
+  server's nights; the new server gets a fresh signing pair, made on the owner's machine, its list
+  the fresh key first and then VPS-73's older keys, in `.env` and the kept list's file, while the
+  reached server's new key goes into no list and not into the stolen key's file, and no night it
+  signed is used; and the bucket's token, the heartbeat addresses and the bot's token, which went
+  into the reached server's `.env` too, go new once more, the rest of what it held being Rotation's.
+  The last part goes past the finding: by its own reasoning the new token and addresses were as
+  exposed as the new key. The text rule `rootReach`: 5 problems on `3dbbab7`'s RUNBOOK. Not
+  rehearsed (Left open (Stop C)). (the RUNBOOK in 96426d1, its rule in f3562c9)
+- **VPS-77 · Hardening · Recorded candidates, a candidate's seal looked up first, and names
+  compared as text (VPS-43, VPS-59, VPS-61), design notes:**
+  - Copy design note 3: the month's 5 candidates were any of its seals in `monthly/`, so five copies
+    cut short before their records (a watcher at five nights' records under locks, or failing
+    records) or five planted seals hid a recorded copy behind them, and each later night of the
+    month copied itself again, past any removal under 365-day locks. One listing of the month's
+    seals and records now takes each line of a size and a name, a decimal size of at least 1, the
+    anchored name and its cap (16,384 bytes for a seal, 256 for a record), and the ids present as
+    both, at most 5, oldest first: a seal without its record is no candidate. Five planted pairs, a
+    seal and a record under each of five ids older than the month's copy, still make each later
+    night copy itself (cost only: Left open (Stop C)). The unit rule `recordedCandidates`: 4
+    problems on `3dbbab7`'s `backup.sh`. In `pnpm vps:backup-test` a month whose first five nights
+    each copied itself and lost its record, then a recorded copy: the next night names it ("backup
+    2026-03-07T2030Z-6a047419: 6 parts, 5418564 bytes, the month's copy is
+    2026-03-06T2030Z-789e1a41", the month's 43 objects unchanged), where `3dbbab7`'s script copied
+    itself again.
+  - Copy design note 7: `whole_copy` read a candidate's seal before looking it up, and in an
+    unlocked bucket a seal deleted between the listing and the read made `rclone cat` read every
+    object under `seal-<id>.txt/` into the 16m tmpfs. It now looks the seal up by its exact name
+    first, held to a size and that name, at most 16,384 bytes. The unit rule `sealLookedUp`: 1
+    problem on `3dbbab7`'s `whole_copy`.
+  - Pitr design note 1: the base check found the base's timeline in the lineage as awk reads it, a
+    number. In the image's BusyBox v1.37.0 a zero-padded name is not octal (00000010 is 10), so the
+    review's case does not arise; but there and in GNU awk a name of digits, one E and digits is
+    exponent notation (000000E1 and 000000E2 are both 0, 000001E0 is 1), so the old match passed 3
+    of 8 probe bases it must refuse, in lineages of 226 or 227 timelines: harmless in practice, and
+    now exact, `$1 "" == tli ""`. The scan of every awk compare in the kit's scripts it led to found
+    one more: `restore.sh`'s per-database filter of the manifest compared the name as awk reads it,
+    and BusyBox reads a database named nan, inf or infinity as a number equal to nothing, not even
+    itself, so such a database's counts were compared with no line of the manifest (each table "not
+    in the manifest", a failure only with `RESTORE_EXACT=1`). No MenuMesh database has such a name;
+    it is now `$2 "" == db ""`. `pitrRules`' `TIMELINE_MATCHED` and `restoreMatched` refuse the
+    lines as they were, and the probe in the backup image's BusyBox gave the old compare 3 wrong
+    passes of 8 and the old filter 3 databases of 5 with no line, the fixes none.
+
+  (cc10d74; 86cbcff "fix: find the base's timeline in the lineage as text", a9c7020 "fix: find a
+  database's manifest lines by its name as text")
+
+**On the rehearsal, after the fixes of round 3** (Docker Desktop, 15.18 GiB, on the final tree of
+the code, `a9c7020`): `pnpm vps:rehearse --fresh` 40 checks, 0 failed, 371 s, and again after the
+run with the scripts from before (364 s); then `pnpm vps:backup-test` 125 checks, 0 failed, 2,001 s
+(109 before this re-review: 6 for R1, the candidates, U4 and the next night after route b, 4 for T1,
+6 for T2); `pnpm vps:check` 53 checks, 0 failed (`app-apply`'s 43 checks among the 53, its 2 prepare
+checks printed besides), and again after these documents changed `compose.yml`'s header;
+`pnpm vps:down` 3 of 3, nothing of the rehearsal's left. The unit tests are 1,204 in 70 files
+(`vps-kit` 117, `vps-verify-night` 17, `vps-secrets` 21, `vps-runbook` 17). Each code fix's unit
+rule reports problems on the script as it was and none on the fix, and each new text rule problems
+on the RUNBOOK of `3dbbab7` (45 in all, from the nine) and none on the fix. With the scripts from
+before them the backup test failed exactly the checks of their fixes: 7 of 115 with `3dbbab7`'s
+`backup.sh` and `wal-ship.sh` (R1's four, the candidates' one and U4's two), and 2 of 125 with
+`fc55226`'s `pitr.sh` and `restore.sh` (T1's). A night as a one-off that makes the month's copy took
+7.8 s and at most 95 MiB of its 320m, and a night in the running service with the shipper at once
+7.4 s and at most 92 MiB, its `/tmp` at most 80 KiB of the 16 MiB.
