@@ -103,6 +103,7 @@ const PLACES = {
   oldNight: ['**29 days old or more**', '**365 days old or more**'],
   drill: ['- **The monthly point-in-time drill**', '- **Disaster recovery**'],
   recovery: ['- **Disaster recovery**', '### A stolen or leaked bucket token (VPS)'],
+  newServer: ['1. A new server:', "2. The night's id"],
   download: ['1. **Download**', '2. **Check**'],
   check: ['2. **Check**', '3. **Unpack**'],
   keyList: ['4. **The key list', '\n  3. `sudo app-apply menumesh compose'],
@@ -250,13 +251,18 @@ const OPENSSL_LINE = 'seal: openssl could not sign probe';
  * shaped as keys but not the kept one, out of order or with its first key mistyped, while a later
  * key mistyped passes, and a private key openssl can't load prints openssl's lines and seal.sh's
  * before it (Stop C's third re-review, docs design note 3 and backup design note 1): step 4 says so.
+ * Since the fifth re-review 2.4 names the password manager for the backup key too (finding M4), so
+ * the private key's sentence is read whole.
  */
 const pairChecked = (runbook: string) =>
   inPlaces(
     runbook,
     ['keyList', 'backupImage', 'rotation'],
     ({ keyList, backupImage, rotation }) => [
-      ...(has(keyList, '`BACKUP_SIGNING_KEY`') && has(keyList, 'password manager')
+      ...(has(
+        keyList,
+        "put in `BACKUP_SIGNING_KEY` the private half of the kept list's first key, from the password manager",
+      )
         ? []
         : ['step 2.4 doesn’t put in BACKUP_SIGNING_KEY’s private half from the password manager']),
       ...(has(backupImage, PAIR_COMMAND)
@@ -620,13 +626,16 @@ const after = (text: string, from: string) => {
  * read the token step 1 put into the reached server's .env and delete under that lock with it
  * (Stop C's fifth re-review, finding M1): step 3, step 5's lead-in and sub-step 5 now lift no lock
  * until the rebuild, once step 1's token is revoked and the bucket's only token is the rebuilt
- * server's.
+ * server's. And 2.4 settled a conf that differs from .env toward the archive's .env, whose key is
+ * the retired one after a rotation of the backup key (finding M4): .env takes the newest backup
+ * public key first, whatever the archive held, and the conf must print it; step 1's sentence on
+ * the new pair and 2.4's remedy are pinned (theft design note 1).
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
     runbook,
-    ['theftTest', 'theft', 'rotation', 'check', 'keyList', 'backupKey', 'remove'],
-    ({ theftTest, theft, rotation, check, keyList, backupKey, remove }) => {
+    ['theftTest', 'theft', 'rotation', 'check', 'keyList', 'backupKey', 'remove', 'newServer'],
+    ({ theftTest, theft, rotation, check, keyList, backupKey, remove, newServer }) => {
       const steps = flat(theft);
       const lead = part(steps, '5. **If the server itself', '1. **The signing key**') ?? '';
       const fourth =
@@ -699,11 +708,30 @@ const rootKeys = (runbook: string) =>
             ]),
         ...(conf >= 0 &&
         conf < keys.indexOf(TIMER) &&
-        keys.includes("sudo grep '^BACKUP_AGE_RECIPIENT=' /srv/menumesh/.env") &&
-        keys.includes("`BACKUP_AGE_RECIPIENT` becomes the new pair's public key here")
+        keys.includes("sudo grep '^BACKUP_AGE_RECIPIENT=' /srv/menumesh/.env")
           ? []
           : [
               'step 2.4 enables the archive’s timer without checking that the admin’s conf names .env’s backup key',
+            ]),
+        ...(keys.includes(
+          '`BACKUP_AGE_RECIPIENT` becomes the newest backup public key here, whatever the archive held',
+        ) &&
+        keys.includes(
+          "the new pair's where the backup key counts as stolen too (2.2), else the one whose private half is the newest in the password manager",
+        ) &&
+        keys.includes('first check that it is that same key') &&
+        keys.includes('or the admin puts that key in the conf')
+          ? []
+          : [
+              'step 2.4 puts in the admin’s conf the backup key the archive’s .env held, a retired one after a rotation',
+            ]),
+        ...(has(
+          newServer,
+          "Where the backup key counts as stolen (2.2), its new pair is made before this step, and the admin's `BACKUP_RECIPIENT` (First install, step 9) is the new public key",
+        )
+          ? []
+          : [
+              'disaster recovery’s step 1 fills the admin’s BACKUP_RECIPIENT before the new backup pair is made',
             ]),
         ...(has(backupKey, 'needs both private keys in `identity.txt`')
           ? []
@@ -1952,11 +1980,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         ].join('\n'),
       ],
       [
-        cut(
-          RUNBOOK,
-          ' Where the backup key counts\n        as stolen too (2.2)',
-          '\n\n        Then, on',
-        ),
+        cut(RUNBOOK, ' `BACKUP_AGE_RECIPIENT`\n        becomes the newest', '\n\n        Then, on'),
         '',
       ],
       [
@@ -2045,6 +2069,61 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(rootKeys, swap(RUNBOOK, after(step3, ' Where root may have reached the'), ''), problem);
     refuses(rootKeys, swap(RUNBOOK, lead, ':'), problem);
     refuses(rootKeys, swap(RUNBOOK, token, oldToken), problem);
+  });
+
+  it('puts the newest backup public key in .env at 2.4, whatever the archive held, and the same in the conf (Stop C’s fifth re-review, finding M4)', () => {
+    expect(rootKeys(RUNBOOK)).toEqual([]);
+    const problem =
+      'step 2.4 puts in the admin’s conf the backup key the archive’s .env held, a retired one after a rotation';
+    // As the fourth re-review left it: .env kept the archive's key but where the backup key counted
+    // as stolen, and a conf that differed took that key.
+    const round5 = [
+      ' Where the backup key counts',
+      "        as stolen too (2.2), `BACKUP_AGE_RECIPIENT` becomes the new pair's public key here.",
+      '',
+      "        Then, on a new server, the settings archive's timer, whose drop-in the admin made in step",
+      '        1 (First install, step 13), so that every night has a fresh archive. Each archive is',
+      "        encrypted to the admin's `BACKUP_RECIPIENT`, so first check that it is the key `.env`'s",
+      "        `BACKUP_AGE_RECIPIENT` names, the new pair's public key where the backup key counts as",
+      '        stolen (2.2): the two commands print the same `age1…` key, or the admin puts that one in',
+      "        the conf (root's, 0644, which holds the public key only)",
+    ].join('\n');
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          ' `BACKUP_AGE_RECIPIENT`\n        becomes the newest',
+          ' before the timer goes on:',
+        ),
+        round5,
+      ),
+      problem,
+    );
+    // Theft design note 1: 2.4's remedy, and step 1's sentence on the new pair, removed.
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        ", or the admin puts that key in the conf (root's,\n        0644, which holds the public key only)",
+        '',
+      ),
+      problem,
+    );
+    refuses(
+      rootKeys,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          ' Where the\n     backup key counts as stolen (2.2), its new pair',
+          "\n  2. The night's id",
+        ),
+        '',
+      ),
+      'disaster recovery’s step 1 fills the admin’s BACKUP_RECIPIENT before the new backup pair is made',
+    );
   });
 
   it('stops backup after step 4 on a new server until step 6 starts it after db (finding V4)', () => {

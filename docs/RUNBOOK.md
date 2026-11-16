@@ -1491,15 +1491,17 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         it and checks it against the list's first key, so no night would be sealed and no WAL
         shipped. The pair is checked once the backup image is here, right after step 4. After a
         theft of the signing key, an archive from before the trouble lacks the new key and holds
-        the stolen one: both as 2.2 says, and the kept list goes in. Where the backup key counts
-        as stolen too (2.2), `BACKUP_AGE_RECIPIENT` becomes the new pair's public key here.
+        the stolen one: both as 2.2 says, and the kept list goes in. `BACKUP_AGE_RECIPIENT`
+        becomes the newest backup public key here, whatever the archive held: the new pair's where
+        the backup key counts as stolen too (2.2), else the one whose private half is the newest
+        in the password manager, as an archive from before a rotation of the backup key names
+        the old one (Secrets (VPS), Rotation).
 
         Then, on a new server, the settings archive's timer, whose drop-in the admin made in step
         1 (First install, step 13), so that every night has a fresh archive. Each archive is
-        encrypted to the admin's `BACKUP_RECIPIENT`, so first check that it is the key `.env`'s
-        `BACKUP_AGE_RECIPIENT` names, the new pair's public key where the backup key counts as
-        stolen (2.2): the two commands print the same `age1…` key, or the admin puts that one in
-        the conf (root's, 0644, which holds the public key only) before the timer goes on:
+        encrypted to the admin's `BACKUP_RECIPIENT`, so first check that it is that same key: the
+        two commands print the same `age1…` key, or the admin puts that key in the conf (root's,
+        0644, which holds the public key only) before the timer goes on:
 
         ```sh
         grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf
