@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-67. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-77. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -58,7 +58,8 @@ only.
   then `seal-<id>.txt`, the list of parts with their sha256 and sizes, signed by
   `BACKUP_SIGNING_KEY`. Under `daily/` in the bucket, a month's copy under `monthly/`, ended by
   `copy-<id>.txt`, a signed record that the copy is whole, without which no copy counts as the
-  month's; the night's line names the month's copy.
+  month's; the night's line names the month's copy. A name of the copy already in `monthly/` when
+  it goes up stops the night, as someone else's writing.
 - **The WAL** (`wal-ship.sh`, every minute): `db` hands each finished WAL file to the `wal-spool`
   volume (`basic_archive`, at least once a minute); the shipper compresses, encrypts, signs and
   uploads it to `wal/<cluster>/…`, alerts when it can't, and pings `HEARTBEAT_WAL_URL` every 5
@@ -82,8 +83,9 @@ The public signing key (`BACKUP_SIGNING_PUBLIC_KEY`, one or several, space-separ
 service that reads the bucket; the private key is in `backup` alone, and in the owner's password
 manager. `pnpm vps:secrets` makes the pair and prints the public half for the owner to keep beside
 the age key, in a file of its own and never in the age key's file, and after each rotation the
-whole list in its place. A one-off of the backup image checks that the two halves in `.env` are a
-pair, as the RUNBOOK's disaster recovery and rotation run it.
+whole list in its place; after a theft of the key, the list without it, the stolen key kept in a
+file of its own apart. A one-off of the backup image checks that the two values in `.env` are keys
+and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotation run it.
 
 ## First install, in order
 
@@ -125,29 +127,35 @@ before every install, after copying the server team's files again if those chang
 `pnpm vps:rehearse` runs the whole stack on Docker Desktop as project `menumesh-rehearsal`, the way
 the install and `app-deploy` would: `compose.yml` in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
 gitignored, with the throwaway values of `pnpm vps:secrets --rehearsal`) and
-`local/compose.rehearsal.yml` on top. That override is never installed (`app-apply` would refuse
-its name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300),
-gives Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and
-sends every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the
-WAL shipper, its outage and its failure paths (a full disk among them), then the nightly backup
-into that S3 with each night sealed, named by its id, its stamp and 8 random hex characters (a
-night with a stale settings archive, then the month's copy in `monthly/`, past objects named like
-its parts too, and with its signed record, a copy without one or with one someone else put in
-copied again, and a night whose id someone else wrote a name of first, stopped before its first
-upload), the monthly restore test, the disaster recovery's check of a downloaded night with
-`pnpm vps:verify-night` (and its refusal of settings archives of someone else's), a rotation and a
-theft of the signing key with the night by hand and the signing pair's check, planted nights
-and names the restore must refuse or not read (each night is read from the one folder its age
-gives: `daily/` under 29 days, `monthly/` past that), and then the disaster recovery of a month's
-copy two months old, from `monthly/`, after one without `RESTORE_STAMP` is refused: the
-rehearsal's own database and Storage volumes are made new and filled from the backup, and the
-stack starts on them. Last, the point-in-time drill to a point and to the latest against rows
-written and a table dropped, over a base holding an `ALTER SYSTEM` setting too, restores that
-refuse a night another key sealed, a recovery to the latest refused at a cut and taken to it with
-`PITR_ACCEPT_CUT`, a recovery to a point into new `db-data` and `wal-spool` with the stack started
-on it, a gap on the new timeline that an abandoned one's file must not fill, and a rewind to a
-point inside the newest night's base, which the drill and a recovery to the latest then refuse.
-`pnpm vps:down` removes the project (its images too with `--images`), and nothing else.
+`local/compose.rehearsal.yml` on top. That override is never installed (`app-apply` would refuse its
+name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300), gives
+Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and sends
+every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the WAL
+shipper, its outage and its failure paths (a full disk among them), then the nightly backup into
+that S3 with each night sealed, named by its id, its stamp and 8 random hex characters (a night with
+a stale settings archive, then the month's copy in `monthly/`, past objects named like its parts
+too, and with its signed record, a copy without one or with one someone else put in copied again,
+names of the copy and of its record put in `monthly/` while the night runs, each stopping that
+night, five copies cut short before their records, which hide no recorded one, and a night whose id
+someone else wrote a name of first, stopped before its first upload), the monthly restore test, the
+disaster recovery's check of a downloaded night with `pnpm vps:verify-night` (and its refusal of
+settings archives of someone else's), a rotation and a theft of the signing key with the night by
+hand and the signing pair's check, with signing values that are not keys named by it, by the night
+and by the shipper, planted nights and names the restore must refuse or not read (each night is read
+from the one folder its age gives: `daily/` under 29 days, `monthly/` past that), and then the
+disaster recovery of a month's copy two months old, from `monthly/`, after one without
+`RESTORE_STAMP` is refused: the rehearsal's own database and Storage volumes are made new and filled
+from the backup, and the stack starts on them. Last, the point-in-time drill to a point and to the
+latest against rows written and a table dropped, over a base holding an `ALTER SYSTEM` setting too,
+restores that refuse a night another key sealed, a recovery to the latest refused at a cut and taken
+to it with `PITR_ACCEPT_CUT`, a recovery to a point cut short while a newer night exists, from which
+the latest refuses `PITR_ACCEPT_CUT` and goes through without it, a recovery to a point into new
+`db-data` and `wal-spool` with the stack started on it, a gap on the new timeline that an abandoned
+one's file must not fill, and a rewind that leaves two nights behind it, one whose base it ran
+inside: the drill and a recovery to the latest refuse each in turn, each seal kept aside, until the
+night before recovers across the fork, and with the seals back before a night of the new timeline
+they refuse again. `pnpm vps:down` removes the project (its images too with `--images`), and nothing
+else.
 
 ## Where the borrowed files come from
 
