@@ -1893,6 +1893,18 @@ restore lists nothing.
    (the restore test, step 4, names the part, and a cut chain the file). The drill passes over any
    other name in `wal/` whose signature does not verify (it names how many): a cost only.
 
+   Where the bucket keeps versions (versioning, or S3 Object Lock), list each folder's versions too,
+   delete markers among them, with the admin login in the provider's dashboard: the backup writes
+   each name once, so a name with more than one version, or a delete marker, is one someone else
+   wrote over or deleted. For each such name, whether or not a line keeps its night, make current
+   again, with the admin login, its version that is the backup's: for a seal, the newest a list
+   verifies as above (by a stolen key's file only for a night from before its theft; after a leaked
+   `.env`, step 5, only a version from before the trouble); for a part, the one whose size and
+   sha256 its night's seal lists (`pnpm vps:verify-night` checks it, the seal and the settings
+   archive beside it); for a WAL file, its first, as nobody can name one before its upload (a cut
+   chain names one written over or deleted). A line only keeps an id from going, never a version
+   put over the backup's: step 4 then finds the night it tests whole.
+
    A seal a list verifies that no record of the backup names (the journal's lines and alert lines,
    and the backup monitor's log, which outlives a rebuild) means, where those records are whole (no
    reach as root, and no night of the 30 days killed after its seal, which leaves no line at all:
@@ -1905,8 +1917,9 @@ restore lists nothing.
    says so, and put the rule back as it was (29 days on `daily/`, 365 on `monthly/`, 15 on `wal/`).
    The backup's own nights, month's copies and WAL stay. Where root may have reached the
    server (step 5), lift no lock while a token that server held or could read is valid: this step
-   waits for sub-step 5's rebuild, once step 1's token is revoked and the bucket's only token is the
-   rebuilt server's, which the reached one never held.
+   waits for sub-step 5's rebuild, once step 1's token is revoked and the only token that can write
+   or delete is the rebuilt server's, which the reached one never held; and step 2 is done again
+   first, its versions among them, as root could write with step 1's token until then.
 
 4. **A restore test of a named night**, the newest the journal names, with
    `-e RESTORE_STAMP=<id>` (Backups and restore (VPS)), then the point-in-time drill. Record the
@@ -2017,8 +2030,12 @@ restore lists nothing.
       signed is used. The bucket's token goes new once more, into the rebuilt server's `.env`
       alone, and step 1's token is revoked before Disaster recovery, step 2, reads the bucket: root
       could read it in the reached server's `.env`, and with it put a night of the stolen key over
-      the versions step 2.1 makes current, or delete under a lock step 3 lifts, so only then does
-      step 3 lift a lock. The heartbeat addresses and the bot's token go new once more too,
+      the versions step 2.1 makes current, or delete under a lock step 3 lifts, so only then is
+      step 2 done again, its versions among them, and only then does step 3 lift a lock. From the
+      revocation until Disaster recovery, step 8, moves the DNS, the reached server's shipper
+      alerts every hour that `the upload of <walfile> to the bucket failed (rclone)`, its nightly
+      backup fails at `reaching the bucket`, and sub-step 2's monitors alert: that is expected,
+      and it gets no token. The heartbeat addresses and the bot's token go new once more too,
       and what else the reached server held is Rotation's (Secrets (VPS)).
 
       If the backup key's private half was on that server since the trouble could have begun (a

@@ -31,7 +31,10 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * the night it names and every other id is judged by its seal alone, downloaded byte for byte and
  * checked with each list, never by the journal (H1, and the fifth re-review's M2 and M3, which undo
  * E1's and K2's deletion of the names an alert lists), and step 3 lifts no lock after a reach as
- * root until the rebuild (the fifth re-review's M1); a night a restore test or drill takes that no
+ * root until the rebuild (the fifth re-review's M1), when step 2 is done again, as root could write
+ * until then (the sixth re-review's theft design note 3); under versioning step 2 puts back every
+ * version written over the backup's own, or deleted, whether or not a line keeps its night (the
+ * sixth re-review's P2); a night a restore test or drill takes that no
  * record names, one stamped later than now and one passed over are signs of theft, and a seal a
  * list verifies that no record names takes its key for stolen (the sixth re-review's P1, which
  * puts back the sign the fifth took away); the drill names each of pitr.sh's refusals of
@@ -643,7 +646,13 @@ const after = (text: string, from: string) => {
  * settled a conf that differs from .env toward the archive's .env, whose key is the retired one
  * after a rotation of the backup key (finding M4): .env takes the newest backup public key first,
  * whatever the archive held, and the conf must print it; step 1's sentence on the new pair and
- * 2.4's remedy are pinned (theft design note 1).
+ * 2.4's remedy are pinned (theft design note 1). But step 2 was still judged before that
+ * revocation, so what root wrote with step 1's token after it, versions over the backup's own
+ * among them, stayed (Stop C's sixth re-review, theft design note 3): step 2, its versions among
+ * them, is done again once the token is revoked, before step 3. Step 3 now waits for the only token
+ * that can write or delete, as disaster recovery's read-only token for a download may stay (theft
+ * design note 4), and sub-step 5 says the reached server alerts from the revocation on, and gets
+ * no token (finding P3).
  */
 const rootKeys = (runbook: string) =>
   inPlaces(
@@ -773,6 +782,27 @@ const rootKeys = (runbook: string) =>
           ? []
           : [
               'the theft’s step 5 leaves step 1’s token valid while disaster recovery makes the night’s versions current and downloads it',
+            ]),
+        ...(has(
+          remove,
+          "once step 1's token is revoked and the only token that can write or delete is the rebuilt server's",
+        )
+          ? []
+          : [
+              'step 3 waits for the bucket’s only token to be the rebuilt server’s, which a read-only token for a download never lets be true',
+            ]),
+        ...(has(
+          remove,
+          "and step 2 is done again first, its versions among them, as root could write with step 1's token until then",
+        ) && fifth.includes('so only then is step 2 done again, its versions among them')
+          ? []
+          : [
+              'step 2 judges the bucket only while root may still write to it with step 1’s token, so what root wrote since stays',
+            ]),
+        ...(fifth.includes('that is expected, and it gets no token')
+          ? []
+          : [
+              'the theft’s step 5 says nothing of what the reached server alerts once step 1’s token is revoked',
             ]),
       ];
     },
@@ -1010,7 +1040,12 @@ const copySteps = (runbook: string, backup: string) => {
  * record names, signed by a key stolen unnoticed, led nowhere near these steps, and neither did a
  * night stamped later than now nor one, or WAL objects, the drill passed over (Stop C's sixth
  * re-review, finding P1, and theft design note 6): each is a trigger now, which condemns nothing,
- * and step 2 takes the key that signed a seal no whole record names for stolen.
+ * and step 2 takes the key that signed a seal no whole record names for stolen. Under versioning,
+ * a seal or part put over the backup's own in a night a line keeps, and a delete marker, stayed
+ * current, so step 4's restore test of that night failed and sent the owner back to step 2 (finding
+ * P2): step 2 now lists every folder's versions and puts the backup's back for every name written
+ * twice, whether or not a line keeps its night. "Only a seal that every list refuses" and the
+ * wal/ names that stay are pinned too (theft design notes 1 and 2).
  */
 const oldCopies = (runbook: string) =>
   inPlaces(runbook, ['stolen', 'cleanup', 'remove'], ({ stolen, cleanup, remove }) => {
@@ -1066,7 +1101,11 @@ const oldCopies = (runbook: string) =>
       ...(has(
         cleanup,
         'where the bucket kept an older version of it that a list verifies, make that one current again instead',
-      ) && has(cleanup, 'after a leaked `.env`, step 5, only a version from before the trouble')
+      ) &&
+      has(
+        cleanup,
+        'make that one current again instead (after a leaked `.env`, step 5, only a version from before the trouble',
+      )
         ? []
         : [
             'the stolen-token steps delete a refused seal whose older version a list verifies, or keep it hidden in a token-only theft',
@@ -1097,6 +1136,36 @@ const oldCopies = (runbook: string) =>
         ? []
         : [
             'the stolen-token steps take no night a restore takes that no record names, or stamped later than now, or a night or WAL objects passed over, for a sign of a stolen token',
+          ]),
+      ...(has(
+        cleanup,
+        "Where the bucket keeps versions (versioning, or S3 Object Lock), list each folder's versions too, delete markers among them",
+      ) &&
+      has(
+        cleanup,
+        'so a name with more than one version, or a delete marker, is one someone else',
+      ) &&
+      has(
+        cleanup,
+        'For each such name, whether or not a line keeps its night, make current again',
+      ) &&
+      has(cleanup, 'A line only keeps an id from going, never a version put over the backup')
+        ? []
+        : [
+            'the stolen-token steps leave current a version put over the backup’s own, or a delete marker, in a night a line keeps',
+          ]),
+      ...(has(cleanup, 'Only a seal that every list refuses')
+        ? []
+        : [
+            'the stolen-token steps delete a seal only the kept list refuses, though a stolen key’s file verifies it',
+          ]),
+      ...(has(
+        cleanup,
+        'The drill passes over any other name in `wal/` whose signature does not verify (it names how many): a cost only',
+      ) && !has(cleanup, "In `wal/`, a name whose signature does not verify is the holder's")
+        ? []
+        : [
+            'the stolen-token steps take a WAL name whose signature does not verify for the holder’s, though a stolen key signed the backup’s own',
           ]),
       ...(has(cleanup, 'A seal a list verifies that no record of the backup names') &&
       has(
@@ -1721,6 +1790,17 @@ const REWRAPPED = [
   "`<n> objects passed over, not the backup's`, n above 0",
   'A seal a list verifies that no record of the backup names',
   'that a key of that list signed a night the backup never ran',
+  // The versions put back, the clauses that keep the backup's own, and the bucket judged again.
+  "list each folder's versions too",
+  'a name with more than one version, or a delete marker',
+  'whether or not a line keeps its night',
+  'A line only keeps an id from going, never a version',
+  'Only a seal that every list refuses',
+  'other name in `wal/` whose signature does not verify (it names how many): a cost only',
+  "once step 1's token is revoked and the only token that can write",
+  "first, its versions among them, as root could write with step 1's token until then",
+  'step 2 done again, its versions among them, and only then does step 3 lift a lock',
+  'and it gets no token',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -2866,6 +2946,97 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ['take\n   that key for stolen (step 5)', 'keep\n   that key in the list', key],
     ])
       refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('puts back every version written over the backup’s own, and judges the bucket again after the revocation where root may have been (Stop C’s sixth re-review, finding P2, theft design notes 1 to 4, P3)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    expect(rootKeys(RUNBOOK)).toEqual([]);
+    const versions =
+      'the stolen-token steps leave current a version put over the backup’s own, or a delete marker, in a night a line keeps';
+    const again =
+      'step 2 judges the bucket only while root may still write to it with step 1’s token, so what root wrote since stays';
+    const only =
+      'step 3 waits for the bucket’s only token to be the rebuilt server’s, which a read-only token for a download never lets be true';
+    const alerts =
+      'the theft’s step 5 says nothing of what the reached server alerts once step 1’s token is revoked';
+    // As the fifth re-review left them: no versions listed, step 2 judged once, before the
+    // revocation, step 3 waiting for "the bucket's only token", and no word of the alerts.
+    const step3 = cut(
+      RUNBOOK,
+      "   waits for sub-step 5's rebuild, once step 1's token is revoked and the only token",
+      '\n\n4. **A restore test',
+    );
+    const before = swap(
+      swap(
+        swap(
+          RUNBOOK,
+          cut(
+            RUNBOOK,
+            '\n\n   Where the bucket keeps versions (versioning, or S3 Object Lock)',
+            '\n\n   A seal a list verifies that no record',
+          ),
+          '',
+        ),
+        step3,
+        [
+          "   waits for sub-step 5's rebuild, once step 1's token is revoked and the bucket's only token is the",
+          "   rebuilt server's, which the reached one never held.",
+        ].join('\n'),
+      ),
+      cut(
+        RUNBOOK,
+        ' so only then is\n      step 2 done again',
+        " The heartbeat addresses and the bot's",
+      ),
+      ' so only then does\n      step 3 lift a lock.',
+    );
+    refuses(oldCopies, before, versions);
+    for (const problem of [again, only, alerts]) refuses(rootKeys, before, problem);
+    // Each part dropped or turned in turn, and the two clauses that keep the backup's own objects.
+    for (const [from, to, problem] of [
+      [
+        'a name with more than one version, or a delete marker,',
+        'a name with a delete marker',
+        versions,
+      ],
+      ['whether or not a line keeps its night', 'where no line keeps its night', versions],
+      ['versions too,\n   delete markers among them,', 'versions too,', versions],
+      [
+        ' A line only keeps an id from going, never a version\n   put over the backup',
+        ' So',
+        versions,
+      ],
+      [
+        'Only a seal that every list refuses',
+        'Only a seal that the kept list refuses',
+        'the stolen-token steps delete a seal only the kept list refuses',
+      ],
+      [
+        ' The drill passes over any\n   other name in `wal/` whose signature does not verify (it names how many): a cost only.',
+        "\n   In `wal/`, a name whose signature does not verify is the holder's: the drill passes it over\n   (it names how many) and a cut chain names the file.",
+        'the stolen-token steps take a WAL name whose signature does not verify for the holder’s',
+      ],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), problem);
+    for (const [from, to, problem] of [
+      [
+        "; and step 2 is done again\n   first, its versions among them, as root could write with step 1's token until then.",
+        '.',
+        again,
+      ],
+      [
+        ' so only then is\n      step 2 done again, its versions among them, and only then does',
+        ' so only then does',
+        again,
+      ],
+      ['the only token that can write\n   or delete is', "the bucket's only token is", only],
+      [
+        cut(RUNBOOK, ' From the\n      revocation until', " The heartbeat addresses and the bot's"),
+        '',
+        alerts,
+      ],
+    ])
+      refuses(rootKeys, swap(RUNBOOK, from, to), problem);
   });
 
   it('names each of pitr.sh’s refusals of a base whose timeline a rewind left (finding M1)', () => {
