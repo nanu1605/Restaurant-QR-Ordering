@@ -22,15 +22,17 @@
  * and never from the age key's file: age reads that file as keys, comments and blank lines alone,
  * so a restore given it with the list inside would refuse it, and a key file that holds the age
  * key is refused here (Stop C's re-review, design note 4). After a theft of the signing key the
- * stolen key leaves that list, and a night from before the trouble is checked with a file of the
- * stolen key alone, kept apart (finding V1). The seal is read no further than a
- * byte past seal.sh's seal_max, held to seal_open's lines for that night and checked against each
- * key (scripts/vps-seal.mts, which vps:backup-test holds to seal.sh's verdicts). Then the seal must
- * list a settings archive, every file of the folder named as one of the night's parts must be one
- * the seal lists, at the size and sha256 it gives, and the settings archive must be there: one
- * file that is not refuses the folder, since its other files came from the same bucket. Files
- * named otherwise are left alone. Nothing is decrypted, no age key is needed, and nothing goes
- * over the network.
+ * stolen key leaves that list, and a night from before the trouble that it, or an older key that
+ * may have leaked with it, signed is checked with their file, kept apart (finding V1; since the
+ * second re-review that file may hold several keys, U3), while one an older key of the list
+ * signed is checked with the list, as any night (the third re-review, G3). The seal is read no
+ * further than a byte past seal.sh's seal_max, held to seal_open's lines for that night and checked
+ * against each key (scripts/vps-seal.mts, which vps:backup-test holds to seal.sh's verdicts). Then
+ * the seal must list a settings archive, every file of the folder named as one of the night's
+ * parts must be one the seal lists, at the size and sha256 it gives, and the settings archive must
+ * be there: one file that is not refuses the folder, since its other files came from the same
+ * bucket. Files named otherwise are left alone. Nothing is decrypted, no age key is needed, and
+ * nothing goes over the network.
  *
  * On success it prints a line for each part it checked, with its sha256, and last the settings
  * archive's sha256, which sha256sum must print for the copy on the server before it is unpacked
