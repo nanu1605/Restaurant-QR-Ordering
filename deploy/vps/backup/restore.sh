@@ -355,9 +355,11 @@ for db in $dbs; do
 done
 
 failed=0
+# Each database's lines of the manifest, found by its name as text: awk reads a name such as nan,
+# inf or infinity as a number, which BusyBox's awk finds equal to none, not even itself.
 for db in $dbs; do
   restored=$(counts "$db")
-  wanted=$(printf '%s\n' "$manifest" | awk -v db="$db" '($1 == "table" || $1 == "migration") && $2 == db')
+  wanted=$(printf '%s\n' "$manifest" | awk -v db="$db" '($1 == "table" || $1 == "migration") && $2 "" == db ""')
   tables=$(printf '%s\n' "$restored" | grep -c '^table ' || true)
   if differences=$(compare "$wanted" "$restored"); then
     echo "restore: $db has its $tables tables as the manifest counted them${differences:+, but for:}"

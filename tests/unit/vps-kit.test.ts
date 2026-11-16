@@ -2401,6 +2401,21 @@ const restoreTrust = (script: string) => {
 };
 
 /**
+ * restore.sh finds each database's lines of the manifest by its name as text (Stop C's re-review,
+ * the scan after pitr design note 1): BusyBox's awk reads a name such as nan, inf or infinity as a
+ * number, which it finds equal to no other, not even itself, so that database's counts would be
+ * compared with nothing.
+ */
+const restoreMatched = (script: string) =>
+  script.includes(
+    `wanted=$(printf '%s\\n' "$manifest" | awk -v db="$db" '($1 == "table" || $1 == "migration") && $2 "" == db ""')`,
+  )
+    ? []
+    : [
+        'a database’s lines of the manifest are found by its name as awk reads it, so that nan, inf and infinity find none',
+      ];
+
+/**
  * A night is read from one folder, chosen by its age alone, from its stamp and the clock, never by
  * what the bucket holds: anyone holding the bucket's token can add objects under new names, so a
  * choice made from them can be steered (review findings RV1 and RV2, VPS-40). Younger than 29 days,
@@ -4485,6 +4500,16 @@ describe('the migrate and backup images', () => {
       restoreTrust,
       swap(restoreSh, 'find /storage ! -type f ! -type d', 'find /storage -type l'),
       'links and special files',
+    );
+  });
+
+  it('finds each database’s lines of the manifest by its name as text (Stop C’s re-review)', () => {
+    expect(restoreMatched(restoreSh)).toEqual([]);
+    // Today's line: the name compared as awk reads it.
+    refuses(
+      restoreMatched,
+      swap(restoreSh, '&& $2 "" == db ""', '&& $2 == db'),
+      'nan, inf and infinity find none',
     );
   });
 
