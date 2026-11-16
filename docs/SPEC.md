@@ -1580,7 +1580,7 @@ Acceptance:
 
 | Item | Choice |
 |---|---|
-| App hosting | Vercel (commercial use requires a paid team plan) today; after the move, a Node server (the Docker image) on a shared VPS in Mumbai behind Cloudflare, chosen and logged as docs/DECISIONS.md VPS-1 (the compose kit: VPS-31 to VPS-85) |
+| App hosting | Vercel (commercial use requires a paid team plan) today; after the move, a Node server (the Docker image) on a shared VPS in Mumbai behind Cloudflare, chosen and logged as docs/DECISIONS.md VPS-1 (the compose kit: VPS-31 to VPS-90) |
 | Database | Hosted Supabase today, a paid plan for production before charging (free projects can pause when inactive and have limited backups); after the move, production on self-hosted Supabase (release v0.8.4) on that VPS, with nightly encrypted backups, each sealed with a signature only the backup's key can make, the write-ahead log shipped to the bucket every minute so the database can be rewound to any minute of the last 14 days (a point-in-time recovery), and a monthly restore test and recovery drill (docs/DECISIONS.md VPS-1, VPS-34, VPS-40, VPS-43), and staging on its hosted Supabase project |
 | Region | Mumbai for Supabase; Vercel functions region closest to Mumbai; after the move, Mumbai for both the VPS and the hosted staging project |
 | Domains | `menumesh.in` for the app (not `app.<domain>`), `api.menumesh.in` for Supabase after the move, and `staging.menumesh.in` for staging; QR codes use `NEXT_PUBLIC_APP_URL` — print QR codes for real restaurants **only once production is live on `menumesh.in`** |
