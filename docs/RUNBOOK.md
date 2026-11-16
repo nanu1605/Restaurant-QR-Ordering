@@ -1943,8 +1943,10 @@ restore lists nothing.
    `backup` pings in one night's window but for a run by hand, is itself a sign the `.env` leaked
    (step 5). To find which key of a list of several signed a seal, check it with each key of the
    list alone, in a file of one key each: only the signer's gets past the seal, the others print
-   `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. That id stays all the same, as any
-   whose seal a list verifies.
+   `is signed by none of BACKUP_SIGNING_PUBLIC_KEY's keys`. Where that is not the list's first key,
+   as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5), as its
+   private half was on the server since the trouble could have begun. That id stays all the same,
+   as any whose seal a list verifies.
 
 3. **Remove what the token holder wrote**, with the admin login, off the server: lift the lock rule
    of the folder that holds it, delete only what step 2 found to be the holder's (seals every list

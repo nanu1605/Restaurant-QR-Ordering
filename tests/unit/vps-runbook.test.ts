@@ -1091,8 +1091,10 @@ const copySteps = (runbook: string, backup: string) => {
  * files of a key that has left the list (H2). The records are now the journal's lines over its
  * 180 days on the same server, never a Telegram message, and after a rebuild only a ping from the
  * server's own address inside the night's window; only a seal whose stamp they reach takes its
- * key for stolen; each key of the list is tried alone; once a key has left the list the count is
- * held to the first drill's since; and the drill's night is checked as the restore test's is.
+ * key for stolen; each key of the list is tried alone, and where an older one signed, the list's
+ * first, which sub-step 1 kept nowhere, goes into the stolen key's file with it (seen while fixing
+ * H1); once a key has left the list the count is held to the first drill's since; and the drill's
+ * night is checked as the restore test's is.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(
@@ -1267,6 +1269,14 @@ const oldCopies = (runbook: string) =>
           ? []
           : [
               'the stolen-token steps never say which key of a list signed a night the backup never ran',
+            ]),
+        ...(has(
+          cleanup,
+          "Where that is not the list's first key, as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5)",
+        )
+          ? []
+          : [
+              'the stolen-token steps keep the list’s first key nowhere when an older key of the list signed a night the backup never ran',
             ]),
         ...(taken.includes(
           "`<n> objects passed over, not the backup's`, n above 0, or once a key has left the list, n above what the first drill since printed",
@@ -2084,6 +2094,7 @@ const REWRAPPED = [
   "An older month's copy, stamped before the records reach",
   'To find which key of a list of several signed a seal',
   "list alone, in a file of one key each: only the signer's gets past the seal",
+  "as from an old copy of `.env`, the first goes into the stolen key's file with it (step 5)",
   'or once a key has left the list, n above',
   "that id against the backup's own journal line, as for the restore test",
   // The versions put back: the backup's own removal's markers kept, a seal's version from the
@@ -3777,6 +3788,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       'the stolen-token steps take the key of a month’s copy older than the records for stolen';
     const which =
       'the stolen-token steps never say which key of a list signed a night the backup never ran';
+    const first =
+      'the stolen-token steps keep the list’s first key nowhere when an older key of the list signed';
     const count =
       'the stolen-token steps take the history files of a key that left the list for a sign of theft';
     const drillNight = 'the drill never checks the night it takes against the backup’s own records';
@@ -3804,7 +3817,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       cut(RUNBOOK, ' Check\n  that id against', ' For a point instead'),
       '',
     );
-    for (const problem of [records, reach, which, count, drillNight])
+    for (const problem of [records, reach, which, first, count, drillNight])
       refuses(oldCopies, before, problem);
     // Each part dropped or turned in turn.
     for (const [from, to, problem] of [
@@ -3822,7 +3835,12 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       [cut(RUNBOOK, " An older month's copy, stamped", ' A ping or alert naming'), '', reach],
       ['and reach its stamp (no reach', '(no reach', reach],
       ['--since -180d --utc -o short-iso', '--since -30d -o cat', reach],
-      [cut(RUNBOOK, ' To find which key', ' That id stays all the same'), '', which],
+      [cut(RUNBOOK, ' To find which key', " Where that is not the list's first key,"), '', which],
+      [
+        cut(RUNBOOK, " Where that is not the list's first key,", ' That id stays all the same'),
+        '',
+        first,
+      ],
       [
         ', or once a key has left the list, n above\nwhat the first drill since printed)',
         ')',
