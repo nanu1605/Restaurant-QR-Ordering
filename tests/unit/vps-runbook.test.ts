@@ -118,6 +118,7 @@ const PLACES = {
   theftTest: ['4. **A restore test of a named night**', '5. **If the server itself may have been'],
   theft: ['5. **If the server itself may have been reached**', '### Logs and alerts (VPS)'],
   walAlerts: ['- **WAL alerts**', '### Checking the kit here'],
+  migrations: ['## Database migrations', '## Rolling back'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -1266,9 +1267,16 @@ const RELEASE_BY_TOKEN = `read -rs PAT && printf '%s\\n' "$PAT" | sudo app-deplo
  * last production line of deploys.log before its stamp, compares in UTC, reads a failed or
  * rolled-back line's old image as the one live, deploys with Production's token, which an image no
  * longer on the server needs, and sends the releases made since out again with their migrations.
+ * Those went out in turn, oldest first, a release rolled back since among them, on a new server
+ * from the VPS release runs alone (Stop C's fifth re-review, finding L2), and after a rewind past a
+ * bad release every later one applied its migrations again, as each holds them (finding L1): now
+ * only the newest release that stayed live goes out again, after a night or a rewind past a loss
+ * no release caused, from images.env before step 7's deploy or the owner's note of the day; and
+ * after a rewind past a bad release none does until its migration is made harmless in its own
+ * file, as step 5 and Database migrations say too.
  */
 const releaseDeployed = (runbook: string) =>
-  inPlaces(runbook, ['release', 'recovery'], ({ release, recovery }) => [
+  inPlaces(runbook, ['release', 'recovery', 'migrations'], ({ release, recovery, migrations }) => [
     ...(has(release, "that is the release `images.env`'s `WEB_IMAGE` names") &&
     has(release, 'since a rollback by hand passes no migrate reference')
       ? []
@@ -1309,10 +1317,49 @@ const releaseDeployed = (runbook: string) =>
           'step 7 deploys a release image no longer on the server without the token app-deploy needs to pull it',
         ]),
     ...(/migrate-<sha>/.test(release) ? ['step 7 deploys a release with a migrate reference'] : []),
-    ...(has(release, 'whose migrate run applies what the recovered database lacks') &&
-    has(release, 'never the release a rewind undid')
+    ...(has(
+      release,
+      'After a night, or a rewind past a loss no release caused (a deletion), the newest release that stayed live since then goes out again by Production, step 2, with its own migrate reference',
+    ) && has(release, 'its migrate run applies every migration the recovered database lacks')
       ? []
       : ['step 7 leaves the releases made since the point recovered to undeployed']),
+    ...(has(release, "On the same server that is the release `images.env`'s `WEB_IMAGE` named") &&
+    has(release, 'that is neither `FAILED` nor `ROLLED BACK`') &&
+    has(release, "on a new server, the owner's own note of the day, never the **VPS release** runs")
+      ? []
+      : [
+          'step 7 sends out again a release rolled back since, or takes the releases since from the VPS release runs alone',
+        ]),
+    ...(has(release, 'in turn, oldest first')
+      ? ['step 7 sends out again every release made since, a rolled-back one among them']
+      : []),
+    ...(has(
+      release,
+      'After a rewind past a bad release, no release made since the point goes out, as each holds that',
+    ) &&
+    has(
+      release,
+      'until the harmful migration is made harmless in its own file, under its own version',
+    ) &&
+    has(release, "Never delete the file: hosted staging's history holds that version")
+      ? []
+      : [
+          'step 7 sends out, after a rewind past a bad release, a later release that applies its migrations again',
+        ]),
+    ...(has(release, 'never the release a rewind undid') &&
+    !has(release, 'After a rewind past a bad release, no release made since the point goes out')
+      ? [
+          'step 7 keeps out only the release a rewind undid, though every later one holds its migrations',
+        ]
+      : []),
+    ...(has(
+      recovery,
+      'After a rewind past a bad release, no release made since goes out again until its harmful migration is made harmless (step 7)',
+    ) && has(migrations, 'make its harmful migration harmless in its own file instead')
+      ? []
+      : [
+          'step 5 or Database migrations lets a release go out after a rewind past a bad release before its migration is made harmless',
+        ]),
     ...(has(
       release,
       'So too when a rewind past a release came after the night whose settings archive',
@@ -2692,11 +2739,74 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       releaseDeployed,
       swap(
         RUNBOOK,
-        '       prod-vX.Y.Z@sha256:<digest>\n     ```\n\n     The releases made since then',
-        '       prod-vX.Y.Z@sha256:<digest> migrate-<sha>@sha256:<digest>\n     ```\n\n     The releases made since then',
+        '       prod-vX.Y.Z@sha256:<digest>\n     ```\n\n     After a night, or a rewind',
+        '       prod-vX.Y.Z@sha256:<digest> migrate-<sha>@sha256:<digest>\n     ```\n\n     After a night, or a rewind',
       ),
       'step 7 deploys a release with a migrate reference',
     );
+  });
+
+  it('sends out again only the newest release that stayed live, and none after a rewind past a bad release until its migration is harmless (Stop C’s fifth re-review, findings L1 and L2)', () => {
+    expect(releaseDeployed(RUNBOOK)).toEqual([]);
+    // As the fourth re-review left it: every release made since, in turn, oldest first, from the
+    // VPS release runs, a rolled-back one among them, and after a rewind past a bad release every
+    // later one but the release the rewind undid, though each holds its migrations; and nothing in
+    // step 5 or Database migrations.
+    const closing = cut(
+      RUNBOOK,
+      '     After a night, or a rewind past a loss',
+      '\n\n  8. The edge',
+    );
+    const before = swap(
+      swap(
+        swap(
+          RUNBOOK,
+          closing,
+          [
+            '     The releases made since then go out again in turn, oldest first, each by Production, step 2,',
+            '     with the line its **VPS release** run printed, whose migrate run applies what the recovered',
+            '     database lacks; never the release a rewind undid.',
+          ].join('\n'),
+        ),
+        ' After a rewind past a bad release, no release\n     made since goes out again until its harmful migration is made harmless (step 7).',
+        '',
+      ),
+      '; but after a rewind past a bad\n  release on the shared server, make its harmful migration harmless in its own file instead\n  (Backups and restore (VPS), Disaster recovery, step 7).',
+      '.',
+    );
+    for (const problem of [
+      'step 7 leaves the releases made since the point recovered to undeployed',
+      'step 7 sends out again a release rolled back since, or takes the releases since from the VPS release runs alone',
+      'step 7 sends out again every release made since, a rolled-back one among them',
+      'step 7 sends out, after a rewind past a bad release, a later release that applies its migrations again',
+      'step 7 keeps out only the release a rewind undid, though every later one holds its migrations',
+      'step 5 or Database migrations lets a release go out after a rewind past a bad release',
+    ])
+      refuses(releaseDeployed, before, problem);
+    // Each part of the new sentences dropped in turn.
+    for (const [from, to, problem] of [
+      [
+        'the newest release that\n     stayed live since then',
+        'each release made\n     since then',
+        'step 7 leaves the releases made since the point recovered to undeployed',
+      ],
+      [
+        "; on a new server, the owner's own note of the day, never the\n     **VPS release** runs alone, which list each release built, not whether it stayed live.",
+        '; on a new server, the **VPS release** runs.',
+        'step 7 sends out again a release rolled back since, or takes the releases since from the VPS release runs alone',
+      ],
+      [
+        cut(RUNBOOK, ' After a\n     rewind past a bad release, no release', '\n\n  8. The edge'),
+        ' They go out, never the release a rewind undid.',
+        'step 7 keeps out only the release a rewind undid',
+      ],
+      [
+        ' until the harmful\n     migration is made harmless in its own file, under its own version (Database migrations)',
+        '',
+        'step 7 sends out, after a rewind past a bad release, a later release that applies its migrations again',
+      ],
+    ])
+      refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {

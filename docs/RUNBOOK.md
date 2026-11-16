@@ -296,7 +296,9 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   deploying, and for pages opened before a deploy, up to 7 days after it. So a migration must not
   break any deployment from the last 7 days: add columns, tables and functions freely; rename or
   drop only once no deployment from the last 7 days uses the old name.
-- There are no down migrations. To undo, write a new migration.
+- There are no down migrations. To undo, write a new migration; but after a rewind past a bad
+  release on the shared server, make its harmful migration harmless in its own file instead
+  (Backups and restore (VPS), Disaster recovery, step 7).
 - To see what a deploy would apply: `pnpm exec supabase link --project-ref <ref>` then
   `pnpm exec supabase db push --dry-run`.
 - **Once per environment after the super-admin metrics migration** (stop 12b,
@@ -1560,11 +1562,12 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
 
   5. The recovery, into new volumes. **First choice, point in time:** `PITR_TARGET` is `latest`, or
      the minute just before the loss (a bad release, a deletion) as `YYYY-MM-DDTHH:MM:SSZ` or with
-     an offset such as `+05:30`, at most 14 days back. It restores the database alone, from the
-     newest sealed night's base and the bucket's signed WAL after it. On the same server
-     `db-data` and `wal-spool` go, with everything stopped and `db` and `backup` removed
-     (`storage-data` and `db-config` stay: Storage's files and the image's settings are not in
-     the WAL; the rehearsal proves this order). If the old server still runs, let `backup` ship
+     an offset such as `+05:30`, at most 14 days back. After a rewind past a bad release, no release
+     made since goes out again until its harmful migration is made harmless (step 7). It restores
+     the database alone, from the newest sealed night's base and the bucket's signed WAL after it.
+     On the same server `db-data` and `wal-spool` go, with everything stopped and `db` and `backup`
+     removed (`storage-data` and `db-config` stay: Storage's files and the image's settings are not
+     in the WAL; the rehearsal proves this order). If the old server still runs, let `backup` ship
      what waits first (`ls /wal-spool` as in WAL shipping): the spool goes with the volume.
 
      ```sh
@@ -1745,9 +1748,18 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
        prod-vX.Y.Z@sha256:<digest>
      ```
 
-     The releases made since then go out again in turn, oldest first, each by Production, step 2,
-     with the line its **VPS release** run printed, whose migrate run applies what the recovered
-     database lacks; never the release a rewind undid.
+     After a night, or a rewind past a loss no release caused (a deletion), the newest release that
+     stayed live since then goes out again by Production, step 2, with its own migrate reference,
+     the one its **VPS release** run printed: its migrate run applies every migration the recovered
+     database lacks. On the same server that is the release `images.env`'s `WEB_IMAGE` named before
+     step 7's deploy, the new image of the last production line of `deploys.log` before it that is
+     neither `FAILED` nor `ROLLED BACK`; on a new server, the owner's own note of the day, never the
+     **VPS release** runs alone, which list each release built, not whether it stayed live. After a
+     rewind past a bad release, no release made since the point goes out, as each holds that
+     release's migrations, and neither does any release built from `main` until the harmful
+     migration is made harmless in its own file, under its own version (Database migrations). Never
+     delete the file: hosted staging's history holds that version, and `migrate.sh` refuses a
+     database with a version its image lacks (exit 2).
 
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
      password manager, then the site and redaction files from this repository, the leak test, and
