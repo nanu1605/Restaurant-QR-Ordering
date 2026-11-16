@@ -51,7 +51,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * re-review's L1 and L2), all by the state the recovery brought back, not by its kind: after
  * `latest` that ended at a cut the release from deploys.log, from before a bad release's deploy no
  * release made since it, ever, and with no release since nothing more (the sixth re-review's N1,
- * N2, N4 and N5).
+ * N2, N4 and N5), the release that stayed live read off deploys.log before step 7's own deploy
+ * (the seventh re-review's Q1), a `migrate: applied` line left out for its commit alone (Q2), and
+ * the owner's note of the day asked for at each deploy and rollback by hand (its deploy notes).
  * Every rule also refuses a copy with one mistake, as tests/unit/vps-kit.test.ts does, among them
  * the RUNBOOK's text as it was before the fix. Every phrase is compared with its white space
  * folded, so a sentence wrapped again is still found, and a place whose end is missing is reported,
@@ -133,6 +135,7 @@ const PLACES = {
   theft: ['5. **If the server itself may have been reached**', '### Logs and alerts (VPS)'],
   walAlerts: ['- **WAL alerts**', '### Checking the kit here'],
   migrations: ['## Database migrations', '## Rolling back'],
+  deploys: ['### Deploys on the VPS', '### The scheduler (VPS)'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -1321,7 +1324,9 @@ const cutAdvice = (runbook: string, pitr: string) => {
  * lines, of any attempt, or the dump that attempt made, or closer, before the first "running
  * migrate on" line after it (a "migrate: applied" line comes only after its file committed), and
  * on a new server 35 minutes, app-deploy's own limits on an attempt, before the first line of the
- * unpacked deploys.log naming it, or the owner's note of the day.
+ * unpacked deploys.log naming it, or the owner's note of the day. That parenthesis also said the
+ * line may wait for the end of the run, which psql's flush before each line it reads disproves
+ * (Stop C's seventh re-review, finding Q2): it gives the commit alone as the reason.
  */
 const rewindRoute = (runbook: string) =>
   inPlaces(runbook, ['recovery', 'drill'], ({ recovery, drill }) => {
@@ -1356,6 +1361,11 @@ const rewindRoute = (runbook: string) =>
         ? []
         : [
             'step 5 takes a bad release’s closest point from a line that comes after its migration committed',
+          ]),
+      ...(steps.includes('(a `migrate: applied <file>` line comes only after its file committed)')
+        ? []
+        : [
+            'step 5 says a `migrate: applied` line may wait for the end of the run, though psql writes it right after its file commits',
           ]),
       ...(steps.includes(
         "35 minutes before the first line naming it in the `deploys.log` step 2 unpacked, as `app-deploy`'s own limits bound an attempt",
@@ -1445,161 +1455,214 @@ const RELEASE_BY_TOKEN = `read -rs PAT && printf '%s\\n' "$PAT" | sudo app-deplo
  * deploy, whatever the kind of recovery, no release made since that deploy ever goes out, and one
  * from main only once the harmful file is harmless; else the newest release that went live since
  * and stayed live, with its migrate reference, one older than step 1's without it, and if none did,
- * nothing more. Step 5 and Database migrations say the same.
+ * nothing more. Step 5 and Database migrations say the same. But item 3 read that release off the
+ * last production line of deploys.log, which once item 1 has deployed is step 7's own, naming step
+ * 1's release, so the newest release that stayed live never went out (Stop C's seventh re-review,
+ * finding Q1): it is the last such line before step 7's deploy, the old image of step 7's own line.
+ * The clauses the review found unpinned are held too: item 2's release live just before the bad
+ * deploy, and item 1's images.env only after `latest` on the same server that ended neither at a
+ * cut nor before deploys.log's last production line; and Production, step 2, and Rolling back by
+ * hand ask for the owner's own note of the day, which a new server's steps 5 and 7 go by (the
+ * deploy design notes).
  */
 const releaseDeployed = (runbook: string) =>
-  inPlaces(runbook, ['release', 'recovery', 'migrations'], ({ release, recovery, migrations }) => [
-    ...(has(release, "that is the release `images.env`'s `WEB_IMAGE` names") &&
-    has(release, 'since a rollback by hand passes no migrate reference')
-      ? []
-      : [
-          'step 7 deploys the release `images.env` names with the migrate image `images.env` names',
-        ]),
-    ...(has(release, 'with its migrate image')
-      ? ['step 7 still deploys a release with its migrate image after a recovery']
-      : []),
-    ...(!has(release, "or of a night, that is the release `images.env`'s `WEB_IMAGE` names") &&
-    has(release, "`images.env` is the server's own file") &&
-    has(release, "the last production line of `deploys.log` before the night's stamp")
-      ? []
-      : [
-          'step 7 deploys, after a night recovered on the same server, the release `images.env` names, one made since the night',
-        ]),
-    ...(has(
-      release,
-      "the release `WEB_IMAGE` names in the `images.env` that step 2 unpacked from that night's own settings archive",
-    )
-      ? []
-      : [
-          'step 7 doesn’t take a new server’s night’s release from that night’s own settings archive',
-        ]),
-    ...(has(release, 'Its lines are in UTC') &&
-    has(release, 'or with the point in UTC, as `pitr.sh` prints it')
-      ? []
-      : ['step 7 compares the lines of `deploys.log` with a time that may not be in UTC']),
-    ...(has(
-      release,
-      'A line with `FAILED` or `ROLLED BACK` after its two images never left the new one live',
-    )
-      ? []
-      : ['step 7 takes the new image of a failed or rolled-back deploy for the one live']),
-    ...(has(release, `${RELEASE_BY_TOKEN}\n\`\`\``) && has(release, 'but not its migrate reference')
-      ? []
-      : [
-          'step 7 deploys a release image no longer on the server without the token app-deploy needs to pull it',
-        ]),
-    ...(/migrate-<sha>/.test(release) ? ['step 7 deploys a release with a migrate reference'] : []),
-    ...(has(release, "Production's release follows from the recovered state") &&
-    has(release, "the one live at the recovered state's last transaction")
-      ? []
-      : ['step 7 takes the release by the kind of recovery, not by the state it brought back']),
-    ...(has(release, 'unless it ended at a cut (`PITR_ACCEPT_CUT`)')
-      ? []
-      : [
-          'step 7 takes, after `latest` that ended at a cut, the release `images.env` names, though one made after the cut’s last transaction lacks its migrations',
-        ]),
-    ...(has(release, 'never left the new one live: the release is its old one')
-      ? []
-      : ['step 7 doesn’t say which release a failed or rolled-back line leaves live']),
-    ...(has(
-      release,
-      "if a release went live since the recovered state's time and stayed live, the newest of them goes out again by Production, step 2, with its own migrate reference",
-    ) && has(release, 'its migrate run applies every migration the recovered database lacks')
-      ? []
-      : ['step 7 leaves the releases made since the point recovered to undeployed']),
-    ...(has(release, 'the newest release that stayed live since then goes out again')
-      ? [
-          'step 7 sends the newest release out again whether or not one went live since, step 7’s own among them',
-        ]
-      : []),
-    ...(has(release, "If none did, or it is step 1's own, step 1's deploy is all")
-      ? []
-      : [
-          'step 7 sends its own release out again with its migrate reference when none went live since, which migrate.sh refuses where the database holds a rolled-back release’s versions',
-        ]),
-    ...(has(
-      release,
-      "One older than step 1's, as after a rollback by hand since, goes out as step 1's did instead, without a migrate reference",
-    )
-      ? []
-      : [
-          'step 7 sends a release rolled back to since out again with its migrate reference, which migrate.sh refuses where the database holds the newer one’s versions',
-        ]),
-    ...(has(release, "On the same server that is the release `images.env`'s `WEB_IMAGE` named") &&
-    has(release, "`WEB_IMAGE` named before step 7's deploy") &&
-    has(release, 'that is neither `FAILED` nor `ROLLED BACK`') &&
-    has(release, "on a new server, the owner's own note of the day, never the **VPS release** runs")
-      ? []
-      : [
-          'step 7 sends out again a release rolled back since, or takes the releases since from the VPS release runs alone',
-        ]),
-    ...(has(release, 'in turn, oldest first')
-      ? ['step 7 sends out again every release made since, a rolled-back one among them']
-      : []),
-    ...(has(release, "where the recovered state is from before a bad release's deploy began") &&
-    has(release, 'a rewind past it, a night from before it, or `latest` that ended at a cut') &&
-    has(
-      release,
-      "no release made since that deploy began goes out again, ever, as each holds that release's migrations",
-    ) &&
-    has(
-      release,
-      'until the harmful migration is made harmless in its own file, under its own version',
-    ) &&
-    has(release, "Never delete the file: hosted staging's history holds that version")
-      ? []
-      : [
-          'step 7 sends out, after a recovery to a state from before a bad release, a later release that applies its migrations again',
-        ]),
-    ...(has(release, 'After a night, or a rewind past a loss no release caused')
-      ? [
-          'step 7 sends the newest release out again after any night, though a night from before a bad release lacks its migration',
-        ]
-      : []),
-    ...(has(release, 'never the release a rewind undid') &&
-    !has(release, "where the recovered state is from before a bad release's deploy began")
-      ? [
-          'step 7 keeps out only the release a rewind undid, though every later one holds its migrations',
-        ]
-      : []),
-    ...(has(
-      recovery,
-      "After a recovery to a state from before a bad release's deploy, a rewind past it or a night from before it",
-    ) &&
-    has(
-      recovery,
-      'no release made since that deploy began goes out again, ever, and one built from `main` only once its harmful migration is made harmless in its own file (step 7)',
-    ) &&
-    has(
-      migrations,
-      'but after a recovery past a bad release on the shared server, a rewind or a night from before it',
-    ) &&
-    has(migrations, 'make its harmful migration harmless in its own file instead')
-      ? []
-      : [
-          'step 5 or Database migrations lets a release go out after a recovery past a bad release before its migration is made harmless',
-        ]),
-    ...(has(recovery, 'goes out again until its harmful migration')
-      ? [
-          'step 5 lets a release made since a bad release go out once its migration is edited, though its image holds the original',
-        ]
-      : []),
-    ...(has(
-      release,
-      'So too when a rewind past a release came after the night whose settings archive',
-    ) &&
-    has(
-      release,
-      "the last production line of the archive's `deploys.log` before the rewind's point",
-    )
-      ? []
-      : [
-          'step 7 deploys the release a rewind undid after a recovery from a settings archive made before the rewind',
-        ]),
-    ...(has(recovery, 'see step 7 for the release to deploy')
-      ? []
-      : ['the way past the nights a rewind left doesn’t send the owner to step 7 for the release']),
-  ]);
+  inPlaces(
+    runbook,
+    ['release', 'recovery', 'migrations', 'deploys'],
+    ({ release, recovery, migrations, deploys }) => [
+      ...(has(release, "that is the release `images.env`'s `WEB_IMAGE` names") &&
+      has(release, 'since a rollback by hand passes no migrate reference')
+        ? []
+        : [
+            'step 7 deploys the release `images.env` names with the migrate image `images.env` names',
+          ]),
+      ...(has(release, 'with its migrate image')
+        ? ['step 7 still deploys a release with its migrate image after a recovery']
+        : []),
+      ...(!has(release, "or of a night, that is the release `images.env`'s `WEB_IMAGE` names") &&
+      has(release, "`images.env` is the server's own file") &&
+      has(release, "the last production line of `deploys.log` before the night's stamp")
+        ? []
+        : [
+            'step 7 deploys, after a night recovered on the same server, the release `images.env` names, one made since the night',
+          ]),
+      ...(has(
+        release,
+        "the release `WEB_IMAGE` names in the `images.env` that step 2 unpacked from that night's own settings archive",
+      )
+        ? []
+        : [
+            'step 7 doesn’t take a new server’s night’s release from that night’s own settings archive',
+          ]),
+      ...(has(release, 'Its lines are in UTC') &&
+      has(release, 'or with the point in UTC, as `pitr.sh` prints it')
+        ? []
+        : ['step 7 compares the lines of `deploys.log` with a time that may not be in UTC']),
+      ...(has(
+        release,
+        'A line with `FAILED` or `ROLLED BACK` after its two images never left the new one live',
+      )
+        ? []
+        : ['step 7 takes the new image of a failed or rolled-back deploy for the one live']),
+      ...(has(release, `${RELEASE_BY_TOKEN}\n\`\`\``) &&
+      has(release, 'but not its migrate reference')
+        ? []
+        : [
+            'step 7 deploys a release image no longer on the server without the token app-deploy needs to pull it',
+          ]),
+      ...(/migrate-<sha>/.test(release)
+        ? ['step 7 deploys a release with a migrate reference']
+        : []),
+      ...(has(release, "Production's release follows from the recovered state") &&
+      has(release, "the one live at the recovered state's last transaction")
+        ? []
+        : ['step 7 takes the release by the kind of recovery, not by the state it brought back']),
+      ...(has(release, 'unless it ended at a cut (`PITR_ACCEPT_CUT`)')
+        ? []
+        : [
+            'step 7 takes, after `latest` that ended at a cut, the release `images.env` names, though one made after the cut’s last transaction lacks its migrations',
+          ]),
+      ...(has(release, 'never left the new one live: the release is its old one')
+        ? []
+        : ['step 7 doesn’t say which release a failed or rolled-back line leaves live']),
+      ...(has(
+        release,
+        "if a release went live since the recovered state's time and stayed live, the newest of them goes out again by Production, step 2, with its own migrate reference",
+      ) && has(release, 'its migrate run applies every migration the recovered database lacks')
+        ? []
+        : ['step 7 leaves the releases made since the point recovered to undeployed']),
+      ...(has(release, 'the newest release that stayed live since then goes out again')
+        ? [
+            'step 7 sends the newest release out again whether or not one went live since, step 7’s own among them',
+          ]
+        : []),
+      ...(has(release, "If none did, or it is step 1's own, step 1's deploy is all")
+        ? []
+        : [
+            'step 7 sends its own release out again with its migrate reference when none went live since, which migrate.sh refuses where the database holds a rolled-back release’s versions',
+          ]),
+      ...(has(
+        release,
+        "One older than step 1's, as after a rollback by hand since, goes out as step 1's did instead, without a migrate reference",
+      )
+        ? []
+        : [
+            'step 7 sends a release rolled back to since out again with its migrate reference, which migrate.sh refuses where the database holds the newer one’s versions',
+          ]),
+      ...(has(release, "On the same server that is the release `images.env`'s `WEB_IMAGE` named") &&
+      has(release, "`WEB_IMAGE` named before step 7's deploy") &&
+      has(release, 'that is neither `FAILED` nor `ROLLED BACK`') &&
+      has(
+        release,
+        "on a new server, the owner's own note of the day, never the **VPS release** runs",
+      )
+        ? []
+        : [
+            'step 7 sends out again a release rolled back since, or takes the releases since from the VPS release runs alone',
+          ]),
+      ...(has(release, 'in turn, oldest first')
+        ? ['step 7 sends out again every release made since, a rolled-back one among them']
+        : []),
+      ...(has(release, "where the recovered state is from before a bad release's deploy began") &&
+      has(release, 'a rewind past it, a night from before it, or `latest` that ended at a cut') &&
+      has(
+        release,
+        "no release made since that deploy began goes out again, ever, as each holds that release's migrations",
+      ) &&
+      has(
+        release,
+        'until the harmful migration is made harmless in its own file, under its own version',
+      ) &&
+      has(release, "Never delete the file: hosted staging's history holds that version")
+        ? []
+        : [
+            'step 7 sends out, after a recovery to a state from before a bad release, a later release that applies its migrations again',
+          ]),
+      ...(has(release, 'After a night, or a rewind past a loss no release caused')
+        ? [
+            'step 7 sends the newest release out again after any night, though a night from before a bad release lacks its migration',
+          ]
+        : []),
+      ...(has(release, 'never the release a rewind undid') &&
+      !has(release, "where the recovered state is from before a bad release's deploy began")
+        ? [
+            'step 7 keeps out only the release a rewind undid, though every later one holds its migrations',
+          ]
+        : []),
+      ...(has(
+        recovery,
+        "After a recovery to a state from before a bad release's deploy, a rewind past it or a night from before it",
+      ) &&
+      has(
+        recovery,
+        'no release made since that deploy began goes out again, ever, and one built from `main` only once its harmful migration is made harmless in its own file (step 7)',
+      ) &&
+      has(
+        migrations,
+        'but after a recovery past a bad release on the shared server, a rewind or a night from before it',
+      ) &&
+      has(migrations, 'make its harmful migration harmless in its own file instead')
+        ? []
+        : [
+            'step 5 or Database migrations lets a release go out after a recovery past a bad release before its migration is made harmless',
+          ]),
+      ...(has(recovery, 'goes out again until its harmful migration')
+        ? [
+            'step 5 lets a release made since a bad release go out once its migration is edited, though its image holds the original',
+          ]
+        : []),
+      ...(has(
+        release,
+        'So too when a rewind past a release came after the night whose settings archive',
+      ) &&
+      has(
+        release,
+        "the last production line of the archive's `deploys.log` before the rewind's point",
+      )
+        ? []
+        : [
+            'step 7 deploys the release a rewind undid after a recovery from a settings archive made before the rewind',
+          ]),
+      ...(has(recovery, 'see step 7 for the release to deploy')
+        ? []
+        : [
+            'the way past the nights a rewind left doesn’t send the owner to step 7 for the release',
+          ]),
+      ...(has(
+        release,
+        "the new image of the last production line of `deploys.log` before step 7's deploy that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line)",
+      ) &&
+      !has(release, 'the new image of the last production line of `deploys.log` that is neither')
+        ? []
+        : [
+            'step 7 reads the release that stayed live off deploys.log’s last production line, which after step 1’s deploy is step 7’s own',
+          ]),
+      ...(has(
+        release,
+        'In 3 the release that stayed live is then the one live just before that deploy began, read from `deploys.log` as in 1',
+      )
+        ? []
+        : [
+            'step 7 leaves out, after a recovery from before a bad release, the good release live just before its deploy',
+          ]),
+      ...(has(
+        release,
+        "After a recovery to `latest` on the same server, unless it ended at a cut (`PITR_ACCEPT_CUT`) or before `deploys.log`'s last production line",
+      )
+        ? []
+        : [
+            'step 7 takes images.env’s release after `latest` on a new server, or after WAL that stopped before deploys.log’s last production line, though the state lacks its migrations',
+          ]),
+      ...(has(
+        deploys,
+        "Then note, off the server, the time the deploy began (UTC), the release and whether it stayed live: that is the owner's own note of the day",
+      ) && has(deploys, 'Note it off the server too, as for a release (Production, step 2)')
+        ? []
+        : [
+            'Production and Rolling back by hand never ask for the owner’s own note of the day, which a new server’s recovery goes by',
+          ]),
+    ],
+  );
 
 /** Disaster recovery's step 7 as the fifth re-review's fixes left it (fc63419). */
 const ROUND_6_RELEASE = [
@@ -1654,6 +1717,21 @@ const ROUND_6_RELEASE = [
   "     delete the file: hosted staging's history holds that version, and `migrate.sh` refuses a",
   '     database with a version its image lacks (exit 2).',
   '',
+].join('\n');
+
+/** Disaster recovery's step 7, item 3, as the sixth re-review's fixes left it (b003e13). */
+const ROUND_7_STAYED_LIVE = [
+  "     3. **The release that stayed live**: if a release went live since the recovered state's",
+  '        time and stayed live, the newest of them goes out again by Production, step 2, with its',
+  '        own migrate reference, the one its **VPS release** run printed: its migrate run applies',
+  "        every migration the recovered database lacks, the older releases' among them. On the",
+  "        same server that is the release `images.env`'s `WEB_IMAGE` named before step 7's deploy,",
+  '        the new image of the last production line of `deploys.log` that is neither `FAILED` nor',
+  "        `ROLLED BACK`, when that line is later than that time; on a new server, the owner's own",
+  '        note of the day, never the **VPS release** runs alone, which list each release built,',
+  "        not whether it stayed live. One older than step 1's, as after a rollback by hand since,",
+  "        goes out as step 1's did instead, without a migrate reference, as the database holds",
+  "        step 1's migrations. If none did, or it is step 1's own, step 1's deploy is all.",
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -1801,6 +1879,15 @@ const REWRAPPED = [
   "first, its versions among them, as root could write with step 1's token until then",
   'step 2 done again, its versions among them, and only then does step 3 lift a lock',
   'and it gets no token',
+  // Read by the rules of the seventh re-review, with has() or from folded text: item 3's line
+  // before step 7's deploy, the clauses of items 1 and 2 pinned, step 5's reason, the owner's note.
+  "line of `deploys.log` before step 7's deploy",
+  'release that stayed live is then the one live just before that deploy began, read from',
+  "(`PITR_ACCEPT_CUT`) or before `deploys.log`'s last production line",
+  'After a recovery to `latest` on the same server',
+  '`migrate: applied <file>` line comes only after its file',
+  'the time the deploy began (UTC), the release and whether it stayed live',
+  'server too, as for a release (Production, step 2)',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -3459,6 +3546,59 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         'goes out again until its harmful migration is made harmless (step 7).',
         'step 5 lets a release made since a bad release go out once its migration is edited',
       ],
+    ])
+      refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('reads the release that stayed live off deploys.log before step 7’s deploy, and asks for the owner’s note of the day (Stop C’s seventh re-review, findings Q1 and Q2, deploy design notes)', () => {
+    expect(releaseDeployed(RUNBOOK)).toEqual([]);
+    expect(rewindRoute(RUNBOOK)).toEqual([]);
+    const stayed =
+      'step 7 reads the release that stayed live off deploys.log’s last production line, which after step 1’s deploy is step 7’s own';
+    const noted =
+      'Production and Rolling back by hand never ask for the owner’s own note of the day';
+    const flushed = 'step 5 says a `migrate: applied` line may wait for the end of the run';
+    // As the sixth re-review's fixes left them: item 3 read off deploys.log's last production
+    // line, no note asked for, and a `migrate: applied` line said to wait for the end of the run.
+    const before = swap(
+      swap(
+        swap(
+          swap(
+            RUNBOOK,
+            cut(RUNBOOK, '     3. **The release that stayed live**', '\n\n  8. The edge'),
+            ROUND_7_STAYED_LIVE,
+          ),
+          cut(RUNBOOK, ' Then note,\n     off the server', '\n\n  3. From this machine'),
+          '',
+        ),
+        cut(RUNBOOK, ' Note it off the\n  server too', ' Migrations are never undone'),
+        '',
+      ),
+      '     committed). On a new server,',
+      '     committed, and may wait for the end of the run). On a new server,',
+    );
+    refuses(releaseDeployed, before, stayed);
+    refuses(releaseDeployed, before, noted);
+    refuses(rewindRoute, before, flushed);
+    // The clauses the review found no rule held, each dropped in turn.
+    for (const [from, to, problem] of [
+      [
+        cut(RUNBOOK, ' In 3 the\n', '\n\n     3. **The release that stayed live**'),
+        '',
+        'step 7 leaves out, after a recovery from before a bad release, the good release live just before its deploy',
+      ],
+      [
+        " or before `deploys.log`'s last production line (as when WAL stopped\n        reaching the bucket before the loss)",
+        '',
+        'step 7 takes images.env’s release after `latest` on a new server, or after WAL that stopped',
+      ],
+      [
+        'After a recovery to `latest` on the same server, unless',
+        'After a recovery to `latest`, unless',
+        'step 7 takes images.env’s release after `latest` on a new server, or after WAL that stopped',
+      ],
+      [" (the old image of step 7's own line)", '', stayed],
+      [' Then note,\n     off the server,', ' Then note,\n     on the server,', noted],
     ])
       refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
   });

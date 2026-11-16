@@ -1008,14 +1008,19 @@ install the site file, then change DNS last.
      It dumps the database first (age-encrypted, in `/srv/menumesh/predeploy/`, the newest three
      kept), runs `migrate` for at most 10 minutes (a failure switches nothing), switches `web` and
      waits up to 120 s for it to turn healthy. If it never does, `app-deploy` goes back to the
-     previous image by itself and alerts. Migrations that ran stay applied either way.
+     previous image by itself and alerts. Migrations that ran stay applied either way. Then note,
+     off the server, the time the deploy began (UTC), the release and whether it stayed live: that
+     is the owner's own note of the day, which a recovery on a new server goes by (Backups and
+     restore (VPS), Disaster recovery, steps 5 and 7).
 
   3. From this machine: `SMOKE_URL=https://menumesh.in EXPECTED_VERSION=<commit> pnpm smoke`.
 
 - **Rolling back by hand:** `sudo tail -5 /srv/menumesh/deploys.log` names the previous image, and
   deploying it again without a migrate reference brings it back. An image still on the server needs
-  no token: `sudo app-deploy menumesh production prod-vX.Y.W@sha256:<digest>`. Migrations are never
-  undone, which is why they stay backward-compatible for one release (Database migrations).
+  no token: `sudo app-deploy menumesh production prod-vX.Y.W@sha256:<digest>`. Note it off the
+  server too, as for a release (Production, step 2): the time (UTC), the release brought back,
+  and that the one rolled back did not stay live. Migrations are never undone, which is why they
+  stay backward-compatible for one release (Database migrations).
 - **When to deploy:** no deploys, and no merges to `main` (every merge deploys staging), from 02:55
   to 03:30 or from 08:40 to 08:50 IST: those are the daily run and the digest. Releases also avoid
   12:00 to 15:30 and 19:00 to 23:30 IST, and maintenance runs 01:00 to 07:00 IST (VPS-24).
@@ -1571,7 +1576,7 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      `/srv/menumesh/predeploy/production-<stamp>-postgres.dump.age`, made before its migrations;
      or, closer, before the first `running migrate on migrate-<sha>` line after that one, as no
      migration runs before it (a `migrate: applied <file>` line comes only after its file
-     committed, and may wait for the end of the run). On a new server, without that journal, it
+     committed). On a new server, without that journal, it
      is 35 minutes before the first line naming it in the `deploys.log` step 2 unpacked, as
      `app-deploy`'s own limits bound an attempt (300 s for each pull and for the dump, 600 s for
      `migrate`, 120 s for the switch and 120 s for the health wait, twice with a rollback), or
@@ -1792,12 +1797,13 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         own migrate reference, the one its **VPS release** run printed: its migrate run applies
         every migration the recovered database lacks, the older releases' among them. On the
         same server that is the release `images.env`'s `WEB_IMAGE` named before step 7's deploy,
-        the new image of the last production line of `deploys.log` that is neither `FAILED` nor
-        `ROLLED BACK`, when that line is later than that time; on a new server, the owner's own
-        note of the day, never the **VPS release** runs alone, which list each release built,
-        not whether it stayed live. One older than step 1's, as after a rollback by hand since,
-        goes out as step 1's did instead, without a migrate reference, as the database holds
-        step 1's migrations. If none did, or it is step 1's own, step 1's deploy is all.
+        the new image of the last production line of `deploys.log` before step 7's deploy
+        that is neither `FAILED` nor `ROLLED BACK` (the old image of step 7's own line), when
+        that line is later than that time; on a new server, the owner's own note of the day,
+        never the **VPS release** runs alone, which list each release built, not whether it
+        stayed live. One older than step 1's, as after a rollback by hand since, goes out as
+        step 1's did instead, without a migrate reference, as the database holds step 1's
+        migrations. If none did, or it is step 1's own, step 1's deploy is all.
 
   8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
      password manager, then the site and redaction files from this repository, the leak test, and
