@@ -2207,8 +2207,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       oldCopies,
       swap(
         RUNBOOK,
-        'Its other\n   objects stay, a record beside it among them',
-        'Its record goes too, and its other\n   objects stay',
+        'other objects stay, a record beside it among them',
+        'record goes too, and its other objects stay',
       ),
       'the stolen-token steps delete an id of monthly/ no line shown names without checking its seal',
     );
