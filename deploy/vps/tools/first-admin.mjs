@@ -165,10 +165,16 @@ async function main() {
   if (created.json?.error_code === 'email_exists') {
     throw new Refused(`${email} already has a login; nothing was changed`);
   }
-  if (created.status === 0) {
-    throw new Failed(
-      `no answer to making the login (${said(created)}): if ${email} has a login now, remove it before running this again`,
-    );
+  // GoTrue's own errors are JSON with an error_code, and leave nothing made. No answer at all, or
+  // a 5xx without one (the gateway's own 502, 503 or 504 in plain text, when GoTrue's connection
+  // broke or the route's 30 s ran out), leaves it unknown: GoTrue may have made the login before
+  // its answer was lost.
+  if (created.status === 0 || (created.status >= 500 && !created.json?.error_code)) {
+    const lost =
+      created.status === 0
+        ? `no answer to making the login (${said(created)})`
+        : `no answer from GoTrue to making the login (${created.status} from the gateway)`;
+    throw new Failed(`${lost}: if ${email} has a login now, remove it before running this again`);
   }
   const userId = created.json?.id;
   if (created.status < 200 || created.status > 299 || typeof userId !== 'string') {

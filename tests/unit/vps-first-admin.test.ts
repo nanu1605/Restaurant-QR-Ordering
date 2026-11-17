@@ -38,7 +38,40 @@ const inviteMember = migration.slice(
   migration.indexOf('create function public.platform_renew_invite('),
 );
 
+const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
+/** What the tool says when the answer to making the login was lost. */
+const LOST_WORDS = 'has a login now, remove it before running this again';
+/**
+ * The RUNBOOK's removal of the login such a run may have left: by its email, only one with no
+ * platform_admins row, and nothing once anyone has joined.
+ */
+const LOST_REMOVAL =
+  'sudo app-compose menumesh exec -T db psql -U supabase_admin -d postgres -c "delete from auth.users where email = \'<email>\' and id not in (select user_id from public.platform_admins) and not exists (select 1 from public.platform_admins where joined_at is not null)"';
+
+/**
+ * The RUNBOOK's "A new link" (The first platform admin (production)): after the tool's words for a
+ * lost answer, the removal by email (Stop D's review, T1). Before it, the paragraph removed only a
+ * login with a waiting invite, or one a failed run named by its id, which a lost answer never gives.
+ */
+function lostLogin(runbook: string): string[] {
+  const start = runbook.indexOf('**A new link**');
+  const end = runbook.indexOf('**On hosted Supabase**', start);
+  if (start < 0 || end < 0) return ['the RUNBOOK has no "A new link" before "On hosted Supabase"'];
+  const text = runbook.slice(start, end).replace(/\s+/g, ' ');
+  return [
+    ...(text.includes(LOST_REMOVAL)
+      ? []
+      : [
+          'A new link removes no login a lost answer may have left: by its email, with no platform_admins row, while no one has joined',
+        ]),
+    ...(text.includes(`if <email> ${LOST_WORDS}`)
+      ? []
+      : ['A new link doesn’t quote the tool’s words for a lost answer']),
+  ];
+}
+
 type Seen = { method: string; url: string; headers: IncomingHttpHeaders; body: string };
+/** An answer; status 0 drops the connection without one. */
 type Answer = { status: number; body?: unknown };
 
 /** What the stub answers; each case changes what it needs. */
@@ -75,7 +108,9 @@ const server = createServer((req, res) => {
               : route === `DELETE /auth/v1/admin/users/${USER_ID}`
                 ? answers.removed
                 : { status: 404, body: { message: 'no such route' } };
-    if (typeof answer.body === 'string') {
+    if (answer.status === 0) {
+      req.socket.destroy();
+    } else if (typeof answer.body === 'string') {
       res.writeHead(answer.status, { 'Content-Type': 'text/plain' }).end(answer.body);
     } else if (answer.body === undefined) {
       res.writeHead(answer.status).end();
@@ -312,19 +347,71 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
       'POST /auth/v1/admin/users',
     ]);
 
-    // GoTrue failing makes no login: nothing to remove.
+    // GoTrue failing makes no login: nothing to remove. Its own error is JSON with an error_code
+    // (GoTrue v2.197.0's NewInternalServerError: unexpected_failure).
     seen = [];
-    answers.created = { status: 500, body: { code: 500, msg: 'Database error creating new user' } };
+    answers.created = {
+      status: 500,
+      body: {
+        code: 500,
+        error_code: 'unexpected_failure',
+        msg: 'Database error creating new user',
+      },
+    };
     result = await run({ ...container(), ...owner });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe(
-      'first-admin: failed: could not make the login (500 500: Database error creating new user); nothing was made\n',
+      'first-admin: failed: could not make the login (500 unexpected_failure: Database error creating new user); nothing was made\n',
     );
     expect(routes()).toEqual([
       'GET /robots.txt',
       'GET /rest/v1/platform_admins?select=joined_at',
       'POST /auth/v1/admin/users',
     ]);
+  });
+
+  it('says the login may exist when the answer to making it was lost, and how the RUNBOOK removes it (Stop D review, T1)', async () => {
+    // The gateway's own answers in plain text when GoTrue's connection breaks or its 30 s run out
+    // (GoTrue may have made the login by then), and no answer at all.
+    const lost: [Answer, string][] = [
+      [
+        {
+          status: 503,
+          body: 'upstream connect error or disconnect/reset before headers. reset reason: connection termination',
+        },
+        'no answer from GoTrue to making the login (503 from the gateway)',
+      ],
+      [
+        { status: 504, body: 'upstream request timeout' },
+        'no answer from GoTrue to making the login (504 from the gateway)',
+      ],
+      [{ status: 0 }, 'no answer to making the login (fetch failed'],
+    ];
+    for (const [answer, why] of lost) {
+      seen = [];
+      answers.created = answer;
+      const result = await run({ ...container(), ...owner });
+      expect(result.status, why).toBe(1);
+      expect(result.stderr).toMatch(/^first-admin: failed: /);
+      expect(result.stderr).toContain(why);
+      expect(result.stderr).toMatch(
+        /: if owner@example\.com has a login now, remove it before running this again\n$/,
+      );
+      expect(result.stderr).not.toContain('nothing was made');
+      expect(result.stdout).toBe('');
+      // No invite and no removal: nothing knows whether the login is there.
+      expect(routes()).toEqual([
+        'GET /robots.txt',
+        'GET /rest/v1/platform_admins?select=joined_at',
+        'POST /auth/v1/admin/users',
+      ]);
+    }
+    // The RUNBOOK's step for those words, and none on its text before the fix.
+    expect(TOOL).toContain(LOST_WORDS);
+    expect(lostLogin(RUNBOOK)).toEqual([]);
+    expect(lostLogin(RUNBOOK.replace(LOST_REMOVAL, '')).join('\n')).toContain(
+      'removes no login a lost answer may have left',
+    );
   });
 
   it('refuses a bad email or name before any request, as the Team page would', async () => {

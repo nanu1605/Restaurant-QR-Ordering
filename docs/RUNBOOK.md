@@ -2729,6 +2729,9 @@ shared server (VPS), The server rehearsal and the cut-over, part 4), with
    email that already has a login, and for an email or a name the Team page would refuse. A failure
    is one line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is
    removed again when the invite can't be added, or named with its user id when that fails too.
+   When the answer to making the login was lost (no answer, or the gateway's own 502, 503 or 504
+   instead of GoTrue's), the login may exist without its invite: it never says that nothing was
+   made then, but to remove that login if there is one (A new link, below).
 
 3. Once production's records point at the server, open the link and choose the password, which
    signs in and goes on to enrol an authenticator app (`/super/mfa`).
@@ -2743,6 +2746,17 @@ sudo app-compose menumesh exec -T db psql -U supabase_admin -d postgres -c "dele
 
 It prints `DELETE 1`. A login that a failed run named is removed the same way, with
 `delete from auth.users where id = '<user id>'` as the command's SQL.
+
+A login that a failed run could not confirm, when its line ends
+`if <email> has a login now, remove it before running this again`, is removed by that email, only
+while no one has joined, and only as a login with no `platform_admins` row; then run step 2 again:
+
+```sh
+sudo app-compose menumesh exec -T db psql -U supabase_admin -d postgres -c "delete from auth.users where email = '<email>' and id not in (select user_id from public.platform_admins) and not exists (select 1 from public.platform_admins where joined_at is not null)"
+```
+
+It prints `DELETE 1` when the lost answer had made the login, and `DELETE 0` when it had not, or
+once anyone has joined.
 
 **On hosted Supabase**, for Vercel's production until its parts retire (The shared server (VPS),
 The server rehearsal and the cut-over, part 6):
