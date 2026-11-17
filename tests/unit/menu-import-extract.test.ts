@@ -85,6 +85,10 @@ function fakeFetch(...replies: Array<Response | Error>) {
 const run = (fetchImpl: typeof fetch, providers = [primary, fallback]) =>
   extractPage({ imageJpegBase64: 'AAAA', providers, usdToInr: 96, fetchImpl });
 
+// For the tests on the edge of the page's time: a clock that doesn't move, so exactly deadlineMs
+// is left at the check. On the real clock a busy run lets a few milliseconds pass first.
+const stoppedClock = () => 0;
+
 describe('extractPage', () => {
   it('reads a page with structured output, the image and zero retention on Command Code', async () => {
     const { fetchImpl, calls } = fakeFetch(completion(JSON.stringify(goodPage)));
@@ -286,6 +290,7 @@ describe('extractPage', () => {
       providers: [primary, fallback],
       usdToInr: 96,
       fetchImpl,
+      now: stoppedClock,
       deadlineMs: MIN_CALL_MS - 1,
     });
     expect(calls).toHaveLength(0);
@@ -305,6 +310,7 @@ describe('extractPage', () => {
       providers: [primary],
       usdToInr: 96,
       fetchImpl,
+      now: stoppedClock,
       deadlineMs: MIN_CALL_MS,
     });
     expect(outcome.status).toBe('done');
