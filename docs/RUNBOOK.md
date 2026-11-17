@@ -1401,7 +1401,8 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      anyone holding the bucket's token can add a night under any stamp: the journal's
      `backup <id>: …` lines if the old server still runs, else the backup monitor's log, where each
      ping carries that line (First install, step 3), and in it only a ping from the old server's own
-     address inside its night's window (from its stamp to the next night's), as A stolen or leaked
+     address inside its night's window (from its stamp to a day after it, so a long base's late ping
+     counts), as A stolen or leaked
      bucket token (VPS), step 2, reads it: a ping from elsewhere, or two naming different ids in one
      night's window but for a run by hand, is a sign the `.env` leaked, so follow that section's
      step 5 before anything of the bucket is downloaded. Telegram's failure lines, which that `.env`
@@ -1960,7 +1961,7 @@ restore lists nothing.
    line the command prints where it holds less (a full journal or a vacuum cuts it short:
    hostwatch's daily `journal:` line gives its oldest line), never a Telegram message, and the
    backup monitor's pings from the server's own address inside the night's window (from its stamp to
-   the next night's, so a long base's late ping counts), which none can send without root, so a
+   a day after it, so a long base's late ping counts), which none can send without root, so a
    night whose line journald dropped to its rate limit is named all the same; only where the journal
    can't reach, after a rebuild, those pings alone, the server's own address being the old server's
    for nights before the rebuild, as sub-step 4 reads them. Such a ping names its own night and the
@@ -2057,7 +2058,8 @@ restore lists nothing.
       or to a point before it: a night's logical recovery (Disaster recovery, step 5, the
       fallback) of the last night from before the trouble could have begun. Name it only from
       records made before the trouble could have begun: a ping the backup monitor received then,
-      from the server's own address and inside its night (from its stamp to the next night's), or
+      from the server's own address and inside its night (from its stamp to a day after it, so a
+      long base's late ping counts), or
       the old server's journal from then, unless root may have reached the server, as root can write
       the journal; never a ping received since. Two `backup` lines naming different ids in one
       night's window but for a run by hand, or an id that no record from before names, mean a night

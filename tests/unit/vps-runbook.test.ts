@@ -55,7 +55,8 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * recovery's night named only by a ping from the old server's own address inside its window, the
  * night a point-in-time recovery took checked before db starts (T4), and after a rebuild a night
  * that sent no ping tied to its nightly's slot, a run by hand's ping not counted (the ninth
- * re-review's V1); the drill names each of pitr.sh's refusals of
+ * re-review's V1), and a ping's window run to a day after its stamp (H1); the drill names each of
+ * pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
  * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
@@ -566,7 +567,9 @@ const theftList = (runbook: string) =>
  * ping in the monitor's log, and from Telegram's failure lines, both of which a leaked .env can send
  * (finding T4): it reads only a ping from the old server's own address inside its night's window, a
  * ping from elsewhere sends the owner to the theft's step 5 first, Telegram's lines name no night
- * there, and step 5 checks the night a point-in-time recovery took before db starts.
+ * there, and step 5 checks the night a point-in-time recovery took before db starts. But a window
+ * to the next night's ended before the ping of a run by hand begun just before a nightly (Stop C's
+ * ninth re-review, finding H1): both windows run to a day after the stamp.
  */
 const theftRecords = (runbook: string) =>
   inPlaces(runbook, ['theft', 'recovery'], ({ theft, recovery }) => [
@@ -602,21 +605,44 @@ const theftRecords = (runbook: string) =>
       : [
           'the theft’s step 5 takes a ping that curl’s retry sent again, the same line, for a night of the thief’s',
         ]),
-    ...(has(
+    ...((has(
       theft,
       "from the server's own address and inside its night (from its stamp to the next night's)",
-    ) && !has(theft, '(from its stamp to about 2 hours after)')
+    ) ||
+      has(
+        theft,
+        "from the server's own address and inside its night (from its stamp to a day after it, so a long base's late ping counts)",
+      )) &&
+    !has(theft, '(from its stamp to about 2 hours after)')
       ? []
       : [
           'the theft’s step 5 names a night from before the trouble only by a ping within about 2 hours of its stamp, though a long base pings later',
         ]),
+    ...(has(
+      theft,
+      "inside its night (from its stamp to a day after it, so a long base's late ping counts)",
+    ) &&
+    has(
+      recovery,
+      "inside its night's window (from its stamp to a day after it, so a long base's late ping counts), as A stolen or leaked",
+    ) &&
+    !has(theft, "to the next night's") &&
+    !has(recovery, "to the next night's")
+      ? []
+      : [
+          'the theft’s step 5 and disaster recovery’s step 2 end a ping’s window at the next night’s stamp, so a run by hand begun just before a nightly, which pings after that stamp, names no night',
+        ]),
     ...(has(recovery, 'named only from records made before the trouble could have begun')
       ? []
       : ['disaster recovery’s step 2 names a night from before a theft from any record']),
-    ...(has(
+    ...((has(
       recovery,
       "where each ping carries that line (First install, step 3), and in it only a ping from the old server's own address inside its night's window (from its stamp to the next night's), as A stolen or leaked bucket token (VPS), step 2, reads it",
-    ) &&
+    ) ||
+      has(
+        recovery,
+        "where each ping carries that line (First install, step 3), and in it only a ping from the old server's own address inside its night's window (from its stamp to a day after it, so a long base's late ping counts), as A stolen or leaked bucket token (VPS), step 2, reads it",
+      )) &&
     has(
       recovery,
       "a ping from elsewhere, or two naming different ids in one night's window but for a run by hand, is a sign the `.env` leaked, so follow that section's step 5 before anything of the bucket is downloaded",
@@ -1200,7 +1226,9 @@ const copySteps = (runbook: string, backup: string) => {
  * journal's lines the records on the same server was held by no rule (its theft design notes).
  * Now such a night after a rebuild is one stamped from a nightly's 20:30 UTC to the next, where no
  * ping from the old server's address names a night of that stamp, a run by hand's ping not
- * counted, and the monitor's alert is not needed where a run by hand pinged first.
+ * counted, and the monitor's alert is not needed where a run by hand pinged first. And a window to
+ * the next night's ended before the ping of a run by hand begun just before a nightly (H1): it runs
+ * to a day after the stamp.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(
@@ -1395,10 +1423,11 @@ const oldCopies = (runbook: string) =>
           : [
               'the stolen-token steps leave the journal’s lines out of the records on the same server, so a night whose ping was lost looks planted',
             ]),
-        ...(has(
+        ...((has(
           cleanup,
           "(from its stamp to the next night's, so a long base's late ping counts)",
-        ) &&
+        ) ||
+          has(cleanup, "(from its stamp to a day after it, so a long base's late ping counts)")) &&
         has(
           cleanup,
           "the server's own address being the old server's for nights before the rebuild",
@@ -1408,6 +1437,14 @@ const oldCopies = (runbook: string) =>
           ? []
           : [
               'the stolen-token steps hold a ping to about 2 hours after its night’s stamp, take the server’s own address for the rebuilt one’s, or never read a ping as naming the month’s copy its line names',
+            ]),
+        ...(has(
+          cleanup,
+          "inside the night's window (from its stamp to a day after it, so a long base's late ping counts)",
+        ) && !has(cleanup, "to the next night's")
+          ? []
+          : [
+              'the stolen-token steps end a ping’s window at the next night’s stamp, so a run by hand begun just before a nightly, which pings after that stamp, is named by nothing',
             ]),
         ...(has(
           cleanup,
@@ -2413,7 +2450,7 @@ const REWRAPPED = [
   'line the command prints where it holds less (a full journal or a vacuum cuts it short:',
   'never a Telegram message, and the',
   "from the server's own address inside the night's window",
-  "the next night's, so a long base's late ping counts)",
+  "a day after it, so a long base's late ping counts)",
   'which none can send without root, so a',
   "the server's own address being the old server's",
   'Such a ping names its own night and the',
@@ -2422,7 +2459,7 @@ const REWRAPPED = [
   'is itself a sign the `.env` leaked (step 5)',
   'never a Telegram message',
   'Two `backup` lines',
-  "from the server's own address and inside its night (from its stamp to the next night's)",
+  'inside its night (from its stamp to a day after it, so a',
   // The stolen key's file: every key of the list on the server since the trouble, its first among
   // them, in step 2, sub-step 1, sub-step 4, 2.2 and Rotation.
   "the first among them, goes into the stolen key's file with it",
@@ -2433,7 +2470,7 @@ const REWRAPPED = [
   'signed: one that an older key of the kept list',
   'So does every other key of the list whose private half was on the',
   // Disaster recovery's step 2 named by the old server's own pings, and step 5's night checked.
-  "address inside its night's window (from its stamp to the next night's), as A stolen or leaked",
+  "inside its night's window (from its stamp to a day after it, so a long base's late ping",
   'a ping from elsewhere, or two naming different ids in one',
   "Telegram's failure lines, which that `.env`",
   "the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own",
@@ -4456,7 +4493,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         retriedBefore,
       ],
       [
-        "inside its night (from its stamp to the next night's)",
+        `${cut(RUNBOOK, 'inside its night (from its stamp to', 'late ping counts)')}late ping counts)`,
         'inside its night (from its stamp to about 2 hours after)',
         lateBefore,
       ],
@@ -4556,8 +4593,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         named,
       ],
       [
-        "inside its night's window (from its stamp to the next night's), as",
-        "inside its night's window, as",
+        cut(RUNBOOK, "inside its night's window (from its stamp to", ', as A stolen or leaked'),
+        "inside its night's window",
         named,
       ],
       [
@@ -4703,6 +4740,37 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       journal,
     );
+  });
+
+  it('runs a ping’s window to a day after its stamp, so a run by hand begun just before a nightly keeps its own ping, in step 2, sub-step 4 and disaster recovery’s step 2 (Stop C’s ninth re-review, finding H1)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    expect(theftRecords(RUNBOOK)).toEqual([]);
+    const day = 'the stolen-token steps end a ping’s window at the next night’s stamp';
+    const dayBefore =
+      'the theft’s step 5 and disaster recovery’s step 2 end a ping’s window at the next night’s stamp';
+    // As the eighth re-review's fixes left them: each window ran to the next night's.
+    const step2 = `${cut(RUNBOOK, "the night's window (from its stamp to", 'late ping counts)')}late ping counts)`;
+    const step2Before =
+      "the night's window (from its stamp to the next night's, so a long base's late ping counts)";
+    const subStep4 = `${cut(RUNBOOK, 'inside its night (from its stamp to', 'late ping counts)')}late ping counts)`;
+    const subStep4Before = "inside its night (from its stamp to the next night's)";
+    const recovery = cut(
+      RUNBOOK,
+      "inside its night's window (from its stamp to",
+      ', as A stolen or leaked',
+    );
+    const recoveryBefore = "inside its night's window (from its stamp to the next night's)";
+    const before = swap(
+      swap(swap(RUNBOOK, step2, step2Before), subStep4, subStep4Before),
+      recovery,
+      recoveryBefore,
+    );
+    refuses(oldCopies, before, day);
+    refuses(theftRecords, before, dayBefore);
+    // Each place turned back alone.
+    refuses(oldCopies, swap(RUNBOOK, step2, step2Before), day);
+    refuses(theftRecords, swap(RUNBOOK, subStep4, subStep4Before), dayBefore);
+    refuses(theftRecords, swap(RUNBOOK, recovery, recoveryBefore), dayBefore);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
