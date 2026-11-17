@@ -79,7 +79,12 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * re-review's S1 and deploy design notes). Every rule also refuses a copy with one mistake, as
  * tests/unit/vps-kit.test.ts does, among them the RUNBOOK's text as it was before the fix. Every
  * phrase is compared with its white space folded, so a sentence wrapped again is still found, and a
- * place whose end is missing is reported, never read to the end of the section.
+ * place whose end is missing is reported, never read to the end of the section. Since Stop D they
+ * also pin the cut-over's order (docs/DECISIONS.md VPS-113 to VPS-120): Vercel's records DNS only
+ * and written down for the way back, the leak test through a temporary record before any app
+ * record moves, the staging night's switches, and Vercel's cron jobs, CRON_SECRET and the hosted
+ * project's backup kept for the 14 days of the way back, which the first real write on the server
+ * ends.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -158,6 +163,15 @@ const PLACES = {
   walAlerts: ['- **WAL alerts**', '### Checking the kit here'],
   migrations: ['## Database migrations', '## Rolling back'],
   deploys: ['### Deploys on the VPS', '### The scheduler (VPS)'],
+  // The cut-over (Stop D): First install's last step, the six parts, and the five before the last.
+  lastStep: ['\n22. ', '### Secrets (VPS)'],
+  zoneMove: ['#### 1. Before the server', '#### 2. The server rehearsal'],
+  rehearsal: ['#### 2. The server rehearsal', '#### 3. The staging night'],
+  stagingNight: ['#### 3. The staging night', '#### 4. The production night'],
+  productionNight: ['#### 4. The production night', '#### 5. The way back'],
+  wayBack: ['#### 5. The way back', '#### 6. After the 14 days'],
+  retirement: ['#### 6. After the 14 days', '### Deploys on the VPS'],
+  cutover: ['### The server rehearsal and the cut-over', '#### 6. After the 14 days'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -2271,6 +2285,152 @@ const ROUND_7_STAYED_LIVE = [
   "        step 1's migrations. If none did, or it is step 1's own, step 1's deploy is all.",
 ].join('\n');
 
+/**
+ * The cut-over's zone and leak test (Stop D, docs/DECISIONS.md VPS-113 and VPS-115). Vercel's
+ * records move to Cloudflare DNS only, so that Vercel serves them as before, with their values
+ * written down, since the way back sets them again, DNS only. The leak test's first step goes
+ * through Cloudflare, so it needs a proxied record: a temporary `leaktest` one at the staging
+ * night, before the `staging` record moves, with no record pointed at the server before that night
+ * and First install's last step saying so. The outline before Stop D ran the leak test before any
+ * DNS, which the server team's launch.md puts first.
+ */
+const zoneAndLeak = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['zoneMove', 'rehearsal', 'stagingNight', 'wayBack', 'lastStep'],
+    ({ zoneMove, rehearsal, stagingNight, wayBack, lastStep }) => {
+      const night = flat(stagingNight);
+      const leak = night.indexOf('`leaktest.menumesh.in`');
+      const record = night.indexOf('**The `staging` record**');
+      return [
+        ...(has(zoneMove, "Vercel's records stay **DNS only**")
+          ? []
+          : ['the zone move doesn’t keep Vercel’s records DNS only']),
+        ...(has(zoneMove, "Write down each of Vercel's records, its name, type and value")
+          ? []
+          : ['the zone move doesn’t write down Vercel’s records for the way back']),
+        ...(has(wayBack, "back to Vercel's written-down values, DNS only")
+          ? []
+          : ['the way back doesn’t set Vercel’s written-down values again, DNS only']),
+        ...(leak >= 0 && record >= 0 && leak < record
+          ? []
+          : [
+              'the staging night moves the staging record before the leak test through leaktest.menumesh.in',
+            ]),
+        ...([zoneMove, rehearsal].some((text) => has(text, "to the server's IPv4"))
+          ? ['a record points at the server before the staging night']
+          : []),
+        ...(has(lastStep, '`leaktest.menumesh.in`') && has(lastStep, 'before any app record moves')
+          ? []
+          : [
+              'First install, step 22, runs the leak test without its temporary record, or after an app record moves',
+            ]),
+      ];
+    },
+  );
+
+/** The staging night's three variables, as the RUNBOOK sets them. */
+const STAGING_SWITCHES = [
+  '`VPS_IMAGES` `true`',
+  '`VPS_DEPLOY_STAGING` `true`',
+  '`DEPLOY_STAGING` `false`',
+];
+
+/**
+ * The staging night's switches (VPS-116): VPS_IMAGES and VPS_DEPLOY_STAGING on and DEPLOY_STAGING
+ * off, together, at that night, and Deploys on the VPS says staging follows main on the server from
+ * then. The outline turned VPS_DEPLOY_STAGING on only after the move, so merges would have gone on
+ * deploying staging to Vercel while the record named the server.
+ */
+const stagingSwitches = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['stagingNight', 'retirement', 'deploys'],
+    ({ stagingNight, retirement, deploys }) => [
+      ...STAGING_SWITCHES.filter((words) => !has(stagingNight, words)).map(
+        (words) => `the staging night doesn’t set ${words}`,
+      ),
+      ...(has(retirement, 'VPS_DEPLOY_STAGING')
+        ? ['VPS_DEPLOY_STAGING waits for the Vercel parts to retire']
+        : []),
+      ...(has(deploys, 'are `true`, from the staging night')
+        ? []
+        : [
+            'Deploys on the VPS doesn’t say staging follows main on the server from the staging night',
+          ]),
+    ],
+  );
+
+/**
+ * What the way back keeps for its 14 days (VPS-117 to VPS-120). A Vercel deployment keeps the
+ * CRON_SECRET it was built with, so taking it out stops no cron job until the next deployment: each
+ * project's cron jobs are disabled at its night instead, CRON_SECRET kept, enabled again by the way
+ * back, and the secret leaves both projects only after the 14 days. The hosted project's nightly
+ * backup goes off after its pause, as a paused project's night fails, and on again with the way
+ * back. The way back lasts 14 days, and the first real write on the server is its point of no
+ * return.
+ */
+const windowKept = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['stagingNight', 'productionNight', 'wayBack', 'retirement', 'cutover'],
+    ({ stagingNight, productionNight, wayBack, retirement, cutover }) => {
+      const night = flat(productionNight);
+      const paused = night.indexOf('**Pause project**');
+      const backupOff = night.indexOf('**`BACKUP_PRODUCTION`** `false`');
+      return [
+        ...[
+          ['the staging night', stagingNight],
+          ['the production night', productionNight],
+        ]
+          .filter(
+            ([, text]) => !has(text, '**Disable Cron Jobs**') || !has(text, '`CRON_SECRET` stays'),
+          )
+          .map(([name]) => `${name} doesn’t disable Vercel’s cron jobs with CRON_SECRET kept`),
+        ...(has(wayBack, '**Enable Cron Jobs**')
+          ? []
+          : ['the way back doesn’t enable Vercel’s cron jobs again']),
+        ...(/`CRON_SECRET` out of/.test(flat(cutover))
+          ? ['CRON_SECRET leaves Vercel before the 14 days end']
+          : []),
+        ...(has(retirement, '`CRON_SECRET` out of both Vercel projects')
+          ? []
+          : ['the retirement doesn’t take CRON_SECRET out of both Vercel projects']),
+        ...(paused >= 0 && backupOff > paused
+          ? []
+          : [
+              'the production night doesn’t turn BACKUP_PRODUCTION off after pausing the hosted project',
+            ]),
+        ...(has(wayBack, '**Restore project**') && has(wayBack, '`BACKUP_PRODUCTION` `true`')
+          ? []
+          : ['the way back doesn’t restore the hosted project and turn BACKUP_PRODUCTION on']),
+        ...(has(wayBack, 'For 14 days after the production night') &&
+        has(retirement, 'for the 14 days')
+          ? []
+          : ['the way back doesn’t last the 14 days']),
+        ...(has(wayBack, 'It loses nothing until the first real write on the server') &&
+        has(wayBack, 'That write is the point of no return')
+          ? []
+          : [
+              'the way back doesn’t end at the first real write on the server, its point of no return',
+            ]),
+      ];
+    },
+  );
+
+/** The cut-over's outline before Stop D (935373d): its step 4, the leak test before any DNS. */
+const OUTLINE_LEAK =
+  '4. The site file and the redaction file, the leak test, the data as Stop D decides, and DNS last.';
+
+/** First install's step 22 before Stop D (935373d). */
+const OLD_LAST_STEP = [
+  '22. Last, after the server rehearsal (below):',
+  '    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and',
+  "    `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`; then the admin's leak test",
+  "    (the server team's `edge.md` §6, with a made-up 16-character `/t/` token, which the log must",
+  '    show as `/t/_`); then DNS.',
+].join('\n');
+
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
 const REWRAPPED = [
   'password manager',
@@ -2513,6 +2673,22 @@ const REWRAPPED = [
   'records, as A stolen or leaked bucket token (VPS), step 2, reads them (on the same server the',
   "journal's lines and the server's own pings inside the night's window), before step 6 starts",
   'that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS),',
+  // Read by the cut-over's rules (Stop D): a piece of each phrase that stands on one line.
+  "Vercel's records stay **DNS only**",
+  "Vercel's records, its name, type and value",
+  "back to Vercel's written-down values, DNS only",
+  'before any app record moves',
+  '**The `staging` record**',
+  '`DEPLOY_STAGING` `false`',
+  'and `VPS_DEPLOY_STAGING` are `true`, from the staging',
+  '`CRON_SECRET` stays (part 6 takes it out)',
+  'Schedules → Cron Jobs → **Enable Cron Jobs**',
+  'General → **Pause project**',
+  '**`BACKUP_PRODUCTION`** `false`',
+  '`BACKUP_PRODUCTION` `true`',
+  'For 14 days after the production night',
+  'It loses nothing until the first real write on the server',
+  'write is the point of no return',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -4807,6 +4983,147 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(theftRecords, swap(RUNBOOK, recovery, recoveryBefore), dayBefore);
   });
 
+  it('keeps Vercel’s records DNS only and written down, and runs the leak test through a temporary record before any app record moves (Stop D, VPS-113 and VPS-115)', () => {
+    expect(zoneAndLeak(RUNBOOK)).toEqual([]);
+    refuses(
+      zoneAndLeak,
+      swap(
+        RUNBOOK,
+        "Vercel's records stay **DNS only** (the grey cloud)",
+        "Vercel's records go proxied",
+      ),
+      'the zone move doesn’t keep Vercel’s records DNS only',
+    );
+    refuses(
+      zoneAndLeak,
+      swap(RUNBOOK, cut(RUNBOOK, ' Write down each of\n', '\n   - GoDaddy'), ''),
+      'the zone move doesn’t write down Vercel’s records for the way back',
+    );
+    refuses(
+      zoneAndLeak,
+      swap(
+        RUNBOOK,
+        "back to Vercel's written-down values, DNS only",
+        "back to Vercel's values, proxied",
+      ),
+      'the way back doesn’t set Vercel’s written-down values again, DNS only',
+    );
+    // The leak test after the staging record, and the outline's leak test in its place.
+    const leakTest = cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**');
+    const stagingRecord = cut(RUNBOOK, '3. **The `staging` record**', '4. **GitHub');
+    const leakLast = `${stagingRecord.replace('3.', '2.')}${leakTest.replace('2.', '3.')}`;
+    const problem =
+      'the staging night moves the staging record before the leak test through leaktest.menumesh.in';
+    refuses(zoneAndLeak, swap(RUNBOOK, `${leakTest}${stagingRecord}`, leakLast), problem);
+    refuses(zoneAndLeak, swap(RUNBOOK, leakTest, `${OUTLINE_LEAK.replace('4.', '2.')}\n`), problem);
+    refuses(
+      zoneAndLeak,
+      swap(
+        RUNBOOK,
+        'They need nothing from the server.',
+        "`staging` goes to the server's IPv4 the same day.",
+      ),
+      'a record points at the server before the staging night',
+    );
+    refuses(
+      zoneAndLeak,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '22. At the staging night', '\n\n### Secrets (VPS)'),
+        OLD_LAST_STEP,
+      ),
+      'First install, step 22, runs the leak test without its temporary record',
+    );
+  });
+
+  it('turns VPS_IMAGES and VPS_DEPLOY_STAGING on and DEPLOY_STAGING off at the staging night (Stop D, VPS-116)', () => {
+    expect(stagingSwitches(RUNBOOK)).toEqual([]);
+    refuses(
+      stagingSwitches,
+      swap(
+        RUNBOOK,
+        '`DEPLOY_STAGING` `false`. From now on',
+        '`DEPLOY_STAGING` `true`. From now on',
+      ),
+      'the staging night doesn’t set `DEPLOY_STAGING` `false`',
+    );
+    refuses(
+      stagingSwitches,
+      swap(
+        RUNBOOK,
+        '(it may be already), `VPS_DEPLOY_STAGING` `true` and',
+        '(it may be already), `VPS_DEPLOY_STAGING` `false` and',
+      ),
+      'the staging night doesn’t set `VPS_DEPLOY_STAGING` `true`',
+    );
+    // The outline's last step: VPS_DEPLOY_STAGING on only after the move.
+    refuses(
+      stagingSwitches,
+      swap(
+        RUNBOOK,
+        '- `CRON_SECRET` out of both Vercel projects.',
+        '- `CRON_SECRET` out of both Vercel projects, and `VPS_DEPLOY_STAGING` on.',
+      ),
+      'VPS_DEPLOY_STAGING waits for the Vercel parts to retire',
+    );
+    refuses(
+      stagingSwitches,
+      swap(RUNBOOK, cut(RUNBOOK, ', from the staging\n', ' A merge that\n'), '.'),
+      'Deploys on the VPS doesn’t say staging follows main on the server from the staging night',
+    );
+  });
+
+  it('keeps Vercel’s cron jobs, CRON_SECRET and the hosted project’s backup as the way back for its 14 days, until the first real write on the server (Stop D, VPS-117 to VPS-120)', () => {
+    expect(windowKept(RUNBOOK)).toEqual([]);
+    // The outline's step 5: CRON_SECRET out of Vercel at the move.
+    const outlined = swap(
+      RUNBOOK,
+      "5. **Vercel's production project**: Schedules → Cron Jobs → **Disable Cron Jobs**.",
+      "5. **Vercel's production project**: `CRON_SECRET` out of Vercel.",
+    );
+    refuses(
+      windowKept,
+      outlined,
+      'the production night doesn’t disable Vercel’s cron jobs with CRON_SECRET kept',
+    );
+    refuses(windowKept, outlined, 'CRON_SECRET leaves Vercel before the 14 days end');
+    refuses(
+      windowKept,
+      swap(RUNBOOK, ' `CRON_SECRET` stays (part 6 takes it out).', ''),
+      'the staging night doesn’t disable Vercel’s cron jobs with CRON_SECRET kept',
+    );
+    refuses(
+      windowKept,
+      swap(RUNBOOK, 'Schedules → Cron Jobs → **Enable Cron Jobs**.', 'nothing.'),
+      'the way back doesn’t enable Vercel’s cron jobs again',
+    );
+    refuses(
+      windowKept,
+      swap(RUNBOOK, cut(RUNBOOK, '8. **`BACKUP_PRODUCTION`**', '9. **That morning'), ''),
+      'the production night doesn’t turn BACKUP_PRODUCTION off after pausing the hosted project',
+    );
+    refuses(
+      windowKept,
+      swap(RUNBOOK, '4. `BACKUP_PRODUCTION` `true`.\n', ''),
+      'the way back doesn’t restore the hosted project and turn BACKUP_PRODUCTION on',
+    );
+    refuses(
+      windowKept,
+      swap(
+        RUNBOOK,
+        'For 14 days after the production night',
+        'For 30 days after the production night',
+      ),
+      'the way back doesn’t last the 14 days',
+    );
+    const noReturn = /That\s+write is the point of no return\./.exec(RUNBOOK)?.[0] ?? '(missing)';
+    refuses(
+      windowKept,
+      swap(RUNBOOK, noReturn, ''),
+      'the way back doesn’t end at the first real write on the server, its point of no return',
+    );
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -4834,5 +5151,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(cutAdvice(rewrapped, PITR)).toEqual([]);
     expect(rewindRoute(rewrapped)).toEqual([]);
     expect(releaseDeployed(rewrapped)).toEqual([]);
+    expect(zoneAndLeak(rewrapped)).toEqual([]);
+    expect(stagingSwitches(rewrapped)).toEqual([]);
+    expect(windowKept(rewrapped)).toEqual([]);
   });
 });

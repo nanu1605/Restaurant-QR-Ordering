@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-108. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-121. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -23,6 +23,7 @@ their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this
 | `edge/tls_menumesh.caddy`              | a snippet in `/srv/edge/config/snippets.caddy`       | root, 0644  | the server's admin: `sudo app-apply edge config snippets.caddy`        |
 | `edge/edge.env.example`                | the `MENUMESH_*` lines of `/srv/edge/edge.env`       | root, 0600  | the server's admin: `sudo app-apply edge env edge.env`                 |
 | `migrate/`, `backup/`                  | images in `ghcr.io/nanu1605/menumesh`, run by digest |             | CI builds them; `app-deploy` brings them                               |
+| `tools/`                               | `~/incoming/` only, for a run by hand                | `ops`       | the owner copies a tool there for its run (The owner's tools, below)   |
 | `local/`, `test/`                      | never installed                                      |             | checks on a development machine                                        |
 
 `app-apply` also creates `/srv/menumesh/backup-out` (root, 0755), where the host's settings
@@ -46,8 +47,33 @@ only.
   `# FILL IN`, checks them with `pnpm vps:secrets --check <dir>` and installs them with `images.env`;
   installs `compose.yml`, the site file and the redact file through `app-apply`, starts the services
   with `app-compose`, and deploys production with `app-deploy`.
-- **CI**, once the repository variables `VPS_IMAGES` and `VPS_DEPLOY_STAGING` are `true`, builds
-  the images and deploys staging through the tunnel. Nothing in CI runs before then.
+- **CI** builds the images once the repository variable `VPS_IMAGES` is `true`, and deploys staging
+  through the tunnel once `VPS_DEPLOY_STAGING` is `true` as well, from the staging night (RUNBOOK,
+  The server rehearsal and the cut-over). Nothing in CI runs before then.
+
+## The owner's tools
+
+`tools/` holds files the owner runs by hand on the server, never installed: each is copied to
+`~/incoming` for its run, nothing under `/srv/menumesh` mounts or names it, and `app-apply` never
+sees it. They hold no secret; the values they need come from the container they run in.
+
+- **`tools/first-admin.mjs`** makes production's first platform admin, once, after production's
+  first deploy and before production's records move to the server (RUNBOOK, The first platform
+  admin (production)). The owner runs it through `ops`, inside the `web` container, with that
+  container's own environment and the script on stdin:
+
+  ```sh
+  sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+  ```
+
+  It refuses once the platform has any team member, joined or not (later members come from
+  Settings → Team), makes the login without a password of its own and its invite, and prints a
+  one-time link to `/login/join` once, valid for 7 days, which the owner opens after production's
+  DNS points at the server. It exits 0 with the link, 2 when it refused and made nothing, and 1
+  when it failed, saying what is left. The RUNBOOK shows the lines it prints, and how to get a new
+  link when one expires unused. `tests/unit/vps-first-admin.test.ts` runs it against a stand-in
+  app and gateway, and `pnpm vps:rehearse` in the rehearsal's web container, its link followed to
+  the end.
 
 ## What the backup image does
 
@@ -99,8 +125,10 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
    migrations; then `sudo app-compose menumesh up -d scheduler scheduler-staging`. Then a restore
    test and a point-in-time drill, once a night has run and the WAL has shipped for an hour
    (`restore-test`, then `pitr-test`, each under its own profile; the RUNBOOK has the commands).
-5. The site file and the redact file, the leak test, and DNS last. Rehearse everything before the
-   site file goes in.
+5. Rehearse everything before the site file goes in. Then, at the staging night, the site file and
+   the redact file, the leak test through a temporary record, and staging's DNS; production's DNS
+   comes on a night of its own, with its first admin from `tools/first-admin.mjs` (RUNBOOK, The
+   server rehearsal and the cut-over).
 
 ## Changing a file later
 
@@ -117,12 +145,16 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
 
 None of the checks needs the server. `pnpm test` pins what each file must keep
 (`tests/unit/vps-kit.test.ts`, `tests/unit/vps-verify-night.test.ts` for `pnpm vps:verify-night`,
-and `tests/unit/vps-runbook.test.ts` for the RUNBOOK's steps that no script runs). `pnpm vps:check`
-runs the server's own `app-apply` checks on this folder, as root in a throwaway container, with
-`test/menumesh.conf` as `/etc/apps/menumesh.conf`, then the contract's extra rules, Caddy's and
-Envoy's own validation and shellcheck. `pnpm vps:edge` puts the server's Caddy tree with
-`menumesh.caddy` in front of stub apps and tests how it answers. Both need only Docker. Run them
-before every install, after copying the server team's files again if those changed.
+`tests/unit/vps-first-admin.test.ts` for `tools/first-admin.mjs`, `tests/unit/vps-probe.test.ts`
+for `pnpm vps:probe`, and `tests/unit/vps-runbook.test.ts` for the RUNBOOK's steps that no script
+runs). `pnpm vps:check` runs the server's own `app-apply` checks on this folder, as root in a
+throwaway container, with `test/menumesh.conf` as `/etc/apps/menumesh.conf`, then the contract's
+extra rules, Caddy's and Envoy's own validation and shellcheck. `pnpm vps:edge` puts the server's
+Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers. Both need only
+Docker. Run them before every install, after copying the server team's files again if those
+changed. Once records point at the server, `pnpm vps:probe staging` or `production` checks, from
+the owner's machine, what Cloudflare and the edge answer (RUNBOOK, The server rehearsal and the
+cut-over).
 
 `pnpm vps:rehearse` runs the whole stack on Docker Desktop as project `menumesh-rehearsal`, the way
 the install and `app-deploy` would: `compose.yml` in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
@@ -130,7 +162,9 @@ gitignored, with the throwaway values of `pnpm vps:secrets --rehearsal`) and
 `local/compose.rehearsal.yml` on top. That override is never installed (`app-apply` would refuse its
 name and its ports): it publishes the app and the gateway on 127.0.0.1 only (3300 and 8300), gives
 Postgres smaller buffers, keeps the staging services off, adds a local S3 for the backup and sends
-every third-party host the code could call to a sinkhole. `pnpm vps:backup-test` runs the WAL
+every third-party host the code could call to a sinkhole. It also runs `tools/first-admin.mjs` in
+the web container as the owner would, the seed's platform admin set aside, and follows its link
+through the join page to a sign-in with the new password. `pnpm vps:backup-test` runs the WAL
 shipper, its outage and its failure paths (a full disk among them), then the nightly backup into
 that S3 with each night sealed, named by its id, its stamp and 8 random hex characters (a night with
 a stale settings archive, then the month's copy in `monthly/`, past objects named like its parts

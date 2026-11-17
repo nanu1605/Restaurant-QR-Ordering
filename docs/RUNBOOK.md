@@ -600,13 +600,14 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-108 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-121 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
-is live yet:** the server isn't bought, Vercel stays the live host until the cut-over (Stop D), and
-the CI jobs stay off until the two variables below are set. The server team's runbooks in their
-repository (`docs/runbooks/server.md`, `edge.md`, `backups.md`) have the steps that are theirs.
+is live yet:** the server isn't bought, Vercel stays the live host until the cut-over (The server
+rehearsal and the cut-over, below), and the CI jobs stay off until the two variables below are set.
+The server team's runbooks in their repository (`docs/runbooks/server.md`, `edge.md`, `backups.md`,
+`launch.md`, `cloudflare.md`) have the steps that are theirs.
 
 ### Who does what, and the server's conf
 
@@ -724,7 +725,8 @@ by anyone else, or `app-apply` refuses the compose file.
    nothing. The backup's ping carries the night's line, `backup <id>: …`, which the
    monitor keeps in its log (healthchecks.io shows a ping's body): with the server gone, it is the
    record of each whole night's id that a recovery names, and of the month's copy each names
-   (Disaster recovery, step 2).
+   (Disaster recovery, step 2). Try each monitor's alert once before the first night, with its own
+   test notification, so that a missed ping is known to reach the owner.
 4. **Production's locale**, one read-only query in hosted production's SQL editor:
 
    ```sql
@@ -744,22 +746,29 @@ by anyone else, or `app-apply` refuses the compose file.
    checks its night with that file (`pnpm vps:verify-night … --keys <file>`, Disaster recovery,
    step 2), which refuses a file that holds the age key. The private half, `BACKUP_SIGNING_KEY`,
    goes into `.env` and the password manager like the other generated values, and is read by the
-   `backup` service alone; it is never printed.
+   `backup` service alone; it is never printed. `web-staging.env` then takes Vercel staging's own
+   `STAFF_EMAIL_DOMAIN` and `CUSTOMER_COOKIE_SECRET`, and each env file the secrets of its Razorpay
+   and Resend webhooks as Vercel has them (The server rehearsal and the cut-over, part 3);
+   production's generated `CUSTOMER_COOKIE_SECRET` suits its fresh start.
 7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
    (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
-8. **The zone:** `menumesh.in` on Cloudflare, Full (strict), with zone-level authenticated origin
-   pulls ready for the admin's certificate (the server team's `edge.md` §3).
+8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server
+   rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
+   ready for the admin's certificate (the server team's `edge.md` §3).
 
 **The server's admin** (the server team's `server.md` §2 and `edge.md` §3 and §5):
 
-9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in.
+9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in:
+   `grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf` prints the owner's `age1…` key.
 10. The deploy user with `gha-menumesh-staging.pub`, and the Access service token
-    `github-deploy-menumesh` for the tunnel.
+    `github-deploy-menumesh` for the tunnel. Step 17's **VPS ping** proves both.
 11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the
     server (`sudo app-apply edge cert menumesh origin.pem origin-key.pem`), the snippet of
     `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`
     (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
-    MenuMesh container runs**. Then the two lines of `deploy/vps/edge/edge.env.example` in
+    MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose
+    step 5 must see a TLS connection to the server without the client certificate refused (§6,
+    step 4). Then the two lines of `deploy/vps/edge/edge.env.example` in
     `/srv/edge/edge.env`, installed with `sudo app-apply edge env edge.env` and
     `sudo app-compose edge up -d`. The hash comes from the owner, who makes it on their own machine
     with the edge's Caddy image, never on the server: there staging's password would stay in the
@@ -792,9 +801,10 @@ by anyone else, or `app-apply` refuses the compose file.
     OnCalendar=*-*-* 20:20:00 UTC
     ```
 
-    Until the first deploy (step 18) writes `deploys.log`, a run archives the rest without it and
-    alerts `app-config-archive menumesh: archived without deploys.log, which do not exist`, which
-    wants nothing then.
+    `systemctl list-timers 'app-config-archive@*'` then shows its next run at 20:20 UTC. Until the
+    first deploy (step 18) writes `deploys.log`, a run archives the rest without it and alerts
+    `app-config-archive menumesh: archived without deploys.log, which do not exist`, which wants
+    nothing then.
 
 **The owner, on the server:**
 
@@ -812,14 +822,18 @@ by anyone else, or `app-apply` refuses the compose file.
     mounts, creates the two edge networks and `/srv/menumesh/backup-out`, and pins the file's
     sha256: `app-deploy` refuses to deploy while the installed file differs from it.
 16. The database, then the Supabase services: `sudo app-compose menumesh up -d db`, and once it is
-    healthy (`sudo app-compose menumesh ps`),
-    `sudo app-compose menumesh up -d auth rest realtime storage api-gw`. Auth and Storage make their
-    own schemas at their first start, and the first migration needs them (VPS-39).
+    healthy (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows
+    `db Up … (healthy)`), `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each
+    `(healthy)` in the same list within a minute. Auth and Storage make their own schemas at their
+    first start, and the first migration needs them (VPS-39).
 17. **GitHub** (Secrets (VPS), below): the variables, `VPS_IMAGES` set to `true`, and the secrets;
     then Actions → **VPS ping**. While `VPS_IMAGES` is off, the backup image's and the release's
     workflows skip their job and push nothing; once it is on, each merge to `main` also builds the
-    staging and migrate images (a few billed minutes). `VPS_DEPLOY_STAGING` can wait: it moves
-    staging's deploys off Vercel.
+    staging and migrate images (a few billed minutes), so it may go off again between the
+    rehearsal's builds. `PRODUCTION_SUPABASE_URL` (`https://api.menumesh.in`) and
+    `PRODUCTION_SUPABASE_PUBLISHABLE_KEY` (the server's own) are set before the first **VPS
+    release**, which builds them in. `VPS_DEPLOY_STAGING` waits for the staging night (The server
+    rehearsal and the cut-over, part 3): it moves staging's deploys off Vercel.
 18. The backup image: Actions → **VPS backup image** → Run workflow on `main`, then, with a GitHub
     token that can read packages typed at the prompt:
 
@@ -827,17 +841,31 @@ by anyone else, or `app-apply` refuses the compose file.
     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh backup backup-<sha>@sha256:<digest>
     ```
 
-19. The first deploys, which run the migrations: staging from CI or by hand, production by a release
-    (Deploys on the VPS).
+19. The first deploys, which run the migrations: production by a release (Deploys on the VPS), and
+    staging by hand until the staging night turns CI's deploy on, as in Production, step 2, there,
+    with `staging` in place of `production` and the two references that a **VPS build** run's
+    summary printed. No smoke test reaches a deploy before DNS, so check each from inside its
+    container (`web-staging` in place of `web` for staging): the line printed is `200` and
+    `{"status":"ok","db":"ok","version":"<commit>",…}`.
+
+    ```sh
+    sudo app-compose menumesh exec -T web node -e "fetch('http://127.0.0.1:3000/api/health').then(async (res) => console.log(res.status, await res.text()))"
+    ```
+
 20. The schedulers: `sudo app-compose menumesh up -d scheduler scheduler-staging`. Each turns
-    healthy at its first answered minute call.
+    healthy at its first answered minute call. Production's runs on a fresh database: no restaurant
+    to remind, no digest until the first admin joins (it goes to joined admins only: The server
+    rehearsal and the cut-over, part 4), and the rest cleans up or counts what is there. Until the
+    staging night, `scheduler-staging` and Vercel staging's cron jobs both run staging's `daily`
+    and `digest`, which is safe for the reasons a second run by hand is (The scheduler (VPS)).
 21. A first restore test and point-in-time drill once a night has run and the WAL has been
     shipping for an hour, before the first restaurant (Backups and restore (VPS)).
-22. Last, after the server rehearsal (below):
+22. At the staging night (The server rehearsal and the cut-over, part 3):
     `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
     `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`; then the admin's leak test
-    (the server team's `edge.md` §6, with a made-up 16-character `/t/` token, which the log must
-    show as `/t/_`); then DNS.
+    (the server team's `edge.md` §6, through a temporary `leaktest.menumesh.in` record, with a
+    made-up 16-character `/t/` token, which the log must show as `/t/_`), before any app record
+    moves; then DNS, staging's that night and production's on a night of its own (part 4).
 
 ### Secrets (VPS)
 
@@ -966,28 +994,365 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 
 ### The server rehearsal and the cut-over
 
-An outline; Stop D details it. The contract's order: rehearse with the limits and no site file, then
-install the site file, then change DNS last.
+The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-121). Production starts fresh
+on the server: nothing is copied from hosted production, the first platform admin comes from a
+one-time link made on the server, and the settings edited by hand in `/super` are typed again
+(VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
+night, Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in
+a stop of their own (part 6). The contract's order holds: rehearse with the limits and no site
+file, then install the site file, then change DNS last. Each step says what it must show and its way
+back. The server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the
+Origin CA certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an
+app) and §6 (the leak test), `launch.md` and `cloudflare.md`.
 
-1. The first install up to step 21, with the limits on and no site file, so nothing is public.
-2. On the server: `sudo hostwatch check` clean; the services healthy; a staging and a production
-   deploy, with its pre-deploy dump and a rollback; the night's backup and a restore test; the
-   schedulers' first minutes and a day of `jobs.ok`; `docker stop` of the scheduler and `backup`
-   under a second each; the journal's lines against the budget; Envoy's
-   `cluster.rest.upstream_cx_destroy_remote` staying near 0 (its admin page on `127.0.0.1:9901`
-   inside `api-gw`).
-3. `docker stop` of `web` with an export building, Hindi names being written and announcement emails
-   going out: exit 143 within seconds, the export queued again or ready, a batch's names written
-   again within 5 minutes, no email sent twice (docs/DECISIONS.md, Tests (VPS Stop A2)).
-4. The site file and the redaction file, the leak test, the data as Stop D decides, and DNS last.
-   The rollback is Vercel and the hosted production project, paused but kept: DNS back to them.
-   Everyone signs in again either way.
-5. After: `CRON_SECRET` out of Vercel, `VPS_DEPLOY_STAGING` on, and the Vercel parts of this runbook
-   and the old workflows go (Stop D).
+#### 1. Before the server (any day, each step reversible)
+
+1. **Hosted production, read-only.** In its SQL editor (Supabase → the production project → SQL
+   Editor), the rows of each of the app's tables, and the logins:
+
+   ```sql
+   select table_schema, table_name,
+     (xpath('/row/n/text()', query_to_xml(
+       format('select count(*) as n from %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint as rows
+   from information_schema.tables
+   where table_schema in ('public', 'private') and table_type = 'BASE TABLE'
+   order by rows desc, 1, 2;
+   select count(*) from auth.users;
+   ```
+
+   `restaurants` must have 0 rows. If any restaurant exists, stop: the fresh start no longer fits,
+   and moving its data needs a plan of its own (VPS-110). Note whether `site_leads` has rows (they
+   are exported on the production night) and run the locale query of First install, step 4. Way
+   back: nothing changed.
+
+2. **The zone, from GoDaddy to Cloudflare** (`menumesh.in`'s DNS is at GoDaddy today):
+   - GoDaddy → the domain's DNS: export the zone file. If DNSSEC is on there, turn it off and wait a
+     day before the nameservers change: a change while DNSSEC is on can make the domain
+     unreachable. Cloudflare's own DNSSEC can go on once the zone is active.
+   - Cloudflare → add the domain `menumesh.in` and import the zone file (DNS → Records → Import and
+     Export). Compare every record with GoDaddy's, one by one, and add what the
+     import missed: Vercel's apex, `www` and `staging`; Resend's sending records (its DKIM `TXT`,
+     and the `MX` and SPF `TXT` of its sending subdomain); DMARC (`_dmarc`), if it exists; the `MX`
+     records of GoDaddy's mail forwarding; Search Console's `TXT`; and any other.
+   - Vercel's records stay **DNS only** (the grey cloud), so that Vercel serves them as today, with
+     its own certificates; the mail and verification records are DNS only too. Write down each of
+     Vercel's records, its name, type and value, in the password manager: they are the way back
+     (part 5).
+   - GoDaddy → the domain's nameservers: Cloudflare's two, as its Overview page names them.
+     Cloudflare emails once the zone is active, within 24 hours.
+   - Once it is active: `nslookup -type=ns menumesh.in 1.1.1.1` names Cloudflare's nameservers;
+     `https://menumesh.in` and `https://staging.menumesh.in` load from Vercel as before; a mail to a
+     forwarded address arrives; and Resend → Domains still shows `menumesh.in` verified.
+
+   Way back: GoDaddy's own nameservers again, with the exported file's records put back there if
+   its DNS page lost them.
+
+3. **`menumesh.app` and `menumesh.co`** (docs/DECISIONS.md VPS-24, Other domains): each zone moves
+   to Cloudflare as in step 2, then gets proxied `A` records for its apex and `www` to the
+   placeholder `192.0.2.1` (never the server's address), one Single Redirect for every request to
+   `concat("https://menumesh.in", http.request.uri.path)` with status 308 and the query string kept,
+   and Always Use HTTPS. They need nothing from the server. Check:
+   `curl -sI 'https://www.menumesh.co/pricing?a=1'` answers 308 with
+   `location: https://menumesh.in/pricing?a=1`, and so do both apexes and `www.menumesh.app`. Way
+   back: their nameservers as they were, where Vercel redirects them as today.
+4. **The zone's settings for `menumesh.in`.** They act on proxied records only, so Vercel's DNS-only
+   ones are untouched:
+   - SSL/TLS: Full (strict). Edge Certificates: Always Use HTTPS on, Minimum TLS Version 1.2, and
+     HSTS off here: the app sends its own (`max-age=63072000`).
+   - Security: Bot Fight Mode off, since no rule can exempt the webhooks from it, and a WAF custom
+     rule with the Skip action of the server team's `cloudflare.md` for
+     `starts_with(http.request.uri.path, "/api/webhooks/")`, Razorpay's and Resend's calls.
+   - Nothing that rewrites pages: Email Address Obfuscation, Rocket Loader, Web Analytics'
+     automatic setup and Zaraz off. Each puts a script into the page, which the
+     Content-Security-Policy refuses.
+   - Caching → Cache Rules: one rule, Eligible for cache, for the menu photos and logos, and no
+     other: nothing may cache HTML or `RSC: 1` answers (VPS-7). Its expression:
+
+     ```text
+     http.host eq "api.menumesh.in" and starts_with(http.request.uri.path, "/storage/v1/object/public/")
+     ```
+
+   - Authenticated origin pulls come with the admin's certificate (First install, steps 8 and 11).
+
+   Way back: each setting as it was.
+
+#### 2. The server rehearsal (nothing public)
+
+No record points at the server and the site file waits for the staging night, so nothing here is
+public, and Vercel and hosted Supabase serve as before. Way back, for the whole part: none needed.
+
+1. First install, steps 1 to 21, in order, each with its check. Production's first deploy (step 19)
+   is a **VPS release** of a commit whose **VPS build** ran on `main`, so that it reuses that run's
+   migrate image; a version used here is never used again.
+2. On the server, each with what it must show:
+   - `sudo hostwatch check`: its last line is `hostwatch check: clean`.
+   - `sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'`: every long-running service
+     `Up … (healthy)`.
+   - A staging and a production deploy (Deploys on the VPS), each with its line in `deploys.log`,
+     production's with its pre-deploy dump (`sudo ls -l /srv/menumesh/predeploy`); then a rollback
+     by hand to the release before, and the newer one deployed again.
+   - The night's backup (Last night's backup), then the first restore test and point-in-time drill
+     (First install, step 21).
+   - The schedulers' first minutes: each healthy within about 2 minutes of its start, and a day
+     later still healthy, with one line each for `daily` and `digest`,
+     `cron-call daily: HTTP 200 in N s` and `cron-call digest: HTTP 200 in N s` (and
+     `scheduler-staging`'s the same):
+
+     ```sh
+     sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=scheduler --since -1d -o cat
+     ```
+
+   - The stops of `scheduler` and `backup`, about a second each with exit 143, never a kill:
+
+     ```sh
+     time sudo app-compose menumesh stop scheduler
+     sudo docker inspect --format '{{.State.ExitCode}}' menumesh-scheduler-1
+     sudo app-compose menumesh start scheduler
+     ```
+
+     and the same three for `backup` (`menumesh-backup-1`).
+
+   - A whole day's lines in the journal, well under the budget of 45,000, as hostwatch's daily
+     report counts them too:
+
+     ```sh
+     sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh --since yesterday --until today -o cat | wc -l
+     ```
+
+   - Envoy's `cluster.rest.upstream_cx_destroy_remote` staying near 0, read from its admin page on
+     `127.0.0.1:9901` inside `api-gw`, whose image has no curl; the answer holds the line
+     `cluster.rest.upstream_cx_destroy_remote: <n>`:
+
+     ```sh
+     sudo app-compose menumesh exec -T api-gw bash -c 'exec 3<>/dev/tcp/127.0.0.1/9901 && printf "GET /stats?filter=upstream_cx_destroy_remote HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" >&3 && cat <&3'
+     ```
+
+3. The stop of `web` with work in flight waits for the staging night (part 3, step 8), where the
+   owner's test restaurant makes that work; production's fresh database has none.
+
+#### 3. The staging night
+
+Staging moves first, on a night of its own (VPS-116): any quiet night outside the blackouts (Deploys
+on the VPS, When to deploy), with no merge to `main` while it runs. Before it:
+
+- A day ahead, the TTL of Vercel's `staging` record set to 1 min (Cloudflare → DNS → the record), so
+  that resolvers drop Vercel's answer within a minute of the change.
+- `web-staging.env` holds Vercel staging's own `STAFF_EMAIL_DOMAIN` (`staging.menumesh.in`) and
+  `CUSTOMER_COOKIE_SECRET`, from the password manager, so that the staff logins, codes, invite links
+  and device ids staging's database already holds keep working (a new secret only ends them), and
+  the `RAZORPAY_WEBHOOK_SECRET` and `RESEND_WEBHOOK_SECRET` of the Razorpay and Resend dashboards'
+  staging webhooks (First install, step 6). Where a value differs, the file is installed again,
+  then `up -d web-staging` (Rotation).
+
+Then, in order:
+
+1. **The site file and the redaction file** (First install, step 22):
+   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
+   `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`. Caddy serves the four hosts
+   from now on, but no record sends it anything yet. Way back: none needed.
+2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
+   `leaktest.menumesh.in` to the server's IPv4, proxied, before any app record moves (VPS-115):
+   forged headers replaced; the log line without an address, a header or a query, and a made-up
+   16-character `/t/` token in it shown as `/t/_`; nothing answering straight on the server's
+   addresses, IPv4 and IPv6, even with a temporary hPanel accept rule; and a TLS connection without
+   the client certificate refused. Then their step 5 removes the test site, and the owner deletes
+   the `leaktest` record. Way back: the record deleted.
+3. **The `staging` record**: Vercel's record replaced by an `A` record to the server's IPv4,
+   proxied. Way back: Vercel's written-down value again, DNS only.
+4. **GitHub's variables**: `VPS_IMAGES` `true` (it may be already), `VPS_DEPLOY_STAGING` `true` and
+   `DEPLOY_STAGING` `false`. From now on each merge to `main` builds staging and deploys it on the
+   server, about 8 to 10 billed minutes, and never on Vercel. Way back: the three as they were.
+5. **Vercel's staging project**: Schedules → Cron Jobs → **Disable Cron Jobs**, so that
+   `scheduler-staging` runs staging's jobs alone. `CRON_SECRET` stays (part 6 takes it out). Way
+   back: **Enable Cron Jobs** there.
+6. **The first deploy**: a merge to `main` runs CI, **VPS build** and **VPS deploy staging**, whose
+   smoke job must pass. Way back: steps 3 to 5's.
+7. **From this machine**, staging's pair (`user:password`) typed at the prompt, never on the command
+   line, and `<commit>` the deploy's whole commit (40 hex characters, as `git rev-parse` prints it;
+   the probe refuses a short one):
+
+   ```sh
+   read -rs SMOKE_BASIC_AUTH && export SMOKE_BASIC_AUTH
+   pnpm vps:probe staging --version <commit>
+   SMOKE_URL=https://staging.menumesh.in EXPECTED_VERSION=<commit> pnpm smoke
+   ```
+
+   The probe (docs/DECISIONS.md VPS-112) reads the pair from `SMOKE_BASIC_AUTH` alone and refuses
+   to run without it, sends it over https to `staging.menumesh.in` only, and never prints it. It
+   prints one line a check, `ok <check>`, `bad <check>: <why>` or `skip <check>: <why>`, then
+   `vps:probe staging: 22 checks, 0 failed, 0 skipped`, and exits 0 only when no line is `bad`. Its
+   checks: the record resolves only to Cloudflare's published addresses; https with a certificate
+   Node trusts, and http redirected to it; 401 with `WWW-Authenticate: Basic` without the pair and
+   200 with it; HSTS of a year or more; `/api/health` on `<commit>`; HTML and RSC answers never from
+   Cloudflare's cache, and the RSC answer's `x-nextjs-deployment-id`; an unknown server action
+   answered 409 with `x-nextjs-action-not-found: 1`; an Upgrade refused with 400; the seven open
+   paths answering 200 without the pair, and both webhooks reaching the app without it (its refusal
+   of a body without a valid signature, so nothing is stored); and `x-robots-tag` noindex. A `bad`
+   line says what came instead: a Cloudflare error with its meaning, such as
+   `522 (Cloudflare's connection to the origin timed out)`, `(Cloudflare challenged the request)`
+   for a security rule in the way, or, for the record, the addresses outside Cloudflare's ranges,
+   which a resolver can hold for the TTL's minute after the change: run it again. The smoke tests
+   all pass.
+
+8. **A stop with work in flight**, on the owner's test restaurant on staging: a data export asked
+   for, Hindi names being written (where staging has a menu reader's key) and an announcement's
+   emails going out to that restaurant (where it has Resend), then at once:
+
+   ```sh
+   time sudo app-compose menumesh stop web-staging
+   sudo docker inspect --format '{{.State.ExitCode}}' menumesh-web-staging-1
+   sudo app-compose menumesh start web-staging
+   ```
+
+   Exit 143 within seconds; the export queued again or ready; the batch's names written again within
+   5 minutes; no email sent twice, as Resend's log shows (docs/DECISIONS.md, Tests (VPS Stop A2)).
+
+9. **A day later**: `scheduler-staging` healthy, its `daily` and `digest` lines `HTTP 200`, and
+   staging's heartbeat monitors quiet.
+
+Way back, for the whole night: the `staging` record to Vercel's value, DNS only; the three
+variables as they were; Vercel's staging cron jobs on.
+
+#### 4. The production night
+
+From 03:35 to 06:30 IST on a quiet weekday (VPS-117): after the server's 02:00 night and the 03:00
+daily runs, inside maintenance (01:00 to 07:00 IST), clear of the blackouts (02:55 to 03:30 and
+08:40 to 08:50) and hours before breakfast service. Before it:
+
+- **The release**: a **VPS release** of a commit of `main` that went through VPS staging (its
+  `migrate-<sha>` is staging's: VPS-41), such as `v1.0.0`, deployed on the server (Deploys on the
+  VPS, Production) and healthy by the check from inside (First install, step 19). Its commit is the
+  one the checks below expect.
+- **The first admin's link**, made on the server with the tool within the 7 days before the night
+  (The first platform admin (production)), kept in the password manager until it is opened.
+- **The settings to type again**, noted from hosted production's `/super` while it still serves
+  `menumesh.in` (step 4 lists them).
+- **A day ahead**, the TTL of Vercel's apex and `www` records set to 1 min.
+- `sudo hostwatch check` clean, and production's monitors (First install, step 3) on.
+
+Then, in order:
+
+1. **The records**, Cloudflare → DNS: first a new `A` record `api` to the server's IPv4, proxied
+   (nothing uses it yet: Vercel's build calls hosted Supabase); then the apex and `www`, Vercel's
+   records replaced by `A` records to the server's IPv4, proxied. From here `menumesh.in` is the
+   server. Way back: part 5.
+2. **From this machine**, with `<commit>` the release's whole commit (40 hex characters) and
+   production's publishable key (`sb_publishable_…`, public: the GitHub variable
+   `PRODUCTION_SUPABASE_PUBLISHABLE_KEY`), which lets the probe open Realtime's WebSocket through
+   Cloudflare:
+
+   ```sh
+   PROBE_PUBLISHABLE_KEY=<production's publishable key> pnpm vps:probe production --origin <server IPv4> --version <commit>
+   SMOKE_URL=https://menumesh.in EXPECTED_VERSION=<commit> pnpm smoke
+   ```
+
+   The probe ends with `vps:probe production: 31 checks, 0 failed, 1 skipped` and exits 0, and
+   every smoke test passes. Its checks: `menumesh.in`, `www` and `api` resolve only to Cloudflare's
+   published addresses, none to `--origin`, and each answers https with a certificate Node trusts
+   and redirects http to it; on `menumesh.in` HSTS, `/api/health` on `<commit>`, HTML and RSC
+   answers never from Cloudflare's cache, the RSC answer's `x-nextjs-deployment-id`, the unknown
+   server action and the Upgrade, as on staging; `www` 308 to `https://menumesh.in`, the path and
+   query kept; on `api`, 404 for `/`, `/pg/`, `/graphql/v1` and `/functions/v1/`, 401 for
+   `/auth/v1/admin/users` and `/rest/v1/` without a key, and Realtime's WebSocket open;
+   `menumesh.app`, `menumesh.co` and their `www` 308 to `https://menumesh.in`, the path and query
+   kept; and the server's address taking no connection on 443 or 80 within 5 s, the leak test's
+   step 3 from outside. A refusal there is `bad` too, as it shows the address answers; a connection
+   on port 80 alone can be this machine's network: run it from another. The `skip` is the cache
+   rule's, as no public object exists yet: after a restaurant's first photo, run it again with
+   `--object <bucket>/<path>`, as in the object's URL after `/storage/v1/object/public/`
+   (`menu-images/…`), whose second request must come from Cloudflare's cache. A resolver still
+   holding Vercel's answer fails a DNS check for up to a minute, the TTL: run it again.
+
+3. **The first platform admin**: open the link and choose the password, which signs in and goes on
+   to enrol the authenticator (`/super/mfa`). Rename the authenticator app's old entry first (for
+   example to `MenuMesh (hosted)`), so that the two don't mix during the 14 days.
+4. **The settings typed again** in `/super`, as noted:
+   - Platform settings: trial days, grace days, the setup fee, its launch discount and its last
+     day, the support email and phone, the four restaurant-health values, and the database and
+     storage limits (no Supabase plan sets them on the server: leave them empty, or set the size at
+     which System health should warn).
+   - Plans: each plan's name, monthly and yearly prices, table and staff login limits, order on the
+     plans page, features and Active; and its Razorpay plan ids, monthly and yearly, only where
+     hosted had them, typed in as they are and never made again with **Create … plan in Razorpay**,
+     which would make a second plan in Razorpay's account.
+   - Offers: each running offer's code, description, discount, plans, cycles, first charges, first
+     and last day, most uses, and whether it is only for restaurants that haven't paid yet.
+   - Team: each member hosted production had, invited again from Settings → Team with their role.
+5. **Vercel's production project**: Schedules → Cron Jobs → **Disable Cron Jobs**. `CRON_SECRET`
+   stays in its settings, so that the way back is one button (part 6 takes it out). Way back:
+   **Enable Cron Jobs**.
+6. **The leads**, if `site_leads` had rows (part 1, step 1): hosted production's dashboard → Table
+   Editor → `site_leads`, then `lead_events`, each exported as CSV and kept offline. They are
+   personal data: delete the files once they are no longer needed. Way back: nothing.
+7. **Hosted production paused**: Supabase → the project → Settings → General → **Pause project**.
+   It stays the way back for the 14 days. Way back: **Restore project** (part 5).
+8. **`BACKUP_PRODUCTION`** `false` (GitHub → Settings → Secrets and variables → Actions →
+   Variables), before 02:00 IST: the **Backup** workflow can't export a paused project, and its
+   failed night emails the owner. Way back: `true`.
+9. **That morning and the next night**: the 08:45 digest, from the server alone when Resend is set
+   (`cron-call digest: HTTP 200 in N s` in `scheduler`'s lines); at 02:00 IST the server's night and
+   its heartbeat (Last night's backup); the WAL's heartbeat quiet; `scheduler` healthy; hostwatch's
+   daily report; and the uptime monitor on `https://menumesh.in/api/health` up.
+
+Everyone signs in again on the server: its keys and its session cookie (`sb-api-auth-token`,
+VPS-20) are not hosted's.
+
+#### 5. The way back, and the point of no return
+
+For 14 days after the production night, Vercel and the paused hosted project stay the way back
+(VPS-120). It loses nothing until the first real write on the server after its records moved: a
+restaurant's signup, a demo request or a payment's webhook (`/super`'s Restaurants, Leads and
+Webhooks show them; the owner's own setup in part 4 does not count, as hosted has its own). That
+write is the point of no return. Nothing is copied back to hosted, so going back after it loses what
+the server took: fix forward instead (Deploys on the VPS, Rolling back by hand; Backups and restore
+(VPS)), and go back only when the server cannot run, accepting the loss. If the server still answers
+then, note from `/super` whom it took (Leads, Restaurants), to contact them.
+
+1. Supabase → the paused production project → **Restore project**, then wait until its dashboard
+   shows it running. A paused free project can be restored for a limited time (90 days by
+   Supabase's note of 2024, a year by its current page): the 14 days are well inside it.
+2. Cloudflare → DNS: the apex and `www` back to Vercel's written-down values, DNS only, and the
+   `api` record deleted (Vercel's build never calls it). Resolvers holding the server's answer keep
+   it for up to 5 minutes.
+3. Vercel's production project: Schedules → Cron Jobs → **Enable Cron Jobs**.
+4. `BACKUP_PRODUCTION` `true`.
+5. On the server, production's `web` and `scheduler` stopped, so that nothing runs on its database
+   beside hosted's, and production's heartbeat monitors (`daily`, `digest`, `jobs`) paused:
+   `sudo app-compose menumesh stop web scheduler`. `db`, the Supabase services and `backup` keep
+   running, so that the nights keep what the server took. Staging stays on the server.
+6. `SMOKE_URL=https://menumesh.in EXPECTED_VERSION=<the commit Vercel serves> pnpm smoke`, every
+   test passed; then sign in with hosted's login and the authenticator's hosted entry.
+
+A later production night is part 1's count and part 4 again, once the server's trouble is fixed and
+`sudo app-compose menumesh up -d web scheduler` has brought them back.
+
+#### 6. After the 14 days (a stop of its own)
+
+Not Stop D's: once the server has served production for the 14 days, the Vercel parts retire
+(VPS-121):
+
+- `CRON_SECRET` out of both Vercel projects.
+- `deploy.yml`, `release.yml`, the `staging` job of `ci.yml` and `vercel.json` deleted, and
+  `backup.yml` deleted or kept for its manual staging run (staging's database stays hosted),
+  decided then.
+- The Vercel-only parts of this runbook (Environments, Deploying, One-time setup per environment,
+  Environment variables (Vercel), Rolling back, the Vercel lines of Incidents, Rotating secrets,
+  Backups and restore, Razorpay live switch, the hosted way of The first platform admin
+  (production) and Launching the website), README's Deployment and SPEC's §4 and §20, rewritten for
+  the server.
+- The owner removes or downgrades the Vercel projects, and decides about the paused hosted project:
+  deleting it is permanent.
+
+Apart from these, the four functions kept for Vercel's older deployments,
+`restaurant_export_finish`, `menu_hindi_names_claim`, `menu_set_hindi_names` and
+`announcement_emails_due`, drop in the first release after the production night, in a migration of
+its own, with pgTAP 440, 660 and 680 changed with it (VPS-25, VPS-121).
 
 ### Deploys on the VPS
 
-- **Staging** follows `main` once `VPS_IMAGES` and `VPS_DEPLOY_STAGING` are `true`. A merge that
+- **Staging** follows `main` once `VPS_IMAGES` and `VPS_DEPLOY_STAGING` are `true`, from the staging
+  night (The server rehearsal and the cut-over, part 3), which also turns `DEPLOY_STAGING` off;
+  until then each merge deploys staging on Vercel. A merge that
   passes CI builds `staging-<sha>` and `migrate-<sha>` (**VPS build**) and deploys them (**VPS
   deploy staging**): through the tunnel, `app-deploy` pulls them by digest, checks their labels,
   runs `migrate-staging` on hosted staging's database and swaps `web-staging`; then the smoke tests
@@ -2215,10 +2580,12 @@ Supabase stack is only ever read.
 
 - `pnpm test` pins what each kit file must keep (`tests/unit/vps-kit.test.ts`,
   `tests/unit/vps-secrets.test.ts`), what `pnpm vps:verify-night` takes and refuses
-  (`tests/unit/vps-verify-night.test.ts`), and the steps of this runbook that no script runs, such
-  as the settings archive before each `backup.sh` by hand, the signing pair's check, the release a
-  recovery deploys and the steps after a theft of the signing key
-  (`tests/unit/vps-runbook.test.ts`).
+  (`tests/unit/vps-verify-night.test.ts`), what `pnpm vps:probe` checks and refuses, against a
+  stand-in edge (`tests/unit/vps-probe.test.ts`), what the first-admin tool asks of a stand-in app
+  and gateway and prints (`tests/unit/vps-first-admin.test.ts`), and the steps of this runbook that
+  no script runs, such as the settings archive before each `backup.sh` by hand, the signing pair's
+  check, the release a recovery deploys, the steps after a theft of the signing key and the
+  cut-over's order (`tests/unit/vps-runbook.test.ts`).
 - `pnpm vps:check` (about 20 s, and 46 s more the first time, for its checker image) runs the
   server's own `app-apply` checks on `deploy/vps/` as root in a throwaway container, then the
   contract's rules, Caddy's and Envoy's validation and shellcheck. Run it after any change under
@@ -2229,7 +2596,10 @@ Supabase stack is only ever read.
   the WAL ship for 3 minutes) runs the whole stack as the server would, as project
   `menumesh-rehearsal`, with throwaway secrets in `.vps-rehearsal/` (gitignored):
   the app on `http://localhost:3300` and the gateway on `http://127.0.0.1:8300`. It needs 6 GiB
-  available in Docker Desktop's VM. A rerun keeps the stack, its secrets and an image nothing
+  available in Docker Desktop's VM. Its step 8 runs `deploy/vps/tools/first-admin.mjs` in `web` as
+  the owner runs it on the server (The first platform admin (production)), the seed's platform
+  admin set aside meanwhile, and follows the link through the join page to a sign-in with the new
+  password; then the seed's admin is back. A rerun keeps the stack, its secrets and an image nothing
   changed for; `--fresh` starts over with new secrets and empty volumes; `--rebuild` builds every
   image. A look inside:
 
@@ -2321,6 +2691,61 @@ Supabase stack is only ever read.
    payment shows at `/super`, then cancel it.
 
 ## The first platform admin (production)
+
+**On the shared server**, made in the days before the production night and opened during it (The
+shared server (VPS), The server rehearsal and the cut-over, part 4), with
+`deploy/vps/tools/first-admin.mjs` (docs/DECISIONS.md VPS-111):
+
+1. The tool goes to the server's `~/incoming` like every file of the install, and is never
+   installed under `/srv/menumesh`.
+2. After production's first deploy, the owner, through `ops`, runs it once inside the `web`
+   container, which gives it that container's own keys, with the owner's email and name (1 to 80
+   characters):
+
+   ```sh
+   sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+   ```
+
+   It makes the login, without a password of its own, and the invite as Settings → Team does (the
+   Admin role, invited by nobody, valid 7 days), then prints the link once and exits 0, with the
+   run's own dates:
+
+   ```text
+   first-admin: owner@example.com (Owner name) is invited as the platform's first Admin. The join link:
+
+     https://menumesh.in/login/join?token=<43 characters>
+
+   It works once, until 2026-12-08 21:00 UTC (2026-12-09 02:30 IST), and is shown only here: the
+   server keeps only its hash. Warning: until it is used or expires, whoever opens it becomes
+   the platform admin. Keep it to yourself and open it only once menumesh.in is served
+   from this server; choose the password there, and /super then asks for an authenticator app.
+   ```
+
+   The address is the one production's build serves (the sitemap line of its own `robots.txt`), as
+   on the Team page. The link goes into the password manager and nowhere else: `docker exec`'s
+   output never reaches the container's log, and the server keeps only the token's hash. It
+   refuses with one line, `first-admin: refused: <why>`, exit 2, having made nothing: once the
+   platform has any team member, joined or not (everyone after comes from Settings → Team), for an
+   email that already has a login, and for an email or a name the Team page would refuse. A failure
+   is one line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is
+   removed again when the invite can't be added, or named with its user id when that fails too.
+
+3. Once production's records point at the server, open the link and choose the password, which
+   signs in and goes on to enrol an authenticator app (`/super/mfa`).
+
+**A new link**, when one expires unused or is lost before it is used: the waiting invite makes the
+tool refuse, so remove it with its login, then run step 2 again. The command removes nothing once
+anyone has joined (it prints `DELETE 0` then), and the invite's row goes with its login:
+
+```sh
+sudo app-compose menumesh exec -T db psql -U supabase_admin -d postgres -c "delete from auth.users u using public.platform_admins a where a.user_id = u.id and a.joined_at is null and not exists (select 1 from public.platform_admins j where j.joined_at is not null)"
+```
+
+It prints `DELETE 1`. A login that a failed run named is removed the same way, with
+`delete from auth.users where id = '<user id>'` as the command's SQL.
+
+**On hosted Supabase**, for Vercel's production until its parts retire (The shared server (VPS),
+The server rehearsal and the cut-over, part 6):
 
 1. In Supabase → Authentication → Users, add the user (email and a strong password).
 2. In the SQL editor:

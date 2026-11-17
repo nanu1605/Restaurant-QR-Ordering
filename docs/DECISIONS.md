@@ -4377,15 +4377,17 @@ CI and the deploys come in later stops: Stop B writes them and rehearses them on
 VPS-45, its review's fixes VPS-46 to VPS-58, the re-review's VPS-59 to VPS-67, the second
 re-review's VPS-68 to VPS-77, the third re-review's VPS-78 to VPS-85, the fourth's VPS-86 to
 VPS-90, the fifth's VPS-91 to VPS-94, the sixth's VPS-95 to VPS-98, the seventh's VPS-99 to VPS-101,
-the eighth's VPS-102 to VPS-105 and the ninth's VPS-106 to VPS-108), and Vercel stays production
-until the cut-over. The server's contract arrived on 2026-11-08, with adjustments the same day, and
-wins over the first plans where they differ (VPS-24). The owner's answers: live screens refresh by
-themselves at the first stale tap and other pages show a Refresh toast (VPS-8); no background update
-check (VPS-11); the export size cap is fine for now (VPS-6); single-slot deploys with a 25 s stop
-(VPS-22); production deploys run by the owner on the server (VPS-23); and, for Stop A2 (2026-11-08),
-a menu reader that cannot answer stops the reading with Try again, and a page that fails twice is
+the eighth's VPS-102 to VPS-105 and the ninth's VPS-106 to VPS-108), and Stop D writes the
+cut-over's checklist and two tools for it (VPS-109 to VPS-121); Vercel stays production until that
+cut-over. The server's contract arrived on 2026-11-08, with adjustments the same day, and wins over
+the first plans where they differ (VPS-24). The owner's answers: live screens refresh by themselves
+at the first stale tap and other pages show a Refresh toast (VPS-8); no background update check
+(VPS-11); the export size cap is fine for now (VPS-6); single-slot deploys with a 25 s stop
+(VPS-22); production deploys run by the owner on the server (VPS-23); for Stop A2 (2026-11-08), a
+menu reader that cannot answer stops the reading with Try again, and a page that fails twice is
 left out (VPS-30), and a restaurant that joins a running announcement is emailed within a minute
-(VPS-28).
+(VPS-28); and, for Stop D (2026-11-17), a fresh start, staging first and a way back for 14 days
+(VPS-109).
 
 ### App changes and the web image (Stop A)
 
@@ -5073,7 +5075,8 @@ left out (VPS-30), and a restaurant that joins a running announcement is emailed
     line every minute for `/api/cron/jobs` with `wget -T 25`, since the route answers at once, and a
     heartbeat of its own (VPS-22, VPS-29). Staging gets its own `scheduler-staging` on its network
     with its own `CRON_SECRET`, and its minute line calls `http://web-staging:3000`; one scheduler
-    never joins both. `CRON_SECRET` leaves Vercel at the cut-over.
+    never joins both. `CRON_SECRET` leaves Vercel once the cut-over's 14 days have passed; until
+    then each Vercel project's cron jobs are disabled instead (since VPS-118).
   - **Volumes and limits.** Postgres data, storage objects, the static archive (`/app/.next/static`,
     VPS-21) and the image cache (`/app/.next/cache`, 500 MB, VPS-18) are named volumes. Every
     service has `cap_drop: ALL`, `no-new-privileges`, `mem_limit`, `memswap_limit`, `cpus`,
@@ -5723,9 +5726,10 @@ review's fixes, and a second's, are listed after Tests.
     export whose request lost its run). Old deployments (Skew Protection, 7 days) keep working: the
     functions they call keep their signatures and leave the new rows alone
     (`restaurant_export_finish` finishes only a row no claim has taken, `menu_hindi_names_claim`
-    passes over leased names). The next release's migration drops them, with `menu_set_hindi_names`
-    and `announcement_emails_due`, which no code calls any more (the pgTAP files 440, 660 and 680
-    use them and change with it).
+    passes over leased names). A migration drops them, with `menu_set_hindi_names` and
+    `announcement_emails_due`, which no code calls any more (the pgTAP files 440, 660 and 680 use
+    them and change with it), in the first release after the production night (since VPS-121; it
+    said the next release before).
   - **Limits.** The gates are per process, which rests on the VPS running one web process per
     environment (single slot); a second replica would still be correct (database leases, Resend's
     keys) but could double the email rate. A dead scheduler is noticed only by its external
@@ -6594,8 +6598,9 @@ pin where a text rule can catch it, and the entries below say what was built whe
 the plan. The plan's three questions for the owner (the stop's scope, when CI may spend minutes, and
 staging's diner pages behind the password) were settled on its recommendations, which the owner can
 still change (VPS-37, VPS-41). WAL archiving, signed nights and a point-in-time recovery drill came
-in Stop C (VPS-43), before the first live restaurant; the cut-over (the server rehearsal, the data, DNS, Vercel and
-`CRON_SECRET` out, the old workflows deleted) is Stop D.
+in Stop C (VPS-43), before the first live restaurant; the cut-over (the server rehearsal, DNS, and
+Vercel's cron jobs off; since VPS-109 no data is copied, and since VPS-121 `CRON_SECRET` and the old
+workflows go 14 days later, in a stop of their own) is Stop D.
 
 - **VPS-31 · The kit is `deploy/vps/`, a mirror of `/srv/menumesh/`, checked with the server's own
   code:** each file there has its place on the server, its owner and mode, and who puts it there
@@ -10799,3 +10804,380 @@ the bar of a fix. Its three notes are a record only: two entries in Left open (S
 hand's window of a day that can hold two nightlies' pings, and H1's other case, a run by hand that
 failed after its seal in a slot a ping names; and VPS-75's note on sub-step 4's two lines naming
 different ids. With them the review of Stop C is closed.
+
+### The cut-over (VPS Stop D)
+
+Stop D (2026-11-17) writes the cut-over that Stops A to C prepared: the exact checklist that moves
+staging, then production, from Vercel and hosted Supabase to the shared server (RUNBOOK, The shared
+server (VPS), The server rehearsal and the cut-over), the checks the first install lacked, and two
+tools, a one-time link for the first platform admin and a probe of the edge from the owner's
+machine, tried on this machine (Tests (VPS Stop D)). The owner answered the plan's four questions on
+2026-11-17 (VPS-109). Nothing is installed or switched: the server is not bought, and the checklist
+runs once it is. The server team's runbooks at `66fe8b3` (`edge.md` §3, §5 and §6, `launch.md` and
+`cloudflare.md`) keep their steps, which the checklist names where they come instead of copying
+their commands. Three passages above were corrected in place: VPS-24's line on `CRON_SECRET`,
+VPS-25's sentence on the old functions and the cut-over's description in Stop B's intro; the intro
+of Self-hosting on the VPS names this stop's entries; and the range that the RUNBOOK,
+`deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s
+header cite moved to VPS-121.
+
+- **VPS-109 · The owner's answers (2026-11-17):**
+  1. **A fresh start.** Nothing is copied from hosted production (VPS-110). The first platform admin
+     comes from a one-time invite link made on the server, with a new password and a new
+     authenticator (VPS-111). Settings edited by hand in `/super` are typed again from a short list
+     (RUNBOOK, the production night). If old demo-request leads exist, the owner exports them as CSV
+     from the hosted dashboard's Table Editor before the hosted project is paused, and keeps the
+     file offline: it is personal data, deleted once no longer needed.
+  2. **Staging first.** Staging moves on an earlier night than production (VPS-116), and the VPS CI
+     jobs go on with it: `VPS_IMAGES` and `VPS_DEPLOY_STAGING` true and `DEPLOY_STAGING` false,
+     about 8 to 10 billed Actions minutes a merge to `main` (VPS-41).
+  3. **A way back for 14 days** after production moves: DNS back to Vercel, and the hosted project
+     resumed. It is lossless only before real writes land on the server; after the first, fixes go
+     forward (VPS-120). After the 14 days the Vercel parts retire in a small stop of their own, not
+     Stop D (VPS-121).
+  4. **The scope:** the runbook and tools, rehearsed on this machine: the cut-over's exact
+     checklist, the first install's gaps filled, `pnpm vps:probe` and the first-admin tool.
+- **VPS-110 · A fresh start, checked before anything moves:** hosted production holds the platform
+  admin, the rows the migrations put in (the `platform_settings` row and the two default plans),
+  what was edited by hand in `/super`, and perhaps demo-request leads; a restaurant would add its
+  menus, orders, bills, logins and Storage files. Without one, a copy buys only the admin's login
+  and authenticator, which take minutes to make again, at the price of Auth's and Storage's tables
+  matched across versions, password hashes and TOTP secrets in a dump file, and factors that may not
+  verify under the server's Auth (whether hosted encrypts TOTP secrets was not found). The other two
+  options, a copy of chosen rows (the admin, the settings, the leads) and a move of all the `auth`,
+  `public`, `private` and `storage` data with Storage's objects through its API, were set aside for
+  that reason. So the RUNBOOK's first step is a read-only count of the app's tables in hosted
+  production's SQL editor: a restaurant there stops the cut-over, as the fresh start no longer fits
+  and moving its data needs a plan of its own. Production's `CUSTOMER_COOKIE_SECRET` is the
+  generated one, since nothing hashed with Vercel's comes along; staging, whose database stays
+  hosted, keeps Vercel staging's (VPS-116).
+- **VPS-111 · The first platform admin from a one-time link made on the server:** the Team page's
+  invite (`inviteMember()`, `src/features/platform/team-actions.ts`) makes the login with no
+  password and calls `platform_invite_member`, which needs a platform admin's session
+  (`team.manage`), so the first admin can't come from it; and the server runs no Studio, whose Users
+  page and SQL editor are the hosted way. `deploy/vps/tools/first-admin.mjs` does the invite's work
+  once. The owner copies it to `~/incoming`, never under `/srv/menumesh`, and runs it after
+  production's first deploy, through `ops`, inside the `web` container with that container's own
+  environment, its script on stdin:
+
+  ```sh
+  sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+  ```
+
+  `app-compose` (`66fe8b3`) hands an `exec` and its options to Compose as given, replacing itself,
+  so stdin reaches the container as Compose passes it, and it logs only `menumesh: exec`; sudo's own
+  log keeps the command line, the email and the name in it. The tool, as run on the rehearsal (Tests
+  (VPS Stop D)):
+  - **Refuses** (exit 2, nothing made) once the platform has any team member, joined or not (later
+    members come from Settings → Team), or when the email already has a login; checks the email as
+    the Team page does (trimmed, lowercased, then zod's pattern) and a name of 1 to 80 characters
+    without control characters; and needs the container's `SUPABASE_SECRET_KEY`,
+    `CUSTOMER_COOKIE_SECRET` and `SUPABASE_INTERNAL_URL`.
+  - **Makes** the login as the Team page asks for it, without a password (`email_confirm: true`;
+    GoTrue v2.197.0 gives such a login a random password nobody knows, until the join sets the
+    member's own), and inserts the `platform_admins` row as `platform_invite_member` does: role
+    `admin`, the name, invited by nobody, the digest on, a 7-day expiry and the token's hash, an
+    HMAC-SHA256 keyed by `CUSTOMER_COOKIE_SECRET` (`src/lib/one-time-code.ts`). If that insert
+    fails it removes the login again; a failure exits 1 and says what is left. It writes no audit
+    line: `platform_invite_member` writes one under the inviting admin, and there is none. The join
+    writes `platform_admin.joined` as for any member.
+  - **Prints** the link once, with its expiry in UTC and IST and a warning that whoever opens it
+    becomes the platform admin until it is used or expires. It prints no secret and no error's
+    details (PostgREST's can quote the row and its hash), and `docker exec`'s output never reaches
+    the container's log, so the link stays in the owner's terminal. The owner opens it once
+    production's records point at the server and sets the password, which signs in and goes on to
+    enrol the authenticator (`/super/mfa`).
+  - **The address.** The web container's environment holds no `NEXT_PUBLIC_APP_URL`, which is built
+    into the bundle, and its `PRODUCTION_APP_URL` is System health's, with a default. So the tool
+    reads the address from the app itself: the `Sitemap:` line of
+    `http://127.0.0.1:$PORT/robots.txt`, which `src/app/robots.ts` builds from that built-in value.
+    The link is then the Team page's own; a third `-e` value was set aside, as a typo in it would
+    send the token to another host.
+  - **A new link.** A waiting invite, expired or not, makes a second run refuse. The RUNBOOK removes
+    it with its login, one `delete from auth.users` in `db`'s psql that removes nothing once anyone
+    has joined, the row going with the login by its foreign key; then the tool runs again.
+
+- **VPS-112 · A probe of the edge from the owner's machine:** `pnpm smoke` checks the app at its
+  public address, not what Cloudflare and the edge must add or must never do, and the leak test is
+  the admin's, from the server. `scripts/vps-probe.mts` (`pnpm vps:probe staging` or `production`,
+  with `--version <commit>`, and on production `--origin <server IPv4>` and
+  `--object <bucket/path>`) checks them after each DNS change. It is read-only: GET, HEAD and
+  requests that change nothing (an unknown server action id, an Upgrade request, a webhook body
+  without a valid signature), never a sign-in or a form. It prints one line a check (`ok <check>`,
+  `bad <check>: <why>` or `skip <check>: <why>`), then a summary,
+  `vps:probe <environment>: <n> checks, <n> failed, <n> skipped`, and exits 1 when a check failed
+  or the command was refused. Production has 31 checks and staging 22. Against the plan's list, as
+  built:
+  - **Names.** Each host of the environment (`menumesh.in`, `www.menumesh.in` and
+    `api.menumesh.in`, or `staging.menumesh.in`) resolves only into Cloudflare's published ranges,
+    fetched each run from `https://www.cloudflare.com/ips-v4` and `ips-v6`, the lists the server's
+    `cf-ranges` reads, and refused as it refuses them (a line that is not a range, or one wider than
+    /11 or /20); and never to `--origin`. Added to the plan's `A` records: the `AAAA` answers are
+    held to the IPv6 ranges, since nothing DNS-only may point at the server (`cloudflare.md`).
+    Names resolve as the operating system resolves them (`dns.lookup`, its cache and hosts file
+    included), as the owner's browser does: Node's own resolver reads the DNS servers itself, and
+    on this Windows machine took 127.0.0.1, which refused every query.
+  - **TLS** is any answer over https with a certificate Node trusts (TLS 1.2 or later); the zone's
+    minimum version is not read from outside. **http to https**, on every host: 301 (Cloudflare's
+    Always Use HTTPS) or 308, to exactly `https://<host>/vps-probe?q=1`. **HSTS** of a year or more
+    on the web host alone, as Caddy adds none (VPS-37); **`www`** 308 to the apex, the path and
+    query kept.
+  - **`/api/health`** 200 with `status` ok, and with `--version` its `version` equal to it: the full
+    commit, 40 hex characters, compared exactly, as `pnpm smoke` compares `EXPECTED_VERSION`. On
+    staging it carries the pair too, so that a fault in the open paths' exemption shows in their own
+    checks alone.
+  - **The cache**, stricter than no `HIT`: `GET /` as HTML and `GET /?_rsc` with `RSC: 1`, twice
+    each, each a 200 of its type (Next.js 16.4.3 answers a bare `/` with `RSC: 1` with a 307 to
+    `/?_rsc`, seen on the rehearsal's build). `HIT`, `STALE`, `UPDATING` or `REVALIDATED` (served
+    from the cache) and `MISS` or `EXPIRED` (a cache rule makes it cacheable) fail; `DYNAMIC`,
+    `BYPASS`, `NONE`, `UNKNOWN` or no header pass; a value Cloudflare does not document fails.
+    Added: the RSC answer carries `x-nextjs-deployment-id`, which VPS-7 needs Caddy and Cloudflare
+    to pass, read from the first answer at no extra request.
+  - **The unknown action** is `POST /` with a `Next-Action` of 42 zeros (a real id's length: the
+    rehearsal's build answered a 40-character one with 400, as malformed), `text/plain`, the site's
+    `Origin` and the body `[]`, and must get 409 together with `x-nextjs-action-not-found: 1`
+    (VPS-7). **The Upgrade** goes through `node:https`, as Node's fetch refuses the header, and must
+    get 400 (VPS-16, VPS-37); on staging with the pair, since Caddy's basic auth answers before the
+    upgrade matcher.
+  - **Production alone**, as staging's database and Storage are hosted: on `api.menumesh.in` 404 for
+    `/`, `/pg/`, `/graphql/v1` and `/functions/v1/`, and 401 for `/auth/v1/admin/users` and
+    `/rest/v1/` without a key; with `--object`, the object 200 twice and `HIT` the second time; with
+    `PROBE_PUBLISHABLE_KEY`, which must be an `sb_publishable_` key since it rides in the socket's
+    URL that Cloudflare sees, Realtime's WebSocket open. Without them a `skip` line says what to
+    give. Then `menumesh.app`, `menumesh.co` and their `www`, each 308 to `https://menumesh.in`, the
+    path and query kept.
+  - **The origin**, with `--origin`: ports 443 and 80 must time out within 5 s, as the leak test's
+    step 3 expects. A refusal fails too, as it shows the address answers, and so does a connection,
+    on port 80 with the note that a network intercepting port 80 can cause it.
+  - **Staging:** 401 with `WWW-Authenticate: Basic` without the pair and 200 with it; `GET` of the
+    seven open paths (`/api/health`, `/app.webmanifest`, `/sw.js`, `/icon/192`, `/apple-icon`,
+    `/maskable-icon.png`, `/favicon.ico`) 200 without it; `POST {}` to each webhook without it,
+    with a signature that cannot pass (`X-Razorpay-Signature: wrong`, as the smoke tests send),
+    answered by the app's own refusal (400, or 503 before its secret is set), never 401, so nothing
+    is stored; and `x-robots-tag` noindex. The pair comes from `SMOKE_BASIC_AUTH` only, the name
+    `pnpm smoke` reads: staging refuses to run without it, as most of its checks need it, and
+    refuses `--origin` and `--object`; `PROBE_PUBLISHABLE_KEY` is not read there.
+  - **Its own safety.** Every step has a deadline (a request 10 s, a lookup 5 s, the socket 10 s,
+    the origin 5 s), so a check with no answer fails with `no answer in N s`; no redirect is
+    followed; the pair goes over https to `staging.menumesh.in` alone; and every line printed is
+    cleaned of the pair, its password, its token and the publishable key, in any case of letters.
+    The probe's runs are in Tests (VPS Stop D); none reached a MenuMesh host.
+- **VPS-113 · The zone moves to Cloudflare first, with Vercel's records DNS only:** `menumesh.in`'s
+  DNS is at GoDaddy (RUNBOOK, Launching the website), and the server team's rules (their
+  `cloudflare.md`) need the zone on Cloudflare: `A` records only, all proxied, no `AAAA`, nothing
+  DNS-only pointing at the server. The move is a step of its own, any day before the server:
+  GoDaddy's zone file exported, imported at Cloudflare and compared record by record (Vercel's apex,
+  `www` and `staging`, Resend's sending records, DMARC, the mail forwarding's `MX`, Search Console's
+  `TXT`), DNSSEC off at GoDaddy first (Cloudflare's setup guide: a nameserver change while it is on
+  can make the domain unreachable), then the nameservers. Vercel's records stay DNS only, so Vercel
+  keeps serving them with its own certificates, and their values are written down, as they are the
+  way back (VPS-120). The zone's settings act on proxied records only, so they go in the same days:
+  Full (strict); Always Use HTTPS and TLS 1.2 at least; HSTS left to the app, which sends
+  `max-age=63072000`; Bot Fight Mode off, since no rule exempts the webhooks from it, with the
+  server team's WAF Skip rule for `/api/webhooks/*`; nothing that puts a script into pages (Email
+  Address Obfuscation, Rocket Loader, Web Analytics' automatic setup, Zaraz), which the nonce-based
+  Content-Security-Policy refuses; and one cache rule, for
+  `api.menumesh.in/storage/v1/object/public/*`, so that no HTML or RSC answer is cached (VPS-7,
+  VPS-37). `menumesh.app` and `menumesh.co` move the same way and redirect at Cloudflare as VPS-24
+  decided. The rate-limit rule found worth adding (Tests (VPS Stop B)) stays the owner's choice
+  (Left open (Stop D)).
+- **VPS-114 · The server rehearsal, with the first install's checks:** the first install said what
+  to do, but often not what it must show. Where a line does, each step now says it: the conf's
+  recipient, the deploy user and the Access token proved by **VPS ping**, the CSR and the origin
+  test by `edge.md` §3 and §6, the archive timer's next run, `ps` with each service `(healthy)`, the
+  GitHub values a production build needs first, monitors whose alerts were tried once, and a health
+  check from inside the web containers, as no smoke test reaches a deploy before DNS. Production's
+  scheduler starts on the fresh database: no restaurant to remind, no digest until the first admin
+  joins (it goes to joined admins whose role sees money), and its other steps clean up or count.
+  Until the staging night, staging's scheduler and Vercel staging's cron jobs both run staging's
+  `daily` and `digest` on its hosted database, which is safe for the reasons a second run by hand is
+  (VPS-38). The outline's checks got commands and results: `hostwatch check: clean`; the deploys
+  with a rollback by hand; the night, the restore test and the drill; the schedulers' first day; a
+  stop's time and exit code; a day of journal lines; and Envoy's counter, read through bash's
+  `/dev/tcp`, as the gateway's image has no curl (tried here against `envoyproxy/envoy:v1.39.6` by
+  its digest, in a throwaway container: `cluster.rest.upstream_cx_destroy_remote: 0`). The stop of a
+  web container with an export, Hindi names and announcement emails in flight moves to the staging
+  night, with the owner's test restaurant, as production's fresh database has no such work. The
+  bucket's locks and production's locale stay the owner's (Left open (Stop D)).
+- **VPS-115 · The leak test through a temporary record, before any app record moves:** the RUNBOOK
+  put the leak test before DNS (First install, step 22), while the server team's `launch.md` puts
+  the site's DNS records first; but their test's first step goes through Cloudflare to a temporary
+  `leaktest.<zone>` site, which needs a proxied record either way. A temporary
+  `leaktest.menumesh.in`, at the staging night after the site file and before the `staging` record
+  moves, meets both: the zone is on Cloudflare with its settings, and no app record reaches the
+  server before the test passes. The record is deleted after the test, with their step 5.
+- **VPS-116 · Staging first, on a night of its own:** a night that moves only staging proves the
+  edge, CI's deploys through the tunnel, the schedulers and the probe on the real zone while
+  production stays on Vercel. Its switches go together: the `staging` record to the server,
+  `VPS_IMAGES` and `VPS_DEPLOY_STAGING` true, and `DEPLOY_STAGING` false besides, so that turning
+  `VPS_DEPLOY_STAGING` off later never sends staging's deploys back to Vercel by itself; and Vercel
+  staging's cron jobs disabled (VPS-118). The outline turned `VPS_DEPLOY_STAGING` on only after the
+  move, which left merges deploying to Vercel while the record named the server. Staging's env file
+  carries Vercel staging's `STAFF_EMAIL_DOMAIN` and `CUSTOMER_COOKIE_SECRET`, as its hosted database
+  keeps the staff logins, codes, invite links and device ids made with them, and the secrets of the
+  dashboards' staging webhooks, whose URLs don't change. The way back is the record, the three
+  variables and the crons. Staging first also gives production's release a commit that went through
+  VPS staging: **VPS release** reuses that run's migrate image (`vps-build.yml`), so production runs
+  the migrations staging ran.
+- **VPS-117 · The production night, 03:35 to 06:30 IST on a quiet weekday:** after the 02:00 night
+  and the 03:00 daily runs, inside maintenance, clear of the blackouts (02:55 to 03:30 and 08:40 to
+  08:50) and hours before breakfast service. What can come earlier does: the release, from a commit
+  that went through VPS staging, deployed on the server and healthy; the first admin's link made (it
+  lasts 7 days); the settings noted while hosted still serves `menumesh.in`, since after the records
+  move `menumesh.in/super` is the server's; and Vercel's apex and `www` records at a TTL of a
+  minute, a day ahead. The night: the `api` record first, then the apex and `www`, all proxied to
+  the server; the probe and the smoke tests; the link opened; the settings and the team typed again;
+  Vercel's crons disabled; the leads exported; hosted paused; `BACKUP_PRODUCTION` off; and the next
+  morning's checks. Everyone signs in again: the session cookie becomes `sb-api-auth-token` (VPS-20)
+  and the keys differ. The first release on the server can be any `vX.Y.Z`: the repository has no
+  tags, and the Release workflow has no version.
+- **VPS-118 · Vercel's cron jobs disabled, not `CRON_SECRET` removed, while the way back lasts:**
+  the outline took `CRON_SECRET` out of Vercel after the move (VPS-24). A Vercel deployment keeps
+  the `CRON_SECRET` it was built with for its lifetime (Vercel's Managing Cron Jobs), so removing
+  the variable stops nothing until a new deployment, and the way back would then need a new secret
+  and a Release. The project's **Disable Cron Jobs** stops the calls at once, whichever deployment
+  is live, and persists across promotions and Instant Rollbacks; **Enable Cron Jobs** undoes it. So
+  each project's crons are disabled at its own night, staging's at the staging night and
+  production's at the production night, `CRON_SECRET` stays for the way back, and it leaves both
+  projects in the retirement stop (VPS-121). VPS-24's line is corrected in place.
+- **VPS-119 · `BACKUP_PRODUCTION` off while the hosted project is paused:** the **Backup** workflow
+  dumps hosted production at 02:00 IST every night while `BACKUP_PRODUCTION` is true (RUNBOOK,
+  Backups and restore). A paused project can't be dumped, and a failed night emails the owner. The
+  variable goes off with the pause, before the next 02:00, and back on with the way back.
+- **VPS-120 · A way back for 14 days, and the point of no return:** for 14 days after the production
+  night the way back is the hosted project restored; the apex and `www` back to Vercel's
+  written-down values, DNS only, and the `api` record deleted; Vercel's crons and
+  `BACKUP_PRODUCTION` on; and production's `web` and `scheduler` stopped on the server, so that
+  nothing runs on its database beside hosted's, with its database, Supabase services and backup
+  kept, and what it took with them. Nothing is copied back to hosted, so the way back is lossless
+  only until the first real write on the server after its records moved: a restaurant's signup, a
+  demo request, a payment's webhook. That write is the point of no return: after it, fixes go
+  forward (a rollback by hand, a rewind, a new release), and going back is kept for a server that
+  cannot run, accepting the loss. The owner's own setup on the night does not count, as hosted has
+  its own. A paused free project can be restored for a limited time, 90 days by Supabase's changelog
+  of 2024 and a year by its current pausing page, well past 14 days either way.
+- **VPS-121 · After the 14 days, the Vercel parts retire in a stop of their own:** once the server
+  has served production for the 14 days, `CRON_SECRET` leaves both Vercel projects; `deploy.yml`,
+  `release.yml`, the `staging` job of `ci.yml` and `vercel.json` are deleted, and `backup.yml`
+  deleted or kept for its manual staging run (staging's database stays hosted), decided then; the
+  Vercel-only parts of the RUNBOOK, README and SPEC are rewritten (the RUNBOOK lists them); and the
+  owner removes or downgrades the Vercel projects and decides about the paused hosted project,
+  deleting it being permanent. Each of these ends the way back, so none comes before the 14 days.
+  The four functions Stop A2 kept for Vercel's older deployments (`restaurant_export_finish`,
+  `menu_hindi_names_claim`, `menu_set_hindi_names` and `announcement_emails_due`: VPS-25) drop in
+  the first release after the production night, in a migration of their own with pgTAP 440, 660 and
+  680 changed with it: the server runs one deployment per environment, so no older build calls them,
+  and a page of one gets the reload prompt (VPS-8). VPS-25's sentence is corrected in place; the
+  "one release" for which VPS-26 and VPS-27 keep their old functions reads the same.
+
+### Tests (VPS Stop D)
+
+- **Unit (1,230 to 1,300 tests, 70 to 72 files):**
+  - `vps-runbook` (43 to 46) gains three rules for the cut-over, each clean on the RUNBOOK and
+    refusing a copy with one mistake, the outline's own words among them: `zoneAndLeak` (Vercel's
+    records DNS only and written down in part 1, and back to those values, DNS only, in part 5; the
+    leak test through `leaktest.menumesh.in` before the `staging` record moves, no record moved to
+    the server in parts 1 and 2, and First install, step 22, before any app record moves),
+    `stagingSwitches` (`VPS_IMAGES` and `VPS_DEPLOY_STAGING` true and `DEPLOY_STAGING` false at the
+    staging night, and Deploys on the VPS naming that night) and `windowKept` (Vercel's crons
+    disabled with `CRON_SECRET` kept at both nights and taken out only in part 6,
+    `BACKUP_PRODUCTION` off with the pause and on with the way back, the 14 days, and the point of
+    no return); the re-wrap test reads their phrases wrapped too.
+  - `vps-first-admin` (7, new) runs the real `first-admin.mjs` with node, its source on stdin as on
+    the server, against a stand-in for the app's `robots.txt`, GoTrue's Admin API and PostgREST that
+    keeps every request: the requests in order, with their headers and bodies (the key in `apikey`
+    alone and never to the app, no password field); the row's columns equal to
+    `platform_invite_member`'s insert list, read from the migration, and its expiry to
+    `INVITE_DAYS`; the link printed once; the stored hash equal to the HMAC of the link's token and
+    to the app's own `hashCode('team-invite', token)`; the refusal once the team has a member,
+    joined or not; the login removed when the insert fails, and named when that removal fails too;
+    an `email_exists` refused and a GoTrue 500 reported, neither removing anything; 12 bad emails
+    and names refused before any request, as `inviteSchema` refuses them, and good ones taken; a
+    missing setting, no app, a `robots.txt` without its sitemap line and no gateway; neither key in
+    any output; and text rules on `src/app/robots.ts`'s sitemap line, the Team page's link, and
+    the invite functions, which no later migration redefines.
+  - `vps-probe` (60, new) runs the probe against a stand-in edge that answers as the kit promises:
+    every check passing; 45 wrong answers, each failing its own check with its exact line while
+    every other line stays `ok`; a wrong pair; answers that never come; the requests' shapes and
+    methods; the pair kept to staging's https host, and the pair, its password and the publishable
+    key never printed, even echoed back in another case of letters; the exit codes, the command
+    line's refusals, Cloudflare's lists, the cache verdicts and HSTS's max-age; the real script run
+    only with arguments it refuses before any request; the `package.json` line; and its imports,
+    Node's own modules, with the network reached only in `systemNet`.
+  - `vps-kit` (117) holds `tools/first-admin.mjs` to its rule that nothing the server gets names
+    the local override.
+- **The rehearsal** (`pnpm vps:rehearse`, 46 checks, 0 failed; by step 1, 6, 5, 8, 1, 4, 11, 6 and
+  4), in four runs: from new secrets, 46 checks and 1 failed, the row's check, which expected an
+  empty `encrypted_password` where GoTrue v2.197.0 gives a login made without a password a random
+  one (as for the Team page's invites; the check was fixed); then 0 failed on a rerun, from new
+  secrets again, and on new volumes after the docs (the web image rebuilt in 43.9 s). Its new step
+  8 runs the tool in `web` as the owner runs it on the server, the file on stdin
+  (`exec -T -e FIRST_ADMIN_EMAIL -e FIRST_ADMIN_NAME web node --input-type=module -`), with the
+  seed's platform admin set aside: saved to `.vps-rehearsal/team-aside.json`, then deleted and put
+  back in replica mode, so that nothing cascades or fires, and given back at the next start after
+  a run cut short. The step comes after the gateway's, since `web` starts only after the seed, and
+  starting it earlier would change what step 6 measures. The WAL shipper, now step 9, still sees 0
+  database log lines. In step 8:
+  - the tool exited 0 in 0.6 s and printed the link once, with its expiry and the warning, and none
+    of the stack's 20 keys and passwords;
+  - the row was an Admin's, invited by nobody, not joined, the digest on, valid 7 days, its hash
+    the HMAC computed on the host under `web.env`'s `CUSTOMER_COOKIE_SECRET`;
+  - the join page showed the invite, and another token got "This invite has expired or was already
+    used.";
+  - a second run was refused (exit 2) and made nothing;
+  - the form's post without JavaScript (its 5 hidden fields and the password twice) got 303 to
+    `/super/mfa` with a session cookie: the member joined, the link was spent, and the new password
+    signed in through `127.0.0.1:8300` with an ES256 token;
+  - the cleanup removed the login through the Admin API (200), with its row and audit lines, and
+    gave the seed's admin back.
+- **A new link, by hand on that last rehearsal**, the seed's admin set aside again: the tool's
+  invite, a second run refused, the RUNBOOK's removal (`DELETE 1`; the row went with the login, no
+  identity was left), and the tool again for the same email (exit 0, a new link). With a joined
+  admin back the removal took nothing (`DELETE 0`), and the removal by id took a named login
+  (`DELETE 1`). `pnpm vps:down` (3 checks) removed the project after.
+- **The probe** never reached a MenuMesh host. Here: the unit tests, 60 passed on each of four runs;
+  `pnpm vps:probe --help` (exit 0), and `preview` and `staging --origin 203.0.113.10` refused (exit
+  1); `systemNet()`'s functions against a local TLS server (an Upgrade answered 400 and 101, a
+  WebSocket opened and a refused handshake rejected, a connection made, refused with
+  `ECONNREFUSED` and cut cleanly on an address that drops it, Cloudflare's two lists fetched, 15
+  and 7 ranges, and a name resolved); and the probe's own checks with MenuMesh's names pointed at
+  local addresses, nothing looked up or sent to them: against a throwaway container of
+  `menumesh-web:rehearsal` (a 42-character unknown action 409 with `x-nextjs-action-not-found: 1`
+  and a 40-character one 400; `RSC: 1` on `/` a 307 to `/?_rsc`, and `/?_rsc` 200
+  `text/x-component` with `x-nextjs-deployment-id`; HSTS `max-age=63072000`; staging's noindex),
+  and keyless `GET`s to the rehearsal's gateway (404 for `/`, `/pg/`, `/graphql/v1` and
+  `/functions/v1/`, 401 for `/auth/v1/admin/users` and `/rest/v1/`) and its Realtime socket,
+  opened with the publishable key.
+- **`pnpm vps:check`** (53 checks, 0 failed) and **`pnpm vps:edge`** (20 checks, 0 failed), with
+  `tools/` in the kit; at the end `pnpm lint`, `pnpm typecheck`, `pnpm test` and
+  `pnpm format:check` passed.
+- **Found and fixed here:** the probe printed a media type lowercased, which could have let a
+  password echoed in it past a clean-up that matched letters exactly: it prints the header as it
+  came, cleaned in any case of letters, with a unit test. And the rehearsal's row check, above.
+- **Tried by hand here:** Envoy's admin page read through bash's `/dev/tcp` in a throwaway container
+  of the gateway's image (VPS-114), and the health check from inside the web image, for its syntax
+  only (no server ran in that container).
+- **Not run:** the probe and `pnpm smoke` against MenuMesh's hosts, which don't point at a server
+  yet, and the e2e suite, as nothing in the app changed.
+
+**Left open (Stop D):**
+
+- What only the server and the real zone can prove:
+  - the first-admin tool's run there: `app-compose exec` with stdin through sudo (read in
+    `app-compose` at `66fe8b3`, not run), the link naming `https://menumesh.in` (CI's
+    `PRODUCTION_APP_URL`, built in), and the authenticator's enrolment after the join's 303 (the
+    rehearsal stops at a sign-in with the password);
+  - Cloudflare's real answers to the probe: Always Use HTTPS's 301, the Single Redirect's exact
+    `Location`, Caddy's 400 to an Upgrade reaching the client through Cloudflare, the zone's real
+    `cf-cache-status` values and a `HIT` on the second try (Cloudflare caches by data centre), the
+    `x-nextjs-*` headers and HSTS through it, and whether a WAF or bot rule challenges the probe
+    (its line then says so); and the zone's minimum TLS version, which the probe does not read;
+  - authenticated origin pulls and the leak test; WebSockets through Cloudflare (the probe opened
+    Realtime's only through the rehearsal's Envoy, over `ws://`);
+  - how long resolvers keep Vercel's answers after the records change, which the TTL lowered a day
+    ahead bounds, the owner's own machine's cache among them.
+- GoDaddy's mail forwarding behind Cloudflare's DNS, with its `MX` records copied: proved only by a
+  mail after the zone move.
+- The owner's open choices: the bucket and its locks (VPS-40; RUNBOOK, First install, step 2);
+  hosted production's locale, before `db`'s first start (VPS-34; First install, step 4); and a
+  rate-limit rule on `menumesh.in/t/*` and `api.menumesh.in/rest/v1/*` (Tests (VPS Stop B)).
