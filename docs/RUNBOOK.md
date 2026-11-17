@@ -1688,7 +1688,9 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      instead (the fallback, below, with the stolen key's file for that one run when a key of that
      file signed it: A stolen or leaked bucket token (VPS), step 5). Whichever night it took, check
      the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own
-     records, as step 2 reads them, before step 6 starts `db`: one they don't name, but for a night
+     records, as A stolen or leaked bucket token (VPS), step 2, reads them (on the same server the
+     journal's lines and the server's own pings inside the night's window), before step 6 starts
+     `db`: one they don't name, but for a night
      that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS),
      step 2), is a sign of theft, and `db` stays stopped while that section is followed.
 

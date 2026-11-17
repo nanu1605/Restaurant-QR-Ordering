@@ -55,7 +55,8 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * recovery's night named only by a ping from the old server's own address inside its window, the
  * night a point-in-time recovery took checked before db starts (T4), and after a rebuild a night
  * that sent no ping tied to its nightly's slot, a run by hand's ping not counted (the ninth
- * re-review's V1), and a ping's window run to a day after its stamp (H1); the drill names each of
+ * re-review's V1), a ping's window run to a day after its stamp (H1), and step 5's night checked
+ * against the records as the stolen-token step 2 reads them (V3); the drill names each of
  * pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
@@ -569,7 +570,10 @@ const theftList = (runbook: string) =>
  * ping from elsewhere sends the owner to the theft's step 5 first, Telegram's lines name no night
  * there, and step 5 checks the night a point-in-time recovery took before db starts. But a window
  * to the next night's ended before the ping of a run by hand begun just before a nightly (Stop C's
- * ninth re-review, finding H1): both windows run to a day after the stamp.
+ * ninth re-review, finding H1): both windows run to a day after the stamp. And step 5 read the
+ * records as disaster recovery's step 2 does, the journal's lines alone on the same server, so a
+ * night whose line journald dropped, named by its own ping, was a sign of theft there (finding
+ * V3): it reads them as the stolen-token step 2 does, the server's own pings among them.
  */
 const theftRecords = (runbook: string) =>
   inPlaces(runbook, ['theft', 'recovery'], ({ theft, recovery }) => [
@@ -655,11 +659,23 @@ const theftRecords = (runbook: string) =>
         ]),
     ...(has(
       recovery,
-      "Whichever night it took, check the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own records, as step 2 reads them, before step 6 starts `db`: one they don't name, but for a night that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS), step 2), is a sign of theft, and `db` stays stopped while that section is followed",
+      "Whichever night it took, check the one its line `pitr: to <point>, from the night of <id>: …` names against the backup's own records,",
+    ) &&
+    has(
+      recovery,
+      "before step 6 starts `db`: one they don't name, but for a night that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS), step 2), is a sign of theft, and `db` stays stopped while that section is followed",
     )
       ? []
       : [
           'disaster recovery’s step 5 starts db on the night a point-in-time recovery took without checking it against the backup’s own records',
+        ]),
+    ...(has(
+      recovery,
+      "names against the backup's own records, as A stolen or leaked bucket token (VPS), step 2, reads them (on the same server the journal's lines and the server's own pings inside the night's window), before step 6 starts `db`",
+    ) && !has(recovery, 'records, as step 2 reads them, before step 6')
+      ? []
+      : [
+          'disaster recovery’s step 5 reads the records as its own step 2 does, the journal’s lines alone on the same server, so a night named only by its own ping is a sign of theft there',
         ]),
   ]);
 
@@ -2492,6 +2508,11 @@ const REWRAPPED = [
   "old server's stamped from a nightly's 20:30 UTC to the next, where no ping from its address names",
   "a night of that stamp (a run by hand's ping names its own, stamped at another time, and does not",
   "same server those records are the journal's lines above",
+  // And disaster recovery's step 5, which checks its night against the records as the stolen-token
+  // step 2 reads them.
+  'records, as A stolen or leaked bucket token (VPS), step 2, reads them (on the same server the',
+  "journal's lines and the server's own pings inside the night's window), before step 6 starts",
+  'that sent no ping, as the monitor alerted that day (A stolen or leaked bucket token (VPS),',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -4562,12 +4583,13 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       refuses(oldCopies, swap(RUNBOOK, from, to), first);
   });
 
-  it('names disaster recovery’s night only by a ping from the old server’s own address inside its window, and checks the night a point-in-time recovery took before db starts (Stop C’s eighth re-review, finding T4)', () => {
+  it('names disaster recovery’s night only by a ping from the old server’s own address inside its window, and checks the night a point-in-time recovery took before db starts, by the records the stolen-token step 2 reads (Stop C’s eighth re-review, finding T4, and the ninth’s V3)', () => {
     expect(theftRecords(RUNBOOK)).toEqual([]);
     const named =
       'disaster recovery’s step 2 names the night whose settings archive it unpacks from any ping';
     const started =
       'disaster recovery’s step 5 starts db on the night a point-in-time recovery took without checking it';
+    const checked = 'disaster recovery’s step 5 reads the records as its own step 2 does';
     // As the seventh re-review's fixes left them: any ping of the monitor's log, and Telegram's
     // failure lines, named step 2's night, and step 5 said nothing of the night it took.
     const before = swap(
@@ -4622,6 +4644,18 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         started,
       ],
       ['`db` stays stopped while that section is followed.', '`db` starts all the same.', started],
+      // Step 5's records as the eighth re-review's fixes left them, as disaster recovery's step 2
+      // reads them (the ninth re-review's V3), and the same-server records dropped.
+      [
+        cut(
+          RUNBOOK,
+          ', as A stolen or leaked bucket token (VPS), step 2, reads them (on',
+          ', before step 6 starts',
+        ),
+        ', as step 2 reads them',
+        checked,
+      ],
+      [cut(RUNBOOK, ' (on the same server the', ', before step 6 starts'), '', checked],
     ])
       refuses(theftRecords, swap(RUNBOOK, from, to), problem);
   });
