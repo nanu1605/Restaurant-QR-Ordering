@@ -25,6 +25,7 @@
     "docker:stop": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts stop",
     "vps:secrets": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-secrets.mts",
     "vps:verify-night": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-verify-night.mts",
+    "vps:probe": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-probe.mts",
     "vps:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-kit.mts check",
     "vps:edge": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-kit.mts edge",
     "vps:rehearse": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vps-kit.mts rehearse",
