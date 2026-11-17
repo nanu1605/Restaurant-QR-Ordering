@@ -20,7 +20,8 @@
  *                    builds the three images and brings the stack up as the server's install and
  *                    app-deploy do, proving each step on the way (memory, secrets, labels, start
  *                    order, WAL archiving and the host rules, migrations, schema parity, the
- *                    pre-deploy dump, health, the gateway, the WAL shipped to a local S3 from quiet
+ *                    pre-deploy dump, health, the gateway, the first platform admin from the
+ *                    owner's tool and its link joined, the WAL shipped to a local S3 from quiet
  *                    logs). A rerun reuses the stack, the secrets and an image nothing changed for;
  *                    --fresh starts from new secrets and empty volumes, --rebuild builds every image.
  *   pnpm vps:backup-test
@@ -62,7 +63,14 @@
  *                    with --images), and nothing else.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  verify,
+} from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -1731,7 +1739,7 @@ function pipeline(first: string[], second: string[], file: string) {
 function local(
   port: number,
   path: string,
-  options: { method?: string; headers?: Record<string, string>; body?: string } = {},
+  options: { method?: string; headers?: Record<string, string>; body?: string | Buffer } = {},
 ): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = httpRequest(
@@ -2658,7 +2666,294 @@ async function gateway(checks: Checks, env: Record<string, string>) {
   );
 }
 
-// --- WAL archiving and shipping (VPS-43): vps:rehearse steps 3 and 8, and vps:backup-test ---
+// Step 8: the first platform admin, from the owner's tool (deploy/vps/tools/first-admin.mjs) run
+// in the web container as on the server, and its link followed to the end without a browser. A
+// new server's platform has no team, so the seed's members wait aside meanwhile.
+
+/** Where the seed's team waits during step 8, so a run cut short gives it back the next time. */
+const TEAM_ASIDE = join(MIRROR, 'team-aside.json');
+/** The step's logins: an earlier run cut short may have left one. */
+const FIRST_ADMIN_LOGINS = "email like 'rehearsal-first-admin-%@local.test'";
+/** The join page's words for a link that no longer works (INVITE_GONE). */
+const INVITE_GONE = 'This invite has expired or was already used.';
+
+/**
+ * The team set aside, back as it was. Replica mode fires nothing (no cascade, no trigger, no
+ * foreign-key check), so only members whose login still exists come back.
+ */
+function teamBack() {
+  if (!existsSync(TEAM_ASIDE)) return;
+  dbSql(
+    `begin; set local session_replication_role = replica; insert into public.platform_admins select r.* from jsonb_populate_recordset(null::public.platform_admins, $aside$${readFileSync(TEAM_ASIDE, 'utf8')}$aside$) r where exists (select 1 from auth.users u where u.id = r.user_id) on conflict (user_id) do nothing; commit;`,
+  );
+  rmSync(TEAM_ASIDE);
+}
+
+/** The step's logins removed through the Admin API, with their rows and audit lines: each status. */
+function firstAdminLoginsGone(): number[] {
+  const ids = dbSql(`select id from auth.users where ${FIRST_ADMIN_LOGINS}`);
+  const statuses = ids.map((id) =>
+    inWeb<number>(
+      "const res = await fetch(gw + '/auth/v1/admin/users/' + input, { method: 'DELETE', headers: { apikey: key } });\nconsole.log(res.status);",
+      id,
+    ),
+  );
+  if (ids.length) {
+    const list = ids.map((id) => `'${id}'`).join(', ');
+    dbSql(
+      `delete from public.audit_logs where entity_id in (${list}) or actor_user_id in (${list})`,
+    );
+  }
+  return statuses;
+}
+
+/** HTML's entities in an attribute, as React writes them. */
+const fromHtml = (text: string) =>
+  text
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+
+/** A form's hidden fields, which a browser without JavaScript posts back with the visible ones. */
+function hiddenFields(html: string, label: string): [string, string][] {
+  const form =
+    new RegExp(`<form\\b[^>]*aria-label="${label}"[^>]*>([\\s\\S]*?)</form>`).exec(html)?.[1] ?? '';
+  return [...form.matchAll(/<input\b([^>]*)>/g)].flatMap(([, attributes]) => {
+    const attribute = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attributes)?.[1];
+    const name = attribute('name');
+    return attribute('type') === 'hidden' && name !== undefined
+      ? [[fromHtml(name), fromHtml(attribute('value') ?? '')] as [string, string]]
+      : [];
+  });
+}
+
+async function firstAdmin(checks: Checks, env: Record<string, string>) {
+  const tool = readFileSync(join(KIT, 'tools', 'first-admin.mjs'), 'utf8');
+  const webEnv = parseEnv(readFileSync(join(MIRROR, 'env', 'web.env'), 'utf8')) as Record<
+    string,
+    string
+  >;
+  // Every key and password of the stack: none may show in what the tool prints.
+  const secretValues = [...Object.entries(env), ...Object.entries(webEnv)]
+    .filter(([name, value]) => /SECRET|PASSWORD|KEY|TOKEN|JWT/.test(name) && value.length >= 8)
+    .map(([, value]) => value);
+  const site = env.SITE_URL;
+  const email = `rehearsal-first-admin-${randomBytes(4).toString('hex')}@local.test`;
+  // As the checks name it, the same on every run.
+  const shownEmail = 'rehearsal-first-admin-…@local.test';
+  const name = 'Rehearsal Owner';
+  // As the owner runs it: sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL=… -e
+  // FIRST_ADMIN_NAME=… web node --input-type=module - < ~/incoming/first-admin.mjs
+  const runTool = (address: string) => {
+    const started = Date.now();
+    const run = compose(
+      [
+        'exec',
+        '-T',
+        '-e',
+        `FIRST_ADMIN_EMAIL=${address}`,
+        '-e',
+        `FIRST_ADMIN_NAME=${name}`,
+        'web',
+        'node',
+        '--input-type=module',
+        '-',
+      ],
+      tool,
+    );
+    const output = `${run.stdout}${run.stderr}`;
+    return {
+      ...run,
+      took: seconds(started),
+      leaked: secretValues.filter((secret) => output.includes(secret)).length,
+    };
+  };
+  const one = (query: string) => dbSql(query)[0] ?? '';
+
+  // What an earlier run cut short left, then the seed's team aside: the platform has none.
+  teamBack();
+  firstAdminLoginsGone();
+  const seeded = dbSql('select * from public.platform_admins order by user_id');
+  // jsonb: one line, where json_agg breaks the line between members.
+  writeFileSync(
+    TEAM_ASIDE,
+    one("select coalesce(jsonb_agg(a), '[]') from public.platform_admins a"),
+  );
+  dbSql(
+    'begin; set local session_replication_role = replica; delete from public.platform_admins; commit;',
+  );
+  try {
+    const logins = one('select count(*) from auth.users');
+    const first = runTool(email);
+    const link = /^ {2}(\S+)$/m.exec(first.stdout)?.[1] ?? '';
+    const prefix = `${site}/login/join?token=`;
+    const token = link.startsWith(prefix) ? link.slice(prefix.length) : '';
+    // The rehearsal's link is a throwaway, but it still stays out of what is printed.
+    const masked = (text: string) => (token ? text.replaceAll(token, '…') : text);
+    checks.expect(
+      `the first-admin tool as the owner runs it (exec -T -e FIRST_ADMIN_EMAIL -e FIRST_ADMIN_NAME web node --input-type=module - < first-admin.mjs), the seed's ${seeded.length} team member(s) set aside: exit ${first.status} in ${first.took} s; the link ${prefix}… once, with its expiry and the warning; none of the stack's ${secretValues.length} keys and passwords in its output`,
+      first.status === 0 &&
+        /^[A-Za-z0-9_-]{43}$/.test(token) &&
+        first.stdout.split(token).length === 2 &&
+        / UTC \(.+ IST\)/.test(first.stdout) &&
+        first.stdout.includes('Warning: until it is used or expires, whoever opens it becomes') &&
+        first.stderr === '' &&
+        first.leaked === 0,
+      first.leaked
+        ? `${first.leaked} of those values in its output`
+        : masked(`${first.stdout}${first.stderr}`),
+    );
+
+    // The row and the login, against the invite the Team page makes. The login has a password
+    // nobody knows: GoTrue's Admin API gives a random one to a login made without, as it does for
+    // the Team page's invites, until the join page sets the member's own.
+    const rows = dbSql(
+      'select a.role, a.display_name, a.invited_by is null, a.joined_at is null, a.disabled_at is null, a.digest, extract(epoch from a.invite_expires_at - a.invited_at)::bigint, extract(epoch from now() - a.invited_at)::bigint, a.invite_token_hash, u.email, u.email_confirmed_at is not null from public.platform_admins a join auth.users u on u.id = a.user_id',
+    );
+    const [
+      role,
+      display,
+      byNobody,
+      notJoined,
+      notOff,
+      digest,
+      valid,
+      age,
+      hash,
+      address,
+      confirmed,
+    ] = rows[0]?.split('\t') ?? [];
+    const expected =
+      token &&
+      createHmac('sha256', webEnv.CUSTOMER_COOKIE_SECRET)
+        .update(`team-invite-code:${token}`)
+        .digest('hex');
+    checks.expect(
+      `its row, the platform's only one: ${role} ${display}, invited by nobody, not joined, the digest on, the invite valid ${Number(valid) / 86_400} days from invited_at (${age} s ago), invite_token_hash HMAC-SHA256 under web.env's CUSTOMER_COOKIE_SECRET of team-invite-code:<the link's token>; the login ${address === email ? shownEmail : address}, its email confirmed`,
+      rows.length === 1 &&
+        role === 'admin' &&
+        display === name &&
+        [byNobody, notJoined, notOff, digest, confirmed].every((flag) => flag === 't') &&
+        valid === String(7 * 86_400) &&
+        Number(age) >= 0 &&
+        Number(age) < 300 &&
+        hash === expected &&
+        address === email,
+      rows
+        .map((row) =>
+          hash
+            ? row.replace(hash, hash === expected ? '<the expected hash>' : '<another hash>')
+            : row,
+        )
+        .join('\n'),
+    );
+
+    // The app's own lookup of the hash: the page shows the invite, and nothing for another token.
+    const page = await local(3300, `/login/join?token=${token}`);
+    const unknown = await local(3300, `/login/join?token=${randomBytes(32).toString('base64url')}`);
+    const form = 'aria-label="Choose your password"';
+    checks.expect(
+      `the join page answers ${page.status} for the link and shows the invite (${name}, Admin, ${shownEmail}, the password form); another token gets ${unknown.status} and "${INVITE_GONE}"`,
+      page.status === 200 &&
+        [name, 'Admin', email, form].every((text) => page.body.includes(text)) &&
+        !page.body.includes(INVITE_GONE) &&
+        unknown.status === 200 &&
+        unknown.body.includes(INVITE_GONE) &&
+        !unknown.body.includes(form),
+      `${page.status} ${unknown.status}`,
+    );
+
+    // Bootstrap only: an invite waiting is a team already.
+    const second = runTool(email.replace('@', '-again@'));
+    const [loginsNow, members] = dbSql(
+      'select count(*) from auth.users; select count(*) from public.platform_admins',
+    );
+    checks.expect(
+      `a second run is refused: exit ${second.status}, "${second.stderr.trim()}"; nothing made (${loginsNow} logins, ${members} team member)`,
+      second.status === 2 &&
+        /^first-admin: refused: /.test(second.stderr) &&
+        second.stdout === '' &&
+        second.leaked === 0 &&
+        loginsNow === String(Number(logins) + 1) &&
+        members === '1',
+      second.leaked ? `${second.leaked} secret values in its output` : second.stdout,
+    );
+
+    // The join as the page's form posts it without JavaScript: its hidden fields (the action and
+    // the invite's token) and the password twice, from the browser's address, as Next.js checks
+    // a server action's Origin against the Host.
+    const fields = hiddenFields(page.body, 'Choose your password');
+    const password = randomBytes(18).toString('base64url');
+    const filled = new FormData();
+    for (const [field, value] of fields) filled.append(field, value);
+    filled.set('password', password);
+    filled.set('confirm', password);
+    const encoded = new Response(filled);
+    const posted = await local(3300, `/login/join?token=${token}`, {
+      method: 'POST',
+      headers: {
+        Host: new URL(site).host,
+        Origin: site,
+        'Content-Type': encoded.headers.get('content-type') ?? '',
+      },
+      body: Buffer.from(await encoded.arrayBuffer()),
+    });
+    const cookies = [posted.headers['set-cookie'] ?? []].flat();
+    const [joined, spentRow] =
+      dbSql(
+        `select a.joined_at is not null, a.invite_token_hash is null and a.invite_expires_at is null from public.platform_admins a join auth.users u on u.id = a.user_id where u.email = '${email}'`,
+      )[0]?.split('\t') ?? [];
+    const signedIn = await local(8300, '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    let access = '';
+    try {
+      access = String((JSON.parse(signedIn.body) as { access_token?: string }).access_token ?? '');
+    } catch {
+      // Not a token: the status says why.
+    }
+    const spent = await local(3300, `/login/join?token=${token}`);
+    checks.expect(
+      `the join without a browser, as its form posts without JavaScript (${fields.length} hidden fields): ${posted.status} to ${posted.headers.location} with a session cookie; joined, the link spent (the page now says "${INVITE_GONE}"); the new password signs in through 127.0.0.1:8300 (${access ? jwtHeader(access).alg : signedIn.status})`,
+      posted.status === 303 &&
+        posted.headers.location === '/super/mfa' &&
+        cookies.some((cookie) => /^sb-[^=]+-auth-token(\.\d+)?=/.test(cookie)) &&
+        joined === 't' &&
+        spentRow === 't' &&
+        spent.body.includes(INVITE_GONE) &&
+        signedIn.status === 200 &&
+        access !== '' &&
+        jwtHeader(access).alg === 'ES256',
+      masked(
+        `post ${posted.status} ${posted.headers.location ?? ''}, the form's alert: ${/role="alert"[^>]*>([^<]*)</.exec(posted.body)?.[1] ?? 'none'}\nfields ${fields.map(([field]) => field).join(' ')}\nrow ${joined} ${spentRow}; sign-in ${signedIn.status} ${signedIn.body.slice(0, 200)}`,
+      ),
+    );
+  } finally {
+    // What the step made goes; the seed's team comes back as it was.
+    let removed: number[] = [];
+    try {
+      removed = firstAdminLoginsGone();
+    } finally {
+      teamBack();
+    }
+    const back = dbSql('select * from public.platform_admins order by user_id');
+    const left = one(`select count(*) from auth.users where ${FIRST_ADMIN_LOGINS}`);
+    checks.expect(
+      `cleaned up: the step's ${removed.length} login(s) removed through the Admin API (${removed.join(', ')}), with their rows and audit lines; the seed's ${seeded.length} team member(s) back as they were`,
+      removed.every((status) => status === 200) &&
+        left === '0' &&
+        back.join('\n') === seeded.join('\n') &&
+        !existsSync(TEAM_ASIDE),
+      `left ${left}; team now:\n${back.join('\n')}\nbefore:\n${seeded.join('\n')}`,
+    );
+  }
+}
+
+// --- WAL archiving and shipping (VPS-43): vps:rehearse steps 3 and 9, and vps:backup-test ---
 
 /** The line config/db/pg_hba.conf adds to the image's own host rules: the backup's pg_basebackup. */
 const REPLICATION_LINE = 'host replication supabase_admin samenet scram-sha-256';
@@ -2855,7 +3150,7 @@ function walArchiving(checks: Checks) {
   );
 }
 
-// Step 8: the backup service and the bucket's stand-in: db's WAL shipped, signed, from a quiet log.
+// Step 9: the backup service and the bucket's stand-in: db's WAL shipped, signed, from a quiet log.
 async function walShipping(checks: Checks, env: Record<string, string>) {
   const s3 = compose(['up', '-d', '--wait', '--wait-timeout', '60', 's3']);
   if (s3.status !== 0) fail(`s3 did not start:\n${tail(s3.stderr)}`);
@@ -3848,7 +4143,9 @@ async function rehearse(fresh: boolean, rebuild: boolean) {
   await seedAndStart(checks);
   console.log('7. The gateway');
   await gateway(checks, env);
-  console.log('8. The WAL shipper: the backup service, with the local S3 for its bucket');
+  console.log('8. The first platform admin, from the owner’s tool');
+  await firstAdmin(checks, env);
+  console.log('9. The WAL shipper: the backup service, with the local S3 for its bucket');
   await walShipping(checks, env);
   removeOldBuilds();
   console.log(
