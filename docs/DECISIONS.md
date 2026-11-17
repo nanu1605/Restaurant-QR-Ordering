@@ -8429,6 +8429,27 @@ how far back a rewind goes, what proves a backup is ours, and how often the serv
   could have begun keeps that night out, as for VPS-75's. Starting no night that no record names,
   its seal set aside and the recovery run again from an older named night, whose WAL reaches the
   same latest, would close it at the cost of a longer replay. Reasoned, not rehearsed.
+- Since VPS-106 a ping's window runs a day from its night's stamp, so a run by hand begun while that
+  day's nightly still ran, whose ping came after the run's stamp, has a window that holds the
+  nightly's ping and, where the next nightly finished sooner after 20:30 UTC than the run by hand
+  began, the next nightly's too: two `backup` pings naming different ids in one night's window,
+  neither a run by hand's. Read pair by pair, as VPS-106 reads the sign ("one of the two is a run by
+  hand's"), the stolen-token step 2 and disaster recovery's step 2 take that for a sign the `.env`
+  leaked, so the owner follows that section's step 5: the signing key is taken for stolen and every
+  value rotated, and on a new server the recovery becomes a logical one of a night from before the
+  trouble; sub-step 4 takes one of that window's nights for the thief's. Read as no sign wherever a
+  run by hand's ping or window is in it, nothing follows. It needs a run by hand started in the
+  minutes a nightly runs, and the next nightly quicker than that. Reading the sign only in a
+  nightly's window, from its 20:30 UTC stamp to a day after it, which never holds two nightlies'
+  pings, would close it. Reasoned, not rehearsed.
+- After a rebuild nothing step 2 counts names a run by hand that failed after its seal (its settings
+  archive stale, `base none`, a step of the month's copy or the removal) in a nightly's slot that a
+  ping from the old server's address names, as when that day's nightly pinged, or when later nights
+  name that nightly as the month's copy: it sent no ping and the monitor never alerted, and the slot
+  test does not except it (VPS-106), so a trigger within its 30 days in `daily/` takes its key for
+  stolen, with step 5's rotation of every value and no point-in-time recovery until the new key's
+  night. Such runs come after a rewind, at disaster recovery's step 9 and at the stolen-token
+  sub-step 3; only the owner's memory of the run tells. Reasoned, not rehearsed.
 - Not rehearsed as the RUNBOOK writes them: the WAL alert's way to a new spool (Docker's part
   checked on throwaway containers, and the harness's recoveries make the spool new the same way:
   VPS-53), the release a recovery deploys without a migrate reference, the one before a rewind's
@@ -9330,8 +9351,9 @@ message).
   address, inside its night (from its stamp to about 2 hours after; since VPS-102 to the next
   night's, and since VPS-106 to a day after it), or the old server's journal from then, unless root
   may have reached it, as root can write the journal; never a ping received since. Two `backup`
-  lines in one night's window, or an id no record from before names, are the thief's, and the night
-  before is taken. Disaster recovery's step 2 and 2.2 say so too, and Rotation's bullet for the
+  lines in one night's window (since VPS-102 naming different ids, but for a run by hand), or an id
+  no record from before names, are the thief's, and the night before is taken. Disaster recovery's
+  step 2 and 2.2 say so too, and Rotation's bullet for the
   bucket's token sends a leaked `.env` there. The text rule `theftRecords`: 7 problems on
   `3dbbab7`'s RUNBOOK. That the monitor shows each ping's time, source address and body is the
   provider's, not checked here (Left open (Stop C)). (the RUNBOOK in 96426d1, its rule in f3562c9)
@@ -10770,3 +10792,10 @@ while a new check refuses them, four of those `7d75679`'s. No rehearsal ran agai
 service or limit changed, so the fourth re-review's runs at `6effdd9` stand
 (`pnpm vps:rehearse --fresh` 40 checks, `pnpm vps:backup-test` 126 in 2,063 s, `pnpm vps:down` 3,
 each 0 failed), with the steady total 6,560 MiB and the largest set of one-offs 2,304 MiB.
+
+**The final check of round 10**, by one verifier who ran the skeptic's probes and its own on the
+final wording, found V1, V3, U1 and V2 closed and H1's window right for its cases, and nothing at
+the bar of a fix. Its three notes are a record only: two entries in Left open (Stop C), a run by
+hand's window of a day that can hold two nightlies' pings, and H1's other case, a run by hand that
+failed after its seal in a slot a ping names; and VPS-75's note on sub-step 4's two lines naming
+different ids. With them the review of Stop C is closed.
