@@ -53,8 +53,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * (the eighth re-review's T1, T2, H1 and H2), and every key of the list on the server since the
  * trouble kept apart with the stolen one, the list's first among them (T3), and disaster
  * recovery's night named only by a ping from the old server's own address inside its window, the
- * night a point-in-time recovery took checked before db starts (T4); the drill names each
- * of pitr.sh's refusals of
+ * night a point-in-time recovery took checked before db starts (T4), and after a rebuild a night
+ * that sent no ping tied to its nightly's slot, a run by hand's ping not counted (the ninth
+ * re-review's V1); the drill names each of pitr.sh's refusals of
  * a base whose timeline a rewind left (M1), the recovery quotes what pitr.sh tells a point a cut
  * stops short of (T1), the way past the nights a rewind left takes out each one's seal in turn (T2)
  * and promises no point on the stretch it abandoned (F2), whose drill or recovery ends done only
@@ -1193,6 +1194,13 @@ const copySteps = (runbook: string, backup: string) => {
  * read off the first line printed; the window runs to the next night's, the server's own address is
  * the old server's for its nights, and a ping names the month's copy its line names; only pings
  * naming different ids in a window are a sign; and the server's own pings count on the same server.
+ * But the day on which the monitor got no ping was never said, so after a rebuild a run by hand
+ * the morning after a failed night, whose ping fell in that night's window and on its day, took
+ * the night's key for stolen (Stop C's ninth re-review, finding V1), and the clause that makes the
+ * journal's lines the records on the same server was held by no rule (its theft design notes).
+ * Now such a night after a rebuild is one stamped from a nightly's 20:30 UTC to the next, where no
+ * ping from the old server's address names a night of that stamp, a run by hand's ping not
+ * counted, and the monitor's alert is not needed where a run by hand pinged first.
  */
 const oldCopies = (runbook: string) =>
   inPlaces(
@@ -1358,10 +1366,14 @@ const oldCopies = (runbook: string) =>
           : [
               'the stolen-token steps count on the same server the journal’s lines alone, so a night whose line journald dropped to its rate limit looks planted and its own ping a sign of a leak',
             ]),
-        ...(has(
+        ...((has(
           cleanup,
           "and not a night that sent no ping, killed or failed after its seal or its ping lost, as the monitor alerted that day: on the same server the journal's failure line names a failed one, and after a rebuild a night of the old server's on a day the monitor got no ping from its address is judged by its seal alone and is no sign of theft",
-        ) &&
+        ) ||
+          has(
+            cleanup,
+            "and not a night that sent no ping, killed or failed after its seal or its ping lost, as the monitor alerted that day unless a run by hand pinged first: on the same server the journal's failure line names a failed one, and after a rebuild a night of the old server's stamped from a nightly's 20:30 UTC to the next,",
+          )) &&
         !has(
           cleanup,
           'and not a night killed after its seal, which leaves no line at all: the monitor alerted on it',
@@ -1369,6 +1381,19 @@ const oldCopies = (runbook: string) =>
           ? []
           : [
               'the stolen-token steps take the key of a night that failed after its seal, or lost its ping, for stolen after a rebuild, where no record they count names it',
+            ]),
+        ...(has(
+          cleanup,
+          "as the monitor alerted that day unless a run by hand pinged first: on the same server the journal's failure line names a failed one, and after a rebuild a night of the old server's stamped from a nightly's 20:30 UTC to the next, where no ping from its address names a night of that stamp (a run by hand's ping names its own, stamped at another time, and does not count), is judged by its seal alone and is no sign of theft",
+        ) && !has(cleanup, 'on a day the monitor got no ping from its address')
+          ? []
+          : [
+              'the stolen-token steps take the key of a night that sent no ping for stolen after a rebuild once a run by hand pinged after it, as they tie that night to no nightly',
+            ]),
+        ...(has(cleanup, "On the same server those records are the journal's lines above")
+          ? []
+          : [
+              'the stolen-token steps leave the journal’s lines out of the records on the same server, so a night whose ping was lost looks planted',
             ]),
         ...(has(
           cleanup,
@@ -1630,6 +1655,14 @@ const ROUND_8_NIGHT_BEFORE = [
   "      write the journal; never a ping received since. Two `backup` lines in one night's window, or",
   "      an id that no record from before names, mean a night of the thief's: take the night before",
   '      it.',
+].join('\n');
+
+/** The stolen-token step 2's night that sent no ping, as the eighth re-review's fixes left it. */
+const ROUND_9_NO_PING = [
+  'and not a night that sent no ping, killed or failed after',
+  "   its seal or its ping lost, as the monitor alerted that day: on the same server the journal's",
+  "   failure line names a failed one, and after a rebuild a night of the old server's on a day the",
+  '   monitor got no ping from its address is judged by its seal alone and is no sign of theft',
 ].join('\n');
 
 /** What pitr.sh says of a base whose timeline the replay leaves before it began or ended. */
@@ -2384,7 +2417,7 @@ const REWRAPPED = [
   'which none can send without root, so a',
   "the server's own address being the old server's",
   'Such a ping names its own night and the',
-  "its seal or its ping lost, as the monitor alerted that day: on the same server the journal's",
+  'its seal or its ping lost, as the monitor alerted that day unless a run by hand pinged first: on',
   "journal's reach that the journal does not name, on a day journald dropped no lines (hostwatch's",
   'is itself a sign the `.env` leaked (step 5)',
   'never a Telegram message',
@@ -2417,6 +2450,11 @@ const REWRAPPED = [
   'the times it began and went live (UTC), the',
   'and that the one rolled back did not stay live',
   'never the **VPS release** runs alone',
+  // Read by the rules of the ninth re-review: after a rebuild, a night of a nightly's slot that no
+  // ping of that stamp names, a run by hand's not counted, and the records on the same server.
+  "old server's stamped from a nightly's 20:30 UTC to the next, where no ping from its address names",
+  "a night of that stamp (a run by hand's ping names its own, stamped at another time, and does not",
+  "same server those records are the journal's lines above",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -4379,7 +4417,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       [
         cut(
           RUNBOOK,
-          ", and after a rebuild a night of the old server's",
+          ', and after a rebuild a night of the',
           ' is judged by its seal alone and is no sign of theft)',
         ) + ' is judged by its seal alone and is no sign of theft',
         '',
@@ -4627,6 +4665,44 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ],
     ])
       refuses(releaseDeployed, swap(RUNBOOK, from, to), problem);
+  });
+
+  it('ties a rebuilt server’s night that sent no ping to its nightly, a run by hand’s ping not counted, and holds the journal’s lines as the records on the same server (Stop C’s ninth re-review, finding V1, theft design notes)', () => {
+    expect(oldCopies(RUNBOOK)).toEqual([]);
+    const slot =
+      'the stolen-token steps take the key of a night that sent no ping for stolen after a rebuild once a run by hand pinged after it';
+    const journal = 'the stolen-token steps leave the journal’s lines out of the records';
+    // As the eighth re-review's fixes left it: after a rebuild, a night of the old server's on a day
+    // the monitor got no ping from its address, which no day bounds.
+    refuses(
+      oldCopies,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, 'and not a night that sent no ping', '), that a'),
+        ROUND_9_NO_PING,
+      ),
+      slot,
+    );
+    // Each clause dropped or turned in turn.
+    for (const [from, to] of [
+      [cut(RUNBOOK, " (a run by hand's ping names its own,", ', is judged by its seal alone'), ''],
+      [
+        cut(RUNBOOK, 'where no ping from its address names', " (a run by hand's ping"),
+        'where no ping from its address names a night stamped 20:30 UTC',
+      ],
+      ["stamped from a nightly's 20:30 UTC to the next", 'on that day'],
+      [' unless a run by hand pinged first', ''],
+    ])
+      refuses(oldCopies, swap(RUNBOOK, from, to), slot);
+    refuses(
+      oldCopies,
+      swap(
+        RUNBOOK,
+        "those records are the journal's lines above",
+        "those records are the monitor's pings above",
+      ),
+      journal,
+    );
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {

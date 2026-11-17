@@ -1950,9 +1950,11 @@ restore lists nothing.
 
    A seal a list verifies that no record of the backup names means, where those records are whole
    and reach its stamp (no reach as root, and not a night that sent no ping, killed or failed after
-   its seal or its ping lost, as the monitor alerted that day: on the same server the journal's
-   failure line names a failed one, and after a rebuild a night of the old server's on a day the
-   monitor got no ping from its address is judged by its seal alone and is no sign of theft), that a
+   its seal or its ping lost, as the monitor alerted that day unless a run by hand pinged first: on
+   the same server the journal's failure line names a failed one, and after a rebuild a night of the
+   old server's stamped from a nightly's 20:30 UTC to the next, where no ping from its address names
+   a night of that stamp (a run by hand's ping names its own, stamped at another time, and does not
+   count), is judged by its seal alone and is no sign of theft), that a
    key of that list signed a night the backup never ran: take that key for stolen (step 5). On the
    same server those records are the journal's lines above, over its 180 days, or from the first
    line the command prints where it holds less (a full journal or a vacuum cuts it short:
