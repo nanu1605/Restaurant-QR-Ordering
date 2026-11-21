@@ -91,6 +91,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, parseEnv } from 'node:util';
 
+import { valuesFile } from '../deploy/vps/tools/first-admin-values.mjs';
 import {
   NIGHT_ID,
   recordText,
@@ -2724,7 +2725,8 @@ async function gateway(checks: Checks, env: Record<string, string>) {
 }
 
 // Step 8: the first platform admin, from the owner's tool (deploy/vps/tools/first-admin.mjs) run
-// in the web container as on the server, and its link followed to the end without a browser. A
+// in the web container as on the server, behind the values file of
+// deploy/vps/tools/first-admin-values.mjs, and its link followed to the end without a browser. A
 // new server's platform has no team, so the seed's members wait aside meanwhile.
 
 /** Where the seed's team waits during step 8, so a run cut short gives it back the next time. */
@@ -2801,24 +2803,15 @@ async function firstAdmin(checks: Checks, env: Record<string, string>) {
   // As the checks name it, the same on every run.
   const shownEmail = 'rehearsal-first-admin-…@local.test';
   const name = 'Rehearsal Owner';
-  // As the owner runs it: sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL=… -e
-  // FIRST_ADMIN_NAME=… web node --input-type=module - < ~/incoming/first-admin.mjs
+  // As the owner runs it, the server's path: the values file the maker exports, then the tool, on
+  // stdin, and no -e, so the values reach the tool only through the file's two lines:
+  // cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs |
+  //   sudo app-compose menumesh exec -T web node --input-type=module -
   const runTool = (address: string) => {
     const started = Date.now();
     const run = compose(
-      [
-        'exec',
-        '-T',
-        '-e',
-        `FIRST_ADMIN_EMAIL=${address}`,
-        '-e',
-        `FIRST_ADMIN_NAME=${name}`,
-        'web',
-        'node',
-        '--input-type=module',
-        '-',
-      ],
-      tool,
+      ['exec', '-T', 'web', 'node', '--input-type=module', '-'],
+      `${valuesFile(address, name)}${tool}`,
     );
     const output = `${run.stdout}${run.stderr}`;
     return {
@@ -2850,7 +2843,7 @@ async function firstAdmin(checks: Checks, env: Record<string, string>) {
     // The rehearsal's link is a throwaway, but it still stays out of what is printed.
     const masked = (text: string) => (token ? text.replaceAll(token, '…') : text);
     checks.expect(
-      `the first-admin tool as the owner runs it (exec -T -e FIRST_ADMIN_EMAIL -e FIRST_ADMIN_NAME web node --input-type=module - < first-admin.mjs), the seed's ${seeded.length} team member(s) set aside: exit ${first.status} in ${first.took} s; the link ${prefix}… once, with its expiry and the warning; none of the stack's ${secretValues.length} keys and passwords in its output`,
+      `the first-admin tool as the owner runs it (cat first-admin.values.mjs first-admin.mjs | exec -T web node --input-type=module -, the values file from first-admin-values.mjs, no -e), the seed's ${seeded.length} team member(s) set aside: exit ${first.status} in ${first.took} s; the link ${prefix}… once, with its expiry and the warning; none of the stack's ${secretValues.length} keys and passwords in its output`,
       first.status === 0 &&
         /^[A-Za-z0-9_-]{43}$/.test(token) &&
         first.stdout.split(token).length === 2 &&

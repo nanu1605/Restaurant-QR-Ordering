@@ -7,15 +7,22 @@
  * Settings → Team.
  *
  * The owner runs it by hand on the server after production's first deploy, from ~/incoming (it is
- * never installed under /srv/menumesh), in the web container, which holds the keys it needs.
- * docker exec's output goes to the owner's terminal only, never to the container's log:
+ * never installed under /srv/menumesh), in the web container, which holds the keys it needs, with
+ * the values file in front of it on stdin: the email and the name, made on the owner's own machine
+ * by first-admin-values.mjs (beside this file), so that neither is on a command line. docker exec's
+ * output goes to the owner's terminal only, never to the container's log:
  *
- *   sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' \
- *     -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+ *   cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs |
+ *     sudo app-compose menumesh exec -T web node --input-type=module -
+ *
+ * The values file's lines run before this file's, as one module, so this file has no shebang line
+ * (one is allowed only at the very start of a source) and nothing that reads the email or the name
+ * at import time: its one import, node:crypto, is evaluated before any line of the source runs,
+ * the values file's included, and the values are read in main() alone.
  *
  * Exits 0 with the link, 2 when it refused and made nothing, 1 when it failed (and says what is
  * left). Node 24's own fetch and crypto, nothing else. docs/RUNBOOK.md, "The first platform admin
- * (production)"; docs/DECISIONS.md VPS-111.
+ * (production)"; docs/DECISIONS.md VPS-111 and VPS-134.
  */
 import { createHmac, randomBytes } from 'node:crypto';
 
@@ -38,12 +45,19 @@ const oneLine = (text) =>
     .replace(/\p{Cc}/gu, ' ')
     .slice(0, 200);
 
-/** A value the owner passed, quoted, with its control characters written out as escapes. */
+/** Each UTF-16 unit of `text` as a \uXXXX escape. */
+const escaped = (text) =>
+  text
+    .split('')
+    .map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`)
+    .join('');
+
+/**
+ * A value the owner passed, quoted, with its control and format characters and its line and
+ * paragraph separators written out as escapes.
+ */
 const shown = (value) =>
-  JSON.stringify(String(value).slice(0, 200)).replace(
-    /\p{Cc}/gu,
-    (char) => `\\u${char.codePointAt(0).toString(16).padStart(4, '0')}`,
-  );
+  JSON.stringify(String(value).slice(0, 200)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, escaped);
 
 /** Why a request or a call failed. */
 const reason = (error) =>
@@ -63,22 +77,28 @@ const said = (answer) =>
 async function main() {
   const env = process.env;
 
-  // What the owner passed with -e.
+  // What the owner passed: the values file's lines set them before this file's own ran.
   if (env.FIRST_ADMIN_EMAIL === undefined) {
-    throw new Refused("no FIRST_ADMIN_EMAIL: pass it with -e FIRST_ADMIN_EMAIL='you@example.com'");
+    throw new Refused(
+      'no FIRST_ADMIN_EMAIL: put the values file, made with first-admin-values.mjs, before this file on stdin (docs/RUNBOOK.md, The first platform admin (production))',
+    );
   }
   const email = env.FIRST_ADMIN_EMAIL.trim().toLowerCase();
   if (!EMAIL.test(email)) {
     throw new Refused(`FIRST_ADMIN_EMAIL ${shown(env.FIRST_ADMIN_EMAIL)} is not an email address`);
   }
   if (env.FIRST_ADMIN_NAME === undefined) {
-    throw new Refused("no FIRST_ADMIN_NAME: pass it with -e FIRST_ADMIN_NAME='Your name'");
+    throw new Refused(
+      'no FIRST_ADMIN_NAME: put the values file, made with first-admin-values.mjs, before this file on stdin (docs/RUNBOOK.md, The first platform admin (production))',
+    );
   }
   const name = env.FIRST_ADMIN_NAME.trim();
-  // The Team page's 1 to 80; a control character can only be a paste gone wrong.
-  if (name.length < 1 || name.length > 80 || /\p{Cc}/u.test(name)) {
+  // The Team page's 1 to 80, and nothing a terminal acts on: the link's line prints the name, where
+  // a control character could rewrite the screen, a bidi control (a format character) reorder what
+  // the line shows, and a line or paragraph separator break it.
+  if (name.length < 1 || name.length > 80 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)) {
     throw new Refused(
-      `FIRST_ADMIN_NAME ${shown(env.FIRST_ADMIN_NAME)} must be 1 to 80 characters, without control characters`,
+      `FIRST_ADMIN_NAME ${shown(env.FIRST_ADMIN_NAME)} must be 1 to 80 characters, without control or format characters`,
     );
   }
 

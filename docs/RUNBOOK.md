@@ -2671,10 +2671,11 @@ Supabase stack is only ever read.
   `tests/unit/vps-secrets.test.ts`), what `pnpm vps:verify-night` takes and refuses
   (`tests/unit/vps-verify-night.test.ts`), what `pnpm vps:probe` checks and refuses, against a
   stand-in edge (`tests/unit/vps-probe.test.ts`), what the first-admin tool asks of a stand-in app
-  and gateway and prints (`tests/unit/vps-first-admin.test.ts`), and the steps of this runbook that
-  no script runs, such as the settings archive before each `backup.sh` by hand, the signing pair's
-  check, the release a recovery deploys, the steps after a theft of the signing key and the
-  cut-over's order (`tests/unit/vps-runbook.test.ts`).
+  and gateway and prints, and the values file its maker writes
+  (`tests/unit/vps-first-admin.test.ts`), and the steps of this runbook that no script runs, such
+  as the settings archive before each `backup.sh` by hand, the signing pair's check, the release a
+  recovery deploys, the steps after a theft of the signing key and the cut-over's order
+  (`tests/unit/vps-runbook.test.ts`).
 - `pnpm vps:check` (about 20 s, and 46 s more the first time, for its checker image) runs the
   server's own `app-apply` checks on `deploy/vps/` as root in a throwaway container, then the
   contract's rules, Caddy's and Envoy's validation and shellcheck. Run it after any change under
@@ -2686,11 +2687,12 @@ Supabase stack is only ever read.
   `menumesh-rehearsal`, with throwaway secrets in `.vps-rehearsal/` (gitignored):
   the app on `http://localhost:3300` and the gateway on `http://127.0.0.1:8300`. It needs 6 GiB
   available in Docker Desktop's VM. Its step 8 runs `deploy/vps/tools/first-admin.mjs` in `web` as
-  the owner runs it on the server (The first platform admin (production)), the seed's platform
-  admin set aside meanwhile, and follows the link through the join page to a sign-in with the new
-  password; then the seed's admin is back. A rerun keeps the stack, its secrets and an image nothing
-  changed for; `--fresh` starts over with new secrets and empty volumes; `--rebuild` builds every
-  image. A look inside:
+  the owner runs it on the server, behind the values file `first-admin-values.mjs` makes on its
+  stdin and with no `-e` (The first platform admin (production)), the seed's platform admin set
+  aside meanwhile, and follows the link through the join page to a sign-in with the new password;
+  then the seed's admin is back. A rerun keeps the stack, its secrets and an image nothing changed
+  for; `--fresh` starts over with new secrets and empty volumes; `--rebuild` builds every image. A
+  look inside:
 
   ```sh
   docker compose -p menumesh-rehearsal --project-directory .vps-rehearsal \
@@ -2787,17 +2789,35 @@ Supabase stack is only ever read.
 
 **On the shared server**, made in the days before the production night and opened during it (The
 shared server (VPS), The server rehearsal and the cut-over, part 4), with
-`deploy/vps/tools/first-admin.mjs` (docs/DECISIONS.md VPS-111):
+`deploy/vps/tools/first-admin.mjs` (docs/DECISIONS.md VPS-111 and VPS-134):
 
 1. The tool goes to the server's `~/incoming` like every file of the install, and is never
    installed under `/srv/menumesh`.
-2. After production's first deploy, the owner, through `ops`, runs it once inside the `web`
-   container, which gives it that container's own keys, with the owner's email and name (1 to 80
-   characters):
+2. After production's first deploy, the owner, on their own machine, makes the values file with
+   `deploy/vps/tools/first-admin-values.mjs` (Node 24, in Git Bash, PowerShell or any other
+   shell). It asks for the owner's email and name (1 to 80 characters), refuses what the tool would
+   refuse, and writes two lines of plain ASCII, which any shell's pipe passes unchanged, to `ssh`,
+   which takes them to `ops` through the tunnel, as First install's `scp` does:
 
    ```sh
-   sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+   node deploy/vps/tools/first-admin-values.mjs | ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'
    ```
+
+   The file is made only with this tool: a hand-written one brings back the quoting problems, as an
+   apostrophe or a backslash in a quoted value changes what the file says. If ssh asks for a
+   passphrase, answer it after the two values. When `first-admin-values.mjs` refuses a value it
+   writes nothing, and the empty file left on the server makes the tool refuse: run the command
+   again. Then, through `ops`, the owner runs the tool once inside the `web` container, which gives
+   it that container's own keys, with the values file before it on its stdin, and then removes the
+   values file, whether the tool succeeded or not:
+
+   ```sh
+   cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs | sudo app-compose menumesh exec -T web node --input-type=module -
+   shred -u ~/incoming/first-admin.values.mjs
+   ```
+
+   Neither the journal (sudo logs the command line, `app-compose` only `menumesh: exec`) nor any
+   shell history holds the email or the name.
 
    It makes the login, without a password of its own, and the invite as Settings → Team does (the
    Admin role, invited by nobody, valid 7 days), then prints the link once and exits 0, with the
@@ -2815,16 +2835,18 @@ shared server (VPS), The server rehearsal and the cut-over, part 4), with
    ```
 
    The address is the one production's build serves (the sitemap line of its own `robots.txt`), as
-   on the Team page. The link goes into the password manager and nowhere else: `docker exec`'s
-   output never reaches the container's log, and the server keeps only the token's hash. It
-   refuses with one line, `first-admin: refused: <why>`, exit 2, having made nothing: once the
-   platform has any team member, joined or not (everyone after comes from Settings → Team), for an
-   email that already has a login, and for an email or a name the Team page would refuse. A failure
-   is one line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is
-   removed again when the invite can't be added, or named with its user id when that fails too.
-   When the answer to making the login was lost (no answer, or the gateway's own 502, 503 or 504
-   instead of GoTrue's), the login may exist without its invite: it never says that nothing was
-   made then, but to remove that login if there is one (A new link, below).
+   on the Team page. The link goes into the password manager and nowhere else; then close that
+   terminal or clear its scrollback, since the link stays there until it is used, and only there:
+   `docker exec`'s output never reaches the container's log, and the server keeps only the token's
+   hash. It refuses with one line, `first-admin: refused: <why>`, exit 2, having made nothing: once
+   the platform has any team member, joined or not (everyone after comes from Settings → Team), for
+   an email that already has a login, for an email or a name the Team page would refuse, and for a
+   name with control or format characters, which the Team page doesn't check yet. A failure is one
+   line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is removed
+   again when the invite can't be added, or named with its user id when that fails too. When the
+   answer to making the login was lost (no answer, or the gateway's own 502, 503 or 504 instead of
+   GoTrue's), the login may exist without its invite: it never says that nothing was made then, but
+   to remove that login if there is one (A new link, below).
 
 3. Once production's records point at the server, open the link and choose the password, which
    signs in and goes on to enrol an authenticator app (`/super/mfa`).
@@ -2849,7 +2871,8 @@ sudo app-compose menumesh exec -T db psql -U supabase_admin -d postgres -c "dele
 ```
 
 It prints `DELETE 1` when the lost answer had made the login, and `DELETE 0` when it had not, or
-once anyone has joined.
+once anyone has joined. Unlike step 2's commands, its command line, with the email in it, stays in
+sudo's journal for up to 187 days, and it is needed only after a lost answer.
 
 **On hosted Supabase**, for Vercel's production until its parts retire (The shared server (VPS),
 The server rehearsal and the cut-over, part 6):

@@ -53,17 +53,18 @@ only.
 
 ## The owner's tools
 
-`tools/` holds files the owner runs by hand on the server, never installed: each is copied to
-`~/incoming` for its run, nothing under `/srv/menumesh` mounts or names it, and `app-apply` never
-sees it. They hold no secret; the values they need come from the container they run in.
+`tools/` holds files the owner runs by hand, never installed: `first-admin.mjs` on the server,
+copied to `~/incoming` for its run, and `first-admin-values.mjs` on the owner's own machine.
+Nothing under `/srv/menumesh` mounts or names them, and `app-apply` never sees them. They hold no
+secret; the keys the server's tool needs come from the container it runs in.
 
 - **`tools/first-admin.mjs`** makes production's first platform admin, once, after production's
   first deploy and before production's records move to the server (RUNBOOK, The first platform
   admin (production)). The owner runs it through `ops`, inside the `web` container, with that
-  container's own environment and the script on stdin:
+  container's own environment, the values file and then the script on stdin:
 
   ```sh
-  sudo app-compose menumesh exec -T -e FIRST_ADMIN_EMAIL='owner@example.com' -e FIRST_ADMIN_NAME='Owner name' web node --input-type=module - < ~/incoming/first-admin.mjs
+  cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs | sudo app-compose menumesh exec -T web node --input-type=module -
   ```
 
   It refuses once the platform has any team member, joined or not (later members come from
@@ -74,6 +75,12 @@ sees it. They hold no secret; the values they need come from the container they 
   link when one expires unused. `tests/unit/vps-first-admin.test.ts` runs it against a stand-in
   app and gateway, and `pnpm vps:rehearse` in the rehearsal's web container, its link followed to
   the end.
+
+- **`tools/first-admin-values.mjs`** makes that values file on the owner's machine with Node 24:
+  it asks for the email and the name, checks them as `first-admin.mjs` does, and writes two lines
+  of plain ASCII, which `ssh` takes to `~/incoming/first-admin.values.mjs`. So neither value is on
+  a command line on the server, where sudo's journal keeps one for up to 187 days, and the values
+  file is shredded after the run, whether it succeeded or not.
 
 ## What the backup image does
 

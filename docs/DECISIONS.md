@@ -11612,3 +11612,77 @@ entries below.
   (healthy in 3.6 s in front of the 25-minute backlog; the stalled file under `wal/` 53.4 s after
   the bucket came back); then `pnpm vps:down` 3 checks, 0 failed; and the unit tests 1,308 in 72
   files (`vps-kit` 119, one new).
+
+- **VPS-134 · The first platform admin's values on stdin (Q9, stdin through sudo):** the server
+  team found that sudo (1.9.15p5, `use_pty`, no input or output logging) hands a piped stdin through
+  whole and that `app-compose` logs only `menumesh: exec`, but that sudo's journal line keeps the
+  whole command line, and VPS-111's command carried the email and the name in it as `-e` values: up
+  to 187 days in the journal (`MaxRetentionSec=187day` in their `zz-retention.conf` at `66fe8b3`, a
+  line staying 180 to 187 days), which the server's admin reads, beside `ops`' shell history and,
+  while it ran, the `/proc/<pid>/cmdline` of sudo, `app-compose` and Docker's CLI. The owner chose
+  stdin (2026-11-21). On the owner's own machine, `deploy/vps/tools/first-admin-values.mjs` (Node
+  24, in any shell) asks for the email and the name on stderr, reads the answers from the terminal,
+  checks them with the tool's rules in the tool's words, and writes to stdout exactly two lines,
+  `process.env.FIRST_ADMIN_EMAIL = "…";` and `process.env.FIRST_ADMIN_NAME = "…";`, each value a
+  JSON string with every UTF-16 unit outside printable ASCII written as a `\uXXXX` escape. Plain
+  ASCII passes any shell's pipe unchanged: Windows PowerShell 5.1 re-encodes what it pipes from one
+  program to the next, and a run here, its `$OutputEncoding` UTF-8 (5.1's default is ASCII, which
+  makes `?` of anything else), put a byte order mark first and CRLF line ends on the escaped lines,
+  both harmless to the module, where it turned raw UTF-8's `Zoë` into `ZoÃ«`. The maker refuses a
+  terminal for its output; writes nothing when it refuses a value, so the file on the server is
+  empty and the tool refuses it; and reads its lines itself, split at `\n` alone, as Node's readline
+  also ends a line at U+2028 and U+2029, which cut a piped name short at one, as a run showed. It
+  ends with `process.exit()` once its lines are out, as an ordinary end closes stdin, and on a
+  Windows console libuv ends a read it left waiting by writing an Enter into the console's input,
+  which ssh, waiting for its passphrase in the same console, could take (libuv's way, not tried
+  here, with no console at hand). It exports `valuesFile()`, `checkEmail()` and `checkName()` and
+  asks only when run (`import.meta.main`), so the tests and `vps:rehearse` import it. The RUNBOOK's
+  step 2 now pipes it to
+  `ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'`, says
+  that the file is made only with this tool and that ssh's passphrase, if it asks, comes after the
+  two values, then runs
+  `cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs | sudo app-compose menumesh exec -T web node --input-type=module -`
+  and `shred -u ~/incoming/first-admin.values.mjs`, whether the tool succeeded or not, so that
+  neither the journal nor any shell history holds the values; and once the link is in the password
+  manager, that terminal is closed or its scrollback cleared. The kit README, the tool's header and
+  the rehearsal's comment and label follow; VPS-111 keeps its command as history. Module order: the
+  two run as one module, the values file's lines first. The tool's one import, `node:crypto`, is
+  evaluated before any line of the source runs and reads none of the owner's values; the tool reads
+  `process.env` only in `main()`, which its last statement calls, after every line before it, the
+  prepended ones included; and it has no shebang line, which is allowed only at the very start of a
+  source. Its header now says so without naming the variables before `main()`, and its two
+  refusals for a missing value point at the values file where they said `pass it with -e`. The old
+  `-e` command single-quoted each value for the shell, so the apostrophe of
+  `o'brien+menumesh@mail.example.in`, an address the tool and the Team page take, ended the quoted
+  word, and the line broke or ran something else. A hand-written values file has the same fault in
+  JavaScript (an apostrophe ends a `'…'` literal, a backslash changes the value), so the maker is
+  its only way; the review's U+2028 does not break a literal since ES2019, and the maker escapes it
+  anyway. The name check refused `\p{Cc}` alone, so a bidi override such as U+202E, a zero-width
+  space, U+2028 or U+2029 reached `display_name` and the link's line on the owner's terminal, where
+  a bidi control reorders what the line shows. The tool and the maker now refuse `\p{Cf}`, `\p{Zl}`
+  and `\p{Zp}` as well ("without control or format characters"), and quote a refused value with
+  those written as escapes, where control characters alone were. ZWJ and ZWNJ, which some Indic
+  spellings use, are format characters too: the first admin's name is the owner's, and Settings →
+  Team can change it later. The Team page's `inviteSchema` doesn't refuse them yet, so the parity
+  test skips such names and says why. The lost answer's removal keeps its command, `LOST_REMOVAL`
+  pinning it: its line, the email in it, stays in sudo's journal for up to 187 days, which the
+  RUNBOOK now says, and it is needed only after a lost answer, where a values file for psql was
+  more than so rare a step is worth. The rehearsal now proves the server's path: step 8's `runTool`
+  sends `valuesFile()`'s lines for its address and name, then the tool, on stdin, with no `-e`, so
+  the values reach the tool through those lines alone. `vps-first-admin` has 13 tests (8 before):
+  the tool behind the maker's file, no values in its environment, for values the old quoting broke,
+  and again as PowerShell 5.1 pipes it; `valuesFirst`, which refuses a shebang line, the variables
+  named before `main()` and a second import, and a shebang behind the values file ending the run in
+  a SyntaxError; each refusal of the tool's held to the maker's, word for word, with six new ones
+  (U+202E in an email; U+202E, U+200B, U+2028, U+2029 and NEL in a name); the maker's two
+  assignments in plain ASCII, run and read as JSON, giving back an apostrophe, a backslash, a double
+  quote, `Zoë` and `Nāme`, its email pattern and quoting the tool's to the character; its run (the
+  questions on stderr, the file alone on stdout, a U+2028 refused whole, input that ends early, a
+  terminal for stdout refused); its import, which asks nothing, and its end with stdin left open;
+  and `valuesPath`, which holds step 2 and the lost answer's sentence: 9 problems on `7cec66f`'s
+  RUNBOOK and none on the fix, five refusal cases, and no `-e FIRST_ADMIN_` left in the RUNBOOK,
+  the kit README, either tool or `scripts/vps-kit.mts`. `pnpm lint`, `pnpm typecheck` and
+  `pnpm format:check` clean; `pnpm vps:rehearse`, on the kept secrets and web image, 47 checks, 0
+  failed (by step 1, 6, 5, 8, 1, 4, 11, 6 and 5), its step 8 running the tool behind the values
+  file, exit 0 in 0.5 s, and the second run refused; then `pnpm vps:down` 3 checks, 0 failed; and
+  the unit tests 1,313 in 72 files (`vps-first-admin` 13, five new).
