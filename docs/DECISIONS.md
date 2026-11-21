@@ -12253,10 +12253,16 @@ pulls on and the RUNBOOK's text moved to their file (VPS-142). Still open:
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
   call.
 - The server team's origin-pulls round for `jainavinfotech.in`, which comes before our step 16: the
-  step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143).
-- The server team's fix for hostwatch's judged alerts, a separate PR still to come: since 2026-11-08
-  its 5-minute and daily runs send nothing to Telegram, as a function they call went missing, while
-  its heartbeat, `hostwatch alert`, the outbox and the daily digest still work. Until that fix is on
+  step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143). That round's
+  PR turns `tls_jainav`'s `client_auth` on, so their `snippets.caddy` changes again: the kit copies
+  their files again at its merge, from the commit and hashes they send (RUNBOOK, Copying the server
+  team's files again). The same PR documents the client certificate's common name and serial in
+  Caddy's access lines, which they keep on purpose: the serial shows which certificate Cloudflare
+  presents after a rotation.
+- The server team's fix for hostwatch's judged alerts, a separate PR still to come and not started:
+  it waits for the owner's go in their chat. Since 2026-11-08 its 5-minute and daily runs send
+  nothing to Telegram, as a function they call went missing, while its heartbeat,
+  `hostwatch alert`, the outbox and the daily digest still work. Until that fix is on
   the server, `backup` turning unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137,
   VPS-143) reach no one by Telegram, and `hostwatch check` shows them only to whoever runs it. A
   dead shipper still raises the alarm by MenuMesh's own means: while the shipper runs,
