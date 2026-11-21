@@ -105,7 +105,9 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * checked at step 15, Jainav's hosts refusing a client without a certificate before db, and the
  * leak test's copy of the installed site file, its alert, its checks and its clean-up in their
  * order. Since the last review round (VPS-145) they also pin step 11's CSR key, shredded only once
- * its certificate is in, and the digest pin's steps before edge.env.
+ * its certificate is in, and the digest pin's steps before edge.env; and since the server team's
+ * fix of hostwatch's alerts (VPS-146), the recreate night's wait for their kit on the server to
+ * hold it, by their word in their chat.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -3426,6 +3428,35 @@ const networksChecked = (runbook: string) =>
         ],
   );
 
+/** Their kit on the server, with their fix of hostwatch's alerts by commit and PR (VPS-146). */
+const HOSTWATCH_FIX =
+  "their kit is refreshed on the server with their fix of hostwatch's alerts in it, merged as `ccb9388` (nanu1605/jainav-infotech#87)";
+
+/**
+ * The recreate night waits for the server team's fix of hostwatch's alerts on the server (their
+ * PR #87; VPS-146). Since 2026-11-08 the alerts that hostwatch's 5-minute and daily runs raise
+ * reach no one on Telegram, and the staging night's leak test, which comes after that night, and
+ * backup turning unhealthy rely on them. The fix reaches the server with their kit's refresh, and
+ * their kit records no commit there: so step 11's (a) names the fix in that refresh, by its commit
+ * and PR, and the admin goes by the server team's word in their chat, as for step 16.
+ */
+const alertsFixed = (runbook: string) =>
+  inPlaces(runbook, ['edgeStep'], ({ edgeStep }) => {
+    const wait = part(flat(edgeStep), ' - (a) ', ' - (b) ') ?? '';
+    return [
+      ...(has(wait, HOSTWATCH_FIX)
+        ? []
+        : [
+            'First install, step 11, recreates Caddy before the server team’s kit on the server holds their fix of hostwatch’s alerts',
+          ]),
+      ...(has(wait, 'which the server team confirms in their chat')
+        ? []
+        : [
+            'First install, step 11, doesn’t wait for the server team’s word in their chat that their kit on the server holds the fix',
+          ]),
+    ];
+  });
+
 /** First install's step 8 at 21a13bf: origin pulls left to "the admin's certificate". */
 const OLD_ZONE_STEP = [
   '8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server',
@@ -3629,6 +3660,12 @@ const EXAMPLE_HEADER_AC976CE = [
   '# and recreates Caddy between 01:00 and 07:00 IST (sudo app-compose edge up -d), which reads',
   '# edge.env only when it is created. Values never in git: the password and its hash live in the',
   "# owner's password manager.",
+].join('\n');
+
+/** First install, step 11's (a) at 4fb9e7b: their kit refreshed, and the fix not named. */
+const NIGHT_WAIT_4FB9E7B = [
+  "    - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit",
+  '      is refreshed on the server;',
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -3974,6 +4011,10 @@ const REWRAPPED = [
   '&& shred -u ~/csr/origin-key.pem',
   'scp docker/edge/compose.yml',
   'app-apply edge compose ~/incoming/edge-compose.yml',
+  // Read by the rule of the server team's fix of hostwatch's alerts (VPS-146): a piece of each
+  // phrase that stands on one line.
+  "their fix of hostwatch's alerts in it, merged as",
+  'which the server team confirms in their chat',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7309,6 +7350,28 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
+  it('recreates Caddy only once the server team says their kit on the server holds their fix of hostwatch’s alerts (VPS-146)', () => {
+    expect(alertsFixed(RUNBOOK)).toEqual([]);
+    // 4fb9e7b's (a): their kit refreshed on the server, and no word of the fix.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, "    - (a) the server team's", '\n    - (b) '),
+      NIGHT_WAIT_4FB9E7B,
+    );
+    const unfixed =
+      'recreates Caddy before the server team’s kit on the server holds their fix of hostwatch’s alerts';
+    const unsaid = 'doesn’t wait for the server team’s word in their chat';
+    refuses(alertsFixed, old, unfixed);
+    refuses(alertsFixed, old, unsaid);
+    // The fix named at 66c8c61, which lacks it, and no word of theirs in the chat.
+    refuses(alertsFixed, swap(RUNBOOK, 'merged as `ccb9388`', 'merged as `66c8c61`'), unfixed);
+    refuses(
+      alertsFixed,
+      swap(RUNBOOK, ', which the server team confirms in their chat', ''),
+      unsaid,
+    );
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -7356,5 +7419,6 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(recreateChecked(rewrapped, APP_APPLY)).toEqual([]);
     expect(networksChecked(rewrapped)).toEqual([]);
     expect(leakChecks(rewrapped, SNIPPETS, SITE)).toEqual([]);
+    expect(alertsFixed(rewrapped)).toEqual([]);
   });
 });

@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-145 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-146 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -931,7 +931,11 @@ else, or `app-apply` refuses the compose file.
     server team's digest pin of Caddy, put in before `edge.env` (above), as their `edge.md` §5,
     step 7, says: one recreate for both. That night comes only after:
     - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit
-      is refreshed on the server;
+      is refreshed on the server with their fix of hostwatch's alerts in it, merged as `ccb9388`
+      (nanu1605/jainav-infotech#87), which the server team confirms in their chat, as for step 16
+      (their kit records no commit on the server): until then the alerts that hostwatch's 5-minute
+      and daily runs raise reach no one on Telegram, and the staging night's leak test and `backup`
+      turning unhealthy (Logs and alerts (VPS), WAL alerts) rely on them (VPS-146);
     - (b) `menumesh.in` is on Cloudflare (step 8), its Origin CA certificate made from a CSR
       generated on the server (above);
     - (c) the owner has the staging hash, `aop-ca.pem` and `aop-client.pem`, and the client pair is
