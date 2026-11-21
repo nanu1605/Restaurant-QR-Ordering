@@ -935,7 +935,9 @@ else, or `app-apply` refuses the compose file.
       (nanu1605/jainav-infotech#87), which the server team confirms in their chat, as for step 16
       (their kit records no commit on the server): until then the alerts that hostwatch's 5-minute
       and daily runs raise reach no one on Telegram, and the staging night's leak test and `backup`
-      turning unhealthy (Logs and alerts (VPS), WAL alerts) rely on them (VPS-146);
+      turning unhealthy (Logs and alerts (VPS), WAL alerts) rely on them. The refresh and their word
+      come before that night's `edge.env` lines: on an earlier night, or as that night's first step,
+      as the server team plans it for their re-apply night (VPS-146);
     - (b) `menumesh.in` is on Cloudflare (step 8), its Origin CA certificate made from a CSR
       generated on the server (above);
     - (c) the owner has the staging hash, `aop-ca.pem` and `aop-client.pem`, and the client pair is

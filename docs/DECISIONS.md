@@ -11783,7 +11783,8 @@ entries below.
   shared edge, comes on a night the owner picks and also takes the server team's digest pin of Caddy
   (VPS-130): one recreate for both. Step 11 lists what that night waits for: (a) both of the server
   team's PRs, their scripts and their onboarding, merged and their kit refreshed on the server, with,
-  since VPS-146, their fix of hostwatch's judged alerts in it; (b)
+  since VPS-146, their fix of hostwatch's judged alerts in it, before that night's `edge.env` lines,
+  on an earlier night or as its first step; (b)
   `menumesh.in` on Cloudflare, its Origin CA certificate made from a CSR generated on the server; (c)
   the owner's staging hash, `aop-ca.pem` and `aop-client.pem` made, and the client pair uploaded for
   `menumesh.in`; (d) steps 9 to 11 done up to the `edge.env` lines: the conf, the deploy user and its
@@ -12227,16 +12228,16 @@ entries below.
   secrets and web image, 47, 0 failed; `pnpm vps:backup-test` 131, 0 failed (VPS-144); then
   `pnpm vps:down` 3, 0 failed.
 
-- **VPS-146 · The recreate night waits for the server team's fix of hostwatch's judged alerts on the
-  server (their PR #87, merged as `ccb9388`):** the server team's message of 2026-11-22 says their
-  main is now `ccb9388`, the merge of nanu1605/jainav-infotech#87 at 00:52 IST that day (in full
-  `ccb93884b31521d0d41cab61ca811cf2c1e5e7b5`), the fix of hostwatch they said would follow:
-  `notify()` is back, so `judge` and `check_oom` call it again, and `tg_recover` probes `getChat`
-  only in a run with no failed send, so a bot that may not post keeps `tg-failed` set and the
-  heartbeat stops; a new `tests/host/hostwatch.sh`, with stubs of `curl` and `journalctl` in
-  `tests/host/hostwatch-stubs/`, runs in their CI's host-scripts job (93 checks); and the fix
-  reaches the server with their kit refresh on their re-apply night, with nothing needed from
-  MenuMesh. Checked here, read-only, in their repository: `git diff --stat` from
+- **VPS-146 · The recreate night's `edge.env` lines wait for the server team's fix of hostwatch's
+  judged alerts on the server (their PR #87, merged as `ccb9388`):** the server team's message of
+  2026-11-22 says their main is now `ccb9388`, the merge of nanu1605/jainav-infotech#87 at 00:52 IST
+  that day (in full `ccb93884b31521d0d41cab61ca811cf2c1e5e7b5`), the fix of hostwatch they said
+  would follow: `notify()` is back, so `judge` and `check_oom` call it again, and `tg_recover`
+  probes `getChat` only in a run with no failed send, so a bot that may not post keeps `tg-failed`
+  set and the heartbeat stops; a new `tests/host/hostwatch.sh`, with stubs of `curl` and
+  `journalctl` in `tests/host/hostwatch-stubs/`, runs in their CI's host-scripts job (93 checks);
+  and the fix reaches the server with their kit refresh on their re-apply night, with nothing needed
+  from MenuMesh. Checked here, read-only, in their repository: `git diff --stat` from
   `66c8c615dd1b849a94b8890b3ec9fe1c0896ad5f` to `ccb9388` lists seven files,
   `.github/workflows/ci.yml`, `docker/host/hostwatch` (14 lines), `docs/decisions.md`,
   `docs/runbooks/server.md`, `tests/host/hostwatch.sh` and the two stubs, so under `docker/` only
@@ -12263,18 +12264,59 @@ entries below.
   host script in `/usr/local/sbin` with `put`, which writes a file only when it differs, and records
   no commit; their `server.md` §7 brings a new kit as a copy of `docker/host`, `docker/edge` and the
   keys; and hostwatch's verbs, `run`, `check`, `daily` and `alert`, print no version. A sha256 of
-  the installed hostwatch would match `ccb9388`'s only until hostwatch changes again. VPS-136's list
-  follows. Steps 12 to 21 and the rehearsal still don't wait for that night, so until the refresh is
-  on the server the caveats of Left open (server review), below, hold: `backup` turning unhealthy
-  reaches no one by Telegram, and a dead shipper is told only by MenuMesh's own means, the shipper's
-  own alert while it runs and the WAL monitor's silence.
+  the installed hostwatch would match `ccb9388`'s only until hostwatch changes again, so the admin
+  compares none: the server team does, before they confirm, against the main they install (below).
+  VPS-136's list follows. Steps 12 to 21 and the rehearsal still don't wait for that night, so until
+  the refresh is on the server the caveats of Left open (server review), below, hold: `backup`
+  turning unhealthy reaches no one by Telegram, and a dead shipper is told only by MenuMesh's own
+  means, the shipper's own alert while it runs and the WAL monitor's silence.
+
+  The server team's reply of the same day agrees: they will say in their chat when the kit refresh
+  with `ccb9388` or a later main is on the server, after checking there that
+  `/usr/local/sbin/hostwatch` has sha256
+  `58b6472442443f8f85846d850f0aca2a352e710949a984f42fdf42ce8471dc1f`, or a later main's sum, which
+  they will then include, and that a 5-minute run after the refresh finished without
+  `notify: command not found`; the refresh is the first step of their re-apply night, between 01:00
+  and 07:00 IST, its date not picked yet, so it lands before the staging night; and their word is of
+  the same kind as the one for their origin-pulls round, which still gates step 16. Their re-apply
+  night may be the recreate night itself, and step 11's "That night comes only after:", read
+  strictly, would then have held that night back for its own first step. What MenuMesh needs is
+  narrower. The refresh and their word come before that night's `edge.env` lines, since from
+  `app-apply edge env` until the recreate, `app-apply` refuses `edge cert`, `config`, `ranges`,
+  `redact`, `reload` and every site file (`… recreate Caddy first (sudo app-compose edge up -d)`),
+  and a refresh in that gap could meet those refusals: `install.sh` runs no `app-apply` command
+  itself, but asks for `cf-ranges apply` when the kit's Cloudflare lists changed, and that goes
+  through `app-apply edge ranges`. Their kit must also be on the server before the staging night,
+  which comes after the recreate in any case. So (a) now takes the refresh and their word on an
+  earlier night, or as that night's first step, as the server team plans it for their re-apply
+  night, before its `edge.env` lines. (d), steps 9 to 11 up to those lines, doesn't wait for the
+  refresh: `edge redact` and `check_edge_env_applied` came into their `app-apply` with their
+  `ecfbf99`, and `edge cert`'s CA argument with their `81e3064`, both of 2026-11-08; and (a) and (d)
+  keep no order between them.
+
+  Checked here, read-only, in their `install.sh` at `ccb9388`, unchanged since `66c8c61`: a refresh
+  run first that night undoes nothing of (d) and clashes with none of it. It installs each conf of
+  the kit, `edge.conf` and `jainav.conf` (the kit has no `menumesh.conf`), with `put_once`, which
+  never overwrites, so `/etc/apps/menumesh.conf` stays and `/etc/apps/edge.conf` keeps the digest
+  pin's `CADDY_IMAGE`, the kit's copy, where it differs, only shown as a diff; it writes the
+  `Caddyfile` and `snippets.caddy` in `/srv/edge/config`, `edge.env` and `hostwatch.env` only where
+  they are absent, so the `snippets.caddy` that `app-apply edge config` installed stays; it makes
+  `/srv/edge`, `certs`, `config`, `config/sites` and `config/log-redact.d` with `install -d`, which
+  sets a directory's mode and owner and keeps what is in it, so the certificate with `aop-ca.pem`,
+  `aop-client.pem` and the redaction file stay; it never writes the edge's `compose.yml`; and it
+  rewrites `deploy-menumesh`'s key file only from the kit's own key files for that user, a kit with
+  none leaving it as it is. Its `app-apply` at `ccb9388` is the vendored one, so after the refresh
+  the night's `edge env` runs the code the kit's checks run.
 
   The new `alertsFixed` holds step 11's (a) to the fix in the refreshed kit, by its commit and PR,
-  and to the server team's word in their chat: 2 problems on `4fb9e7b`'s RUNBOOK, none on the fix,
-  with refusal cases built from `4fb9e7b`'s (a), the fix named at `66c8c61`, which lacks it, and the
-  chat's clause left out; `vps-runbook` has 64 tests (63 before), and the re-wrap test wraps 299
-  phrases where it wrapped 297. Left open (server review) now has the fix merged and waiting for the
-  refresh, and its opening names the two PRs it means. The range the RUNBOOK,
+  to the server team's word in their chat, and to the time of both, before that night's `edge.env`
+  lines, on an earlier night or as that night's first step: 4 problems on `4fb9e7b`'s RUNBOOK, 2 on
+  `776eb08`'s, none on the fix, with refusal cases built from `4fb9e7b`'s (a) and `776eb08`'s, the
+  fix named at `66c8c61`, which lacks it, the chat's clause left out, the refresh after the
+  `edge.env` lines, and an earlier night alone; `vps-runbook` has 64 tests (63 before), and the
+  re-wrap test wraps 301 phrases where it wrapped 297. Left open (server review) now has the fix
+  merged and waiting for the refresh, before the recreate night's `edge.env` lines, and its opening
+  names the two PRs it means; VPS-136's account of (a) takes the same time. The range the RUNBOOK,
   `deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s
   header cite is now VPS-31 to VPS-146. No script and no service changed, and of the kit's files
   only `compose.yml`'s header, a comment, so nothing was rehearsed again and `pnpm vps:check` did
@@ -12317,8 +12359,9 @@ Still open:
   Caddy's access lines, which they keep on purpose: the serial shows which certificate Cloudflare
   presents after a rotation.
 - The server team's fix for hostwatch's judged alerts, merged as `ccb9388`
-  (nanu1605/jainav-infotech#87): it reaches the server with the server team's kit refresh on their
-  re-apply night, which First install, step 11's (a) now waits for (VPS-146). Since 2026-11-08 its
+  (nanu1605/jainav-infotech#87): it reaches the server with the server team's kit refresh, the first
+  step of their re-apply night, which First install, step 11's (a) takes before the recreate night's
+  `edge.env` lines, on an earlier night or as its first step (VPS-146). Since 2026-11-08 its
   5-minute and daily runs send nothing to Telegram, as a function they call went missing, while its
   heartbeat, `hostwatch alert`, the outbox and the daily digest still work. Until that fix is on
   the server, `backup` turning unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137,

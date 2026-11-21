@@ -107,7 +107,8 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * order. Since the last review round (VPS-145) they also pin step 11's CSR key, shredded only once
  * its certificate is in, and the digest pin's steps before edge.env; and since the server team's
  * fix of hostwatch's alerts (VPS-146), the recreate night's wait for their kit on the server to
- * hold it, by their word in their chat.
+ * hold it, by their word in their chat, both before that night's edge.env lines, on an earlier
+ * night or as that night's first step.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -3431,6 +3432,10 @@ const networksChecked = (runbook: string) =>
 /** Their kit on the server, with their fix of hostwatch's alerts by commit and PR (VPS-146). */
 const HOSTWATCH_FIX =
   "their kit is refreshed on the server with their fix of hostwatch's alerts in it, merged as `ccb9388` (nanu1605/jainav-infotech#87)";
+/** The refresh and their word before the recreate night's edge.env lines (VPS-146). */
+const REFRESH_FIRST = "The refresh and their word come before that night's `edge.env` lines";
+/** On an earlier night, or first on that night, as the server team plans the refresh (VPS-146). */
+const REFRESH_NIGHT = "on an earlier night, or as that night's first step";
 
 /**
  * The recreate night waits for the server team's fix of hostwatch's alerts on the server (their
@@ -3438,7 +3443,11 @@ const HOSTWATCH_FIX =
  * reach no one on Telegram, and the staging night's leak test, which comes after that night, and
  * backup turning unhealthy rely on them. The fix reaches the server with their kit's refresh, and
  * their kit records no commit there: so step 11's (a) names the fix in that refresh, by its commit
- * and PR, and the admin goes by the server team's word in their chat, as for step 16.
+ * and PR, and the admin goes by the server team's word in their chat, as for step 16. The refresh
+ * is the first step of their re-apply night, which may be the recreate night itself, and from
+ * `app-apply edge env` until the recreate, app-apply refuses the edge's commands: so (a) takes the
+ * refresh and their word before that night's edge.env lines, on an earlier night or as that night's
+ * first step, and never holds the night back for them.
  */
 const alertsFixed = (runbook: string) =>
   inPlaces(runbook, ['edgeStep'], ({ edgeStep }) => {
@@ -3453,6 +3462,16 @@ const alertsFixed = (runbook: string) =>
         ? []
         : [
             'First install, step 11, doesn’t wait for the server team’s word in their chat that their kit on the server holds the fix',
+          ]),
+      ...(has(wait, REFRESH_FIRST)
+        ? []
+        : [
+            'First install, step 11, doesn’t put the server team’s refresh and their word before the recreate night’s edge.env lines',
+          ]),
+      ...(has(wait, REFRESH_NIGHT)
+        ? []
+        : [
+            'First install, step 11, holds the recreate night back for the server team’s refresh, which may be that night’s first step',
           ]),
     ];
   });
@@ -3666,6 +3685,16 @@ const EXAMPLE_HEADER_AC976CE = [
 const NIGHT_WAIT_4FB9E7B = [
   "    - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit",
   '      is refreshed on the server;',
+].join('\n');
+
+/** First install, step 11's (a) at 776eb08: the fix and their word, with no time of their own. */
+const NIGHT_WAIT_776EB08 = [
+  "    - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit",
+  "      is refreshed on the server with their fix of hostwatch's alerts in it, merged as `ccb9388`",
+  '      (nanu1605/jainav-infotech#87), which the server team confirms in their chat, as for step 16',
+  "      (their kit records no commit on the server): until then the alerts that hostwatch's 5-minute",
+  "      and daily runs raise reach no one on Telegram, and the staging night's leak test and `backup`",
+  '      turning unhealthy (Logs and alerts (VPS), WAL alerts) rely on them (VPS-146);',
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -4015,6 +4044,8 @@ const REWRAPPED = [
   // phrase that stands on one line.
   "their fix of hostwatch's alerts in it, merged as",
   'which the server team confirms in their chat',
+  "come before that night's `edge.env` lines",
+  REFRESH_NIGHT,
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7350,7 +7381,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('recreates Caddy only once the server team says their kit on the server holds their fix of hostwatch’s alerts (VPS-146)', () => {
+  it('recreates Caddy only once the server team says their kit on the server holds their fix of hostwatch’s alerts, which may be that night’s first step, before its edge.env lines (VPS-146)', () => {
     expect(alertsFixed(RUNBOOK)).toEqual([]);
     // 4fb9e7b's (a): their kit refreshed on the server, and no word of the fix.
     const old = swap(
@@ -7370,6 +7401,30 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, ', which the server team confirms in their chat', ''),
       unsaid,
     );
+    // 776eb08's (a): the fix and their word, with no time of their own, so that night waited for
+    // the refresh even as its first step.
+    const untimed = swap(
+      RUNBOOK,
+      cut(RUNBOOK, "    - (a) the server team's", '\n    - (b) '),
+      NIGHT_WAIT_776EB08,
+    );
+    const late =
+      'doesn’t put the server team’s refresh and their word before the recreate night’s edge.env lines';
+    const heldBack = 'holds the recreate night back for the server team’s refresh';
+    refuses(alertsFixed, untimed, late);
+    refuses(alertsFixed, untimed, heldBack);
+    // The refresh after the edge.env lines, where app-apply refuses the edge's commands until the
+    // recreate, and on an earlier night only.
+    refuses(
+      alertsFixed,
+      swap(
+        RUNBOOK,
+        "come before that night's `edge.env` lines",
+        "come after that night's `edge.env` lines",
+      ),
+      late,
+    );
+    refuses(alertsFixed, swap(RUNBOOK, ", or as that night's first step", ''), heldBack);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
