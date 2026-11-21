@@ -39,7 +39,7 @@ ENV RCLONE_CONFIG=/dev/null
 # it.
 RUN printf '30 20 * * * /usr/local/bin/backup.sh\n* * * * * gosu 100:101 /usr/local/bin/wal-ship.sh\n' >/etc/crontabs/root \
  && mkdir -p /usr/local/share/menumesh
-COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh pitr.sh wal-fetch.sh /usr/local/bin/
+COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh wal-health.sh pitr.sh wal-fetch.sh /usr/local/bin/
 COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/
 
 # Not the image's entrypoint, which would start Postgres: only crond, in the foreground, quiet.

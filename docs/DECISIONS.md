@@ -11536,3 +11536,79 @@ entries below.
   starts nothing: our restore test with the server team's (3,840), our `pitr-test` with their
   restore test (3,456), and our restore test with our `pitr-test` (3,456), which our RUNBOOK runs
   one after the other. The drills' days are in VPS-138.
+
+- **VPS-133 · `backup`'s healthcheck watches the WAL go up (Q7, disk, asks (a) and (b)):** it was
+  `pidof crond` alone, so a running `backup` whose shipper sent nothing stayed healthy while the
+  spool grew by about 0.94 GiB an hour (a 16 MiB file a minute, idle too, with `archive_timeout=60`:
+  VPS-43). Every volume, the journal and both apps' Postgres are on the server's one ext4 root
+  filesystem (193 G, 6% used on 2026-11-21), and hostwatch checks `df /` alone, 80% a warning and
+  90% critical: with df's Use% taken of used plus available, about 183 GiB beside ext4's 5% for
+  root, `/` reaches 80% after about 6 days and 90% after about 7, and `app-deploy` refuses both
+  apps' deploys once `/var/lib/docker` has under 5,242,880 KiB free (5 GiB, where the review said 5
+  GB) after about 7.4, before Postgres finds the disk full at about 7.7. The healthcheck is now
+  `wal-health.sh`, in the image beside the other scripts. It is unhealthy when crond is not running;
+  when the spool exists and db's postgres can't list it, as a check that can't see must not pass (a
+  spool of another owner, or gosu refused); and once WAL stops going up: a WAL file db's archiver
+  wrote has waited over 20 minutes at the top of the spool or of the outbox, `/wal-spool/.ship/out`,
+  nothing has gone up for 10 (the newer time of the shipper's `last-sent`, which each upload
+  rewrites, in `/wal-spool/.ship` or, while the spool takes no write, `/tmp/wal-ship`), and this
+  container has seen it so for 10 minutes more. Each state prints one line, which Docker keeps in
+  `Health.Log`, never in the container's log. The review's
+  `pidof crond && ! find /wal-spool -type f -mmin +30 | grep -q .` would never have fired: Docker
+  runs the check as the container's root, which holds no capability but SETUID and SETGID and so
+  reads only what it owns or everyone may read, and the spool is postgres's 0700 (`wal-spool.sh`):
+  `find` is refused, prints nothing, and the check passes, as a run in the image showed. Run as the
+  shipper, `-type f` descends into `.ship`, whose lock (only ever opened for appending), kept
+  identifier and `alert-sent` age for good: unhealthy for good half an hour after the first run, and
+  every deploy of `backup` rolled back. So the script reads as the crontab runs `wal-ship.sh`,
+  `gosu 100:101`, takes only names that begin with `[0-9A-F]`, at `-maxdepth 1` (never `.ship`,
+  basic_archive's `archtemp.*` or the outbox's `.tmp.*`), and times them with `stat` and arithmetic,
+  as `wal-ship.sh`'s `oldest()` does: BusyBox's `-mmin +20` holds only from 21 whole minutes, and
+  its `test -r` is true for root whatever the mode, so the listing is tested as the shipper too. The
+  10 minutes more are timed from a mark, `/tmp/wal-health.stuck`, root's, on the container's tmpfs,
+  which the first probe to see the stall makes and the first not to see it removes. A new container
+  has none, so its first probe passes whatever waits: `app-deploy`, which rolls a deploy back when
+  the new container is unhealthy or still starting after `HEALTH_TIMEOUT=120`, never rolls back a
+  fix deployed into a backlog, as it would with a check of the backlog alone, and a new container
+  that can't ship the backlog turns unhealthy about 12 minutes after its start, `app-deploy` long
+  done. A drain stays healthy. `start_period: 60s` and `start_interval: 2s` (ask (b) proposed 30 s)
+  bring the first probe 2 s after the start, not at the 60 s interval, where a failed one put the
+  second at 120 s, the edge of the gate; inside those 60 s a failed probe doesn't count and the next
+  comes 2 s later, and the first success ends them. `timeout: 10s` (it was 5) leaves room for `gosu`
+  and `find` over thousands of files on half a CPU beside a night. From the last upload, the
+  shipper's own alert comes after about 10 minutes; a file has waited over 20 minutes about 21
+  minutes in, the next probe makes the mark, failing probes begin 10 minutes after it, and the third
+  makes the container unhealthy about 33 minutes in; hostwatch's next 5-minute run reports it, by
+  about 38, days before `/` is at 80%. A stopped `backup` is never unhealthy, as hostwatch reads
+  only running containers, so `HEARTBEAT_WAL_URL`'s silence stays its only signal; db's archiver
+  failing, or `archive_mode` off, leaves the spool empty and the check healthy, which the shipper's
+  own alerts and that silence cover. The night can't hold the shipper back: `backup.sh` takes no
+  lock of the shipper's (whose `flock` is on `/wal-spool/.ship/lock`, which the night never opens)
+  and is a crontab line of its own, and BusyBox crond holds a line back only while that line's own
+  run goes on (the image's BusyBox 1.37, run here: a minute's job ran every minute beside a 150 s
+  one, which started again only once it had ended), so nothing allows for it. The schedulers'
+  healthchecks stay, as `app-deploy` never deploys them. A one-off of `backup`, such as a night by
+  hand, gets the same healthcheck and fails it without crond, unhealthy after about 3 minutes, as
+  with `pidof crond` before. In `vps:backup-test`, `walProof`'s outage now makes the spool's files
+  and `last-sent` 25 minutes old (it was 15) and starts the container into them in the first 40 s of
+  a minute, so its first probe comes before crond's first run: healthy within the gate, the probe's
+  line "first seen now". Then, with the rehearsal's bucket stopped, a WAL file waiting in the outbox
+  and `last-sent` made 26 minutes old as the shipper and the mark 11 as root, the script exits 1
+  with its line (and Docker's own next probe failed with the same line), and once the bucket is back
+  and the file has gone up, it exits 0 and the mark is gone. `vps:rehearse`'s step 6 holds `web`
+  alone to the gate and says `app-deploy` never swaps the scheduler, whose wait is a plain 180 s
+  now, and its step 9 times `backup` against the gate. `walShipImage` pins the image's `COPY` with
+  `wal-health.sh` and refuses the line without it, and the new `backupHealth` pins the healthcheck
+  exactly, refusing the old `pidof crond` test and a copy without `start_interval`. The RUNBOOK's
+  paragraph on a dead shipper gives the one filesystem, these numbers and the health, in place of a
+  sentence that named the server's disk and then `db`'s own and asked the server team's disk monitor
+  to watch the volumes, a check they declined (VPS-43's account stays as history); the restore
+  test's "Docker disk" is the server's disk; and Disaster recovery, step 4, says the deploy sees
+  `backup` healthy within seconds and the WAL alert comes only if the shipper's first run beats the
+  stop. `pnpm vps:check` 54 checks, 0 failed, its shellcheck over the kit's 15 scripts,
+  `wal-health.sh` among them; `pnpm vps:rehearse`, on the kept secrets and web image, 47 checks, 0
+  failed, the new one `backup`'s gate (healthy in 3.8 s; `web` in 4.1 s, the scheduler in 37.4 s);
+  `pnpm vps:backup-test` 129 checks, 0 failed, in about 34 minutes, the three new among them
+  (healthy in 3.6 s in front of the 25-minute backlog; the stalled file under `wal/` 53.4 s after
+  the bucket came back); then `pnpm vps:down` 3 checks, 0 failed; and the unit tests 1,308 in 72
+  files (`vps-kit` 119, one new).

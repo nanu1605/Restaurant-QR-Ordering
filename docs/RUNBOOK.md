@@ -1714,7 +1714,7 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   and ends with `restore test passed: the night of <id>, from <folder>/`. After the seal it prints
   `its seal is signed by the backup's key, and the <n> parts read match it (<bytes> bytes)`. It
   downloads the whole logical night (not the base) into the container's own files first, so the
-  server's Docker disk needs that plus 1 GiB free, or it is refused at once with the sizes
+  server's disk needs that plus 1 GiB free, or it is refused at once with the sizes
   (`the parts of <id> need N MiB in this container's files ... and M MiB are free`). Counts that
   moved during the night are listed; only a missing table, an empty one or missing Storage files
   fail it. `app-compose` first checks that the server has the memory. It names the night it takes
@@ -1989,8 +1989,9 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      sudo app-compose menumesh stop backup
      ```
 
-     One WAL alert comes while the deploy waits about a minute for `backup` to turn healthy, and
-     wants nothing:
+     The deploy sees `backup` healthy within seconds, its healthcheck's first probe coming 2 s
+     after the start. If the shipper's first run, at the next full minute, comes before the stop,
+     it sends one WAL alert, which wants nothing:
      `[menumesh] WAL is not reaching the bucket (cluster (unknown)): the WAL spool, /wal-spool, is not db's postgres's to write: db makes it so as it starts`.
      Left running, `backup` would send it every hour and fail a night at 20:30 UTC at
      `the list of databases`. The spool the deploy made stays empty, and `db`'s wrapper makes it
@@ -2646,12 +2647,19 @@ sudo journalctl CONTAINER_NAME=edge-caddy-1 --since -1h -o cat | grep menumesh.i
 
   `HEARTBEAT_WAL_URL` silent for 15 minutes means the shipper isn't running (`backup` down or its
   crond stuck: `ps`, then `up -d backup`) when nothing else says so, or that one of the alerts
-  above holds, such as `db`'s archiver failing on a full disk, whose alert comes first.
+  above holds, such as `db`'s archiver failing on a full disk, whose alert comes first. For a
+  stopped `backup` that silence is the only signal: hostwatch reads only running containers.
   **A dead shipper fills the spool by about 0.94 GiB an hour**, a whole 16 MiB file for each minute
-  that wrote anything (every minute here), until the server's disk and then `db`'s own disk fills:
-  bring `backup` back at once (it drains oldest first), and ask the server team's disk monitor to
-  watch the Docker volumes. One line, `[menumesh] WAL shipping resumed (cluster <id>)`, says it is
-  healthy again.
+  that wrote anything (every minute here). The spool is on the server's one root filesystem
+  (193 G), with every volume, the journal and both apps' Postgres. From the 6% used on 2026-11-21,
+  hostwatch warns at 80% of `/` after about 6 days and is critical at 90% after about 7,
+  `app-deploy` refuses both apps' deploys once under 5 GiB is free, after about 7.4, and then the
+  disk is full for everyone. A running `backup` whose shipper sends nothing turns unhealthy long
+  before: its healthcheck (`wal-health.sh`) fails once a WAL file has waited over 20 minutes,
+  nothing has gone up for 10 and the container has seen it so for 10 more, about 33 minutes after
+  the last upload (the WAL alert comes after about 10), and hostwatch reports it within its next
+  5-minute run. Bring `backup` back at once (it drains oldest first). One line,
+  `[menumesh] WAL shipping resumed (cluster <id>)`, says it is healthy again.
 
 ### Checking the kit here
 

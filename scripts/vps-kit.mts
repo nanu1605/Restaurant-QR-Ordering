@@ -1753,6 +1753,22 @@ async function waitHealthy(service: string, limit: number, since: number): Promi
   }
 }
 
+/**
+ * How long app-deploy waits for a new container to turn healthy before it goes back to the old
+ * one, in seconds: HEALTH_TIMEOUT in the conf. It swaps only web, web-staging and backup.
+ */
+const deployGate = () =>
+  Number(/^HEALTH_TIMEOUT=(\d+)$/m.exec(read('test', 'menumesh.conf'))?.[1] ?? 300);
+
+/** A container's last health probes, oldest first (Docker keeps five): each one's exit and line. */
+function healthLog(id: string): { exit: number; line: string }[] {
+  const run = docker(['inspect', '--format', '{{json .State.Health}}', id]);
+  const health = JSON.parse(run.stdout.trim() || 'null') as {
+    Log?: { ExitCode: number; Output: string }[];
+  } | null;
+  return (health?.Log ?? []).map((probe) => ({ exit: probe.ExitCode, line: probe.Output.trim() }));
+}
+
 /** Runs `docker <first> | docker <second> > file` without a shell; both exit statuses. */
 function pipeline(first: string[], second: string[], file: string) {
   return new Promise<{ first: number; second: number; stderr: string }>((resolve, reject) => {
@@ -2438,7 +2454,7 @@ async function seedAndStart(checks: Checks) {
   checks.ok(
     `${seeded ? 'the local seed is in from an earlier run' : `${seeds.join(' and ')} loaded by hand as postgres`} (the rehearsal's own: never in the migrate image): ${users} users, ${restaurants} restaurant, ${dishes} dishes`,
   );
-  const gate = Number(/^HEALTH_TIMEOUT=(\d+)$/m.exec(read('test', 'menumesh.conf'))?.[1] ?? 300);
+  const gate = deployGate();
   const running = () =>
     ['web', 'scheduler'].map((service) => containerOf(service) ?? '-').join(' ');
   const before = running();
@@ -2447,11 +2463,11 @@ async function seedAndStart(checks: Checks) {
   if (run.status !== 0) fail(`web and scheduler did not start:\n${tail(run.stderr)}`);
   const [web, scheduler] = await Promise.all([
     waitHealthy('web', gate + 60, started),
-    waitHealthy('scheduler', gate + 60, started),
+    waitHealthy('scheduler', 180, started),
   ]);
   checks.expect(
-    `web healthy in ${web} s and scheduler in ${scheduler} s${before === running() ? ' (both were up)' : ''}: within app-deploy's ${gate} s gate`,
-    web <= gate && scheduler <= gate,
+    `web healthy in ${web} s and scheduler in ${scheduler} s${before === running() ? ' (both were up)' : ''}: web within app-deploy's ${gate} s gate (it swaps web, web-staging and backup, never the scheduler)`,
+    web <= gate,
   );
   const published = (service: string, port: string) =>
     lines(docker(['port', containerOf(service) ?? '', port]).stdout).join(' ');
@@ -3206,6 +3222,13 @@ async function walShipping(checks: Checks, env: Record<string, string>) {
   const backup = compose(['up', '-d', 'backup']);
   if (backup.status !== 0) fail(`backup did not start:\n${tail(backup.stderr)}`);
   const fresh = running() !== before;
+  // app-deploy swaps backup too, and waits for it as for web.
+  const gate = deployGate();
+  const healthy = await waitHealthy('backup', gate + 60, started);
+  checks.expect(
+    `backup healthy in ${healthy} s${fresh ? '' : ' (it was up)'}: within app-deploy's ${gate} s gate (wal-health.sh: "${healthLog(containerOf('backup') ?? '').at(-1)?.line ?? ''}")`,
+    healthy <= gate,
+  );
   const cluster = clusterId();
   const walfile = writeWal();
   const shipped = await walShipped(cluster, [walfile], 200);
@@ -4062,9 +4085,13 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
 /**
  * vps:backup-test's WAL: written, switched and shipped by the running service, every name signed
  * and every object the segment it names; then the service stopped and started again: the spool
- * grows while it is down, its files are made to look 15 minutes old, as after such an outage, and
- * once the service runs again, with its alert and heartbeat sent into the sinkhole, its first run
- * alerts and ships them, the next says it resumed and pings the heartbeat.
+ * grows while it is down, its files and the shipper's last-sent are made to look 25 minutes old,
+ * as after such an outage, and the new container still turns healthy within app-deploy's gate, its
+ * first probe finding no mark (VPS-133); once it runs, with its alert and heartbeat sent into the
+ * sinkhole, its first run alerts and ships them, the next says it resumed and pings the heartbeat.
+ * Then the bucket stopped: a WAL file waits in the outbox, made 26 minutes old with last-sent, and
+ * with the healthcheck's mark 11 minutes old the service's wal-health.sh fails; once the bucket is
+ * back and the file has gone up, it passes and its mark is gone.
  */
 async function walProof(checks: Checks, env: Record<string, string>) {
   // The service on the image just built, as app-deploy would bring it.
@@ -4093,9 +4120,9 @@ async function walProof(checks: Checks, env: Record<string, string>) {
     others.join('\n'),
   );
 
-  // The outage: the service stopped, WAL written, the spool's files made 15 minutes old, and the
-  // shipper's record as after such an outage, its last heartbeat and any alert (an earlier run's)
-  // long gone.
+  // The outage: the service stopped, WAL written, the spool's files and the shipper's last-sent
+  // made 25 minutes old, and its record as after such an outage, its last heartbeat and any alert
+  // (an earlier run's) long gone.
   compose(['stop', 'backup']);
   const walfile = writeWal();
   let spooled = walWaiting().spool;
@@ -4103,13 +4130,18 @@ async function walProof(checks: Checks, env: Record<string, string>) {
     await sleep(1000);
     spooled = walWaiting().spool;
   }
-  const ago = Math.floor(Date.parse(daemonNow()) / 1000) - 15 * 60;
+  const ago = Math.floor(Date.parse(daemonNow()) / 1000) - 25 * 60;
   const aged = asShipper(
-    `cd /wal-spool && touch -d @${ago} ${spooled.join(' ')} && rm -f .ship/beat .ship/alert-sent .ship/alerting`,
+    `cd /wal-spool && touch -d @${ago} ${spooled.join(' ')} .ship/last-sent && rm -f .ship/beat .ship/alert-sent .ship/alerting`,
   );
   if (!spooled.includes(walfile) || aged.status !== 0) {
     fail(`The spool did not grow with the service stopped: ${spooled.join(' ')} ${aged.stderr}`);
   }
+  // Started again as app-deploy starts a fix into that backlog, and timed as it waits: in the
+  // first 40 s of a minute, so that the first probe, 2 s after the start, comes before crond's
+  // first run of the shipper.
+  while (new Date(daemonNow()).getUTCSeconds() > 40) await sleep(1000);
+  const gate = deployGate();
   const started = Date.now();
   const sunk = docker(composeArgs(['up', '-d', 'backup']), undefined, {
     TELEGRAM_BOT_TOKEN: 'rehearsal',
@@ -4118,6 +4150,17 @@ async function walProof(checks: Checks, env: Record<string, string>) {
   });
   if (sunk.status !== 0) fail(`backup did not start again:\n${tail(sunk.stderr)}`);
   const id = containerOf('backup') ?? fail('backup has no container');
+  const healthy = await waitHealthy('backup', gate + 60, started);
+  const probes = healthLog(id);
+  const probe = probes.at(-1)?.line ?? '';
+  checks.expect(
+    `started again into that backlog, the new container is healthy in ${healthy} s, within app-deploy's ${gate} s gate: its first probe found no mark ("${probe}")`,
+    healthy <= gate &&
+      /^wal-health: the oldest WAL file has waited 2[5-9] minutes and none went up in the last 10: first seen now,/.test(
+        probe,
+      ),
+    probes.map((entry) => `exit ${entry.exit}: ${entry.line}`).join('\n'),
+  );
   let log: string[] = [];
   while (seconds(started) < 200) {
     log = lines(logsOf(id));
@@ -4140,7 +4183,7 @@ async function walProof(checks: Checks, env: Record<string, string>) {
   checks.expect(
     `with the service stopped the spool grew (${spooled.join(', ')}); started again ${seconds(started)} s ago with Telegram and HEARTBEAT_WAL_URL in the sinkhole, it alerted once ("${log.find((line) => line.includes('not reaching')) ?? ''}"), shipped them (${walfile} ${there ? 'in the bucket' : 'not in the bucket'}, ${drained.spool.length + drained.outbox.length} waiting), said it resumed, then pinged the heartbeat: ${kinds.join(', ')}`,
     kinds.join(' ') === 'alert telegram resumed telegram heartbeat' &&
-      /waited 1[5-9] minutes/.test(log[0] ?? '') &&
+      /waited 2[5-9] minutes/.test(log[0] ?? '') &&
       there &&
       spooled.every(
         (name) => !drained.spool.includes(name) && !drained.outbox.includes(`${name}.zst.age`),
@@ -4152,7 +4195,71 @@ async function walProof(checks: Checks, env: Record<string, string>) {
     `    · the backup service's memory after these runs: at most ${memory?.peak ?? '?'} MiB of its ${value('backup', 'mem_limit')} (docker stats: ${memory?.stats ?? '?'} MiB)`,
   );
   // Back to its own settings, which send nothing.
-  compose(['up', '-d', 'backup']);
+  const own = compose(['up', '-d', 'backup']);
+  if (own.status !== 0) fail(`backup did not start on its own settings:\n${tail(own.stderr)}`);
+
+  // The bucket stopped: a WAL file reaches the outbox and stays. Made 26 minutes old, with
+  // last-sent, both as the shipper, and the healthcheck's mark (root's, on the container's tmpfs)
+  // 11 minutes old, as after that long a stall, wal-health.sh fails as Docker runs it.
+  const backup = containerOf('backup') ?? fail('backup has no container');
+  const halted = compose(['stop', 's3']);
+  if (halted.status !== 0) fail(`s3 did not stop:\n${tail(halted.stderr)}`);
+  const held = writeWal();
+  let outbox = walWaiting().outbox;
+  for (let tries = 0; tries < 40 && !outbox.includes(`${held}.zst.age`); tries++) {
+    await sleep(3000);
+    outbox = walWaiting().outbox;
+  }
+  if (!outbox.includes(`${held}.zst.age`)) {
+    fail(`${held} did not reach the outbox with the bucket stopped: ${outbox.join(' ')}`);
+  }
+  const now = Math.floor(Date.parse(daemonNow()) / 1000);
+  const stale = docker([
+    'exec',
+    '--user',
+    '100:101',
+    backup,
+    'touch',
+    '-d',
+    `@${now - 26 * 60}`,
+    `/wal-spool/.ship/out/${held}.zst.age`,
+    '/wal-spool/.ship/last-sent',
+  ]);
+  const marked = docker([
+    'exec',
+    backup,
+    'touch',
+    '-d',
+    `@${now - 11 * 60}`,
+    '/tmp/wal-health.stuck',
+  ]);
+  if (stale.status !== 0 || marked.status !== 0) {
+    fail(`Aging the outbox, last-sent or the mark failed: ${stale.stderr}${marked.stderr}`);
+  }
+  const failing = docker(['exec', backup, '/usr/local/bin/wal-health.sh']);
+  checks.expect(
+    `the bucket stopped, ${held} waits in the outbox; made 26 minutes old with last-sent, and the healthcheck's mark 11, wal-health.sh exits ${failing.status}: "${failing.stdout.trim()}"`,
+    failing.status === 1 &&
+      /^wal-health: the oldest WAL file has waited 2[6-9] minutes and none went up in the last 10, for 1[1-9] minutes now: WAL is not reaching the bucket/.test(
+        failing.stdout,
+      ),
+    `${failing.stdout}${failing.stderr}`,
+  );
+
+  // The bucket back: the file goes up, and the check passes and drops its mark.
+  const resumed = compose(['up', '-d', '--wait', '--wait-timeout', '60', 's3']);
+  if (resumed.status !== 0) fail(`s3 did not start again:\n${tail(resumed.stderr)}`);
+  const sent = await walShipped(cluster, [held], 200);
+  for (let tries = 0; tries < 20 && walWaiting().outbox.includes(`${held}.zst.age`); tries++) {
+    await sleep(1000);
+  }
+  const passing = docker(['exec', backup, '/usr/local/bin/wal-health.sh']);
+  const mark = docker(['exec', backup, 'test', '-e', '/tmp/wal-health.stuck']);
+  checks.expect(
+    `the bucket started again, ${held} is under wal/${cluster}/ within ${sent.took} s; then wal-health.sh exits ${passing.status}: "${passing.stdout.trim()}", its mark ${mark.status === 0 ? 'still there' : 'gone'}`,
+    sent.found.every((name) => name !== undefined) && passing.status === 0 && mark.status === 1,
+    `${passing.stdout}${passing.stderr}`,
+  );
 }
 
 async function rehearse(fresh: boolean, rebuild: boolean) {

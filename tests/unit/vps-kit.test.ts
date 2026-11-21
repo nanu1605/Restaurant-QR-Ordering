@@ -415,6 +415,30 @@ const backupTmp = (text: string) => {
 };
 
 /**
+ * The backup service's healthcheck is wal-health.sh (VPS-133): unhealthy when crond is gone or
+ * once WAL stops going up, never at a new container's first probe, which comes 2 s after its
+ * start, so app-deploy, which waits 120 s for the new container, sees it healthy within seconds,
+ * whatever waits in the spool; then every minute.
+ */
+const BACKUP_HEALTHCHECK = [
+  '    healthcheck:',
+  "      test: ['CMD', '/usr/local/bin/wal-health.sh']",
+  '      interval: 60s',
+  '      timeout: 10s',
+  '      retries: 3',
+  '      start_period: 60s',
+  '      start_interval: 2s',
+].join('\n');
+const backupHealth = (text: string) => {
+  const found = (key(services(text).get('backup') ?? [], 'healthcheck') ?? []).join('\n');
+  return found === BACKUP_HEALTHCHECK
+    ? []
+    : [
+        `the backup service’s healthcheck is not wal-health.sh every minute from a first probe at 2 s:\n${found || '(none)'}`,
+      ];
+};
+
+/**
  * The backup's signing key goes to the backup service alone; the restores get its public key,
  * which they check every night and WAL file against, and the shipper its heartbeat (VPS-43).
  */
@@ -923,6 +947,27 @@ describe('deploy/vps/compose.yml', () => {
       backupTmp,
       swapIn(compose, 'backup', "'/tmp:size=16m,mode=1777'", "'/tmp:size=256m,mode=1777'"),
       'at most 64m',
+    );
+  });
+
+  it('checks the backup service with wal-health.sh, from a first probe 2 s after its start', () => {
+    expect(backupHealth(compose)).toEqual([]);
+    // As before the server team's review: crond alone, which says nothing of the WAL.
+    refuses(
+      backupHealth,
+      swapIn(
+        compose,
+        'backup',
+        "      test: ['CMD', '/usr/local/bin/wal-health.sh']",
+        "      test: ['CMD', 'pidof', 'crond']",
+      ),
+      'is not wal-health.sh every minute',
+    );
+    // And without start_interval: the first probe a minute after the start.
+    refuses(
+      backupHealth,
+      swapIn(compose, 'backup', '      start_interval: 2s\n', ''),
+      'from a first probe at 2 s',
     );
   });
 
@@ -2992,7 +3037,8 @@ const signingShapes = (backup: string, walShip: string) => {
 /**
  * The image runs wal-ship.sh every minute as db's postgres (uid 100, gid 101), who owns the spool,
  * through gosu, which drops root's two capabilities with it; openssl signs; the signing helpers
- * are a file the scripts source, not a command (VPS-43).
+ * are a file the scripts source, not a command (VPS-43); wal-health.sh, the service's healthcheck,
+ * is a command of the image (VPS-133).
  */
 const walShipImage = (dockerfile: string) => [
   ...(dockerfile.includes(
@@ -3004,10 +3050,10 @@ const walShipImage = (dockerfile: string) => [
     ? []
     : ['the image has no openssl']),
   ...(dockerfile.includes(
-    'COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh pitr.sh wal-fetch.sh /usr/local/bin/',
+    'COPY --chmod=755 backup.sh restore.sh notify.sh wal-ship.sh wal-health.sh pitr.sh wal-fetch.sh /usr/local/bin/',
   )
     ? []
-    : ['wal-ship.sh, pitr.sh or wal-fetch.sh is not a command of the image']),
+    : ['wal-ship.sh, wal-health.sh, pitr.sh or wal-fetch.sh is not a command of the image']),
   ...(dockerfile.includes('COPY --chmod=644 counts.sql seal.sh /usr/local/share/menumesh/')
     ? []
     : ['seal.sh is not where the scripts source it']),
@@ -3592,6 +3638,12 @@ describe('the migrate and backup images', () => {
         'counts.sql /usr/local/share/menumesh/',
       ),
       'seal.sh is not where',
+    );
+    // As before the server team's review: the healthcheck's script not in the image.
+    refuses(
+      walShipImage,
+      swap(backupImage, ' wal-ship.sh wal-health.sh pitr.sh', ' wal-ship.sh pitr.sh'),
+      'wal-health.sh, pitr.sh or wal-fetch.sh is not a command of the image',
     );
   });
 
