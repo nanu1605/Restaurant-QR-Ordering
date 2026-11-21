@@ -11780,17 +11780,19 @@ entries below.
   `aop-ca.pem`, the snippet's `edge config`, the redaction file (in since step 9), `edge env`, then
   the recreate, the last two on one night with nothing of the edge between them. That recreate,
   `sudo app-compose edge up -d` between 01:00 and 07:00 IST, as it drops every connection on the
-  shared edge, comes on a night the owner picks and also takes the server team's digest pin of Caddy
-  (VPS-130): one recreate for both. Step 11 lists what that night waits for: (a) both of the server
-  team's PRs, their scripts and their onboarding, merged and their kit refreshed on the server, with,
-  since VPS-146, their fix of hostwatch's judged alerts in it, before that night's `edge.env` lines,
-  on an earlier night or as its first step; (b)
+  shared edge, comes on a night the owner picks and also took the server team's digest pin of Caddy
+  (VPS-130), one recreate for both, until VPS-148 left the pin to their own night, whose recreate on
+  the pinned image comes first on a combined night. Step 11 lists what that night waits for: (a)
+  both of the server team's PRs, their scripts and their onboarding, merged and their kit refreshed
+  on the server, with, since VPS-146, their fix of hostwatch's judged alerts in it, before that
+  night's `edge.env` lines, on an earlier night or as its first step; (b)
   `menumesh.in` on Cloudflare, its Origin CA certificate made from a CSR generated on the server; (c)
   the owner's staging hash, `aop-ca.pem` and `aop-client.pem` made, and the client pair uploaded for
   `menumesh.in`; (d) steps 9 to 11 done up to the `edge.env` lines: the conf, the deploy user and its
   token, the redaction file, the certificate with `aop-ca.pem`, the snippet and, since VPS-145, the
-  digest pin's steps. Steps 12 to 21 don't wait for it, nor does the rehearsal; the staging night
-  does: its Before it checks that Caddy holds both names, with
+  digest pin's steps (since VPS-148, in place of both, the check of the server team's latest
+  confirmation, which covers their snippet and their pin). Steps 12 to 21 don't wait for it, nor
+  does the rehearsal; the staging night does: its Before it checks that Caddy holds both names, with
   `sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'`,
   which prints `2`, a count and never the hash (`edge-caddy-1` is the vendored `app-apply`'s
   `CADDY_CONTAINER`), as its step 1's site file is refused until then. Step 11's snippet wording stays
@@ -11799,8 +11801,9 @@ entries below.
   each `-subj` behind `MSYS_NO_PATHCONV=1`, zone-level pulls and never the global toggle, the two
   certificates alone for the server, and part 1's line and disaster recovery's; `edgeNight` holds
   step 11's certificate with the CA, the client certificate, the merged copy, `edge env` with its
-  shred, the order, the shred of a refused copy and the digest pin, and the staging night's check: 8
-  and 8 problems on `21a13bf`'s RUNBOOK.
+  shred, the order, the shred of a refused copy and the digest pin (since VPS-148, none of the pin's
+  commands left to the admin, and the check of the server team's confirmation before `edge.env`),
+  and the staging night's check: 8 and 8 problems on `21a13bf`'s RUNBOOK.
 
 - **VPS-137 · The leak test's container (Q8, the leak test):** the RUNBOOK said only what the
   throwaway container does, with no image and no command, so nothing held it to a pin. It is now
@@ -12000,11 +12003,13 @@ entries below.
   (`scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/`) and installed with
   `sudo app-apply edge config ~/incoming/snippets.caddy`, which checks every installed site again
   (since VPS-147 the server team installs it, and step 11 compares the server's file with a copy of
-  the commit they name, installing that copy only on their word); MenuMesh's kit never adds a
-  snippet to the server's file. `ac976ce`'s order holds, the certificate with `aop-ca.pem`, the
-  snippet, `edge.env`, the recreate, and so does its point that until the site file is in no site
-  imports `tls_menumesh`; First install's opening says the snippet alone comes from their
-  repository. On the staging night's step 1 an exit 0 now means the server's `tls_menumesh` has no
+  the commit they name, installing that copy only on their word; since VPS-148 it checks the
+  server's live values against their latest confirmation, and makes a copy only on their word);
+  MenuMesh's kit never adds a snippet to the server's file. `ac976ce`'s order holds, the certificate
+  with `aop-ca.pem`, the snippet, `edge.env`, the recreate, and so does its point that until the
+  site file is in no site imports `tls_menumesh`; First install's opening says the snippet alone
+  comes from their repository (since VPS-148, with the edge's `compose.yml` and `CADDY_IMAGE`). On
+  the staging night's step 1 an exit 0 now means the server's `tls_menumesh` has no
   `client_auth`, so its `snippets.caddy` is not theirs of `66c8c61` or later: stop, and the admin
   installs theirs again (step 11; since VPS-147, the server team is asked instead), where it meant
   our `client_auth` still commented out. The kit README's table loses `edge/tls_menumesh.caddy`, a
@@ -12046,7 +12051,8 @@ entries below.
   shredded; the two lines go into the password manager, as the edge has no settings archive. What
   `app-apply` refuses until the recreate is now their list, a site file and `edge cert`, `config`,
   `ranges`, `redact` and `reload`, and the digest pin's `app-apply edge compose` goes before
-  `edge.env` too, as their step 7 says.
+  `edge.env` too, as their step 7 says (since VPS-148 on the server team's own night, never the
+  admin's).
 
   The recreate is checked as their step 7 checks it: `sudo app-compose edge ps` and
   `sudo app-apply edge validate` after `up -d`, `edge-caddy-1` `Up` and `(healthy)` within about a
@@ -12194,7 +12200,8 @@ entries below.
     as step 15's `~/incoming/compose.yml` is MenuMesh's, `CADDY_IMAGE` set with `sudoedit`, a
     `grep` that shows it as `CADDY`, the pull, and
     `sudo app-apply edge compose ~/incoming/edge-compose.yml`; the night's (d) names the pin, and
-    VPS-136's list with it.
+    VPS-136's list with it. Since VPS-148 those steps are the server team's, on their own night, and
+    step 11 checks their confirmation in their place.
   - Step 11's opening put the origin test at the certificate, as `edge.md` §3's step 5, where their
     merged §3 runs it after the site file for another app's zone, and the step's own paragraph says
     it proves nothing before then: the opening now says that the test follows the site file.
@@ -12215,12 +12222,14 @@ entries below.
 
   `edgeNight` now holds the key's shred to `edge cert` (no `shred -u ~/csr/origin-key.pem` but right
   after `edge cert … &&`) and the pin's four commands before `edge.env`'s copy, with `CADDY_IMAGE=`
-  and `CADDY` as `grep` shows them: 3 problems on `0a35068`'s RUNBOOK, none on the fix, and still 8
-  on `21a13bf`'s. `valuesPath` holds the login that asks nothing before the pipe, `BatchMode` in it,
-  the agent's sentence and no "answer it after the two values": 2 problems on `0a35068`'s RUNBOOK,
-  with a refusal case for each part. Of the 40 rules the re-wrap test runs, the other 39 report none
-  on `0a35068`'s RUNBOOK or on the fix. The kit test's re-pin case now replaces `CADDY` wherever the
-  RUNBOOK names it, twice since this change, and the re-wrap test wraps 297 phrases (294 before).
+  and `CADDY` as `grep` shows them (since VPS-148, none of those commands, the check's server lines
+  before the copy, and `CADDY_IMAGE=` with `CADDY` as the confirmation must give it): 3 problems on
+  `0a35068`'s RUNBOOK, none on the fix, and still 8 on `21a13bf`'s. `valuesPath` holds the login
+  that asks nothing before the pipe, `BatchMode` in it, the agent's sentence and no "answer it after
+  the two values": 2 problems on `0a35068`'s RUNBOOK, with a refusal case for each part. Of the 40
+  rules the re-wrap test runs, the other 39 report none on `0a35068`'s RUNBOOK or on the fix. The
+  kit test's re-pin case now replaces `CADDY` wherever the RUNBOOK names it, twice since this
+  change, and the re-wrap test wraps 297 phrases (294 before).
   The range the RUNBOOK, `deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and
   `tests/unit/vps-kit.test.ts`'s header cite is now VPS-31 to VPS-145. `pnpm lint`,
   `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,328 in 72 files (`vps-kit` 122,
@@ -12285,7 +12294,8 @@ entries below.
   installed, once the sha256 of each of the six scripts in `/usr/local/sbin`, their `install.sh`'s
   `SCRIPTS` (`app-deploy`, `app-compose`, `app-apply`, `app-config-archive`, `cf-ranges` and
   `hostwatch`), matches that commit's file, and it gives the installed `snippets.caddy`'s sha256
-  beside hostwatch's. Their re-apply night may be the recreate night itself, and step 11's "That
+  beside hostwatch's, and since VPS-148 the installed `/srv/edge/compose.yml`'s sha256 and the exact
+  `CADDY_IMAGE` line too. Their re-apply night may be the recreate night itself, and step 11's "That
   night comes only after:", read strictly, would then have held that night back for its own first
   step. What MenuMesh needs is narrower. The refresh and their word come before that night's
   `edge.env` lines, since from `app-apply edge env` until the recreate, `app-apply` refuses
@@ -12297,8 +12307,11 @@ entries below.
   So (a) now takes the refresh and their word on an earlier night, or as that night's first step, as
   the server team plans it for their re-apply night, before its `edge.env` lines. Such a combined
   night works for them, they said the same day: their refresh and their confirmation first, then
-  MenuMesh's `edge.env` lines. (d), steps 9 to 11 up to those lines, waits for the refresh only in
-  the snippet's comparison, which takes the commit and the sum of their confirmation (VPS-147):
+  MenuMesh's `edge.env` lines (since VPS-148, their snippet, their digest pin and their recreate on
+  the pinned image before that confirmation). (d), steps 9 to 11 up to those lines, waits for the
+  refresh only in the snippet's comparison, which takes the commit and the sum of their
+  confirmation (VPS-147; since VPS-148 the check of their latest confirmation, its commit, its two
+  sums and its `CADDY_IMAGE` line):
   `edge redact` and `check_edge_env_applied` came into their `app-apply` with their `ecfbf99`, and
   `edge cert`'s CA argument with their `81e3064`, both of 2026-11-08; and (a) and (d) keep no other
   order between them.
@@ -12307,7 +12320,8 @@ entries below.
   from `ccb9388` run first that night undoes nothing of (d) and clashes with none of it. It installs
   each conf of the kit, `edge.conf` and `jainav.conf` (the kit has no `menumesh.conf`), with
   `put_once`, which never overwrites, so `/etc/apps/menumesh.conf` stays and `/etc/apps/edge.conf`
-  keeps the digest pin's `CADDY_IMAGE`, the kit's copy, where it differs, only shown as a diff; it
+  keeps the digest pin's `CADDY_IMAGE` (since VPS-148 the server team's to set, after the refresh),
+  the kit's copy, where it differs, only shown as a diff; it
   writes the `Caddyfile` and `snippets.caddy` in `/srv/edge/config`, `edge.env` and `hostwatch.env`
   only where they are absent, with `put_once` too, so a `snippets.caddy` that
   `app-apply edge config` installed stays, and the refresh alone never brings a new one: the server
@@ -12367,8 +12381,9 @@ entries below.
   confirmation names the commit and gives the installed `snippets.caddy`'s sha256 beside hostwatch's
   (VPS-146). So `SAME` is what step 11 expects, and on that path the admin installs nothing.
 
-  The guard has two outcomes. On the admin's machine, in Git Bash, the copy at the commit of their
-  latest confirmation,
+  The guard has two outcomes (VPS-148 put one check of their latest confirmation in its place,
+  which reads the server's live values and no copy). On the admin's machine, in Git Bash, the copy
+  at the commit of their latest confirmation,
   `git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy`, then
   `sha256sum snippets.caddy`, which must print that confirmation's `snippets.caddy` sum, or the
   admin stops: the copy or the commit is wrong, and nothing goes to the server. A confirmation
@@ -12392,7 +12407,9 @@ entries below.
   theirs, and they install theirs; a newer one, of a round they haven't confirmed yet, and they
   confirm that round instead; a sum of no commit, a hand edit, and they look at it before anything
   is installed. So the server-side lines print the live file's sum in every case, the
-  `sudo sha256sum` line the admin sends, and `cmp` adds the one word the admin goes by.
+  `sudo sha256sum` line the admin sends, and `cmp` adds the one word the admin goes by (until
+  VPS-148: a copy left in `~/incoming` from an earlier night matched a live file as old, and `cmp`
+  printed `SAME`).
 
   The first design had a middle case, which is gone. It took two forms: a comparison of the server's
   file with the copy less its `tls_menumesh` block, after which the admin would have installed over
@@ -12442,22 +12459,28 @@ entries below.
 
   The rest of the RUNBOOK follows. First install's opening says the snippet alone is the server
   team's, which they install and step 11 compares, and Who does what gives the admin the check of
-  the `tls_menumesh` snippet. The digest pin's `docker/edge/compose.yml`, "copied as the snippet
-  is", now says what that copy was, from their repository's root on the admin's machine; and (d)
-  takes the snippet's comparison printing `SAME`, after their confirmation of (a), so (a) and (d),
-  which kept no order (VPS-146), now keep that one. The staging night's exit 0, which had the admin
-  install their file again, sends the admin to step 11's copy and comparison and to their chat, as
-  its `DIFFERENT` does, with the same three things, and the night goes no further until they have
-  answered, the comparison prints `SAME` and every exit is not 0. Disaster recovery's edge takes the
-  same comparison before its `edge.env` lines: on a rebuilt server their edge comes back first, and
-  their confirmation then names the commit and the sum. Rotation touches no `snippets.caddy` and
+  the `tls_menumesh` snippet (since VPS-148, the snippet, `compose.yml` and `CADDY_IMAGE`, and the
+  check of their latest confirmation). The digest pin's `docker/edge/compose.yml`, "copied as the
+  snippet is", now says what that copy was, from their repository's root on the admin's machine;
+  and (d) takes the snippet's comparison printing `SAME`, after their confirmation of (a), so (a)
+  and (d), which kept no order (VPS-146), now keep that one (since VPS-148 the pin is out of step
+  11, and (d) takes the check of their latest confirmation). The staging night's exit 0, which had
+  the admin install their file again, sends the admin to step 11's copy and comparison and to
+  their chat, as its `DIFFERENT` does, with the same three things, and the night goes no further
+  until they have answered, the comparison prints `SAME` and every exit is not 0 (since VPS-148 the
+  check's server lines, the live values, the confirmation's and its commit, and the check `SAME`).
+  Disaster recovery's edge takes the same comparison before its `edge.env` lines: on a rebuilt
+  server their edge comes back first, and their confirmation then names the commit and the sum
+  (since VPS-148 the check, their digest pin included). Rotation touches no `snippets.caddy` and
   stays as it was. The kit README says they install the file at a commit they name, which the admin
-  compares, and the cut-over's intro cites VPS-147, which changed its part 3. VPS-142 and VPS-146
-  say where this entry changed them. Not changed: the digest pin's `docker/edge/compose.yml` still
-  goes from the admin's working tree by `scp`, as their `edge.md` §5, A new Caddy image, has it.
-  `app-apply edge compose` puts in that whole file too, and only its image is held, by `CADDY_IMAGE`
-  and the `grep` that shows `CADDY`; their confirmation gives no sum for it, so a guard of the
-  snippet's kind waits for the server team (Left open, below).
+  compares (since VPS-148, checks against their confirmation), and the cut-over's intro cites
+  VPS-147, which changed its part 3. VPS-142 and VPS-146 say where this entry changed them. Not
+  changed: the digest pin's `docker/edge/compose.yml` still goes from the admin's working tree by
+  `scp`, as their `edge.md` §5, A new Caddy image, has it. `app-apply edge compose` puts in that
+  whole file too, and only its image is held, by `CADDY_IMAGE` and the `grep` that shows `CADDY`;
+  their confirmation gives no sum for it, so a guard of the snippet's kind waits for the server team
+  (Left open, below; their answer, VPS-148, made the pin theirs, its sum and `CADDY_IMAGE` line in
+  their confirmation).
 
   The new `snippetGuard` holds step 11 to the copy by `git show` in Git Bash at the commit of their
   latest confirmation, its `sha256sum` before the scp, the three server-side lines after the scp,
@@ -12465,7 +12488,8 @@ entries below.
   with the three things and the step's later lines held, `edge config` on their word alone, the
   comparison printing `SAME` after each of the two answers, and the server's file always theirs at a
   commit they name; and it holds disaster recovery's comparison before its `edge.env` lines, and the
-  staging night's and disaster recovery's message to the same three things. On `b2558c3`'s RUNBOOK
+  staging night's and disaster recovery's message to the same three things (since VPS-148, the one
+  check of their confirmation in place of all of it). On `b2558c3`'s RUNBOOK
   it reports 14 problems, none on the fix, with refusal cases for `b2558c3`'s block, the comparison
   after `edge config` and after `edge.env`, the stop dropped, the `SAME` dropped from each answer,
   the admin-side check dropped, the copy made in PowerShell, the three things dropped from each of
@@ -12481,6 +12505,173 @@ entries below.
   change of the kit. No script and no service changed, and no file of the kit but its README, so
   nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`, `pnpm typecheck` and
   `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, one new).
+
+- **VPS-148 · The digest pin of Caddy on the server team's own night, and one check of their latest
+  confirmation in step 11 (their decision of 2026-11-22, and a review of `4f6ddaa`):** First
+  install, step 11, had the admin put in the server team's digest pin before `edge.env` (VPS-145):
+  their `docker/edge/compose.yml` sent from a working tree as `~/incoming/edge-compose.yml`,
+  `sudoedit /etc/apps/edge.conf`, a `grep` that had to show `CADDY_IMAGE=` with `CADDY`, the pull,
+  and `sudo app-apply edge compose ~/incoming/edge-compose.yml`; the recreate then took the pin with
+  MenuMesh's `edge.env` lines, one recreate for both (VPS-136). The server team's decision of
+  2026-11-22 on the pin is (a): it is already steps 2 and 3 of their re-apply night, so step 11
+  drops its pin steps and keeps only the check. Their night, after the refresh and
+  `snippets.caddy`: they read the image's `RepoDigests`; set `CADDY_IMAGE` in `/etc/apps/edge.conf`
+  to the digest line with `sudoedit`, first, as `app-apply`'s `check_edge_image` compares the
+  compose file's image with that text; install `docker/edge/compose.yml` at the confirmed commit
+  with `sudo app-apply edge compose`, its copy made with the same `git show` and sum check as
+  `snippets.caddy`; then recreate Caddy. On a combined night they recreate on the pinned image
+  before MenuMesh's `edge.env` lines, so that an image that misbehaves shows up before any of
+  MenuMesh's changes go in, and MenuMesh's recreate follows: two recreates that night. The installed
+  file is `/srv/edge/compose.yml` (`PROJECT_DIR=/srv/edge`, `APP_COMPOSE_FILE=compose.yml`);
+  `app-apply` writes its sum to `/etc/apps/edge.compose.sha256`, 0644 in a 0755 `/etc/apps`, which
+  `ops` reads without `sudo`, while the file sits in the 0750 `/srv/edge`, so its own sum takes
+  `sudo`. `edge.conf` is put with `put_once`: `install.sh` never overwrites a conf, so `CADDY_IMAGE`
+  stays as it is across a refresh, and only their `sudoedit` changes it. Their confirmation will add
+  the installed `/srv/edge/compose.yml`'s sum, equal to the confirmed commit's file, and the exact
+  `CADDY_IMAGE` line, beside the commit, hostwatch's sum and the `snippets.caddy` sum. The check
+  they gave: `sudo sha256sum /srv/edge/compose.yml`, `cat /etc/apps/edge.compose.sha256` and
+  `grep '^CADDY_IMAGE=' /etc/apps/edge.conf`, `SAME` when everything matches their confirmation,
+  and on `DIFFERENT` a stop and a question with the live values and the commit compared against.
+  Their earlier messages hold for it too: on `DIFFERENT` they want the live values, ours and the
+  commit, as they know the sum of every version of their files (VPS-147), and they say so when they
+  confirm a round that installed no file.
+
+  The live state they read as `ops` that day: `/etc/apps/edge.compose.sha256` holds
+  `a6faec55ea6dd7dfd0c163af5ee1bac3f4f07b0c7679cdf94808e3b20fd951f3` for `/srv/edge/compose.yml`,
+  `81cd2b1`'s file, the tag alone, installed 2026-11-16, and `edge.conf` has
+  `CADDY_IMAGE=caddy:2.11.9-alpine` with no digest; main's `docker/edge/compose.yml` since `4777971`
+  is `e5dd4bdf0d6d5ba1aa590cfd9a30b5d1eb70f1ef63067c56c958cef7b1b85f14`. Checked here, read-only,
+  in their repository: that file changed at `81cd2b1` (2026-11-11, "bump caddy to 2.11.9", sha256
+  `a6faec55…`, the record's) and at `4777971` (2026-11-21, "pin caddy, umami and buildkit by
+  digest", sha256 `e5dd4bdf…`, the same at `ccb9388`), and
+  `git diff 81cd2b1 ccb9388 -- docker/edge/compose.yml` changes its `image:` line alone, from the
+  tag to the kit's `CADDY`. Their `docker/host/apps/edge.conf` at `ccb9388` has
+  `PROJECT_DIR=/srv/edge`, `APP_COMPOSE_FILE=compose.yml` and `CADDY_IMAGE=` with that reference,
+  and at `81cd2b1` the tag alone, as on the server. In the vendored `app-apply`, `cmd_compose`
+  writes `pin=/etc/apps/$project.compose.sha256` with `printf '%s  %s\n' "<sum>" "$live"`, the
+  installed file's sum and `/srv/edge/compose.yml`, and puts it in 0644, and `check_edge_image`
+  refuses a service whose image is not `CADDY_IMAGE`. The `snippets.caddy` sums are `ecfbf99`'s
+  `2550e19b6ca13cef943a0a9e44152f7b18ca397b20df94cd66748103cdf68e77` and `ccb9388`'s, the vendored
+  copy's, `3f7e4e636fb9822eabb3254ad39215a3e0562dc93ff2341b8c9538be970e4802` (VPS-147), and
+  `/srv/edge` is `root:root` 0750.
+
+  A review of `4f6ddaa` found two gaps in VPS-147's guard. Its server-side
+  `sha256sum ~/incoming/snippets.caddy` had no value to be held to, so a copy left in `~/incoming`
+  from an earlier night, the night's own `scp` failed or forgotten, beside a live file as old, made
+  `cmp` print `SAME`: nothing was installed, but the night went on on a stale file. And nothing
+  said to fetch `<their checkout>` first, so a clone without the commit printed git's `fatal: …`
+  and the empty input's sum. A second copy for `compose.yml` would have doubled the first gap. So
+  step 11 now has one check of their latest confirmation, in two halves, which reads no copy:
+
+  - On the admin's machine, in Git Bash and never PowerShell, in `<their checkout>`, a clone of
+    their repository that holds the commit (`git -C <their checkout> fetch` first, if it doesn't):
+    `git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum` and
+    `git -C <their checkout> show <commit>:docker/edge/compose.yml | sha256sum` must print the
+    confirmation's two sums, and its `CADDY_IMAGE` line must be `CADDY_IMAGE=` and the kit's
+    `CADDY`, which the RUNBOOK spells out and `edgeNight` holds to `scripts/vps-kit.mts`. If any of
+    them fails, the admin stops and asks in their chat: the confirmation, the commit or the clone
+    is wrong, and nothing is checked on the server. A newer pin of theirs is the kit's to follow
+    first, before that night: Copying the server team's files again, step 3, now re-pins `CADDY`
+    when the confirmation's `CADDY_IMAGE` line names a new image, as when their `edge.conf` does.
+  - On the server, on the recreate night and before its `edge.env` lines,
+    `sudo sha256sum /srv/edge/config/snippets.caddy /srv/edge/compose.yml`,
+    `cat /etc/apps/edge.compose.sha256` and `grep '^CADDY_IMAGE=' /etc/apps/edge.conf`. `SAME`:
+    four lines, the confirmation's values in full, every character, its `snippets.caddy` sum before
+    the first line's path, its `compose.yml` sum before the second's and the third's, and its
+    `CADDY_IMAGE` line as the fourth; nothing is installed. `DIFFERENT`, anything else, a line
+    missing or an error among them: stop, ask in their chat with the live values as the lines print
+    them, the confirmation's values and its commit, run none of the step's later lines, `edge.env`'s
+    above all, and run the check again after their answer, both halves if it names another commit,
+    until it is `SAME`.
+  - Only on their word to install `snippets.caddy` from a commit they name is a copy made, in Git
+    Bash, its `sha256sum` the sum they give before the `scp`, and installed with
+    `sudo app-apply edge config ~/incoming/snippets.caddy && rm ~/incoming/snippets.caddy`, the copy
+    taken out once it is in, so that no later night's `edge config` can install a leftover; then the
+    check again. The edge's `compose.yml`, its record and `CADDY_IMAGE` are never the admin's to
+    change: a difference there is the server team's to mend.
+
+  With the values on both sides, the normal path needs no copy on the server, which closes the
+  stale-copy gap: a leftover in `~/incoming` is read by nothing, and an older live file prints a sum
+  that is not the confirmation's. The record is read beside the live file's own sum, so a
+  `compose.yml` changed by hand after `app-apply` installed it shows on the second line. `SAME` is
+  read by eye, as their own check is, and made exact: which value goes on which line, every
+  character, and a missing or extra line `DIFFERENT`. A comparison that the admin pastes the
+  expected values into was weighed and left out: it would add a here-document of 64-character values
+  typed on the server, whose slips give a false `DIFFERENT`, while the three lines as they are print
+  every value the message needs. The copy's `sha256sum` on the admin's machine stays, as the one
+  check before a file reaches the server.
+
+  The rest follows. Step 11's paragraph on the snippet now names the pin as theirs and says the
+  admin never changes the edge's `compose.yml` or its `CADDY_IMAGE`; the recreate's paragraph says
+  the pin takes a recreate of its own, theirs first on a combined night, on the pinned image with
+  their `edge ps` and `validate`, before the `edge.env` lines, and this one after, two recreates
+  that night, where it said "one recreate for both"; and (d) takes the check of their latest
+  confirmation, made after their confirmation of (a) and covering their snippet and their pin,
+  coming out `SAME`, and no longer names the pin. (a)'s timing, the `edge.env` lines, the
+  recreate's window and its way back stay as they were. The staging night's exit 0 sends the admin
+  to the check's server lines and to their chat with the same values, and goes no further until the
+  check is `SAME` and every exit is not 0; disaster recovery's edge takes the check before its
+  `edge.env` lines, their edge, the pin included, back first on a rebuilt server and their
+  confirmation giving the values. Who does what gives the admin the check of their latest
+  confirmation, which covers the snippet and the pin they install; First install's opening says
+  `snippets.caddy`, `compose.yml` and `CADDY_IMAGE` are theirs alone; Copying the server team's
+  files again has step 3's re-pin above, and its paragraph on their origin-pulls round points at
+  the check; the kit README's snippet paragraph and Who does what follow, "a recreate of its own"
+  for "one recreate"; and the cut-over's intro cites VPS-148, which changed its part 3. VPS-136,
+  VPS-142, VPS-143, VPS-145, VPS-146 and VPS-147 say where this entry changed them, and Left open
+  (server review) has the `compose.yml` question done.
+
+  Proved here before it was written, on scratch copies in a folder of this run, `sudo` dropped, the
+  server's paths under a scratch root, and `sha256sum -t` printing as GNU `sha256sum` does on the
+  server (Git Bash's own marks binary mode with a `*` before the name). In Git Bash, against their
+  repository at `ccb9388`, the two admin lines printed `3f7e4e63…` and `e5dd4bdf…`, the
+  confirmation's, and its `CADDY_IMAGE` line was `CADDY_IMAGE=` and the kit's `CADDY`; for a commit
+  the clone lacks, `fatal: invalid object name '0123abc'.` and `e3b0c442…`. In Windows PowerShell
+  5.1 (5.1.26100) `sha256sum` is not found, and with Git's own `sha256sum.exe` named in full the
+  pipe gave `a33b1037…` for `compose.yml` and `1208d181…` for `snippets.caddy`: a false mismatch.
+  On the server's side, the four lines read against the confirmation's four, in that order: after
+  their night (`ccb9388`'s two files, the record in `app-apply`'s format, `CADDY_IMAGE` with the
+  digest), `SAME`; today's live state (`ecfbf99`'s `snippets.caddy`, `2550e19b…`; `81cd2b1`'s
+  `compose.yml` and its record, `a6faec55…` twice; `CADDY_IMAGE=caddy:2.11.9-alpine`), `DIFFERENT`
+  on all four; a stale copy, `ecfbf99`'s file left in `~/incoming` beside a live file as old, where
+  `f6a33d5`'s lines printed `2550e19b…` twice and `SAME`, and the new check `DIFFERENT` on its first
+  line; their night half done (the snippet in, `CADDY_IMAGE` set, `compose.yml` not applied),
+  `DIFFERENT` on the second and third; `compose.yml` edited by hand after the install, the record
+  still `e5dd4bdf…`, `DIFFERENT` on the second (`5e9c3b19…`); and no live `snippets.caddy`,
+  `sha256sum`'s `No such file or directory` in place of the first line, `DIFFERENT`.
+
+  `edgeNight` no longer holds step 11 to the pin's commands but the RUNBOOK to none of them
+  (`sudoedit /etc/apps/edge.conf`, `sudo app-apply edge compose`, the pull), and step 11 to the
+  sentence that the admin never changes the edge's `compose.yml` or its `CADDY_IMAGE`, the check's
+  server lines before the `edge.env` copy, every `CADDY_IMAGE=caddy:…` it names to `CADDY`, the two
+  recreates and no "one recreate for both", and (d) to the check: 7 problems on `f6a33d5`'s
+  RUNBOOK, 12 on `21a13bf`'s (8 before), none on the fix, with refusal cases for `f6a33d5`'s pin
+  paragraph put back, its `edge compose` alone, the tag alone and another digest as `CADDY_IMAGE`,
+  the sentence dropped, the check's lines after the copy and gone, and `f6a33d5`'s recreate and its
+  (d). `snippetGuard` now holds the check: the admin's half by `git show` in Git Bash, the fetch,
+  the stop on a failure, the server's half after it and before any `edge config` and `edge.env`, no
+  copy on the server gone by (`cmp`, or the copy's sum), `SAME` exact, `DIFFERENT` for anything else
+  with its stop, the values sent, the later lines held and the check run again, the copy only on
+  their word with its sum before the `scp`, and the staging night's and disaster recovery's
+  messages, and disaster recovery's check before its `edge.env` lines with the pin: 13 problems on
+  `f6a33d5`'s RUNBOOK, 16 on `b2558c3`'s, none on the fix, with refusal cases for `b2558c3`'s
+  block, `f6a33d5`'s copy and comparison, its `cmp` or the copy's sum alone beside the new lines,
+  the check after `edge config` and after `edge.env`, the server's half before the admin's,
+  `DIFFERENT` without its stop and narrowed to the sums, `SAME` read loosely, the check not run
+  again, the admin's half in PowerShell, without its fetch and going on when it fails, the copy made
+  without their word or sent unsummed, the values dropped from each of the three messages, and
+  disaster recovery's check after its `edge.env` lines or without the pin. `originPulls` reads the
+  staging night's stop to the check's server lines (1 problem on `f6a33d5`'s RUNBOOK, and a new
+  refusal case for `f6a33d5`'s stop), and `serverSnippet`'s case of an install after `edge.env`
+  moves the new line. Of the 42 rules the re-wrap test runs, the other 39 report none on
+  `f6a33d5`'s RUNBOOK or on the fix; `vps-runbook` has 65 tests, as before, and the re-wrap test
+  wraps 324 phrases where it wrapped 321, the 17 of the old pin, copy and comparison out and 20 new
+  in. The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to
+  VPS-148; `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to
+  VPS-146, left for the next change of the kit, and the latter's note that the RUNBOOK names `CADDY`
+  twice still holds. No script and no service changed, and no file of the kit but its README, so
+  nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`, `pnpm typecheck` and
+  `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, none new).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
@@ -12503,8 +12694,11 @@ exit code back (VPS-134).
 **Left open (server review):** the two items that waited for the server team's scripts and
 onboarding PRs are done: their files copied again at the merge, with the kit's check through their
 `edge_env_hash_check` (VPS-141), and their `snippets.caddy` with `tls_menumesh` in place of ours,
-the kit's checks run with origin pulls on and the RUNBOOK's text moved to their file (VPS-142).
-Still open:
+the kit's checks run with origin pulls on and the RUNBOOK's text moved to their file (VPS-142). So
+is the question of the digest pin's `docker/edge/compose.yml`, which First install, step 11, had
+the admin copy from a working tree and install whole: the pin is theirs, on their own night, and
+their confirmation gives the installed file's sum and the exact `CADDY_IMAGE` line, which step 11
+checks with the rest of it (VPS-148). Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
@@ -12516,14 +12710,16 @@ Still open:
   keep on purpose, as the serial shows which certificate Cloudflare presents after a rotation. So
   the kit copies their files again at its merge, from the commit and hashes they send, and
   `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
-  install, step 11's comparison then takes (RUNBOOK, Copying the server team's files again;
-  VPS-147).
+  install, step 11's check then takes (RUNBOOK, Copying the server team's files again; VPS-147,
+  VPS-148).
 - The server team's fix for hostwatch's judged alerts, merged as `ccb9388`
   (nanu1605/jainav-infotech#87): it reaches the server with the server team's kit refresh, the first
   step of their re-apply night, which First install, step 11's (a) takes before the recreate night's
   `edge.env` lines, on an earlier night or as its first step (VPS-146). Right after the refresh they
   install main's `snippets.caddy`, with `tls_menumesh`, which the server's file, most likely
-  `ecfbf99`'s, lacks until then (VPS-147). Since 2026-11-08 its 5-minute and daily runs send nothing
+  `ecfbf99`'s, lacks until then (VPS-147), then their digest pin of Caddy and its recreate, where
+  the server's `compose.yml` is still `81cd2b1`'s and its `CADDY_IMAGE` the tag alone (VPS-148).
+  Since 2026-11-08 its 5-minute and daily runs send nothing
   to Telegram, as a function they call went missing, while its heartbeat, `hostwatch alert`, the
   outbox and the daily digest still work. Until that fix is on the server, `backup` turning
   unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137, VPS-143) reach no one by
@@ -12534,11 +12730,6 @@ Still open:
   monitor, whose pings (`HEARTBEAT_WAL_URL`, every 5 minutes while all is well) stop with any of
   those and with a stopped `backup` or a stuck crond, and which alerts after its 10 minutes' grace:
   the one signal of a stopped `backup` (RUNBOOK, WAL alerts).
-- The digest pin's `docker/edge/compose.yml`, which First install, step 11, still has the admin copy
-  from a working tree by `scp`, and which `app-apply edge compose` installs whole, as `edge config`
-  does `snippets.caddy`: only its image is held, by `CADDY_IMAGE` and the `grep` that shows `CADDY`,
-  and their confirmation gives no sum for it, so a check of the snippet's kind is a question for the
-  server team (VPS-147).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still

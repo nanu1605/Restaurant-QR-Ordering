@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-147 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-148 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -614,11 +614,12 @@ The server team's runbooks in their repository (`docs/runbooks/server.md`, `edge
 
 - **The server's admin** signs in as `ops` (sudo, through the SSH tunnel) and does the server team's
   side: `/etc/apps/menumesh.conf` (below), the deploy user `deploy-menumesh` with its key and the
-  Access service token `github-deploy-menumesh`, the edge (the redaction file, the check of the
-  `tls_menumesh` snippet, which the server team installs, the Origin CA certificate, authenticated
-  origin pulls, the two `MENUMESH_STAGING_AUTH_*` lines of `edge.env`), the settings archive's
-  timer, and `/srv/menumesh` with its `config/` folder, which the contract leaves to the admin. On
-  this server the owner is also the admin.
+  Access service token `github-deploy-menumesh`, the edge (the redaction file, the Origin CA
+  certificate, the check of the server team's latest confirmation, which covers the `tls_menumesh`
+  snippet and the digest pin of Caddy that they install, authenticated origin pulls, the two
+  `MENUMESH_STAGING_AUTH_*` lines of `edge.env`), the settings archive's timer, and `/srv/menumesh`
+  with its `config/` folder, which the contract leaves to the admin. On this server the owner is
+  also the admin.
 - **The owner**, through the same `ops` account (`app-deploy` takes a deploy by hand only from `ops`
   or root), brings what is MenuMesh's: the backup key, the bucket, the alert bot and the monitors,
   the secrets and env files, the compose and site files through `app-apply`, the services,
@@ -671,10 +672,10 @@ EDGE_NETWORKS="edge-menumesh edge-menumesh-staging"
 
 Files go to the server in `~/incoming` (`scp` through the tunnel), from this repository at the
 commit being installed, after `pnpm vps:check` and `pnpm vps:edge` passed on it (Checking the kit
-here); the edge's `snippets.caddy` alone is the server team's, which they install, and step 11
-compares the server's with their repository's file at the commit they name. Every file under
-`/srv/menumesh` is root's, and nothing on the way up to `/` may be writable by anyone else, or
-`app-apply` refuses the compose file.
+here); the edge's `snippets.caddy`, `compose.yml` and `CADDY_IMAGE` are the server team's alone,
+which they install, and step 11 checks the server's against their latest confirmation and their
+repository at the commit it names. Every file under `/srv/menumesh` is root's, and nothing on the
+way up to `/` may be writable by anyone else, or `app-apply` refuses the compose file.
 
 **The owner, before the server:**
 
@@ -833,72 +834,75 @@ compares the server's with their repository's file at the commit they name. Ever
     Then the snippet: their own `snippets.caddy`, which holds `tls_menumesh` with `client_auth` on
     since their `66c8c61`, as MenuMesh's origin pulls are on before any of its containers runs.
     Where their `edge.md` §5, step 5, has the admin install it, the server team installs it
-    themselves, right after their kit's refresh ((a), below), and their confirmation in their chat
-    names the commit and gives the installed file's sha256. `app-apply edge config` puts in the
-    whole file, their `tls_jainav` too, so the admin only checks that the server holds that
-    commit's file: a copy older or newer than theirs could turn their origin pulls off, or make
-    their hosts refuse Cloudflare. MenuMesh's kit never adds a snippet to the server's file: Caddy
-    refuses a snippet declared twice, and the server's file is always their file at a commit they
-    name, whose next `edge config` would drop a snippet added here.
+    themselves, right after their kit's refresh ((a), below), and then their digest pin of Caddy
+    (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), as their `edge.md` §5, **A new Caddy image**,
+    has it: `CADDY_IMAGE` set in `/etc/apps/edge.conf`, their `docker/edge/compose.yml` of the same
+    commit installed with `app-apply edge compose`, and Caddy recreated on that image. The admin
+    never changes the edge's `compose.yml` or its `CADDY_IMAGE`: only the server team does. Their
+    confirmation in their chat names the commit and gives hostwatch's sha256 ((a), below), the
+    sha256 of the installed `snippets.caddy` and of the installed `/srv/edge/compose.yml`, and the
+    exact `CADDY_IMAGE` line. `app-apply edge config` puts in the whole file, their `tls_jainav`
+    too, so the admin only checks that the server holds that commit's files: a copy older or newer
+    than theirs could turn their origin pulls off, or make their hosts refuse Cloudflare.
+    MenuMesh's kit never adds a snippet to the server's file: Caddy refuses a snippet declared
+    twice, and the server's file is always their file at a commit they name, whose next
+    `edge config` would drop a snippet added here.
 
-    The copy is made on the admin's machine in Git Bash, not PowerShell (Windows PowerShell 5.1's
-    `>` writes git's output as UTF-16 with CRLF line ends, whose sum never matches), at the commit
-    their latest confirmation names. `sha256sum` must print the `snippets.caddy` sum that
-    confirmation gives, or stop: the copy or the commit is wrong, and nothing goes to the server. A
-    confirmation without that sum, of a round that installed no `snippets.caddy`, is asked about in
-    their chat:
+    Their latest confirmation is checked in two halves, both after it. First, on the admin's
+    machine, in Git Bash, not PowerShell (Windows PowerShell 5.1 re-encodes git's output, in a pipe
+    as with `>`, so the sum never matches), in `<their checkout>`, a clone of their repository that
+    holds the commit (`git -C <their checkout> fetch` first, if it doesn't: without it `git show`
+    prints `fatal: …` and `sha256sum` the empty input's `e3b0c442…`). The two lines must print the
+    confirmation's `snippets.caddy` and `compose.yml` sums, and its `CADDY_IMAGE` line must be
+    `CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
+    the kit's `CADDY` (VPS-130). If any of them fails, stop and ask in their chat: the
+    confirmation, the commit or the clone is wrong, and nothing is checked on the server. A newer
+    pin of theirs is the kit's to follow first: it is pinned again (Copying the server team's files
+    again, step 3) before that night. A confirmation without one of those values is asked about in
+    their chat too:
+
+    ```sh
+    git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum     # on the admin's machine, in Git Bash
+    git -C <their checkout> show <commit>:docker/edge/compose.yml | sha256sum
+    ```
+
+    Then, on the server, on the recreate night (below) and before its `edge.env` lines, the live
+    values: the sums of the two installed files (`/srv/edge` is root's alone, 0750, hence `sudo`),
+    the sum `app-apply` recorded when it installed `compose.yml`, and the `CADDY_IMAGE` line, those
+    two in `/etc/apps`, which `ops` reads without `sudo`:
+
+    ```sh
+    sudo sha256sum /srv/edge/config/snippets.caddy /srv/edge/compose.yml
+    cat /etc/apps/edge.compose.sha256
+    grep '^CADDY_IMAGE=' /etc/apps/edge.conf
+    ```
+
+    - `SAME`, what their night leaves: four lines, the confirmation's values in full, every
+      character: its `snippets.caddy` sum before the first line's path, its `compose.yml` sum
+      before the second's and the third's, and its `CADDY_IMAGE` line as the fourth. Nothing is
+      installed, and the step goes on.
+    - `DIFFERENT`, anything else, a line missing or an error among them: stop, and ask in the
+      server team's chat, giving the live values as the lines print them, the confirmation's values
+      and its commit. Run none of this step's lines below until they answer, `edge.env`'s above
+      all. Then the check again, both halves if their answer names another commit, and it must be
+      `SAME`.
+
+    The edge's `compose.yml`, its record and `CADDY_IMAGE` are theirs to mend. A copy of
+    `snippets.caddy` is made only on their word in their chat to install it from a commit they name:
+    in Git Bash, its `sha256sum` the sum they give, or stop; then sent, installed, which checks
+    every installed site again, and taken out of `~/incoming`; then the check again:
 
     ```sh
     git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy     # on the admin's machine, in Git Bash
-    sha256sum snippets.caddy     # the snippets.caddy sum of their latest confirmation, or stop
+    sha256sum snippets.caddy     # the sum they give, or stop
     scp snippets.caddy ops@<the tunnel's SSH host>:incoming/
+    sudo app-apply edge config ~/incoming/snippets.caddy && rm ~/incoming/snippets.caddy     # on the server
     ```
-
-    Then, on the server, the live file's sum, the copy's, and the two compared (`/srv/edge` is
-    root's alone, 0750, hence `sudo`):
-
-    ```sh
-    sudo sha256sum /srv/edge/config/snippets.caddy
-    sha256sum ~/incoming/snippets.caddy
-    sudo cmp /srv/edge/config/snippets.caddy ~/incoming/snippets.caddy && echo SAME || echo DIFFERENT
-    ```
-
-    - `SAME`, what their install leaves: the server holds their file of that commit, nothing is
-      installed, and the step goes on.
-    - `DIFFERENT`: stop, and ask in the server team's chat, giving the live file's sum, the copy's
-      sum and the commit the copy came from (the sums as the two `sha256sum` lines print them). Run
-      none of this step's lines below until they answer, `edge.env`'s above all. Either they
-      install their file themselves, and the three lines, with the copy made again if their answer
-      names another commit, must print `SAME`; or they say in their chat to install that copy, and
-      only then does the admin run `sudo app-apply edge config ~/incoming/snippets.caddy`, which
-      checks every installed site again, and the three lines must print `SAME`.
 
     For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no site
     imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the test
     prints. The test that proves it runs right after the site file, on the staging night (The
     server rehearsal and the cut-over, part 3, step 1).
-
-    Then the server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), as
-    their `edge.md` §5, **A new Caddy image**, steps 1 to 3, puts it in: its
-    `app-apply edge compose` goes before `edge.env` too. `install.sh` never overwrites a conf, so
-    `/etc/apps/edge.conf` keeps the image it had until the admin sets its `CADDY_IMAGE`, tag and
-    digest, as their `docker/host/apps/edge.conf` has it; then the image is pulled, and their
-    `docker/edge/compose.yml`, copied from their repository's root on the admin's machine, goes in,
-    which `app-apply` refuses while its image differs from `CADDY_IMAGE`. It goes to `~/incoming`
-    under a name of its own, as MenuMesh's `compose.yml` goes there for step 15:
-
-    ```sh
-    scp docker/edge/compose.yml ops@<the tunnel's SSH host>:incoming/edge-compose.yml     # on the admin's machine, in their repository's root
-    sudoedit /etc/apps/edge.conf     # CADDY_IMAGE= as their docker/host/apps/edge.conf has it
-    grep '^CADDY_IMAGE=' /etc/apps/edge.conf
-    sudo docker pull "$(sed -n 's/^CADDY_IMAGE=//p' /etc/apps/edge.conf)"
-    sudo app-apply edge compose ~/incoming/edge-compose.yml
-    ```
-
-    `grep` prints
-    `CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
-    the index the server runs, which the kit's checks pin too (VPS-130), and `edge compose`
-    validates the live tree with that image. The recreate below starts Caddy on it.
 
     `edge.env` comes last. From `app-apply edge env` until Caddy is recreated, `app-apply` refuses
     a site file and `edge cert`, `config`, `ranges`, `redact` and `reload`, the server team's own
@@ -959,9 +963,11 @@ compares the server's with their repository's file at the commit they name. Ever
     sudo app-compose edge up -d     # between 01:00 and 07:00 IST, the same night
     ```
 
-    The recreate drops every connection on the shared edge, hence the window. It also takes the
-    server team's digest pin of Caddy, put in before `edge.env` (above), as their `edge.md` §5,
-    step 7, says: one recreate for both. That night comes only after:
+    The recreate drops every connection on the shared edge, hence the window. The server team's
+    digest pin of Caddy takes a recreate of its own, on their night: on a combined night theirs
+    comes first, on the pinned image, with their `edge ps` and `validate`, before the `edge.env`
+    lines, so that an image that misbehaves shows before any of MenuMesh's changes go in, and this
+    one follows, two recreates that night. That night comes only after:
     - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit
       is refreshed on the server with their fix of hostwatch's alerts in it, merged as `ccb9388`
       (nanu1605/jainav-infotech#87), which the server team confirms in their chat, as for step 16
@@ -975,8 +981,9 @@ compares the server's with their repository's file at the commit they name. Ever
     - (c) the owner has the staging hash, `aop-ca.pem` and `aop-client.pem`, and the client pair is
       uploaded for `menumesh.in` (step 8);
     - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its
-      token, the redaction file, the certificate with `aop-ca.pem`, the snippet's comparison
-      printing `SAME` (after their confirmation of (a)), and the digest pin.
+      token, the redaction file, the certificate with `aop-ca.pem`, and the check of the server
+      team's latest confirmation, made after their confirmation of (a), which covers their snippet
+      and their digest pin, coming out `SAME`.
 
     Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
     the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own
@@ -1257,16 +1264,16 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143 and VPS-147). Production starts fresh on the server: nothing is copied
-from hosted production, the first platform admin comes from a one-time link made on the server,
-and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves on a night of
-its own before production's. For 14 days after production's night, Vercel and the paused hosted
-project stay the way back (part 5); then the Vercel parts go, in a stop of their own (part 6). The
-contract's order holds: rehearse with the limits and no site file, then install the site file, then
-change DNS last. Each step says what it must show and its way back. The server team's steps stay in
-their runbooks, named where they come: `edge.md` §3 (the Origin CA certificate from a CSR,
-authenticated origin pulls and their origin test), §5 (adding an app) and §6 (the leak test),
-`launch.md` and `cloudflare.md`.
+VPS-139, VPS-142, VPS-143, VPS-147 and VPS-148). Production starts fresh on the server: nothing is
+copied from hosted production, the first platform admin comes from a one-time link made on the
+server, and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves on a
+night of its own before production's. For 14 days after production's night, Vercel and the paused
+hosted project stay the way back (part 5); then the Vercel parts go, in a stop of their own
+(part 6). The contract's order holds: rehearse with the limits and no site file, then install the
+site file, then change DNS last. Each step says what it must show and its way back. The server
+team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
+certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and
+§6 (the leak test), `launch.md` and `cloudflare.md`.
 
 #### 1. Before the server (any day, each step reversible)
 
@@ -1445,10 +1452,10 @@ Then, in order:
    ```
 
    An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not
-   the server team's of `66c8c61` or later: stop. The admin makes the copy and runs the comparison
-   of First install, step 11, and asks in the server team's chat as its `DIFFERENT` does, giving
-   the live file's sum, the copy's sum and the commit the copy came from. The night goes no further
-   until they have answered, the comparison prints `SAME` and every exit is not 0. Way back: none
+   the server team's of `66c8c61` or later: stop. The admin runs the server's lines of First
+   install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does, giving the
+   live values as the lines print them, the confirmation's values and its commit. The night goes no
+   further until they have answered, the check is `SAME` and every exit is not 0. Way back: none
    needed, as no record sends the server anything yet.
 
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
@@ -2599,12 +2606,13 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      server's `edge.env` through that step's copy, newline guard and `cat >>`, its check of the
      names and lengths and its install and shred, unless that check, run on the copy first, shows
      them there already; then Caddy's recreate and its checks, as there. Before the `edge.env` lines
-     comes that step's comparison of the snippet: on a rebuilt server the server team's edge comes
-     back first, and their confirmation then names the commit and the `snippets.caddy` sum it
-     takes. `SAME` goes on, and on `DIFFERENT` their chat is asked as there, giving the live file's
-     sum, the copy's sum and the commit the copy came from. Then the site file from this
-     repository, the leak test, and DNS to the new address. The origin pulls' CA and client
-     certificate stay as they were, the client pair at Cloudflare too.
+     comes that step's check of the server team's latest confirmation: on a rebuilt server their
+     edge comes back first, their digest pin of Caddy included, and their confirmation then names
+     the commit and gives the values the check takes. `SAME` goes on, and on `DIFFERENT` their chat
+     is asked as there, giving the live values as the lines print them, the confirmation's values
+     and its commit. Then the site file from this repository, the leak test, and DNS to the new
+     address. The origin pulls' CA and client certificate stay as they were, the client pair at
+     Cloudflare too.
   9. The key off the ramfs, then a settings archive and `backup.sh` run once by hand, so that a
      night of the new state exists, its base and its archive sealed (Last night's backup):
 
@@ -3085,20 +3093,21 @@ Supabase stack is only ever read.
      byte for byte; nothing there is ever edited.
   2. In `SOURCE`, the commit, the date and the sha256 lines (`sha256sum` of the six files in that
      folder); `app-apply` keeps its mode, 100755 (`git update-index --chmod=+x`).
-  3. If their `edge.conf` names a new Caddy image, `CADDY` in `scripts/vps-kit.mts` becomes it: the
+  3. If their `edge.conf` names a new Caddy image, or the `CADDY_IMAGE` line of their latest
+     confirmation does (First install, step 11), `CADDY` in `scripts/vps-kit.mts` becomes it: the
      tag with the digest `docker buildx imagetools inspect caddy:<tag>` shows, or exactly their
      `<tag>@sha256:<digest>` when `edge.conf` pins one. `pnpm test` and `vps:check` refuse an
-     `edge.conf` that names neither `CADDY`'s tag nor exactly `CADDY`. The owner's hash command in
-     First install, step 11, and in `edge.env.example` names `CADDY` and moves with it, as
-     `pnpm test` requires.
+     `edge.conf` that names neither `CADDY`'s tag nor exactly `CADDY`. The owner's hash command and
+     the `CADDY_IMAGE` line of First install, step 11, and the hash command in `edge.env.example`
+     name `CADDY` and move with it, as `pnpm test` requires.
   4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
      question for the server team.
 
   Their origin-pulls round changes `snippets.caddy` again (`tls_jainav`'s `client_auth` on, and a
   `log_fields` comment on the client certificate's fields), so its `SOURCE` line moves: the copy is
   made, in Git Bash, at the commit that round's confirmation names, and its sum must be the
-  `snippets.caddy` sum that confirmation gives, so that the kit's checks run the server's file, as
-  First install, step 11, compares it.
+  `snippets.caddy` sum that confirmation gives, so that the kit's checks run the server's file, the
+  one First install, step 11's check finds there.
 
   `MEMTOTAL_MIB` in `scripts/vps-kit.mts` holds the MemTotal the server reports, 15,992 MiB. After a
   resize or on a new server it becomes what `awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`

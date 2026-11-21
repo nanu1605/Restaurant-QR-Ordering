@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-147. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-148. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -27,9 +27,10 @@ their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this
 
 The snippet every block of `edge/menumesh.caddy` imports with the edge's `site_common`,
 `tls_menumesh`, is the server team's: their `snippets.caddy` holds it, with `client_auth` on. They
-install that file at a commit they name, and the admin compares the server's with a copy of it at
-that commit (RUNBOOK, First install, step 11). This folder adds no snippet to it, as Caddy refuses
-a snippet declared twice.
+install that file at a commit they name, with the edge's `compose.yml` and its digest pin of Caddy,
+and the admin checks the server's against their confirmation and their repository at that commit
+(RUNBOOK, First install, step 11). This folder adds no snippet to it, as Caddy refuses a snippet
+declared twice.
 
 `app-apply` also creates `/srv/menumesh/backup-out` (root, 0755), where the host's settings
 archive lands every night. `config/db/` holds, beside the init SQL, `pg_hba.conf` (the database
@@ -43,13 +44,15 @@ only.
 
 - **The server's admin** writes `/etc/apps/menumesh.conf` (the values are in the RUNBOOK) and
   installs the redact file right after it, puts in the Origin CA certificate for `menumesh.in` and
-  `*.menumesh.in` with the owner's origin-pulls CA (`aop-ca.pem`), then checks that the server
-  holds the server team's `snippets.caddy`, with its `tls_menumesh`, at the commit they name, so
-  that authenticated origin pulls are on before any MenuMesh container runs, adds the two
-  `MENUMESH_STAGING_AUTH_*` lines to a merged copy of the edge's `edge.env`, which Caddy takes at
-  one recreate on a night the owner picks, adds the 20:20 UTC drop-in for
-  `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves it to the
-  admin), with the CA certificate the owner downloads. On this server the owner is also the admin.
+  `*.menumesh.in` with the owner's origin-pulls CA (`aop-ca.pem`), then checks the server team's
+  latest confirmation, that the server holds their `snippets.caddy`, with its `tls_menumesh`, and
+  their digest pin of Caddy at the commit they name, so that authenticated origin pulls are on
+  before any MenuMesh container runs, adds the two `MENUMESH_STAGING_AUTH_*` lines to a merged copy
+  of the edge's `edge.env`, which Caddy takes at a recreate of its own on a night the owner picks,
+  after the server team's on the pinned image when their night is the same, adds the 20:20 UTC
+  drop-in for `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves it
+  to the admin), with the CA certificate the owner downloads. On this server the owner is also the
+  admin.
 - **The owner**, through the same `ops` account, makes `.env` and `env/*.env` with
   `pnpm vps:secrets --out <dir>` (a folder outside the repository), fills in each line under
   `# FILL IN`, checks them with `pnpm vps:secrets --check <dir>` and installs them with `images.env`;

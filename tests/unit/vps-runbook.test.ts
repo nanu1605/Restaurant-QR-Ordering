@@ -104,15 +104,19 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * vendored app-apply keeps it, the edge networks checked at step 15, Jainav's hosts refusing a
  * client without a certificate before db, and the leak test's copy of the installed site file, its
  * alert, its checks and its clean-up in their order. Since the last review round (VPS-145) they
- * also pin step 11's CSR key, shredded only once its certificate is in, and the digest pin's steps
- * before edge.env; since the server team's fix of hostwatch's alerts (VPS-146), the recreate
- * night's wait for their kit on the server to hold it, by their word in their chat, both before
- * that night's edge.env lines, on an earlier night or as that night's first step; and since the
- * server team installs their snippets.caddy themselves (VPS-147), step 11's comparison of the
- * server's file with a Git Bash copy of the commit they name, its sum checked before the scp,
- * before any edge config and before edge.env, and the stop on DIFFERENT for their answer in their
- * chat, given the live file's sum, the copy's and its commit, which the staging night's exit 0 and
- * disaster recovery take too.
+ * also pin step 11's CSR key, shredded only once its certificate is in; since the server team's fix
+ * of hostwatch's alerts (VPS-146), the recreate night's wait for their kit on the server to hold
+ * it, by their word in their chat, both before that night's edge.env lines, on an earlier night or
+ * as that night's first step; since the server team installs their snippets.caddy themselves
+ * (VPS-147), the stop on DIFFERENT for their answer in their chat, which the staging night's exit 0
+ * and disaster recovery take too; and since their digest pin of Caddy is theirs as well (VPS-148),
+ * in place of VPS-145's pin steps and VPS-147's comparison with a copy, step 11's one check of
+ * their latest confirmation: its commit's two sums in Git Bash on the admin's machine, the clone
+ * fetched first, and its CADDY_IMAGE line the kit's CADDY, then the server's live values before
+ * any edge config and before edge.env, SAME on those alone, with no copy on the server, DIFFERENT
+ * given the live values, the confirmation's and its commit, a copy made only on their word, no
+ * command of the pin left to the admin, and on a combined night their recreate on the pinned image
+ * first, two recreates.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2534,12 +2538,19 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
 const STOP_ON_EXIT_0 =
   "An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not the server team's of `66c8c61` or later: stop.";
 
-/** Where that stop sends the admin, since the server team installs their file (VPS-147). */
+/**
+ * Where that stop sends the admin, since the server team installs their file (VPS-147): to the
+ * server's lines of step 11's check of their latest confirmation (VPS-148).
+ */
 const STAGING_ASK =
-  "The admin makes the copy and runs the comparison of First install, step 11, and asks in the server team's chat as its `DIFFERENT` does";
-/** The night goes on only once the comparison and the origin test both pass. */
-const STAGING_SAME =
-  'until they have answered, the comparison prints `SAME` and every exit is not 0';
+  "The admin runs the server's lines of First install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does";
+/** The night goes on only once the check and the origin test both pass. */
+const STAGING_SAME = 'until they have answered, the check is `SAME` and every exit is not 0';
+/** That stop at f6a33d5, which sent the admin to the copy and the comparison with it (VPS-147). */
+const STAGING_STOP_F6A33D5 = [
+  " The admin makes the copy and runs the comparison of First install, step 11, and asks in the server team's chat as its `DIFFERENT` does, giving the live file's sum, the copy's sum and the commit the copy came from.",
+  ' The night goes no further until they have answered, the comparison prints `SAME`',
+].join('');
 
 /** That stop at b2558c3, which had the admin install the server team's file again, unasked. */
 const STAGING_STOP_B2558C3 = [
@@ -2566,7 +2577,8 @@ const OLD_STOP_ON_EXIT_0 = [
  * points to that one. Since the server team's snippets.caddy holds tls_menumesh with client_auth on
  * (their 66c8c61; VPS-142), an exit 0 means the server's file is not theirs, not a client_auth still
  * commented out; and since they install that file themselves (VPS-147), the stop sends the admin to
- * step 11's comparison and to their chat, as its DIFFERENT does, never to an install of their own.
+ * step 11's check and to their chat, as its DIFFERENT does, never to an install of their own, the
+ * check's server lines since VPS-148, where it was a comparison with a copy.
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
@@ -2867,12 +2879,32 @@ const AOP_CLIENT =
 /** The CSR's key goes only once its certificate is in (their edge.md §3, step 4; VPS-145). */
 const KEY_SHRED = 'shred -u ~/csr/origin-key.pem';
 const CERT_INSTALL = `${EDGE_CERT} && ${KEY_SHRED} && rm -r ~/csr`;
-/** The server team's digest pin, as their edge.md §5, A new Caddy image, steps 1 to 3 (VPS-145). */
+/**
+ * The server team's digest pin, as their edge.md §5, A new Caddy image, steps 1 to 3, which step 11
+ * had the admin run before edge.env (VPS-145) until it became theirs, on their own night (VPS-148).
+ */
 const PIN_COPY =
   "scp docker/edge/compose.yml ops@<the tunnel's SSH host>:incoming/edge-compose.yml";
 const PIN_CONF = 'sudoedit /etc/apps/edge.conf';
 const PIN_PULL = `sudo docker pull "$(sed -n 's/^CADDY_IMAGE=//p' /etc/apps/edge.conf)"`;
 const PIN_COMPOSE = 'sudo app-apply edge compose ~/incoming/edge-compose.yml';
+/** What of the pin the admin never runs, wherever the RUNBOOK would put it (VPS-148). */
+const PIN_LINES = [PIN_CONF, 'sudo app-apply edge compose', PIN_PULL];
+/**
+ * Step 11's one check of the server team's latest confirmation (VPS-148): on the admin's machine,
+ * in Git Bash, the two files at its commit, which must give its two sums; then, on the server, the
+ * two installed files' sums, app-apply's record of compose.yml and the CADDY_IMAGE line, which
+ * must give its values.
+ */
+const SNIPPET_AT =
+  'git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum';
+const COMPOSE_AT = 'git -C <their checkout> show <commit>:docker/edge/compose.yml | sha256sum';
+const LIVE_SUMS = 'sudo sha256sum /srv/edge/config/snippets.caddy /srv/edge/compose.yml';
+const RECORD = 'cat /etc/apps/edge.compose.sha256';
+const IMAGE_LINE = "grep '^CADDY_IMAGE=' /etc/apps/edge.conf";
+const SERVER_LINES = [LIVE_SUMS, RECORD, IMAGE_LINE];
+/** The check's three server lines as step 11's block holds them. */
+const SERVER_BLOCK = SERVER_LINES.map((line) => `    ${line}\n`).join('');
 const EDGE_COPY = '(umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)';
 const EDGE_ENV = 'sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env';
 const RECREATE = 'sudo app-compose edge up -d';
@@ -2933,24 +2965,38 @@ const redactEarly = (runbook: string) =>
     ],
   );
 
+/** Step 11's words for the pin, the server team's alone, and for the two recreates (VPS-148). */
+const NEVER_CHANGES = "The admin never changes the edge's `compose.yml` or its `CADDY_IMAGE`";
+const TWO_RECREATES = [
+  "The server team's digest pin of Caddy takes a recreate of its own, on their night: on a combined night theirs comes first, on the pinned image, with their `edge ps` and `validate`, before the `edge.env` lines",
+  'and this one follows, two recreates that night',
+];
+/** The night's (d): steps 9 to 11 up to edge.env, the check of their confirmation last. */
+const D_CHECK =
+  "and the check of the server team's latest confirmation, made after their confirmation of (a), which covers their snippet and their digest pin, coming out `SAME`";
+
 /**
  * The edge in its order, and edge.env merged (the server team's review, their commitments 3 and 4;
  * VPS-136). app-apply refuses every change that reloads Caddy from `edge env` until Caddy is
  * recreated, so the certificate, with the owner's aop-ca.pem and the client certificate beside it,
  * goes in first, and edge.env last, the recreate right after it. `edge env` installs the file it is
  * given whole, so the admin merges a copy of the live file and shreds it, also on stopping after a
- * refusal (VPS-143). One recreate takes the server team's digest pin as well, its three steps before
- * edge.env, and the staging night first checks that Caddy holds MenuMesh's two lines, by their names
- * alone. The CSR's key goes only once the certificate is in, as in their edge.md §3: a refused
- * install would have shredded the only copy (VPS-145).
+ * refusal (VPS-143). The staging night first checks that Caddy holds MenuMesh's two lines, by their
+ * names alone. The CSR's key goes only once the certificate is in, as in their edge.md §3: a
+ * refused install would have shredded the only copy (VPS-145). The digest pin of Caddy is the
+ * server team's, on their own night, where VPS-145 had the admin run its steps before edge.env
+ * (VPS-148): no line of the RUNBOOK has the admin set CADDY_IMAGE, pull the image or run
+ * `edge compose`, step 11 says the admin never changes the edge's compose.yml or CADDY_IMAGE, the
+ * server's lines of the check of their latest confirmation come before the edge.env copy, every
+ * CADDY_IMAGE line it names is the kit's CADDY, (d) waits for that check, and on a combined night
+ * their recreate on the pinned image comes first, two recreates, where one took both before.
  */
 const edgeNight = (runbook: string) =>
-  inPlaces(runbook, ['edgeStep', 'beforeStaging'], ({ edgeStep, beforeStaging }) => {
+  inPlaces(runbook, ['vps', 'edgeStep', 'beforeStaging'], ({ vps, edgeStep, beforeStaging }) => {
     const text = flat(edgeStep);
     const order = [EDGE_CERT, EDGE_COPY, EDGE_ENV, RECREATE].map((words) => text.indexOf(words));
-    const pin = [PIN_COPY, PIN_CONF, PIN_PULL, PIN_COMPOSE, EDGE_COPY].map((words) =>
-      text.indexOf(words),
-    );
+    const checked = [...SERVER_LINES, EDGE_COPY].map((words) => text.indexOf(words));
+    const images = [...text.matchAll(/CADDY_IMAGE=(caddy:[^\s`'",]*)/g)].map((found) => found[1]);
     return [
       ...[CERT_INSTALL, AOP_CLIENT, EDGE_COPY, EDGE_ENV]
         .filter((words) => !text.includes(words))
@@ -2973,11 +3019,32 @@ const edgeNight = (runbook: string) =>
       )
         ? []
         : ['First install, step 11, leaves a copy of edge.env behind when the admin stops']),
-      ...(has(edgeStep, "It also takes the server team's digest pin of Caddy") &&
-      pin.every((at, n) => at >= 0 && (n === 0 || at > pin[n - 1])) &&
-      text.includes(`CADDY_IMAGE=${CADDY}`)
+      ...PIN_LINES.filter((words) => has(vps, words)).map(
+        (words) => `the RUNBOOK has the admin change the server team’s digest pin: ${words}`,
+      ),
+      ...(has(edgeStep, NEVER_CHANGES)
         ? []
-        : ['First install, step 11, recreates Caddy without the server team’s digest pin']),
+        : [
+            'First install, step 11, doesn’t leave the edge’s compose.yml and CADDY_IMAGE to the server team',
+          ]),
+      ...(checked.every((at, n) => at >= 0 && (n === 0 || at > checked[n - 1]))
+        ? []
+        : [
+            'First install, step 11, reaches edge.env before the check of the server team’s latest confirmation',
+          ]),
+      ...(images.length > 0 && images.every((image) => image === CADDY)
+        ? []
+        : ['First install, step 11, takes a CADDY_IMAGE line other than the kit’s CADDY']),
+      ...(TWO_RECREATES.every((words) => has(edgeStep, words)) && !has(vps, 'one recreate for both')
+        ? []
+        : [
+            'First install, step 11, doesn’t put the server team’s recreate on the pinned image first on a combined night, two recreates',
+          ]),
+      ...(has(edgeStep, D_CHECK)
+        ? []
+        : [
+            'First install, step 11’s (d) doesn’t wait for the check of the server team’s latest confirmation',
+          ]),
       ...(has(beforeStaging, RECREATED)
         ? []
         : ['the staging night doesn’t check that Caddy was recreated with MenuMesh’s two lines']),
@@ -2986,25 +3053,31 @@ const edgeNight = (runbook: string) =>
 
 /**
  * The server team's snippets.caddy (VPS-142), which they install themselves: step 11 copies it in
- * Git Bash at the commit they name, checks the copy's sum, sends it, and compares the server's file
- * with it, each by its sum, installing the copy only on their word (VPS-147).
+ * Git Bash at a commit they name, checks the copy's sum, sends it and installs it, on their word
+ * alone (VPS-147, VPS-148), then takes the copy out of ~/incoming.
  */
 const SNIPPET_SHOW =
   'git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy';
 const SNIPPET_SUM = 'sha256sum snippets.caddy';
 const SNIPPET_COPY = "scp snippets.caddy ops@<the tunnel's SSH host>:incoming/";
+const SNIPPET = 'sudo app-apply edge config ~/incoming/snippets.caddy';
+/** That install's line in step 11's block, the copy taken out once it is in (VPS-148). */
+const SNIPPET_LINE = `    ${SNIPPET} && rm ~/incoming/snippets.caddy     # on the server\n`;
+/**
+ * f6a33d5's server-side lines (VPS-147): the live file's sum, the copy's, and the two compared, the
+ * comparison's SAME resting on whatever copy ~/incoming held (VPS-148).
+ */
 const LIVE_SUM = 'sudo sha256sum /srv/edge/config/snippets.caddy';
 const COPY_SUM = 'sha256sum ~/incoming/snippets.caddy';
 const SNIPPET_CMP =
   'sudo cmp /srv/edge/config/snippets.caddy ~/incoming/snippets.caddy && echo SAME || echo DIFFERENT';
-const SNIPPET = 'sudo app-apply edge config ~/incoming/snippets.caddy';
 
 /**
  * tls_menumesh from the server team's snippets.caddy (their 66c8c61; VPS-142). Their file holds it
  * with client_auth on, Caddy refuses a snippet declared twice, and a later edge config of their file
  * would drop one added on the server. So step 11 keeps their file between the certificate and
- * edge.env, its copy sent and, on their word alone (VPS-147), installed there, says that it holds
- * tls_menumesh with client_auth on, and adds none of MenuMesh's own: the kit has no
+ * edge.env, its copy sent and, on their word alone (VPS-147, VPS-148), installed there, says that it
+ * holds tls_menumesh with client_auth on, and adds none of MenuMesh's own: the kit has no
  * tls_menumesh.caddy any more.
  */
 const serverSnippet = (runbook: string) =>
@@ -3038,41 +3111,50 @@ const serverSnippet = (runbook: string) =>
 const TREE_COPY = 'scp docker/edge/config/snippets.caddy';
 /**
  * What the admin's message on DIFFERENT gives the server team, who know the sum of every version of
- * their file: an older one they install theirs over, a newer one of a round not yet confirmed they
+ * their files: an older one they install theirs over, a newer one of a round not yet confirmed they
  * confirm, and one of no commit, a hand edit, they look at before anything is installed (VPS-147).
+ * Since VPS-148 those are the live values the check's lines print, beside the confirmation's own
+ * and its commit.
  */
-const THREE_THINGS = "the live file's sum, the copy's sum and the commit the copy came from";
-/** Step 11's words for the copy, its check, and the two outcomes of the comparison (VPS-147). */
+const VALUES_SENT =
+  "the live values as the lines print them, the confirmation's values and its commit";
+/** Step 11's words for the check's two halves, its two outcomes and the copy (VPS-148). */
 const IN_GIT_BASH = 'in Git Bash, not PowerShell';
-const LATEST = 'at the commit their latest confirmation names';
-const SUM_STOP = '`sha256sum` must print the `snippets.caddy` sum that confirmation gives, or stop';
-const SAME_PATH =
-  '`SAME`, what their install leaves: the server holds their file of that commit, nothing is installed';
-const DIFFERENT_STOP = "`DIFFERENT`: stop, and ask in the server team's chat";
+const FETCH = "(`git -C <their checkout> fetch` first, if it doesn't";
+const ADMIN_STOP =
+  'If any of them fails, stop and ask in their chat: the confirmation, the commit or the clone is wrong, and nothing is checked on the server';
+const SAME_RULE =
+  "`SAME`, what their night leaves: four lines, the confirmation's values in full, every character";
+const DIFFERENT_STOP =
+  "`DIFFERENT`, anything else, a line missing or an error among them: stop, and ask in the server team's chat";
 const HELD = "Run none of this step's lines below until they answer, `edge.env`'s above all";
-const THEIR_INSTALL =
-  'Either they install their file themselves, and the three lines, with the copy made again if their answer names another commit, must print `SAME`';
-const THEIR_WORD = `or they say in their chat to install that copy, and only then does the admin run \`${SNIPPET}\``;
-const AGAIN = 'checks every installed site again, and the three lines must print `SAME`';
+const AGAIN =
+  'Then the check again, both halves if their answer names another commit, and it must be `SAME`';
+const THEIR_WORD =
+  'A copy of `snippets.caddy` is made only on their word in their chat to install it from a commit they name';
 const THEIR_FILE = "the server's file is always their file at a commit they name";
-/** Disaster recovery's edge takes the same comparison, before its edge.env lines too. */
-const RECOVERY_SNIPPET =
-  "Before the `edge.env` lines comes that step's comparison of the snippet: on a rebuilt server the server team's edge comes back first";
+/** Disaster recovery's edge takes the same check, before its edge.env lines too. */
+const RECOVERY_CHECK =
+  "Before the `edge.env` lines comes that step's check of the server team's latest confirmation: on a rebuilt server their edge comes back first, their digest pin of Caddy included";
 
 /**
  * The server's snippets.caddy compared with the server team's, and never installed on the way
- * (their plan of 2026-11-22; VPS-147). `app-apply edge config` installs the whole file, their
- * tls_jainav too, so step 11's copy from a working tree, "at that commit or a later one", could have
- * turned their origin pulls off or made their hosts refuse Cloudflare. They install main's file
- * themselves, right after their kit's refresh, and their confirmation names the commit and gives
- * the installed file's sum. So the admin makes the copy of that commit's file with git show in Git
- * Bash, where PowerShell 5.1's `>` would write it as UTF-16 with CRLF, checks its sum against their
- * confirmation before the scp, and compares the server's file with it, each by its sum, before any
- * edge config and before edge.env: SAME installs nothing; DIFFERENT stops, asks their chat with the
- * live file's sum, the copy's and its commit, holds the step's later lines, edge.env above all, and
- * installs the copy only on their word, the comparison run again after either answer. The staging
- * night's exit 0 and disaster recovery's edge, before its edge.env lines, take the same comparison
- * and give the same three.
+ * (their plan of 2026-11-22; VPS-147), and since their digest pin of Caddy is theirs too, one check
+ * of their latest confirmation (their decision of 2026-11-22; VPS-148). `app-apply edge config`
+ * installs the whole file, their tls_jainav too, so step 11's copy from a working tree, "at that
+ * commit or a later one", could have turned their origin pulls off or made their hosts refuse
+ * Cloudflare. They install main's file and their pin themselves, and their confirmation names the
+ * commit and gives the installed snippets.caddy's and compose.yml's sums and the CADDY_IMAGE line.
+ * f6a33d5 compared the server's file with a copy in ~/incoming whose own sum it held to nothing, so
+ * a copy left from an earlier night matched a live file as old, and printed SAME. So the admin
+ * checks the confirmation's two sums at its commit with git show in Git Bash, where PowerShell 5.1
+ * re-encodes git's output, in a clone fetched first, and stops when they fail; then reads the
+ * server's live values, against the confirmation and never a copy, before any edge config and
+ * before edge.env: SAME installs nothing; DIFFERENT stops, asks their chat with the live values,
+ * the confirmation's and its commit, holds the step's later lines, edge.env above all, and the
+ * check runs again after their answer; and a copy of snippets.caddy is made, its sum checked
+ * before the scp, and installed only on their word. The staging night's exit 0 and disaster
+ * recovery's edge, before its edge.env lines, take the same check and give the same values.
  */
 const snippetGuard = (runbook: string) =>
   inPlaces(
@@ -3080,12 +3162,14 @@ const snippetGuard = (runbook: string) =>
     ['vps', 'edgeStep', 'siteNight', 'recoveryEdge'],
     ({ vps, edgeStep, siteNight, recoveryEdge }) => {
       const text = flat(edgeStep);
-      const copied = text.indexOf(SNIPPET_SHOW);
-      const summed = text.indexOf(SNIPPET_SUM);
-      const sent = text.indexOf(SNIPPET_COPY);
-      const compared = [LIVE_SUM, COPY_SUM, SNIPPET_CMP].map((words) => text.indexOf(words));
-      const last = compared[compared.length - 1];
-      const installed = text.indexOf(SNIPPET);
+      const admin = [SNIPPET_AT, COMPOSE_AT].map((words) => text.indexOf(words));
+      const server = SERVER_LINES.map((words) => text.indexOf(words));
+      const last = server[server.length - 1];
+      const word = text.indexOf(THEIR_WORD);
+      const copy = [SNIPPET_SHOW, SNIPPET_SUM, SNIPPET_COPY, SNIPPET].map((words) =>
+        text.indexOf(words),
+      );
+      const installed = copy[copy.length - 1];
       const merged = text.indexOf(EDGE_COPY);
       return [
         ...(has(vps, TREE_COPY)
@@ -3096,73 +3180,79 @@ const snippetGuard = (runbook: string) =>
               'the RUNBOOK takes snippets.caddy at that commit or a later one, not at the commit the server team names',
             ]
           : []),
-        ...(copied >= 0 && has(edgeStep, IN_GIT_BASH) && has(edgeStep, LATEST)
+        ...(admin.every((found) => found >= 0) && has(edgeStep, IN_GIT_BASH)
           ? []
           : [
-              'First install, step 11, doesn’t make its copy of snippets.caddy with git show in Git Bash, at the commit of the server team’s latest confirmation',
+              'First install, step 11, doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
             ]),
-        ...(copied >= 0 && summed > copied && sent > summed && has(edgeStep, SUM_STOP)
+        ...(has(edgeStep, FETCH)
           ? []
           : [
-              'First install, step 11, sends its copy of snippets.caddy before sha256sum shows the sum of the server team’s confirmation',
+              'First install, step 11, doesn’t fetch the clone first when it lacks the confirmation’s commit',
             ]),
-        ...(sent >= 0 && compared.every((found, n) => found > (n === 0 ? sent : compared[n - 1]))
+        ...(has(edgeStep, ADMIN_STOP)
+          ? []
+          : ['First install, step 11, goes on when the confirmation fails on the admin’s machine']),
+        ...(server.every((found, n) => found > (n === 0 ? Math.max(...admin) : server[n - 1]))
           ? []
           : [
-              'First install, step 11, doesn’t compare the server’s snippets.caddy with the copy, each by its sum, once the copy is on the server',
+              'First install, step 11, doesn’t read the server’s live values after the admin’s check',
             ]),
         ...(last >= 0 && installed >= 0 && installed < last
-          ? [
-              'First install, step 11, runs edge config before it compares the server’s snippets.caddy with the copy',
-            ]
+          ? ['First install, step 11, runs edge config before it checks the server’s live values']
           : []),
         ...(last >= 0 && merged >= 0 && merged < last
+          ? ['First install, step 11, reaches edge.env before it checks the server’s live values']
+          : []),
+        ...([COPY_SUM, 'cmp /srv/edge/config/snippets.caddy'].some((words) => text.includes(words))
           ? [
-              'First install, step 11, reaches edge.env before it compares the server’s snippets.caddy with the copy',
+              'First install, step 11, goes by a copy on the server, which one left from an earlier night can match',
             ]
           : []),
-        ...(has(edgeStep, SAME_PATH)
+        ...(has(edgeStep, SAME_RULE)
           ? []
-          : ['First install, step 11, doesn’t say that SAME installs nothing']),
+          : [
+              'First install, step 11, doesn’t hold SAME to the confirmation’s values in full, every character',
+            ]),
         ...(has(edgeStep, DIFFERENT_STOP)
           ? []
           : [
-              'First install, step 11, doesn’t stop on DIFFERENT and ask the server team in their chat',
+              'First install, step 11, doesn’t stop on DIFFERENT, anything but SAME, and ask the server team in their chat',
             ]),
         ...(has(edgeStep, HELD)
           ? []
           : [
               'First install, step 11, doesn’t hold its lines below, edge.env above all, until the server team answers',
             ]),
-        ...(has(edgeStep, `giving ${THREE_THINGS}`)
+        ...(has(edgeStep, `giving ${VALUES_SENT}`)
           ? []
           : [
-              'First install, step 11’s DIFFERENT doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+              'First install, step 11’s DIFFERENT doesn’t give the server team the live values, the confirmation’s and its commit',
             ]),
-        ...(has(edgeStep, THEIR_WORD)
+        ...(has(edgeStep, AGAIN)
+          ? []
+          : ['First install, step 11, goes on after DIFFERENT without the check SAME again']),
+        ...(last >= 0 &&
+        word > last &&
+        copy.every((found, n) => found > (n === 0 ? word : copy[n - 1]))
           ? []
           : [
-              'First install, step 11, runs edge config without the server team’s word in their chat',
-            ]),
-        ...(has(edgeStep, THEIR_INSTALL) && has(edgeStep, AGAIN)
-          ? []
-          : [
-              'First install, step 11, goes on after DIFFERENT without the comparison printing SAME again',
+              'First install, step 11, makes its copy of snippets.caddy without the server team’s word, or sends it before sha256sum shows their sum',
             ]),
         ...(has(edgeStep, THEIR_FILE)
           ? []
           : [
               'First install, step 11, doesn’t say the server’s snippets.caddy is always the server team’s file at a commit they name',
             ]),
-        ...(has(siteNight, THREE_THINGS)
+        ...(has(siteNight, VALUES_SENT)
           ? []
           : [
-              'the staging night’s exit 0 doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+              'the staging night’s exit 0 doesn’t give the server team the live values, the confirmation’s and its commit',
             ]),
-        ...(has(recoveryEdge, RECOVERY_SNIPPET) && has(recoveryEdge, THREE_THINGS)
+        ...(has(recoveryEdge, RECOVERY_CHECK) && has(recoveryEdge, VALUES_SENT)
           ? []
           : [
-              'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does, giving the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+              'disaster recovery’s edge doesn’t check the server team’s latest confirmation as First install, step 11, does, giving the live values, the confirmation’s and its commit',
             ]),
       ];
     },
@@ -3879,6 +3969,87 @@ const SNIPPET_B2558C3 = [
   '',
 ].join('\n');
 
+/**
+ * First install, step 11's copy and comparison at f6a33d5, from the copy to DIFFERENT: SAME from a
+ * cmp with whatever copy ~/incoming held, whose own sum the admin held to nothing.
+ */
+const SNIPPET_F6A33D5 = [
+  "    The copy is made on the admin's machine in Git Bash, not PowerShell (Windows PowerShell 5.1's",
+  "    `>` writes git's output as UTF-16 with CRLF line ends, whose sum never matches), at the commit",
+  '    their latest confirmation names. `sha256sum` must print the `snippets.caddy` sum that',
+  '    confirmation gives, or stop: the copy or the commit is wrong, and nothing goes to the server. A',
+  '    confirmation without that sum, of a round that installed no `snippets.caddy`, is asked about in',
+  '    their chat:',
+  '',
+  '    ```sh',
+  `    ${SNIPPET_SHOW}     # on the admin's machine, in Git Bash`,
+  `    ${SNIPPET_SUM}     # the snippets.caddy sum of their latest confirmation, or stop`,
+  `    ${SNIPPET_COPY}`,
+  '    ```',
+  '',
+  "    Then, on the server, the live file's sum, the copy's, and the two compared (`/srv/edge` is",
+  "    root's alone, 0750, hence `sudo`):",
+  '',
+  '    ```sh',
+  `    ${LIVE_SUM}`,
+  `    ${COPY_SUM}`,
+  `    ${SNIPPET_CMP}`,
+  '    ```',
+  '',
+  '    - `SAME`, what their install leaves: the server holds their file of that commit, nothing is',
+  '      installed, and the step goes on.',
+  "    - `DIFFERENT`: stop, and ask in the server team's chat, giving the live file's sum, the copy's",
+  '      sum and the commit the copy came from (the sums as the two `sha256sum` lines print them). Run',
+  "      none of this step's lines below until they answer, `edge.env`'s above all. Either they",
+  '      install their file themselves, and the three lines, with the copy made again if their answer',
+  '      names another commit, must print `SAME`; or they say in their chat to install that copy, and',
+  `      only then does the admin run \`${SNIPPET}\`, which`,
+  '      checks every installed site again, and the three lines must print `SAME`.',
+  '',
+  '',
+].join('\n');
+
+/** First install, step 11's digest pin at f6a33d5: the server team's steps, run by the admin. */
+const PIN_F6A33D5 = [
+  "    Then the server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), as",
+  '    their `edge.md` §5, **A new Caddy image**, steps 1 to 3, puts it in: its',
+  '    `app-apply edge compose` goes before `edge.env` too. `install.sh` never overwrites a conf, so',
+  '    `/etc/apps/edge.conf` keeps the image it had until the admin sets its `CADDY_IMAGE`, tag and',
+  '    digest, as their `docker/host/apps/edge.conf` has it; then the image is pulled, and their',
+  "    `docker/edge/compose.yml`, copied from their repository's root on the admin's machine, goes in,",
+  '    which `app-apply` refuses while its image differs from `CADDY_IMAGE`. It goes to `~/incoming`',
+  "    under a name of its own, as MenuMesh's `compose.yml` goes there for step 15:",
+  '',
+  '    ```sh',
+  `    ${PIN_COPY}     # on the admin's machine, in their repository's root`,
+  `    ${PIN_CONF}     # CADDY_IMAGE= as their docker/host/apps/edge.conf has it`,
+  `    ${IMAGE_LINE}`,
+  `    ${PIN_PULL}`,
+  `    ${PIN_COMPOSE}`,
+  '    ```',
+  '',
+  '    `grep` prints',
+  `    \`CADDY_IMAGE=${CADDY}\`,`,
+  "    the index the server runs, which the kit's checks pin too (VPS-130), and `edge compose`",
+  '    validates the live tree with that image. The recreate below starts Caddy on it.',
+  '',
+  '',
+].join('\n');
+
+/** First install, step 11's recreate at f6a33d5: one recreate for the edge.env lines and the pin. */
+const RECREATE_F6A33D5 = [
+  '    The recreate drops every connection on the shared edge, hence the window. It also takes the',
+  "    server team's digest pin of Caddy, put in before `edge.env` (above), as their `edge.md` §5,",
+  '    step 7, says: one recreate for both.',
+].join('\n');
+
+/** First install, step 11's (d) at f6a33d5: the snippet's comparison, and the digest pin. */
+const D_F6A33D5 = [
+  '    - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its',
+  "      token, the redaction file, the certificate with `aop-ca.pem`, the snippet's comparison",
+  '      printing `SAME` (after their confirmation of (a)), and the digest pin.',
+].join('\n');
+
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
 const REWRAPPED = [
   'password manager',
@@ -4169,7 +4340,6 @@ const REWRAPPED = [
   'app-apply edge redact menumesh ~/incoming/log-redact.caddy',
   "the redaction file right after step 1's conf",
   'the order is the certificate, then the snippet',
-  "server team's digest pin of Caddy",
   'its copy in `~/incoming` shredded',
   'Not before the server team confirms in their chat',
   'this step, and every step after it, waits',
@@ -4218,8 +4388,6 @@ const REWRAPPED = [
   // Read by the rules of the last review round (VPS-145): a piece of each phrase that stands on
   // one line.
   '&& shred -u ~/csr/origin-key.pem',
-  'scp docker/edge/compose.yml',
-  'app-apply edge compose ~/incoming/edge-compose.yml',
   // Read by the rule of the server team's fix of hostwatch's alerts (VPS-146): a piece of each
   // phrase that stands on one line.
   "their fix of hostwatch's alerts in it, merged as",
@@ -4229,27 +4397,35 @@ const REWRAPPED = [
   // Read by the rules of the server team's own install of their snippets.caddy (VPS-147): a piece
   // of each phrase that stands on one line.
   'in Git Bash, not PowerShell',
-  'their latest confirmation names',
-  'must print the `snippets.caddy` sum that',
   'git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy',
   'sha256sum snippets.caddy',
   SNIPPET_COPY,
-  LIVE_SUM,
-  COPY_SUM,
-  'sudo cmp /srv/edge/config/snippets.caddy',
-  '`SAME`, what their install leaves',
-  DIFFERENT_STOP,
   "none of this step's lines below until they answer",
-  'install their file themselves, and the three lines',
-  'names another commit, must print `SAME`',
-  'or they say in their chat to install that copy',
   "the server's file is always their file at a commit they",
   "and asks in the server team's chat as its `DIFFERENT` does",
-  'the comparison prints `SAME` and every exit is not 0',
-  THREE_THINGS,
   'Before the `edge.env` lines',
-  "comes that step's comparison of the snippet",
-  "on a rebuilt server the server team's edge comes",
+  // Read by the rules of the server team's digest pin on their own night and the one check of
+  // their latest confirmation (VPS-148): a piece of each phrase that stands on one line.
+  "never changes the edge's `compose.yml` or its `CADDY_IMAGE`",
+  '`git -C <their checkout> fetch` first',
+  'If any of them fails, stop and ask in their chat',
+  'git -C <their checkout> show <commit>:docker/edge/compose.yml',
+  LIVE_SUMS,
+  RECORD,
+  IMAGE_LINE,
+  '`SAME`, what their night leaves',
+  '`DIFFERENT`, anything else, a line missing or an error among them: stop',
+  'live values as the lines print them',
+  'Then the check again, both halves if their answer names another commit',
+  'is made only on their word in their chat',
+  "The admin runs the server's lines of First",
+  'the check is `SAME` and every exit is not 0',
+  "comes that step's check of the server team's latest confirmation",
+  'edge comes back first, their digest pin of Caddy included',
+  'digest pin of Caddy takes a recreate of its own',
+  'comes first, on the pinned image, with their `edge ps` and `validate`',
+  'one follows, two recreates that night',
+  'made after their confirmation of (a)',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -6810,12 +6986,18 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       pulls,
       swap(
         RUNBOOK,
-        cut(
-          RUNBOOK,
-          ' The admin makes the copy and runs the comparison',
-          ' and every exit is not 0.',
-        ),
+        cut(RUNBOOK, ' The admin runs the server', ' and every exit is not 0.'),
         " The night goes no further until the admin has turned authenticated origin pulls on as `edge.md` §3 says (Cloudflare's zone-level pulls first, then `client_auth`)",
+      ),
+      unasked,
+    );
+    // f6a33d5's stop, which sent the admin to the copy and the comparison with it (VPS-148).
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' The admin runs the server', ' and every exit is not 0.'),
+        STAGING_STOP_F6A33D5,
       ),
       unasked,
     );
@@ -7099,7 +7281,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('puts the edge in in its order, edge.env merged and Caddy recreated once, and checks the recreate before the staging night (the server team’s review, VPS-136)', () => {
+  it('puts the edge in in its order, edge.env merged, the digest pin left to the server team and their latest confirmation checked before edge.env, Caddy recreated after their own recreate on a combined night, and checks the recreate before the staging night (the server team’s review, VPS-136, VPS-148)', () => {
     expect(edgeNight(RUNBOOK)).toEqual([]);
     // 21a13bf's step 11: the certificate without aop-ca.pem, and edge.env as MenuMesh's two lines.
     const old = swap(
@@ -7119,40 +7301,82 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
     refuses(edgeNight, unchained, `First install, step 11, lacks ${CERT_INSTALL}`);
     refuses(edgeNight, unchained, 'shreds the CSR’s key whether or not its certificate went in');
-    // 0a35068's step 11: the digest pin named, none of its steps, so `edge compose` was refused;
-    // its `edge compose` after edge.env; and a CADDY_IMAGE that is not the kit's CADDY.
-    const unpinned = 'recreates Caddy without the server team’s digest pin';
+    // f6a33d5's step 11: the admin's steps of the server team's digest pin before edge.env, theirs
+    // since their decision of 2026-11-22; one of them alone; and a CADDY_IMAGE line that is not the
+    // kit's CADDY.
+    const pinned = swap(
+      RUNBOOK,
+      '    `edge.env` comes last.',
+      `${PIN_F6A33D5}    \`edge.env\` comes last.`,
+    );
+    for (const words of PIN_LINES) {
+      refuses(
+        edgeNight,
+        pinned,
+        `the RUNBOOK has the admin change the server team’s digest pin: ${words}`,
+      );
+    }
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, `    ${EDGE_ENV}\n`, `    ${PIN_COMPOSE}\n    ${EDGE_ENV}\n`),
+      'the RUNBOOK has the admin change the server team’s digest pin: sudo app-apply edge compose',
+    );
+    const otherImage = 'takes a CADDY_IMAGE line other than the kit’s CADDY';
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, `\`CADDY_IMAGE=${CADDY}\``, '`CADDY_IMAGE=caddy:2.11.9-alpine`'),
+      otherImage,
+    );
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, `\`CADDY_IMAGE=${CADDY}\``, `\`CADDY_IMAGE=${CADDY.replace('003a', '0bbb')}\``),
+      otherImage,
+    );
+    // The sentence that leaves compose.yml and CADDY_IMAGE to the server team dropped.
     refuses(
       edgeNight,
       swap(
         RUNBOOK,
-        cut(
-          RUNBOOK,
-          "    Then the server team's digest pin of Caddy",
-          '    `edge.env` comes last.',
-        ),
+        ` ${NEVER_CHANGES.replace('admin ', 'admin\n    ')}: only the server team does.`,
         '',
       ),
-      unpinned,
+      'doesn’t leave the edge’s compose.yml and CADDY_IMAGE to the server team',
     );
+    // The check's server lines after the edge.env copy, and gone.
+    const unchecked = 'reaches edge.env before the check of the server team’s latest confirmation';
     refuses(
       edgeNight,
       swap(
-        swap(RUNBOOK, `    ${PIN_COMPOSE}\n`, ''),
+        swap(RUNBOOK, SERVER_BLOCK, ''),
         `    ${EDGE_ENV}\n`,
-        `    ${EDGE_ENV}\n    ${PIN_COMPOSE}\n`,
+        `    ${EDGE_ENV}\n${SERVER_BLOCK}`,
       ),
-      unpinned,
+      unchecked,
+    );
+    refuses(edgeNight, swap(RUNBOOK, SERVER_BLOCK, ''), unchecked);
+    // f6a33d5's one recreate for both, and its (d), which named the pin.
+    refuses(
+      edgeNight,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '    The recreate drops every connection', ' That night comes only after:'),
+        RECREATE_F6A33D5,
+      ),
+      'doesn’t put the server team’s recreate on the pinned image first on a combined night, two recreates',
     );
     refuses(
       edgeNight,
-      swap(RUNBOOK, `\`CADDY_IMAGE=${CADDY}\``, '`CADDY_IMAGE=caddy:2.11.9-alpine`'),
-      unpinned,
+      swap(RUNBOOK, cut(RUNBOOK, '    - (d) steps 9 to 11', '\n\n    Steps 12 to 21'), D_F6A33D5),
+      '(d) doesn’t wait for the check of the server team’s latest confirmation',
     );
     for (const problem of [
       'doesn’t put the certificate and the snippet before edge.env',
       'leaves a copy of edge.env behind when the admin stops',
-      'recreates Caddy without the server team’s digest pin',
+      'doesn’t leave the edge’s compose.yml and CADDY_IMAGE to the server team',
+      'reaches edge.env before the check of the server team’s latest confirmation',
+      'takes a CADDY_IMAGE line other than the kit’s CADDY',
+      'doesn’t put the server team’s recreate on the pinned image first',
+      '(d) doesn’t wait for the check of the server team’s latest confirmation',
     ]) {
       refuses(edgeNight, old, problem);
     }
@@ -7176,7 +7400,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('keeps the server team’s snippets.caddy, whose tls_menumesh has client_auth on, between the certificate and edge.env, its copy sent and, on their word alone, installed there, and adds no snippet of MenuMesh’s own (VPS-142, VPS-147)', () => {
+  it('keeps the server team’s snippets.caddy, whose tls_menumesh has client_auth on, between the certificate and edge.env, its copy sent and, on their word alone, installed there, and adds no snippet of MenuMesh’s own (VPS-142, VPS-147, VPS-148)', () => {
     expect(serverSnippet(RUNBOOK)).toEqual([]);
     // ac976ce's step 11: deploy/vps/edge/tls_menumesh.caddy added to the server's file.
     const own = swap(
@@ -7198,13 +7422,9 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(
       serverSnippet,
       swap(
-        swap(
-          RUNBOOK,
-          `only then does the admin run \`${SNIPPET}\``,
-          'only then does the admin run it',
-        ),
+        swap(RUNBOOK, SNIPPET_LINE, ''),
         `    ${EDGE_ENV}\n`,
-        `    ${EDGE_ENV}\n    ${SNIPPET}\n`,
+        `    ${EDGE_ENV}\n${SNIPPET_LINE}`,
       ),
       'doesn’t keep the server team’s snippets.caddy between the certificate and edge.env',
     );
@@ -7652,7 +7872,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(alertsFixed, swap(RUNBOOK, ", or as that night's first step", ''), heldBack);
   });
 
-  it('compares the server’s snippets.caddy with a Git Bash copy of the commit the server team names, its sum checked before the scp, before any edge config and edge.env, and stops on DIFFERENT for their answer, given the live file’s sum, the copy’s and its commit (VPS-147)', () => {
+  it('checks the server team’s latest confirmation, first at its commit in Git Bash, the clone fetched first, then on the server before any edge config and edge.env, SAME on the live values alone with no copy on the server, and stops on DIFFERENT for their answer, given the live values, the confirmation’s and its commit, a copy made only on their word (VPS-147, VPS-148)', () => {
     expect(snippetGuard(RUNBOOK)).toEqual([]);
     // b2558c3's block: a working tree's file, at whatever commit it had, sent unchecked and
     // installed whole.
@@ -7664,102 +7884,188 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     for (const problem of [
       'the RUNBOOK sends snippets.caddy from a working tree',
       'the RUNBOOK takes snippets.caddy at that commit or a later one',
-      'doesn’t make its copy of snippets.caddy with git show in Git Bash',
-      'sends its copy of snippets.caddy before sha256sum shows the sum',
-      'doesn’t compare the server’s snippets.caddy with the copy',
-      'doesn’t say that SAME installs nothing',
-      'doesn’t stop on DIFFERENT and ask the server team in their chat',
-      'doesn’t give the server team the live file’s sum',
-      'runs edge config without the server team’s word in their chat',
+      'doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
+      'doesn’t fetch the clone first',
+      'goes on when the confirmation fails on the admin’s machine',
+      'doesn’t read the server’s live values after the admin’s check',
+      'doesn’t hold SAME to the confirmation’s values in full',
+      'doesn’t stop on DIFFERENT, anything but SAME, and ask the server team in their chat',
+      'doesn’t give the server team the live values',
+      'goes on after DIFFERENT without the check SAME again',
+      'makes its copy of snippets.caddy without the server team’s word',
       'doesn’t say the server’s snippets.caddy is always the server team’s file',
     ]) {
       refuses(snippetGuard, old, problem);
     }
-    // The comparison after edge config, and after edge.env.
+    // f6a33d5's copy and comparison: SAME from a cmp with whatever copy ~/incoming held, which a
+    // copy left from an earlier night matches when the live file is as old.
+    const compared = swap(
+      RUNBOOK,
+      cut(
+        RUNBOOK,
+        '    Their latest confirmation is checked',
+        '    For `menumesh.in` that test proves nothing yet',
+      ),
+      SNIPPET_F6A33D5,
+    );
+    for (const problem of [
+      'goes by a copy on the server, which one left from an earlier night can match',
+      'doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
+      'doesn’t read the server’s live values after the admin’s check',
+      'doesn’t hold SAME to the confirmation’s values in full',
+      'doesn’t give the server team the live values',
+      'goes on after DIFFERENT without the check SAME again',
+      'makes its copy of snippets.caddy without the server team’s word',
+    ]) {
+      refuses(snippetGuard, compared, problem);
+    }
+    // f6a33d5's cmp alone, or the copy's sum alone, beside the new lines: still a copy gone by.
+    const byCopy = 'goes by a copy on the server';
     refuses(
       snippetGuard,
-      swap(RUNBOOK, `    ${LIVE_SUM}\n`, `    ${SNIPPET}\n    ${LIVE_SUM}\n`),
-      'runs edge config before it compares the server’s snippets.caddy with the copy',
+      swap(RUNBOOK, SERVER_BLOCK, `${SERVER_BLOCK}    ${SNIPPET_CMP}\n`),
+      byCopy,
     );
-    const compare = `    ${LIVE_SUM}\n    ${COPY_SUM}\n    ${SNIPPET_CMP}\n`;
+    refuses(snippetGuard, swap(RUNBOOK, SERVER_BLOCK, `${SERVER_BLOCK}    ${COPY_SUM}\n`), byCopy);
+    // The check after edge config, and after edge.env.
     refuses(
       snippetGuard,
-      swap(swap(RUNBOOK, compare, ''), `    ${EDGE_ENV}\n`, `    ${EDGE_ENV}\n${compare}`),
-      'reaches edge.env before it compares the server’s snippets.caddy with the copy',
+      swap(RUNBOOK, SERVER_BLOCK, `    ${SNIPPET}\n${SERVER_BLOCK}`),
+      'runs edge config before it checks the server’s live values',
     );
-    // The stop clause dropped: DIFFERENT asks, but neither stops nor holds the lines below.
+    refuses(
+      snippetGuard,
+      swap(
+        swap(RUNBOOK, SERVER_BLOCK, ''),
+        `    ${EDGE_ENV}\n`,
+        `    ${EDGE_ENV}\n${SERVER_BLOCK}`,
+      ),
+      'reaches edge.env before it checks the server’s live values',
+    );
+    // The server's half before the admin's.
+    const adminBlock = `    ${SNIPPET_AT}     # on the admin's machine, in Git Bash\n    ${COMPOSE_AT}\n`;
+    refuses(
+      snippetGuard,
+      swap(swap(RUNBOOK, adminBlock, ''), SERVER_BLOCK, `${SERVER_BLOCK}${adminBlock}`),
+      'doesn’t read the server’s live values after the admin’s check',
+    );
+    // DIFFERENT without the stop: it asks, but neither stops nor holds the lines below.
     const unstopped = swap(
-      swap(RUNBOOK, DIFFERENT_STOP, "`DIFFERENT`: ask in the server team's chat"),
-      " Run\n      none of this step's lines below until they answer, `edge.env`'s above all.",
+      swap(
+        RUNBOOK,
+        'among them: stop, and ask in the\n      server team',
+        'among them: ask in the\n      server team',
+      ),
+      " Run none of this step's lines below until they answer, `edge.env`'s above\n      all.",
       '',
     );
-    refuses(snippetGuard, unstopped, 'doesn’t stop on DIFFERENT and ask the server team');
+    refuses(snippetGuard, unstopped, 'doesn’t stop on DIFFERENT, anything but SAME');
     refuses(snippetGuard, unstopped, 'doesn’t hold its lines below, edge.env above all');
-    // The comparison's SAME dropped after either answer: their own install, and the copy's.
-    const unchecked = 'goes on after DIFFERENT without the comparison printing SAME again';
+    // DIFFERENT narrowed to the sums alone, so that a missing line or an error goes on.
     refuses(
       snippetGuard,
       swap(
         RUNBOOK,
-        ', with the copy made again if their answer\n      names another commit, must print `SAME`;',
-        ' need not run again;',
+        '`DIFFERENT`, anything else, a line missing or an error among them:',
+        '`DIFFERENT`:',
       ),
-      unchecked,
+      'doesn’t stop on DIFFERENT, anything but SAME',
     );
-    refuses(
-      snippetGuard,
-      swap(RUNBOOK, ', and the three lines must print `SAME`.', '.'),
-      unchecked,
-    );
-    // The admin-side check dropped, and the copy made in PowerShell, whose `>` writes UTF-16.
+    // SAME read loosely, and the check not run again after their answer.
     refuses(
       snippetGuard,
       swap(
         RUNBOOK,
-        `    ${SNIPPET_SUM}     # the snippets.caddy sum of their latest confirmation, or stop\n`,
+        ", the confirmation's values in full, every\n      character:",
+        ', as the confirmation has them:',
+      ),
+      'doesn’t hold SAME to the confirmation’s values in full',
+    );
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ' Then the check again, both halves if their answer names another commit, and it must be\n      `SAME`.',
         '',
       ),
-      'sends its copy of snippets.caddy before sha256sum shows the sum of the server team’s confirmation',
+      'goes on after DIFFERENT without the check SAME again',
     );
+    // The admin's half in PowerShell, whose pipe re-encodes git's output, without its fetch, and
+    // going on when it fails.
     refuses(
       snippetGuard,
       swap(RUNBOOK, 'in Git Bash, not PowerShell (', 'in PowerShell or Git Bash ('),
-      'doesn’t make its copy of snippets.caddy with git show in Git Bash',
-    );
-    // The three things the server team reads the server's file by, dropped from step 11's message,
-    // from the staging night's and from disaster recovery's.
-    const unnamed =
-      'doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from';
-    refuses(
-      snippetGuard,
-      swap(RUNBOOK, cut(RUNBOOK, ", giving the live file's sum, the copy's", ' Run\n'), '.'),
-      `First install, step 11’s DIFFERENT ${unnamed}`,
+      'doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
     );
     refuses(
       snippetGuard,
       swap(
         RUNBOOK,
-        ", giving\n   the live file's sum, the copy's sum and the commit the copy came from.",
+        " (`git -C <their checkout> fetch` first, if it doesn't: without it `git show`\n    prints `fatal: …` and `sha256sum` the empty input's `e3b0c442…`)",
+        '',
+      ),
+      'doesn’t fetch the clone first when it lacks the confirmation’s commit',
+    );
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, cut(RUNBOOK, ' If any of them fails, stop', ' A newer'), ''),
+      'goes on when the confirmation fails on the admin’s machine',
+    );
+    // The copy made without their word, and sent before its sum is checked.
+    const unasked = 'makes its copy of snippets.caddy without the server team’s word';
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ' made only on their word in their chat to install it from a commit they name:',
+        ' made:',
+      ),
+      unasked,
+    );
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, `    ${SNIPPET_SUM}     # the sum they give, or stop\n`, ''),
+      unasked,
+    );
+    // The values the server team reads the server by, dropped from step 11's message, from the
+    // staging night's and from disaster recovery's.
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ", giving the live values as the lines print them, the confirmation's values\n      and its commit.",
         '.',
       ),
-      `the staging night’s exit 0 ${unnamed}`,
+      'First install, step 11’s DIFFERENT doesn’t give the server team the live values, the confirmation’s and its commit',
     );
     refuses(
       snippetGuard,
       swap(
         RUNBOOK,
-        ", giving the live file's\n     sum, the copy's sum and the commit the copy came from.",
+        ", giving the\n   live values as the lines print them, the confirmation's values and its commit.",
         '.',
       ),
-      'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does',
+      'the staging night’s exit 0 doesn’t give the server team the live values, the confirmation’s and its commit',
     );
-    // Disaster recovery's comparison after its edge.env lines, when app-apply refuses edge config
-    // until the recreate.
+    const recovery =
+      'disaster recovery’s edge doesn’t check the server team’s latest confirmation as First install, step 11, does';
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ", giving the live values as the lines print them, the confirmation's values\n     and its commit.",
+        '.',
+      ),
+      recovery,
+    );
+    // Disaster recovery's check after its edge.env lines, when app-apply refuses edge config until
+    // the recreate, and its pin left out.
     refuses(
       snippetGuard,
       swap(RUNBOOK, 'Before the `edge.env` lines', 'After the `edge.env` lines'),
-      'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does',
+      recovery,
     );
+    refuses(snippetGuard, swap(RUNBOOK, ', their digest pin of Caddy included', ''), recovery);
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
