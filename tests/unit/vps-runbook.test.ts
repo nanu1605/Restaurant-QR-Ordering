@@ -91,7 +91,12 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * test served by MenuMesh's own pieces, Caddy recreated only in the shared server's window,
  * VPS_DEPLOY_STAGING left off at First install, step 17, the merge of the staging night's step 6,
  * a later production night that keeps the first night's admin and types again just what hosted
- * changed, and the Vercel rules kept until their parts retire.
+ * changed, and the Vercel rules kept until their parts retire. Since the server team's review
+ * (VPS-135 to VPS-140) they also pin the redaction file right after the conf, the edge in its order
+ * with edge.env merged and Caddy recreated once, checked before the staging night, origin pulls
+ * from the owner's own CA, the first container only after the server team's word on theirs, the
+ * leak test's container by image digest and flags, the drills on the second weekend, and no copy
+ * of a secret left in ~/incoming.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -188,13 +193,23 @@ const PLACES = {
   gitHub: ['\n17. **GitHub**', '\n18. '],
   schedulers: ['\n20. ', '\n21. '],
   count: ['1. **Hosted production, read-only.**', '2. **The zone, from GoDaddy'],
-  siteNight: ['1. **The site file and the redaction file**', '2. **The leak test**'],
+  // A prefix, so that it finds the step as the server team's review left it (the site file alone)
+  // and as cd6a733 had it (the site file and the redaction file).
+  siteNight: ['1. **The site file', '2. **The leak test**'],
   leakTest: ['2. **The leak test**', '\n3. **The'],
   afterMove: ['- **After the move:**', '- **Checking an image here**'],
   // Stop D's re-review: the commands outside First install that could make scheduler-staging early
   // (Secrets (VPS)'s Rotation and the scheduler's After a change; disaster recovery is `recovery`).
   envRotation: ['**Rotation.** After changing `.env`', '- The backup key: a new pair'],
   schedulerChange: ['**After a change:**', '### Backups and restore (VPS)'],
+  // The server team's review (VPS-135 to VPS-140): First install's steps 8, 9, 14 and 16, the
+  // staging night's Before it, and disaster recovery's edge.
+  zoneStep: ['8. **The zone:**', "**The server's admin**"],
+  confStep: ['\n9. `/etc/apps/menumesh.conf`', '\n10. The deploy user'],
+  envStep: ['\n14. The env files', '\n15. '],
+  dbStep: ['\n16. ', '\n17. **GitHub**'],
+  beforeStaging: ['#### 3. The staging night', 'Then, in order:'],
+  recoveryEdge: ['\n  8. The edge', '\n  9. The key off the ramfs'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -2765,6 +2780,370 @@ const OLD_LATER_NIGHT = [
   'with that login instead. ',
 ].join('\n');
 
+// The server team's review (docs/DECISIONS.md VPS-135 to VPS-140): the commands its rules hold the
+// RUNBOOK to.
+const REDACT = 'sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy';
+const EDGE_CERT =
+  'sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem';
+const AOP_CLIENT =
+  'sudo install -m 0644 -o root -g root ~/incoming/aop-client.pem /srv/edge/certs/menumesh/';
+const EDGE_COPY = '(umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)';
+const EDGE_ENV = 'sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env';
+const RECREATE = 'sudo app-compose edge up -d';
+/** Caddy's own environment, named and counted, never printed: its hash stays unseen. */
+const RECREATED =
+  "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'";
+const SHRED_COPIES = 'shred -u ~/incoming/.env ~/incoming/web.env ~/incoming/web-staging.env';
+const AOP_VERIFY = 'openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem';
+/** The leak test's image, by the digest of its index (an OCI index with linux/amd64). */
+const LEAK_IMAGE =
+  'traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44';
+/**
+ * The leak test container's flags: detached and removed once stopped, on MenuMesh's edge network
+ * under the name its UPSTREAMS entry holds, within hostwatch's limits, and with no capability, no
+ * new privileges and a read-only root.
+ */
+const LEAK_FLAGS = [
+  '-d',
+  '--rm',
+  '--name menumesh-leaktest',
+  '--network edge-menumesh',
+  '--network-alias menumesh-leaktest',
+  '--memory 64m',
+  '--cpus 0.25',
+  '--cap-drop ALL',
+  '--security-opt no-new-privileges',
+  '--read-only',
+];
+
+/**
+ * The redaction file right after the conf (the server team's review, ask 1; VPS-135). From the
+ * conf on, hostwatch's daily run raises a critical alert every day the file is missing, and it
+ * went in only on the staging night. It needs only the conf, and app-apply refuses it from step
+ * 11's edge.env until Caddy is recreated: so it comes at step 9, and neither step 22 nor the
+ * staging night installs it again. A new server takes it right after disaster recovery's conf.
+ */
+const redactEarly = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['confStep', 'lastStep', 'siteNight', 'recoveryEdge'],
+    ({ confStep, lastStep, siteNight, recoveryEdge }) => [
+      ...(has(confStep, REDACT)
+        ? []
+        : ['First install, step 9, doesn’t install the redaction file right after the conf']),
+      ...(
+        [
+          ['First install, step 22,', lastStep],
+          ['the staging night’s step 1', siteNight],
+        ] as const
+      )
+        .filter(([, text]) => has(text, 'app-apply edge redact'))
+        .map(
+          ([where]) => `${where} installs the redaction file, which goes in right after the conf`,
+        ),
+      ...(has(recoveryEdge, "the redaction file right after step 1's conf")
+        ? []
+        : ['disaster recovery’s edge doesn’t install the redaction file right after its conf']),
+    ],
+  );
+
+/**
+ * The edge in its order, and edge.env merged (the server team's review, their commitments 3 and 4;
+ * VPS-136). app-apply refuses every change that reloads Caddy from `edge env` until Caddy is
+ * recreated, so the certificate, with the owner's aop-ca.pem and the client certificate beside it,
+ * goes in first, and edge.env last, the recreate right after it. `edge env` installs the file it is
+ * given whole, so the admin merges a copy of the live file and shreds it, a refused one too. One
+ * recreate takes the server team's digest pin as well, and the staging night first checks that
+ * Caddy holds MenuMesh's two lines, by their names alone.
+ */
+const edgeNight = (runbook: string) =>
+  inPlaces(runbook, ['edgeStep', 'beforeStaging'], ({ edgeStep, beforeStaging }) => {
+    const text = flat(edgeStep);
+    const order = [EDGE_CERT, EDGE_COPY, EDGE_ENV, RECREATE].map((words) => text.indexOf(words));
+    return [
+      ...[EDGE_CERT, AOP_CLIENT, EDGE_COPY, EDGE_ENV]
+        .filter((words) => !text.includes(words))
+        .map((words) => `First install, step 11, lacks ${words}`),
+      ...(order.every((at, n) => at >= 0 && (n === 0 || at > order[n - 1])) &&
+      has(
+        edgeStep,
+        'the order is the certificate, then the snippet, then (the redaction file in since step 9) `edge.env`, then the recreate',
+      )
+        ? []
+        : [
+            'First install, step 11, doesn’t put the certificate and the snippet before edge.env, and the recreate right after it',
+          ]),
+      ...(has(edgeStep, 'A copy that `app-apply` refuses is shredded all the same')
+        ? []
+        : ['First install, step 11, leaves a copy of edge.env that app-apply refused']),
+      ...(has(edgeStep, "It also takes the server team's digest pin of Caddy")
+        ? []
+        : ['First install, step 11, recreates Caddy without the server team’s digest pin']),
+      ...(has(beforeStaging, RECREATED)
+        ? []
+        : ['the staging night doesn’t check that Caddy was recreated with MenuMesh’s two lines']),
+    ];
+  });
+
+/**
+ * The copies of the install's secrets that scp leaves in ops' ~/incoming go once they are installed
+ * (VPS-140): step 14 shreds the three env files' copies after installing them, and Rotation the copy
+ * of an env file installed again.
+ */
+const copiesGone = (runbook: string) =>
+  inPlaces(runbook, ['envStep', 'envRotation'], ({ envStep, envRotation }) => {
+    const text = flat(envStep);
+    return [
+      ...(text.indexOf(SHRED_COPIES) > text.lastIndexOf('sudo install -m 0600')
+        ? []
+        : ['First install, step 14, leaves the env files’ copies in ~/incoming']),
+      ...(has(envRotation, 'its copy in `~/incoming` shredded')
+        ? []
+        : ['Rotation leaves the copy of an env file installed again in ~/incoming']),
+    ];
+  });
+
+/**
+ * MenuMesh's first container waits for the server team's word that origin pulls are on for every
+ * zone of the server (their commitment 1; VPS-135): First install, step 16, says so first, and the
+ * server rehearsal where it runs First install.
+ */
+const originGate = (runbook: string) =>
+  inPlaces(runbook, ['dbStep', 'rehearsal'], ({ dbStep, rehearsal }) => [
+    ...(flat(dbStep).startsWith(
+      ' 16. Not before the server team confirms in their chat that authenticated origin pulls are on',
+    ) && has(dbStep, 'until then this step, and every step after it, waits')
+      ? []
+      : ['First install, step 16, starts db without waiting for the server team’s origin pulls']),
+    ...(has(rehearsal, "Step 16 waits for the server team's word")
+      ? []
+      : ['the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls']),
+  ]);
+
+/**
+ * The drills on the second weekend (the server team's review, Q3; VPS-138): theirs take the first,
+ * and app-compose's memory rule refuses our restore test beside theirs, and our two together. So
+ * ours keep to the second weekend, or the third when it is missed, outside the backups' 20:20 to
+ * 21:30 UTC, and the drill waits in the same terminal for the restore test to end.
+ */
+const drillDays = (runbook: string) =>
+  inPlaces(runbook, ['restoreTest', 'drill'], ({ restoreTest, drill }) => [
+    ...(has(
+      restoreTest,
+      'on the second weekend of the month, its Saturday (the 8th to the 14th) or the Sunday after, or on the third if the second is missed',
+    ) && has(restoreTest, 'outside 20:20 to 21:30 UTC')
+      ? []
+      : [
+          'the restore test doesn’t keep to the second weekend, or the third, outside 20:20 to 21:30 UTC',
+        ]),
+    ...(has(restoreTest, 'third week')
+      ? ['the restore test still says the third week, which the server team’s drills can take']
+      : []),
+    ...(has(drill, 'right after the restore test has ended, in the same terminal')
+      ? []
+      : ['the drill doesn’t wait in the same terminal for the restore test to end']),
+  ]);
+
+/**
+ * Origin pulls from MenuMesh's own CA (the server team's review, their commitment 3; VPS-136). The
+ * owner makes the CA and a client certificate for client authentication alone, which Caddy's check
+ * requires, each -subj kept from Git Bash's path rewriting, and checks the pair with openssl;
+ * uploads the client pair at the zone level, never the global toggle's shared certificate; keeps
+ * the keys in the password manager and off the server; and the admin gets the two certificates
+ * alone, which a new server takes from the password manager too.
+ */
+const ownCA = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['zoneStep', 'zoneMove', 'recoveryEdge'],
+    ({ zoneStep, zoneMove, recoveryEdge }) => {
+      const lines = zoneStep.split('\n').map((line) => line.trim());
+      return [
+        ...['extendedKeyUsage=clientAuth', '-days 3650', '-days 825', AOP_VERIFY]
+          .filter((words) => !lines.some((line) => line.includes(words)))
+          .map(
+            (words) =>
+              `First install, step 8, makes the origin pulls’ certificates without ${words}`,
+          ),
+        ...lines
+          .filter((line) => line.includes("-subj '/") && !line.startsWith('MSYS_NO_PATHCONV=1 '))
+          .map((line) => `a -subj that Git Bash turns into a path: ${line}`),
+        ...(has(zoneStep, 'never the global toggle')
+          ? []
+          : [
+              'First install, step 8, doesn’t keep to zone-level pulls with MenuMesh’s certificate',
+            ]),
+        ...(has(zoneStep, 'The admin gets only `aop-ca.pem` and `aop-client.pem`') &&
+        has(zoneStep, "the CA's key never goes to a server")
+          ? []
+          : ['First install, step 8, gives the server more than the two certificates']),
+        ...(has(
+          zoneMove,
+          "with MenuMesh's own client certificate, which the owner makes and uploads",
+        )
+          ? []
+          : [
+              'part 1 doesn’t say the owner makes and uploads the origin pulls’ client certificate',
+            ]),
+        ...(has(recoveryEdge, '`aop-ca.pem`, `aop-client.pem` and `edge.env` from the')
+          ? []
+          : ['disaster recovery’s edge doesn’t take both certificates from the password manager']),
+      ];
+    },
+  );
+
+/**
+ * The leak test's container (the server team's review, Q8; VPS-137). The RUNBOOK named neither an
+ * image nor a command, so the container could have been anything, pinned or not. It is
+ * traefik/whoami by its index digest, pulled first, then run with LEAK_FLAGS, never with the
+ * kit.throwaway label, which hostwatch's limits check passes over; its UPSTREAMS entry goes in
+ * before it starts, the admin tells the server team's chat first, and the wrong-project alert it
+ * brings is expected.
+ */
+const leakContainer = (runbook: string) =>
+  inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
+    const lines = leakTest.split('\n').map((line) => line.trim());
+    const pulls = lines.filter((line) => line.startsWith('sudo docker pull '));
+    const runs = lines.filter((line) => line.startsWith('sudo docker run '));
+    const words = runs.length === 1 ? runs[0].split(' ').slice(3) : [];
+    const image = words.at(-1) ?? '';
+    const flags = ` ${words.slice(0, -1).join(' ')} `;
+    const text = flat(leakTest);
+    const entry = text.indexOf('`menumesh-leaktest:<port>` goes into `UPSTREAMS`');
+    const pulled = text.indexOf(`sudo docker pull ${LEAK_IMAGE}`);
+    const started = text.indexOf('sudo docker run ');
+    return [
+      ...(runs.length === 1
+        ? [
+            ...(image === LEAK_IMAGE
+              ? []
+              : [`the leak test’s container is not ${LEAK_IMAGE}: ${image}`]),
+            ...LEAK_FLAGS.filter((flag) => !flags.includes(` ${flag} `)).map(
+              (flag) => `the leak test’s container starts without ${flag}`,
+            ),
+            ...(flags.includes('kit.throwaway')
+              ? [
+                  'the leak test’s container carries the kit.throwaway label, which hostwatch’s limits check passes over',
+                ]
+              : []),
+          ]
+        : [`the leak test starts ${runs.length} containers with docker run, not 1`]),
+      ...(pulls.length === 1 && pulls[0] === `sudo docker pull ${LEAK_IMAGE}` && pulled < started
+        ? []
+        : ['the leak test doesn’t pull its image by its digest before the container starts']),
+      ...(started < 0 || (entry >= 0 && entry < started)
+        ? []
+        : ['the leak test doesn’t put its UPSTREAMS entry in before the container starts']),
+      ...(has(leakTest, "tells the server team's chat before the container starts")
+        ? []
+        : ['the leak test doesn’t tell the server team’s chat before the container starts']),
+      ...(has(
+        leakTest,
+        '`networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes',
+      )
+        ? []
+        : ['the leak test doesn’t say hostwatch’s wrong-project alert comes while it runs']),
+      ...(has(leakTest, '(`<port>` is 80, where the image listens)')
+        ? []
+        : ['the leak test doesn’t say the image listens on port 80']),
+    ];
+  });
+
+/** First install's step 8 at 21a13bf: origin pulls left to "the admin's certificate". */
+const OLD_ZONE_STEP = [
+  '8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server',
+  '   rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls',
+  "   ready for the admin's certificate (the server team's `edge.md` §3).",
+].join('\n');
+
+/** First install's step 9 at 21a13bf: the conf alone. */
+const OLD_CONF_STEP = [
+  '9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in:',
+  "   `grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf` prints the owner's `age1…` key.",
+].join('\n');
+
+/** First install's step 11 at 21a13bf, up to the hash: no aop-ca.pem, and edge.env as two lines. */
+const OLD_EDGE_STEP = [
+  '11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the',
+  '    server (`sudo app-apply edge cert menumesh origin.pem origin-key.pem`), the snippet of',
+  '    `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`',
+  '    (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any',
+  "    MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose",
+  '    step 5 must see a TLS connection to the server without the client certificate refused (§6,',
+  "    step 4). For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no",
+  "    site imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the",
+  '    test prints. The test that proves it runs right after the site file, on the staging night (The',
+  '    server rehearsal and the cut-over, part 3, step 1). Then the two lines of',
+  '    `deploy/vps/edge/edge.env.example` in `/srv/edge/edge.env`, installed with',
+  '    `sudo app-apply edge env edge.env` and `sudo app-compose edge up -d` between 01:00 and 07:00',
+  '    IST, as recreating Caddy drops every connection on the shared edge. The hash comes from the',
+  "    owner, who makes it on their own machine with the edge's Caddy image, never on the server: there",
+  "    staging's password would stay in the shell's history and show in the process list. Without",
+  '    `--plaintext`, Caddy reads the password from the terminal without echoing it, and the admin gets',
+  '    only the hash:',
+].join('\n');
+
+/** Part 1's line on origin pulls at 21a13bf. */
+const OLD_PULLS_LINE =
+  "   - Authenticated origin pulls come with the admin's certificate (First install, steps 8 and 11).";
+
+/** Disaster recovery's step 8 at 21a13bf: the redaction file with the site file, at the end. */
+const OLD_RECOVERY_EDGE = [
+  '  8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the',
+  '     password manager, then the site and redaction files from this repository, the leak test, and',
+  '     DNS to the new address.',
+].join('\n');
+
+/** The restore test's and the drill's timing at 21a13bf: the third week, the drill after it. */
+const OLD_RESTORE_TIME = [
+  '- **The monthly restore test**, in the third week of the month (the first one before the first',
+  '  restaurant), never while hostwatch reports the server throttled.',
+].join('\n');
+const OLD_DRILL_TIME = [
+  '- **The monthly point-in-time drill**, right after the restore test and with the same key on its',
+  '  ramfs (before the `rm` and `umount` of the key):',
+].join('\n');
+
+/** The leak test at 21a13bf: MenuMesh's pieces, but no image and no command for its container. */
+const LEAK_TEST_21A13BF = [
+  "2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record",
+  "   `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record",
+  "   moves (VPS-115), with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts",
+  '   stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. Their step 1 here: the throwaway',
+  "   container that answers with the request's headers runs on `edge-menumesh` as `menumesh-leaktest`",
+  '   (an upstream is `menumesh-<name>:<port>`); `menumesh-leaktest:<port>` goes into `UPSTREAMS` in',
+  '   `/etc/apps/menumesh.conf` for the test; and a temporary copy of `menumesh.caddy` with one more',
+  '   block, which imports what the others import, is installed with',
+  '   `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:',
+  '',
+  '   ```text',
+  '   https://leaktest.menumesh.in {',
+  '       import site_common',
+  '       import tls_menumesh',
+  '       reverse_proxy menumesh-leaktest:<port> {',
+  '           import upstream',
+  '       }',
+  '   }',
+  '   ```',
+  '',
+  "   Until the container stops, hostwatch reports it, as for the server team's own test: its check of",
+  '   the edge networks as `wrong-project` (it is no service of the compose project), and as',
+  '   `not-an-upstream` too unless it was started with `--network-alias menumesh-leaktest` (hostwatch',
+  "   reads the container's network aliases, not its name); and its check of the limits, unless it was",
+  '   started with `--memory` and `--cpus`. Their steps 1 to 4 must then show: forged headers replaced;',
+  '   the log line without an address, a header or a query, and a made-up 16-character `/t/` token in',
+  "   it shown as `/t/_`; nothing answering straight on the server's addresses, IPv4 and IPv6, even",
+  '   with a temporary hPanel accept rule; and a TLS connection without the client certificate refused',
+  "   (step 1's test, the leak test's host added).",
+  '',
+  '   Their step 5 here, in this order: `menumesh.caddy` as it is installed again,',
+  "   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (never removed: it is the zone's only",
+  '   site file); the container stopped; its `UPSTREAMS` entry taken out; and the owner deletes the',
+  '   `leaktest` record. Way back: the same four.',
+  '',
+  '',
+].join('\n');
+
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
 const REWRAPPED = [
   'password manager',
@@ -3053,6 +3432,25 @@ const REWRAPPED = [
   'First install, step 20',
   "step 3 when the server's database still holds",
   "only what differs from hosted's `/super` that night",
+  // Read by the rules of the server team's review: a piece of each phrase that stands on one line.
+  'app-apply edge redact menumesh ~/incoming/log-redact.caddy',
+  "the redaction file right after step 1's conf",
+  'the order is the certificate, then the snippet',
+  '`app-apply` refuses is shredded all the same',
+  "server team's digest pin of Caddy",
+  'its copy in `~/incoming` shredded',
+  'Not before the server team confirms in their chat',
+  'this step, and every step after it, waits',
+  "Step 16 waits for the server team's",
+  'on the second weekend of the month',
+  'outside 20:20 to 21:30 UTC',
+  'right after the restore test has ended, in the same',
+  'never the global toggle',
+  "the CA's key never goes to a server",
+  "with MenuMesh's own client certificate, which the",
+  "tells the server team's chat before the container starts",
+  'menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes',
+  '(`<port>` is 80, where the image listens)',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -5563,11 +5961,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // cd6a733's step 1: the site file, and no origin test for its hosts after it.
     refuses(
       pulls,
-      swap(
-        RUNBOOK,
-        cut(RUNBOOK, '1. **The site file and the redaction file**', '2. **The leak test**'),
-        OLD_SITE_STEP,
-      ),
+      swap(RUNBOOK, cut(RUNBOOK, '1. **The site file', '2. **The leak test**'), OLD_SITE_STEP),
       'the staging night doesn’t run the origin test for MenuMesh’s hosts right after its site file',
     );
     // A host left out, and the server team's own host, whose snippet is not MenuMesh's.
@@ -5605,7 +5999,11 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       pulls,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, ' For `menumesh.in` that test proves nothing yet', ' Then the two lines of'),
+        cut(
+          RUNBOOK,
+          ' For `menumesh.in` that test proves nothing yet',
+          '\n\n    `edge.env` comes last',
+        ),
         '',
       ),
       'First install, step 11, doesn’t say its origin test proves nothing for menumesh.in yet',
@@ -5773,8 +6171,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       edgeWindow,
       swap(
         RUNBOOK,
-        '`sudo app-compose edge up -d` between 01:00 and 07:00\n    IST, as recreating Caddy drops every connection on the shared edge.',
-        '`sudo app-compose edge up -d`.',
+        'sudo app-compose edge up -d     # between 01:00 and 07:00 IST, on the night the owner picks\n',
+        'sudo app-compose edge up -d\n',
       ),
       'sudo app-compose edge up -d without the 01:00 to 07:00 IST window',
     );
@@ -5782,10 +6180,262 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       edgeWindow,
       swap(
         RUNBOOK,
-        'then recreate Caddy between 01:00 and 07:00 IST, as it\n  drops every connection on the shared edge)',
+        'then\n  recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared edge)',
         'then recreate Caddy)',
       ),
       'recreate Caddy without the 01:00 to 07:00 IST window',
+    );
+  });
+
+  it('installs the redaction file right after the conf, and never on the staging night (the server team’s review, VPS-135)', () => {
+    expect(redactEarly(RUNBOOK)).toEqual([]);
+    // 21a13bf's step 9: the conf alone.
+    refuses(
+      redactEarly,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '9. `/etc/apps/menumesh.conf`', '\n10. The deploy user'),
+        OLD_CONF_STEP,
+      ),
+      'First install, step 9, doesn’t install the redaction file right after the conf',
+    );
+    // The redaction file on the staging night, as 935373d's step 22 and cd6a733's step 1 had it.
+    refuses(
+      redactEarly,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '22. At the staging night', '\n\n### Secrets (VPS)'),
+        OLD_LAST_STEP,
+      ),
+      'First install, step 22, installs the redaction file',
+    );
+    refuses(
+      redactEarly,
+      swap(RUNBOOK, cut(RUNBOOK, '1. **The site file', '2. **The leak test**'), OLD_SITE_STEP),
+      'the staging night’s step 1 installs the redaction file',
+    );
+    // 21a13bf's disaster recovery: the redaction file with the site file, last.
+    refuses(
+      redactEarly,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '  8. The edge', '\n  9. The key off the ramfs'),
+        OLD_RECOVERY_EDGE,
+      ),
+      'disaster recovery’s edge doesn’t install the redaction file right after its conf',
+    );
+  });
+
+  it('puts the edge in in its order, edge.env merged and Caddy recreated once, and checks the recreate before the staging night (the server team’s review, VPS-136)', () => {
+    expect(edgeNight(RUNBOOK)).toEqual([]);
+    // 21a13bf's step 11: the certificate without aop-ca.pem, and edge.env as MenuMesh's two lines.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '11. The edge:', '\n\n    ```sh\n    docker run --rm -it'),
+      OLD_EDGE_STEP,
+    );
+    for (const words of [EDGE_CERT, AOP_CLIENT, EDGE_COPY, EDGE_ENV]) {
+      refuses(edgeNight, old, `First install, step 11, lacks ${words}`);
+    }
+    for (const problem of [
+      'doesn’t put the certificate and the snippet before edge.env',
+      'leaves a copy of edge.env that app-apply refused',
+      'recreates Caddy without the server team’s digest pin',
+    ]) {
+      refuses(edgeNight, old, problem);
+    }
+    // The recreate before edge.env, a refused copy kept, and the staging night without its check.
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, `${EDGE_ENV}\n    ${RECREATE}`, `${RECREATE}\n    ${EDGE_ENV}`),
+      'doesn’t put the certificate and the snippet before edge.env, and the recreate right after it',
+    );
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, cut(RUNBOOK, ' A copy that\n', ' values too.'), ''),
+      'leaves a copy of edge.env that app-apply refused',
+    );
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, RECREATED, 'sudo docker ps'),
+      'the staging night doesn’t check that Caddy was recreated with MenuMesh’s two lines',
+    );
+  });
+
+  it('shreds the copies of the install’s secrets in ~/incoming once they are installed (VPS-140)', () => {
+    expect(copiesGone(RUNBOOK)).toEqual([]);
+    // 21a13bf's step 14 and Rotation's env files: the copies left where scp put them.
+    refuses(
+      copiesGone,
+      swap(RUNBOOK, cut(RUNBOOK, '\n\n    Then the three copies `scp` left', '\n\n15. '), ''),
+      'First install, step 14, leaves the env files’ copies in ~/incoming',
+    );
+    refuses(
+      copiesGone,
+      swap(RUNBOOK, ' and its copy in `~/incoming` shredded (First install, step 14)', ''),
+      'Rotation leaves the copy of an env file installed again in ~/incoming',
+    );
+  });
+
+  it('starts no container before the server team says origin pulls are on for every zone (VPS-135)', () => {
+    expect(originGate(RUNBOOK)).toEqual([]);
+    // 21a13bf's step 16, and its rehearsal's first step.
+    refuses(
+      originGate,
+      swap(RUNBOOK, cut(RUNBOOK, '16. Not before', 'The database, then the Supabase'), '16. '),
+      'First install, step 16, starts db without waiting for the server team’s origin pulls',
+    );
+    refuses(
+      originGate,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, " Step 16 waits for the server team's", " Production's first deploy"),
+        '',
+      ),
+      'the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls',
+    );
+  });
+
+  it('keeps the drills to the second weekend, or the third, outside the backups (the server team’s review, VPS-138)', () => {
+    expect(drillDays(RUNBOOK)).toEqual([]);
+    // 21a13bf's timing: the third week, and the drill right after the restore test.
+    const restore = cut(RUNBOOK, '- **The monthly restore test**', ' First the month');
+    const third = swap(RUNBOOK, restore, OLD_RESTORE_TIME);
+    refuses(drillDays, third, 'the restore test doesn’t keep to the second weekend, or the third');
+    refuses(drillDays, third, 'the restore test still says the third week');
+    refuses(
+      drillDays,
+      swap(RUNBOOK, ', or on the third if the second is missed', ''),
+      'the restore test doesn’t keep to the second weekend, or the third',
+    );
+    refuses(
+      drillDays,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          '- **The monthly point-in-time drill**',
+          '\n\n  ```sh\n  sudo app-compose menumesh --profile pitr-test',
+        ),
+        OLD_DRILL_TIME,
+      ),
+      'the drill doesn’t wait in the same terminal for the restore test to end',
+    );
+  });
+
+  it('makes the origin pulls’ CA and client certificate the owner’s, uploaded at the zone level, and gives the server only the two certificates (the server team’s review, VPS-136)', () => {
+    expect(ownCA(RUNBOOK)).toEqual([]);
+    // 21a13bf's step 8: pulls "ready for the admin's certificate", and nothing made.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '8. **The zone:**', "\n\n**The server's admin**"),
+      OLD_ZONE_STEP,
+    );
+    for (const words of ['extendedKeyUsage=clientAuth', '-days 3650', '-days 825', AOP_VERIFY]) {
+      refuses(ownCA, old, `makes the origin pulls’ certificates without ${words}`);
+    }
+    refuses(ownCA, old, 'doesn’t keep to zone-level pulls with MenuMesh’s certificate');
+    refuses(ownCA, old, 'gives the server more than the two certificates');
+    // A -subj left to Git Bash, a server certificate in place of a client one, and 21a13bf's part
+    // 1 and disaster recovery.
+    refuses(
+      ownCA,
+      swap(
+        RUNBOOK,
+        "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+        "openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+      ),
+      'a -subj that Git Bash turns into a path',
+    );
+    refuses(
+      ownCA,
+      swap(RUNBOOK, 'extendedKeyUsage=clientAuth', 'extendedKeyUsage=serverAuth'),
+      'makes the origin pulls’ certificates without extendedKeyUsage=clientAuth',
+    );
+    refuses(
+      ownCA,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '   - Authenticated origin pulls come', '\n\n   Way back: each setting'),
+        OLD_PULLS_LINE,
+      ),
+      'part 1 doesn’t say the owner makes and uploads the origin pulls’ client certificate',
+    );
+    refuses(
+      ownCA,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '  8. The edge', '\n  9. The key off the ramfs'),
+        OLD_RECOVERY_EDGE,
+      ),
+      'disaster recovery’s edge doesn’t take both certificates from the password manager',
+    );
+  });
+
+  it('runs the leak test’s container from traefik/whoami by digest, pulled first, after its UPSTREAMS entry, with hostwatch’s alias and limits and no privilege (the server team’s review, VPS-137)', () => {
+    expect(leakContainer(RUNBOOK)).toEqual([]);
+    // 21a13bf's leak test: MenuMesh's pieces, and no image or command for the container.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**'),
+      LEAK_TEST_21A13BF,
+    );
+    for (const problem of [
+      'the leak test starts 0 containers with docker run, not 1',
+      'the leak test doesn’t pull its image by its digest before the container starts',
+      'the leak test doesn’t tell the server team’s chat before the container starts',
+      'the leak test doesn’t say hostwatch’s wrong-project alert comes while it runs',
+      'the leak test doesn’t say the image listens on port 80',
+    ]) {
+      refuses(leakContainer, old, problem);
+    }
+    // The image without its digest, in the run and in the pull.
+    refuses(
+      leakContainer,
+      swap(RUNBOOK, `--read-only ${LEAK_IMAGE}`, '--read-only traefik/whoami:v1.12.0'),
+      `the leak test’s container is not ${LEAK_IMAGE}: traefik/whoami:v1.12.0`,
+    );
+    refuses(
+      leakContainer,
+      swap(RUNBOOK, `sudo docker pull ${LEAK_IMAGE}`, 'sudo docker pull traefik/whoami:v1.12.0'),
+      'the leak test doesn’t pull its image by its digest before the container starts',
+    );
+    // A flag left out, and the kit.throwaway label.
+    refuses(
+      leakContainer,
+      swap(RUNBOOK, ' -d --rm --name ', ' -d --name '),
+      'the leak test’s container starts without --rm',
+    );
+    for (const flag of [
+      '--network-alias menumesh-leaktest',
+      '--memory 64m',
+      '--cap-drop ALL',
+      '--security-opt no-new-privileges',
+      '--read-only',
+    ]) {
+      refuses(
+        leakContainer,
+        swap(RUNBOOK, ` ${flag} `, ' '),
+        `the leak test’s container starts without ${flag}`,
+      );
+    }
+    refuses(
+      leakContainer,
+      swap(RUNBOOK, ' --rm --name', ' --rm --label kit.throwaway=1 --name'),
+      'carries the kit.throwaway label',
+    );
+    // The container started before its UPSTREAMS entry goes in.
+    refuses(
+      leakContainer,
+      swap(
+        RUNBOOK,
+        'order: `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test\n   (`<port>` is 80, where the image listens); the throwaway',
+        'order: the throwaway',
+      ).replace(
+        '\n\n   and a temporary copy',
+        '\n\n   then `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test (`<port>` is 80, where the image listens), and a temporary copy',
+      ),
+      'the leak test doesn’t put its UPSTREAMS entry in before the container starts',
     );
   });
 
@@ -5824,5 +6474,12 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(oneCount(rewrapped)).toEqual([]);
     expect(leakPieces(rewrapped)).toEqual([]);
     expect(edgeWindow(rewrapped)).toEqual([]);
+    expect(redactEarly(rewrapped)).toEqual([]);
+    expect(edgeNight(rewrapped)).toEqual([]);
+    expect(copiesGone(rewrapped)).toEqual([]);
+    expect(originGate(rewrapped)).toEqual([]);
+    expect(drillDays(rewrapped)).toEqual([]);
+    expect(ownCA(rewrapped)).toEqual([]);
+    expect(leakContainer(rewrapped)).toEqual([]);
   });
 });

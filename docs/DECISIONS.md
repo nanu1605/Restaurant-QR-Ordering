@@ -11686,3 +11686,235 @@ entries below.
   failed (by step 1, 6, 5, 8, 1, 4, 11, 6 and 5), its step 8 running the tool behind the values
   file, exit 0 in 0.5 s, and the second run refused; then `pnpm vps:down` 3 checks, 0 failed; and
   the unit tests 1,313 in 72 files (`vps-first-admin` 13, five new).
+
+- **VPS-135 · The redaction file at the conf, the archive timer's order, step 15's wording and step
+  16's gate (asks 1, 2 and 4, and the server team's commitment 1):** our conf sets `LOG_REDACT=1`,
+  and hostwatch's daily run (`daily_redact`, at `66fe8b3`) raises a critical
+  `redact: LOG_REDACT=1 but no /srv/edge/config/log-redact.d/<app>.caddy for: menumesh` every day
+  the file is missing: from First install, step 9's conf to the staging night, where the RUNBOOK
+  installed it (step 22, and that night's step 1). `app-apply edge redact` needs only the conf
+  (`check_app_arg`), and, like every change that reloads Caddy, is refused by
+  `check_edge_env_applied` only while `edge.env` differs from what Caddy was created with. So step 9
+  now installs it right after the conf, before step 11's `edge.env` lines, says why, and names the
+  daily run's warning `timers: not enabled: app-config-archive@menumesh.timer` until step 13 enables
+  the timer, which wants nothing then; step 22 and the staging night's step 1, now headed "The site
+  file", install the site file alone and say the redaction file is in since step 9; and Disaster
+  recovery, step 8, takes it right after its step 1's conf. The review said "right after the conf
+  (your step 11)": our edge is step 11, our conf step 9. The admin runs it, so the RUNBOOK's and the
+  kit README's Who does what now list it as the admin's, not the owner's; on this server the owner
+  is also the admin. Ask 2 was already the RUNBOOK's order (step 9's `BACKUP_RECIPIENT`, step 13's
+  20:20 UTC drop-in, the enable once `.env` is in); step 13 now says why, as before the key every run
+  fails and alerts, and without the drop-in the timer's default, 20:50 UTC, comes after the 20:30
+  backup, and that the `systemctl enable --now app-config-archive@menumesh.timer` which the server
+  team's `install.sh` prints among its timers waits for it too. Ask 4: step 15 said
+  `app-apply menumesh compose` creates the two edge networks; it checks that they exist and are
+  internal and creates only a missing one, and they exist, the server's Caddy on them since
+  2026-11-16. Commitment 1: the server team's gate wants authenticated origin pulls on for every zone
+  of the server, `jainavinfotech.in` included, before an app's first container, and on 2026-11-21
+  `tls_jainav`'s `client_auth` was still commented out; their round comes before our step 16, and
+  they say in their chat when it is on and tested. Step 16, `db`, now opens with that wait, for it and
+  every step after it, and the server rehearsal's step 1 says so where it runs First install; steps 1
+  to 15 don't wait. `redactEarly` holds the redaction file to step 9, out of step 22 and the staging
+  night's step 1, and after disaster recovery's conf, and `originGate` holds step 16's opening and the
+  rehearsal's note: 4 and 2 problems on `21a13bf`'s RUNBOOK. `PLACES.siteNight` now starts at the
+  prefix `1. **The site file`, which finds the new heading and `cd6a733`'s in `OLD_SITE_STEP` alike,
+  and so does the cut that swaps that old step back in, so the origin-pulls rule still refuses it.
+
+- **VPS-136 · Origin pulls from MenuMesh's own CA, `edge.env` merged, and one recreate of Caddy on
+  the owner's night (the server team's commitments 3 and 4):** Cloudflare's shared client
+  certificate, the global toggle's, proves only that a request came through Cloudflare, which every
+  customer shares, so the server team's `edge.md` §3 gives each zone a client certificate from its
+  own CA. The owner decided (2026-11-21, as told to the server team) that MenuMesh's CA and client
+  certificate are the owner's to make. First install, step 8, makes both on the owner's own machine
+  (Git Bash on Windows, or a terminal on macOS or Linux), in a folder made under `umask 077`: the CA
+  for 10 years (`-days 3650`) and the client certificate for 825 days, both RSA 2048 as Cloudflare's
+  examples are, the client's with `basicConstraints=CA:FALSE`, `keyUsage=critical,digitalSignature`
+  and `extendedKeyUsage=clientAuth`, as Go's verifier, Caddy's, refuses a client certificate whose
+  extended key usage leaves client authentication out. The extensions come from files that
+  `openssl x509 -req -extfile` reads, where `req -addext` needs OpenSSL 1.1.1, and each `-subj` line
+  starts with `MSYS_NO_PATHCONV=1`: without it Git Bash turned `'/CN=MenuMesh origin pulls CA'` into
+  `C:/Program Files/Git/CN=MenuMesh origin pulls CA`, which openssl refused, and the variable means
+  nothing to other shells. The lines ran here in Git Bash, OpenSSL 3.5.6, in a scratch folder deleted
+  after: `openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem` printed
+  `aop-client.pem: OK`, the CA showed `CA:TRUE` with Certificate Sign and CRL Sign, both critical, the
+  client certificate `CA:FALSE`, Digital Signature (critical) and TLS Web Client Authentication, and a
+  copy signed with `extendedKeyUsage=serverAuth` failed with `unsuitable certificate purpose`; they
+  did not run on macOS or Linux. Cloudflare's docs (read 2026-11-21) give the rest: the dashboard
+  takes the leaf certificate and its key at SSL/TLS → Origin Server → Authenticated Origin Pulls →
+  Zone-level → Upload certificate (a CA certificate fails, `missing leaf certificate`); its status
+  goes from `pending_deployment` to `active`, then zone-level pulls are switched on (in the API,
+  `PUT /zones/<zone id>/origin_tls_client_auth/settings` with `{"enabled": true}`, SSL and
+  Certificates Write); zone-level is apart from the global toggle and takes precedence over it,
+  covers every proxied record of the zone, needs SSL Full or higher (Full (strict) here) and doesn't
+  work with Cloudflare Tunnel origins. Switched on at step 8 it changes nothing yet: Vercel's records
+  are DNS only, and Caddy asks for a client certificate only once the site file imports
+  `tls_menumesh`. A new client certificate is made from the CA's key out of the password manager,
+  uploaded, and once it is `active` the old one is deleted (of two active ones, the one deployed last
+  is used); Cloudflare alerts 30 and 14 days before expiry and never deletes an expired certificate
+  itself, the expiry goes on the calendar, and hostwatch's daily check warns from 60 days and is
+  critical from 14 for the `aop-client.pem` on the server (`66fe8b3`). The four files go into the
+  password manager and the two keys off the disk: the CA's key never reaches a server, and the admin
+  gets only `aop-ca.pem` and `aop-client.pem`, so no private key changes hands. Part 1's line now says
+  the owner makes and uploads the client certificate, and disaster recovery's edge takes both
+  certificates and `edge.env` from the password manager, the CA and the client pair staying as they
+  were. Step 11 makes the Origin CA certificate from a CSR on the server and installs it with the CA
+  in one command, as the vendored `app-apply` takes it
+  (`edge cert <app> <origin.pem> <origin-key.pem> [<aop-ca.pem>]`), then `aop-client.pem` by hand
+  into `/srv/edge/certs/menumesh/`, as `edge.md` §3 does for theirs, since `edge cert` copies only
+  those three and hostwatch reads every public `.pem` there and never a file named for a key; the
+  CSR's key is shredded after, as there. `app-apply edge env` puts the file it is given in place of
+  `/srv/edge/edge.env`, so the example's two lines alone would have dropped every `JAINAV_*` line at
+  the next recreate. Step 11 now merges, as their commitment 4 has it:
+  `(umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)`, the two lines appended after an
+  `echo`, as a live file whose last line has no line end would take the first of them into its value,
+  which the parser can pass as a plain one, while a blank line is skipped, then
+  `sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env`, and a copy that
+  `app-apply` refuses is shredded all the same unless it is mended and run again at once, as it holds
+  the server team's values too. Rotation's new staging hash goes through the same copy, its line
+  edited, as a second line of a name is refused (`is set twice`). `check_edge_env_applied` refuses a
+  site file, `edge config`, `edge redact`, `edge cert` and `edge reload` from `edge env` until Caddy
+  is recreated, the server team's own range updates among them, so the order is the certificate with
+  `aop-ca.pem`, the snippet's `edge config`, the redaction file (in since step 9), `edge env`, then
+  the recreate, the last two on one night with nothing of the edge between them. That recreate,
+  `sudo app-compose edge up -d` between 01:00 and 07:00 IST, as it drops every connection on the
+  shared edge, comes on a night the owner picks and also takes the server team's digest pin of Caddy
+  (VPS-130): one recreate for both. Step 11 lists what that night waits for: (a) both of the server
+  team's PRs, their scripts and their onboarding, merged and their kit refreshed on the server; (b)
+  `menumesh.in` on Cloudflare, its Origin CA certificate made from a CSR generated on the server; (c)
+  the owner's staging hash, `aop-ca.pem` and `aop-client.pem` made, and the client pair uploaded for
+  `menumesh.in`; (d) steps 9 to 11 done up to the `edge.env` lines: the conf, the deploy user and its
+  token, the redaction file, the certificate with `aop-ca.pem` and the snippet. Steps 12 to 21 don't
+  wait for it, nor does the rehearsal; the staging night does: its Before it checks that Caddy holds
+  both names, with
+  `sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'`,
+  which prints `2`, a count and never the hash (`edge-caddy-1` is the vendored `app-apply`'s
+  `CADDY_CONTAINER`), as its step 1's site file is refused until then. Step 11's snippet wording stays
+  as it was: their onboarding PR puts `tls_menumesh` into their `snippets.caddy` (Left open, below).
+  `ownCA` holds step 8's certificates to client authentication, the two lifetimes and the verify,
+  each `-subj` behind `MSYS_NO_PATHCONV=1`, zone-level pulls and never the global toggle, the two
+  certificates alone for the server, and part 1's line and disaster recovery's; `edgeNight` holds
+  step 11's certificate with the CA, the client certificate, the merged copy, `edge env` with its
+  shred, the order, the shred of a refused copy and the digest pin, and the staging night's check: 8
+  and 8 problems on `21a13bf`'s RUNBOOK.
+
+- **VPS-137 · The leak test's container (Q8, the leak test):** the RUNBOOK said only what the
+  throwaway container does, with no image and no command, so nothing held it to a pin. It is now
+  `traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44`,
+  an OCI index with linux/amd64, pushed 2026-07-29 and so past the 14-day rule, which echoes every
+  request header (their step 1 reads eight) and listens on port 80, so `<port>` is 80; its
+  entrypoint is `/whoami`, with no user set, so root, which `--cap-drop ALL` leaves with no
+  capability. The admin pulls it first, by digest, so that a failed pull shows on its own (the
+  review's reason, that `edge-menumesh` is internal, does not hold: the daemon pulls over the host's
+  network whatever network the container joins), then starts it with the review's command and the
+  owner's three flags (2026-11-21, as told to the server team):
+  `sudo docker run -d --rm --name menumesh-leaktest --network edge-menumesh --network-alias menumesh-leaktest --memory 64m --cpus 0.25 --cap-drop ALL --security-opt no-new-privileges --read-only <image>`.
+  Run here with those flags, it served on port 80, echoed every header sent and used about 3 MiB of
+  its 64. `--network-alias` keeps hostwatch from adding `not-an-upstream` (it reads a container's
+  aliases, not its name), and `--memory` and `--cpus` from a limits alert; there is no
+  `kit.throwaway` label, as hostwatch's limits check passes over a container that carries it, which
+  only `app-apply`'s own validation runs do. `--rm` makes step 5's "the container stopped" remove it
+  too, so step 5 stays word for word. The `UPSTREAMS` entry now goes in first, before the container
+  starts, then the temporary site copy; the admin, who runs the server's steps, tells the server
+  team's chat before the container starts; and while it runs, hostwatch's critical
+  `networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes is expected (its
+  network check reads running containers only), where the step named only `wrong-project`. The owner
+  adds and deletes the record, as before. The sentence `LEAK_PIECES` pins and the site block keep
+  `<port>`. `leakContainer` holds the pull and the run to the image by its digest and the run to every
+  flag, and refuses the `kit.throwaway` label, the container before its entry, and a step without the
+  chat, the expected alert or the port: 5 problems on `21a13bf`'s RUNBOOK, with refusal cases for
+  the image without its digest in the run and in the pull, each of six flags left out, the label and
+  the entry moved after the run.
+
+- **VPS-138 · The drills on the second weekend (Q3, memory):** `app-compose` starts a one-off only
+  while the running limits, its own and 1,536 MiB stay below MemTotal, so it refuses our restore test
+  beside the server team's (3,840 MiB), our `pitr-test` beside their restore test (3,456) and our two
+  together (3,456) (VPS-132); a refusal starts nothing, but the drill is then not done. The owner
+  chose (2026-11-21) the server team's split: their drills on the first weekend of the month, ours on
+  the second, its Saturday (the 8th to the 14th) or the Sunday after, or on the third when the second
+  is missed, all outside 20:20 to 21:30 UTC, the server's backups (ours at 20:20 and 20:30, theirs at
+  20:50 and 21:00). It replaces the contract's third week (VPS-40, which stays as history), and the
+  second weekend still comes after the 1st's night, which the month's-copy check needs. The restore
+  test's bullet says so, and that `app-compose`'s memory rule refuses it beside the server team's;
+  the drill's says it runs once the restore test has ended, in the same terminal, after
+  `rm -sf restore-db` and before the key's `rm` and `umount`, as the rule refuses the two together.
+  Both bullets keep the opening words that `PLACES` cuts at. No cron line: each drill needs the
+  owner's private key typed onto a ramfs. `drillDays` holds both: 3 problems on `21a13bf`'s RUNBOOK.
+
+- **VPS-139 · The log budget (ask 5):** the three budgets, the server team's 30,000 lines a day, the
+  edge's 10,000 (the host's own lines included) and MenuMesh's 45,000 (Caddy's lines for its hosts
+  included, as hostwatch counts a host's lines for the app whose zone it is in), make 85,000, which is
+  all the journal's 24G holds for its 187 days (their `zz-retention.conf` at `66fe8b3`: about 85,000
+  filtered lines a day for the whole period, `MaxRetentionSec=187day`), with no margin. No number
+  changes now: they are to be set again from real counts, and staging's alone understate production,
+  as staging has almost no traffic and a database restart alone writes about 200 lines (our own
+  measure: about 1,450 lines in a test-heavy 90 minutes, a plausible production day a few hundred;
+  Tests (VPS Stop B)). The staging night's step 9 now sends hostwatch's daily digest line,
+  `lines (24 h, against budget): … menumesh <n>/45000 …`, to the server team's chat, with why, and
+  the production night's step 9 its digest a week later, from which the owner and the server team set
+  `LOG_LINE_BUDGET` again. A new number changes, in one commit, the RUNBOOK's conf block and
+  `deploy/vps/test/menumesh.conf` (which a unit test keeps alike), the RUNBOOK's other two mentions,
+  the comment in `scripts/vps-kit.mts` and a new entry here; the admin edits
+  `/etc/apps/menumesh.conf`. No rule pins the two step 9s.
+
+- **VPS-140 · The copies in `~/incoming` (our own finding):** First install, step 14, installed
+  `.env`, `web.env` and `web-staging.env` from `~/incoming` and left `ops`' copies there, every secret
+  of the install, and nothing in the RUNBOOK removed them. `scp` gives a copy its source's mode, but
+  `~/incoming` is `ops`' own, 0700 (the server team's `install.sh` makes it with
+  `install -d -m 0700 -o ops -g ops`), so no other user could read them, only root and whoever has
+  sudo, and no `chmod` on arrival is needed. Step 14 now shreds the three right after the installs,
+  `shred -u ~/incoming/.env ~/incoming/web.env ~/incoming/web-staging.env`, and Rotation's bullet for
+  an env file the copy of one installed again. The other files the RUNBOOK leaves there hold no secret
+  (the compose, site and redaction files, `config/`, Supabase's CA, `images.env.example`, the leak
+  test's site copy, `aop-ca.pem`, `aop-client.pem` and `first-admin.mjs`), or are shredded where they
+  are used (the merged `edge.env`, VPS-136; `first-admin.values.mjs`, VPS-134; the Origin CA
+  certificate's key in `~/csr`, step 11); disaster recovery's `config-<id>.tar.age` stays encrypted to
+  the backup key. `copiesGone` holds both: 2 problems on `21a13bf`'s RUNBOOK. With this review's seven
+  rules, `redactEarly`, `edgeNight`, `copiesGone`, `originGate`, `drillDays`, `ownCA` and
+  `leakContainer`, `vps-runbook` has 58 tests (51 before): 32 problems on `21a13bf`'s RUNBOOK and on
+  `eb119ef`'s, none on the fix, each rule with refusal cases built from `21a13bf`'s text, and the
+  re-wrap test wraps 267 phrases where it wrapped 249, a piece of each phrase the new rules read. Of
+  `eb119ef`'s 28 rules, 27 report none on the fix, and the origin-pulls rule 1, its `siteNight` under
+  the old heading, which this change moved; the window rule's refusal cases swapped a sentence of
+  step 11 and one of Rotation that the fix rewrote, and now swap the recreate's line and Rotation's new
+  wrap. The range the RUNBOOK, `deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and
+  `tests/unit/vps-kit.test.ts`'s header cite is now VPS-31 to VPS-140, and the kit README lists
+  `wal-health.sh` with the WAL job and follows the redaction file's move, the merged `edge.env`, the
+  edge networks app-apply only checks and step 16's wait. No script and no service changed, so
+  nothing was rehearsed again. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit
+  tests 1,320 in 72 files (`vps-runbook` 58, seven new); `pnpm vps:check` 54 checks, 0 failed, after
+  `compose.yml`'s header changed.
+
+**What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
+which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
+their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
+`api-gw` at 224m among them; and the WAL archiving, the signed backups and point-in-time recovery
+are fine, but for the disk (VPS-133). Q1: our `docker/dockerfile:1.27.1` pin meets their 14-day
+rule, which their Dependabot cooldown carries but no build enforces (pnpm 12 refuses only same-day
+releases). Q2: `migrate-staging` and `web-staging` reach hosted staging's pooler on 5432 over the
+`staging` bridge, through Docker's own forward and masquerade (their `DOCKER-USER` drops only new
+connections arriving on the public interface), and the internal networks, ours and the edge's, have
+no way out. Q5: hostwatch's daily image cleanup keeps every image that an installed compose file
+names under any profile, by `repo:tag`; the one third-party image of our one-offs,
+`supabase/postgres` (`restore-db`, `recover-db`), is also `db`'s, which always runs, and our own
+images, `pull_policy: never`, are `app-deploy`'s to keep (the backup one-offs share `backup`'s), so
+the cleanup takes none of them. Q9:
+sudo 1.9.15p5, with `use_pty` and no input or output logging, hands a redirected or piped stdin
+through whole, its end of file included, and `app-compose`'s `exec -T` keeps it open and passes the
+exit code back (VPS-134).
+
+**Left open (server review):**
+
+- After the server team's scripts PR merges: copy their files again at the merge commit, and add the
+  kit check, through their `edge_env_hash_check`, that the example's placeholder hash is refused and
+  the kit's own Caddy-made hash passes.
+- After their onboarding PR merges: vendor their `snippets.caddy` with `tls_menumesh`, stop appending
+  ours in `vps-kit.mts`'s `snippets()` and delete `deploy/vps/edge/tls_menumesh.caddy`; run
+  `vps:check` and `vps:edge` with a throwaway origin-pulls CA and client pair, proving that a
+  handshake without the client certificate fails; and move the staging night's step 1 check text and
+  First install, step 11's snippet wording to their file.
+- The recreate night's date, which is the owner's (VPS-136).
+- The server team's origin-pulls round, which comes before our step 16 (VPS-135).
+- `LOG_LINE_BUDGET` set again from real counts (VPS-139).
+- The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
+  line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
+  accepts (VPS-134).

@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-129. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-140. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -19,9 +19,9 @@ their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this
 | `config/scheduler/`                    | `/srv/menumesh/config/scheduler/`                    | root, 0644  | the server's admin                                                     |
 | (not in git) Supabase's CA certificate | `/srv/menumesh/config/migrate/supabase-ca.crt`       | root, 0644  | the owner downloads it, the admin installs it with `config/`           |
 | `edge/menumesh.caddy`                  | `/srv/edge/config/sites/menumesh.caddy`              | root, 0644  | the owner: `sudo app-apply menumesh site menumesh.caddy`               |
-| `edge/log-redact.caddy`                | `/srv/edge/config/log-redact.d/menumesh.caddy`       | root, 0644  | `sudo app-apply edge redact menumesh log-redact.caddy`                 |
+| `edge/log-redact.caddy`                | `/srv/edge/config/log-redact.d/menumesh.caddy`       | root, 0644  | the admin: `sudo app-apply edge redact menumesh log-redact.caddy`      |
 | `edge/tls_menumesh.caddy`              | a snippet in `/srv/edge/config/snippets.caddy`       | root, 0644  | the server's admin: `sudo app-apply edge config snippets.caddy`        |
-| `edge/edge.env.example`                | the `MENUMESH_*` lines of `/srv/edge/edge.env`       | root, 0600  | the server's admin: `sudo app-apply edge env edge.env`                 |
+| `edge/edge.env.example`                | the `MENUMESH_*` lines of `/srv/edge/edge.env`       | root, 0600  | the server's admin: `sudo app-apply edge env ~/incoming/edge.env`      |
 | `migrate/`, `backup/`                  | images in `ghcr.io/nanu1605/menumesh`, run by digest |             | CI builds them; `app-deploy` brings them                               |
 | `tools/`                               | `~/incoming/` only, for a run by hand                | `ops`       | the owner copies a tool there for its run (The owner's tools, below)   |
 | `local/`, `test/`                      | never installed                                      |             | checks on a development machine                                        |
@@ -36,17 +36,20 @@ only.
 
 ## Who does what
 
-- **The server's admin** writes `/etc/apps/menumesh.conf` (the values are in the RUNBOOK), adds
-  `tls_menumesh` to the edge's snippets with the Origin CA certificate for `menumesh.in` and
-  `*.menumesh.in`, turns authenticated origin pulls on before any MenuMesh container runs, adds
-  the two `MENUMESH_STAGING_AUTH_*` lines to the edge's `edge.env`, adds the 20:20 UTC drop-in
-  for `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves it to the
-  admin), with the CA certificate the owner downloads.
+- **The server's admin** writes `/etc/apps/menumesh.conf` (the values are in the RUNBOOK) and
+  installs the redact file right after it, adds `tls_menumesh` to the edge's snippets with the
+  Origin CA certificate for `menumesh.in` and `*.menumesh.in` and the owner's origin-pulls CA
+  (`aop-ca.pem`), turns authenticated origin pulls on before any MenuMesh container runs, adds the
+  two `MENUMESH_STAGING_AUTH_*` lines to a merged copy of the edge's `edge.env`, which Caddy takes
+  at one recreate on a night the owner picks, adds the 20:20 UTC drop-in for
+  `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves it to the
+  admin), with the CA certificate the owner downloads. On this server the owner is also the admin.
 - **The owner**, through the same `ops` account, makes `.env` and `env/*.env` with
   `pnpm vps:secrets --out <dir>` (a folder outside the repository), fills in each line under
   `# FILL IN`, checks them with `pnpm vps:secrets --check <dir>` and installs them with `images.env`;
-  installs `compose.yml`, the site file and the redact file through `app-apply`, starts the services
-  with `app-compose`, and deploys production with `app-deploy`.
+  installs `compose.yml` and the site file through `app-apply`, starts the services with
+  `app-compose`, and deploys production with `app-deploy`. Off the server, the owner makes the
+  origin pulls' CA and client certificate and uploads the client pair at Cloudflare.
 - **CI** builds the images once the repository variable `VPS_IMAGES` is `true`, and deploys staging
   through the tunnel once `VPS_DEPLOY_STAGING` is `true` as well, from the staging night (RUNBOOK,
   The server rehearsal and the cut-over). Nothing in CI runs before then.
@@ -96,7 +99,9 @@ secret; the keys the server's tool needs come from the container it runs in.
 - **The WAL** (`wal-ship.sh`, every minute): `db` hands each finished WAL file to the `wal-spool`
   volume (`basic_archive`, at least once a minute); the shipper compresses, encrypts, signs and
   uploads it to `wal/<cluster>/…`, alerts when it can't, and pings `HEARTBEAT_WAL_URL` every 5
-  minutes. `wal-spool` is shared with `db` alone. The scripts' work files, and the shipper's record
+  minutes. `wal-health.sh`, the service's healthcheck, turns `backup` unhealthy when crond is not
+  running, or once WAL stops going up (a file waiting over 20 minutes, nothing sent for 10, seen so
+  for 10 more). `wal-spool` is shared with `db` alone. The scripts' work files, and the shipper's record
   while the spool takes no write, are in the service's 16m tmpfs at `/tmp`, inside its 320m, so a
   full disk still gets its alert.
 - **The restores** (`restore.sh`: `restore-test`, `recover`): read a night only through its seal,
@@ -125,9 +130,11 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
 1. The admin's part above, `config/` included, then the owner's env files and `images.env` under
    `/srv/menumesh`, with their owners and modes.
 2. `sudo app-apply menumesh compose compose.yml`. It checks the file against the server's rules
-   (and every mounted file on disk), creates the edge networks and pins the file's sha256.
-3. `sudo app-compose menumesh up -d db`, then `auth rest realtime storage api-gw`. Auth and
-   Storage create their own schemas at start, and the first migration needs them.
+   (and every mounted file on disk), checks that the edge networks exist and are internal (it
+   creates only a missing one), and pins the file's sha256.
+3. Once the server team says origin pulls are on for every zone of the server,
+   `sudo app-compose menumesh up -d db`, then `auth rest realtime storage api-gw`. Auth and Storage
+   create their own schemas at start, and the first migration needs them.
 4. The backup image (`app-deploy menumesh backup ...`) and the first deploys, which run the
    migrations; then `sudo app-compose menumesh up -d scheduler`, production's alone:
    `scheduler-staging` waits for the staging night, after Vercel staging's cron jobs are disabled.
@@ -135,10 +142,10 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
    an hour (`restore-test`, then `pitr-test`, each under its own profile; the RUNBOOK has the
    commands).
 5. Rehearse everything before the site file goes in. Then, at the staging night, `web-staging`
-   deployed by hand on the commit Vercel staging serves, the site file and the redact file, the
-   origin test of authenticated origin pulls for MenuMesh's hosts, the leak test through a
-   temporary record, staging's DNS, and `scheduler-staging` once Vercel staging's cron jobs are
-   disabled; production's DNS comes on a night of its own, with its first admin from
+   deployed by hand on the commit Vercel staging serves, the site file (the redact file is in since
+   the conf), the origin test of authenticated origin pulls for MenuMesh's hosts, the leak test
+   through a temporary record, staging's DNS, and `scheduler-staging` once Vercel staging's cron
+   jobs are disabled; production's DNS comes on a night of its own, with its first admin from
    `tools/first-admin.mjs` (RUNBOOK, The server rehearsal and the cut-over).
 
 ## Changing a file later

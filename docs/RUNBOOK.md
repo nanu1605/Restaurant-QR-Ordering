@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-129 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-140 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -614,15 +614,15 @@ The server team's runbooks in their repository (`docs/runbooks/server.md`, `edge
 
 - **The server's admin** signs in as `ops` (sudo, through the SSH tunnel) and does the server team's
   side: `/etc/apps/menumesh.conf` (below), the deploy user `deploy-menumesh` with its key and the
-  Access service token `github-deploy-menumesh`, the edge (the `tls_menumesh` snippet, the Origin CA
-  certificate, authenticated origin pulls, the two `MENUMESH_STAGING_AUTH_*` lines of `edge.env`),
-  the settings archive's timer, and `/srv/menumesh` with its `config/` folder, which the contract
-  leaves to the admin.
+  Access service token `github-deploy-menumesh`, the edge (the redaction file, the `tls_menumesh`
+  snippet, the Origin CA certificate, authenticated origin pulls, the two `MENUMESH_STAGING_AUTH_*`
+  lines of `edge.env`), the settings archive's timer, and `/srv/menumesh` with its `config/` folder,
+  which the contract leaves to the admin. On this server the owner is also the admin.
 - **The owner**, through the same `ops` account (`app-deploy` takes a deploy by hand only from `ops`
   or root), brings what is MenuMesh's: the backup key, the bucket, the alert bot and the monitors,
-  the secrets and env files, the compose, site and redaction files through `app-apply`, the
-  services, production's deploys and the restore tests; and, off the server, the Cloudflare zone and
-  the GitHub settings.
+  the secrets and env files, the compose and site files through `app-apply`, the services,
+  production's deploys and the restore tests; and, off the server, the Cloudflare zone with its
+  origin pulls' CA and client certificate, and the GitHub settings.
 - **CI**, once switched on, builds the images and deploys staging.
 
 The admin writes `/etc/apps/menumesh.conf` (root, 0644) as below; the server team's
@@ -755,31 +755,118 @@ by anyone else, or `app-apply` refuses the compose file.
    (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
 8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server
    rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
-   ready for the admin's certificate (the server team's `edge.md` §3).
+   from MenuMesh's own CA (the server team's `edge.md` §3, Authenticated origin pulls, whose steps 1
+   and 2 are the owner's here, as the zone's), never Cloudflare's shared certificate, which proves
+   only that a request came through Cloudflare. On the owner's own machine (Git Bash on Windows, or a terminal on macOS or
+   Linux), in a folder only the owner can read: the CA, for 10 years, and the client certificate it
+   signs, for 825 days, both RSA 2048, the client's marked for client authentication, without which
+   Caddy refuses it. `MSYS_NO_PATHCONV=1` keeps Git Bash from turning `-subj`'s `/CN=…` into a
+   Windows path, and changes nothing elsewhere:
+
+   ```sh
+   umask 077 && mkdir ~/aop && cd ~/aop
+   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext
+   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext
+   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr
+   openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem
+   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr
+   openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem
+   openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
+   openssl x509 -noout -enddate -in aop-client.pem
+   ```
+
+   `openssl verify` prints `aop-client.pem: OK` (a client certificate without client authentication
+   fails it with `unsuitable certificate purpose`), and the last line the client certificate's
+   expiry, which goes on the calendar. Then Cloudflare → `menumesh.in` → SSL/TLS → Origin Server →
+   Authenticated Origin Pulls → Zone-level → **Upload certificate**, with `aop-client.pem` and
+   `aop-client-key.pem` pasted: the client certificate itself and its key, as a CA certificate is
+   refused (`missing leaf certificate`). Once its status has gone from `pending_deployment` to
+   `active`, zone-level pulls go on (in the API,
+   `PUT /zones/<zone id>/origin_tls_client_auth/settings` with `{"enabled": true}`, which needs SSL
+   and Certificates Write), never the global toggle, Cloudflare's shared certificate. They cover
+   every proxied record of the zone, and none is proxied yet: Vercel's stay DNS only. The four
+   files go into the password manager; then `aop-ca-key.pem` and `aop-client-key.pem` go off the
+   disk with the rest of the folder, and the CA's key never goes to a server. The admin gets only
+   `aop-ca.pem` and `aop-client.pem` (step 11). Cloudflare also alerts 30 and 14 days before the
+   client certificate expires, and never deletes an expired one itself. The next one is made the
+   same way, from `aop-ca.pem` and the CA's key out of the password manager, without the lines that
+   make the CA, and uploaded beside the old one; once it is `active`, the old one is deleted there
+   (of two active ones, the one deployed last is used), and the admin puts the new `aop-client.pem`
+   in the old one's place (step 11).
 
 **The server's admin** (the server team's `server.md` §2 and `edge.md` §3 and §5):
 
 9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in:
-   `grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf` prints the owner's `age1…` key.
+   `grep '^BACKUP_RECIPIENT=' /etc/apps/menumesh.conf` prints the owner's `age1…` key. Right after
+   it, the redaction file, which needs only the conf:
+   `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`. From the conf on, hostwatch's
+   daily run raises a critical
+   `redact: LOG_REDACT=1 but no /srv/edge/config/log-redact.d/<app>.caddy for: menumesh` every day
+   the file is missing. It goes in before step 11's `edge.env` lines: from those until Caddy is
+   recreated, `app-apply` refuses it (step 11). Until the settings archive's timer is enabled
+   (step 13), the same run also warns `timers: not enabled: app-config-archive@menumesh.timer`,
+   which wants nothing then.
 10. The deploy user with `gha-menumesh-staging.pub`, and the Access service token
     `github-deploy-menumesh` for the tunnel. Step 17's **VPS ping** proves both.
 11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the
-    server (`sudo app-apply edge cert menumesh origin.pem origin-key.pem`), the snippet of
-    `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`
+    server, the snippet of `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`
     (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
     MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose
     step 5 must see a TLS connection to the server without the client certificate refused (§6,
-    step 4). For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no
-    site imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the
-    test prints. The test that proves it runs right after the site file, on the staging night (The
-    server rehearsal and the cut-over, part 3, step 1). Then the two lines of
-    `deploy/vps/edge/edge.env.example` in `/srv/edge/edge.env`, installed with
-    `sudo app-apply edge env edge.env` and `sudo app-compose edge up -d` between 01:00 and 07:00
-    IST, as recreating Caddy drops every connection on the shared edge. The hash comes from the
-    owner, who makes it on their own machine with the edge's pinned Caddy image and bcrypt, the only
-    kind `app-apply` takes, never on the server: there staging's password would stay in the shell's
-    history and show in the process list. Without `--plaintext`, Caddy reads the password from the
-    terminal without echoing it, and the admin gets only the hash:
+    step 4). The certificate goes in with `aop-ca.pem`, the owner's CA (step 8), which Caddy checks
+    Cloudflare's client certificate against; then `aop-client.pem`, that client certificate without
+    its key, goes beside it by hand, as `edge.md` §3 does for theirs, so that hostwatch's daily run
+    warns before it expires too:
+
+    ```sh
+    sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem
+    sudo install -m 0644 -o root -g root ~/incoming/aop-client.pem /srv/edge/certs/menumesh/
+    shred -u ~/csr/origin-key.pem && rm -r ~/csr
+    ```
+
+    For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no site
+    imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the test
+    prints. The test that proves it runs right after the site file, on the staging night (The
+    server rehearsal and the cut-over, part 3, step 1).
+
+    `edge.env` comes last. From `app-apply edge env` until Caddy is recreated, `app-apply` refuses
+    every change that reloads Caddy, a site file, `edge config`, `edge redact` or `edge cert`, the
+    server team's own among them (`edge.env differs from what edge-caddy-1 was created with`). So
+    the order is the certificate, then the snippet, then (the redaction file in since step 9)
+    `edge.env`, then the recreate, the last two on the same night, with nothing of the edge between
+    them. `app-apply edge env` puts the file it is given in place of the live one, so `edge.env` is
+    one merged file, as the server team's `edge.md` gives it: the live file copied, the two lines of
+    `deploy/vps/edge/edge.env.example` appended with the owner's hash on lines of their own (the
+    `echo` first: a live file whose last line has no line end would take the first of them into its
+    value, and a blank line is skipped), the copy installed and then shredded. A copy that
+    `app-apply` refuses is shredded all the same (`shred -u ~/incoming/edge.env`) unless it is
+    mended and run again at once: it holds the server team's values too.
+
+    ```sh
+    (umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)
+    (echo; cat) >> ~/incoming/edge.env     # paste the two lines, the hash in its single quotes, then Ctrl-D
+    sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env
+    sudo app-compose edge up -d     # between 01:00 and 07:00 IST, on the night the owner picks
+    ```
+
+    The recreate drops every connection on the shared edge, hence the window. It also takes the
+    server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130): one recreate for
+    both. That night comes only after:
+    - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit
+      is refreshed on the server;
+    - (b) `menumesh.in` is on Cloudflare (step 8), its Origin CA certificate made from a CSR
+      generated on the server (above);
+    - (c) the owner has the staging hash, `aop-ca.pem` and `aop-client.pem`, and the client pair is
+      uploaded for `menumesh.in` (step 8);
+    - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its
+      token, the redaction file, the certificate with `aop-ca.pem`, and the snippet.
+
+    Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
+    the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own
+    machine with the edge's pinned Caddy image and bcrypt, the only kind `app-apply` takes, never on
+    the server: there staging's password would stay in the shell's history and show in the process
+    list. Without `--plaintext`, Caddy reads the password from the terminal without echoing it, and
+    the admin gets only the hash:
 
     ```sh
     docker run --rm -it caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0 caddy hash-password --algorithm bcrypt
@@ -810,7 +897,11 @@ by anyone else, or `app-apply` refuses the compose file.
     `systemctl list-timers 'app-config-archive@*'` then shows its next run at 20:20 UTC. Until the
     first deploy (step 18) writes `deploys.log`, a run archives the rest without it and alerts
     `app-config-archive menumesh: archived without deploys.log, which do not exist`, which wants
-    nothing then.
+    nothing then. The order is step 9's `BACKUP_RECIPIENT` (its `grep` prints the key), then this
+    drop-in, then the enable: before the key, every run fails and alerts; without the drop-in, the
+    timer runs at 20:50 UTC, after the 20:30 backup. So the
+    `systemctl enable --now app-config-archive@menumesh.timer` that the server team's `install.sh`
+    prints among its timers waits for this step too.
 
 **The owner, on the server:**
 
@@ -824,14 +915,28 @@ by anyone else, or `app-apply` refuses the compose file.
     sudo install -m 0644 -o root -g root ~/incoming/images.env.example /srv/menumesh/images.env
     ```
 
+    Then the three copies `scp` left in `~/incoming`, which hold every secret of the install, go
+    (`~/incoming` is `ops`' own, 0700, as the server team's `install.sh` makes it, so no other user
+    could read them meanwhile):
+
+    ```sh
+    shred -u ~/incoming/.env ~/incoming/web.env ~/incoming/web-staging.env
+    ```
+
 15. `sudo app-apply menumesh compose ~/incoming/compose.yml`. It checks the file and every file it
-    mounts, creates the two edge networks and `/srv/menumesh/backup-out`, and pins the file's
-    sha256: `app-deploy` refuses to deploy while the installed file differs from it.
-16. The database, then the Supabase services: `sudo app-compose menumesh up -d db`, and once it is
-    healthy (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows
-    `db Up … (healthy)`), `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each
-    `(healthy)` in the same list within a minute. Auth and Storage make their own schemas at their
-    first start, and the first migration needs them (VPS-39).
+    mounts, checks that the two edge networks exist and are internal (they do: the server's Caddy
+    has joined them since 2026-11-16; it would create a missing one), creates
+    `/srv/menumesh/backup-out`, and pins the file's sha256: `app-deploy` refuses to deploy while the
+    installed file differs from it.
+16. Not before the server team confirms in their chat that authenticated origin pulls are on and
+    tested for every zone of the server, `jainavinfotech.in` included (their gate before an app's
+    first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out): until
+    then this step, and every step after it, waits. The database, then the Supabase services:
+    `sudo app-compose menumesh up -d db`, and once it is healthy
+    (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows `db Up … (healthy)`),
+    `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each `(healthy)` in the same
+    list within a minute. Auth and Storage make their own schemas at their first start, and the
+    first migration needs them (VPS-39).
 17. **GitHub** (Secrets (VPS), below): the variables, `VPS_IMAGES` set to `true`, and the secrets;
     then Actions → **VPS ping**. While `VPS_IMAGES` is off, the backup image's and the release's
     workflows skip their job and push nothing; once it is on, each merge to `main` also builds the
@@ -874,13 +979,12 @@ by anyone else, or `app-apply` refuses the compose file.
 21. A first restore test and point-in-time drill once a night has run and the WAL has been
     shipping for an hour, before the first restaurant (Backups and restore (VPS)).
 22. At the staging night (The server rehearsal and the cut-over, part 3):
-    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
-    `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`, then the origin test of
-    authenticated origin pulls for its four hosts (part 3, step 1); then the admin's leak test
-    (the server team's `edge.md` §6 with MenuMesh's own pieces, through a temporary
-    `leaktest.menumesh.in` record, with a made-up 16-character `/t/` token, which the log must show
-    as `/t/_`), before any app record moves; then DNS, staging's that night and production's on a
-    night of its own (part 4).
+    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (the redaction file is in since
+    step 9), then the origin test of authenticated origin pulls for its four hosts (part 3, step 1);
+    then the admin's leak test (the server team's `edge.md` §6 with MenuMesh's own pieces, through a
+    temporary `leaktest.menumesh.in` record, with a made-up 16-character `/t/` token, which the log
+    must show as `/t/_`), before any app record moves; then DNS, staging's that night and
+    production's on a night of its own (part 4).
 
 ### Secrets (VPS)
 
@@ -943,8 +1047,9 @@ recreates them; a `restart` keeps the old values.
   `web-staging` alone until the staging night's step 5 has started `scheduler-staging`: First
   install, step 20); the minute between the two may log one 401 line.
 - A value in `env/web.env` or `env/web-staging.env`: the provider's step as in Rotating secrets, the
-  edited file installed again, then `up -d web` (or `web-staging`). A new `CUSTOMER_COOKIE_SECRET`
-  gives phones new device ids, as on Vercel.
+  edited file installed again and its copy in `~/incoming` shredded (First install, step 14), then
+  `up -d web` (or `web-staging`). A new `CUSTOMER_COOKIE_SECRET` gives phones new device ids, as on
+  Vercel.
 - Production's `SUPABASE_SECRET_KEY`: a new key from a fresh `pnpm vps:secrets --out <new folder>`
   (that value only) in `.env`, then `up -d api-gw web` together; the old key stops working at once.
 - Hosted staging's pooler login (`STAGING_DB_*`): a new database password for hosted staging (its
@@ -987,9 +1092,10 @@ recreates them; a `restart` keeps the old values.
   may have reached the server, they run on the rebuilt server only, as both put the backup key's
   private half on it (A stolen or leaked bucket token (VPS), step 5).
 - Staging's password: a new hash, made off the server as in First install, step 11, which the admin
-  puts in `edge.env` (`app-apply edge env`, then recreate Caddy between 01:00 and 07:00 IST, as it
-  drops every connection on the shared edge); the GitHub secret `STAGING_SMOKE_BASIC_AUTH`; and the
-  testers.
+  puts in `edge.env` through that step's merged copy, its `MENUMESH_STAGING_AUTH_HASH` line given
+  the new hash in an editor, as a second line of that name is refused (`app-apply edge env`, then
+  recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared edge); the
+  GitHub secret `STAGING_SMOKE_BASIC_AUTH`; and the testers.
 - The deploy key or the Access token: a new key pair (the admin swaps the public half) or token,
   then the GitHub secrets.
 
@@ -1093,7 +1199,9 @@ app) and §6 (the leak test), `launch.md` and `cloudflare.md`.
      http.host eq "api.menumesh.in" and starts_with(http.request.uri.path, "/storage/v1/object/public/")
      ```
 
-   - Authenticated origin pulls come with the admin's certificate (First install, steps 8 and 11).
+   - Authenticated origin pulls come zone-level, with MenuMesh's own client certificate, which the
+     owner makes and uploads (First install, step 8), and its CA, which the admin installs on the
+     server (step 11).
 
    Way back: each setting as it was.
 
@@ -1102,9 +1210,12 @@ app) and §6 (the leak test), `launch.md` and `cloudflare.md`.
 No record points at the server and the site file waits for the staging night, so nothing here is
 public, and Vercel and hosted Supabase serve as before. Way back, for the whole part: none needed.
 
-1. First install, steps 1 to 21, in order, each with its check. Production's first deploy (step 19)
-   is a **VPS release** of a commit whose **VPS build** ran on `main`, so that it reuses that run's
-   migrate image; a version used here is never used again.
+1. First install, steps 1 to 21, in order, each with its check. Step 16 waits for the server team's
+   word in their chat that authenticated origin pulls are on for every zone of the server, and
+   step 11's `edge.env` and recreate may come after step 21, on their own night before the staging
+   night. Production's first deploy (step 19) is a **VPS release** of a commit whose **VPS build**
+   ran on `main`, so that it reuses that run's migrate image; a version used here is never used
+   again.
 2. On the server, each with what it must show:
    - `sudo hostwatch check`: its last line is `hostwatch check: clean`.
    - `sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'`: every long-running service
@@ -1157,6 +1268,13 @@ public, and Vercel and hosted Supabase serve as before. Way back, for the whole 
 Staging moves first, on a night of its own (VPS-116): any quiet night outside the blackouts (Deploys
 on the VPS, When to deploy), with no merge to `main` while it runs other than step 6's. Before it:
 
+- Caddy recreated since `edge.env` took MenuMesh's two lines (First install, step 11). This prints
+  `2`, counting names only, never showing the hash; until it does, step 1's site file is refused:
+
+  ```sh
+  sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'
+  ```
+
 - A day ahead, the TTL of Vercel's `staging` record set to 1 min (Cloudflare → DNS → the record), so
   that resolvers drop Vercel's answer within a minute of the change.
 - `web-staging.env` holds Vercel staging's own `STAFF_EMAIL_DOMAIN` (`staging.menumesh.in`) and
@@ -1176,9 +1294,8 @@ on the VPS, When to deploy), with no merge to `main` while it runs other than st
 
 Then, in order:
 
-1. **The site file and the redaction file** (First install, step 22):
-   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and
-   `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`. Caddy serves the four hosts
+1. **The site file** (First install, step 22; the redaction file is in since step 9):
+   `sudo app-apply menumesh site ~/incoming/menumesh.caddy`. Caddy serves the four hosts
    from now on, but no record sends it anything yet. Then, on the server, the origin test of
    authenticated origin pulls for this zone (the server team's `edge.md` §6, step 4), which only
    now tests these hosts (First install, step 11). Each host `menumesh.caddy` serves, every block
@@ -1196,12 +1313,23 @@ Then, in order:
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
    `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record
    moves (VPS-115), with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts
-   stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. Their step 1 here: the throwaway
-   container that answers with the request's headers runs on `edge-menumesh` as `menumesh-leaktest`
-   (an upstream is `menumesh-<name>:<port>`); `menumesh-leaktest:<port>` goes into `UPSTREAMS` in
-   `/etc/apps/menumesh.conf` for the test; and a temporary copy of `menumesh.caddy` with one more
-   block, which imports what the others import, is installed with
-   `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:
+   stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. The admin, who runs the server's
+   steps, tells the server team's chat before the container starts. Their step 1 here, in this
+   order: `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test
+   (`<port>` is 80, where the image listens); the throwaway container that answers with the
+   request's headers runs on `edge-menumesh` as `menumesh-leaktest` (an upstream is
+   `menumesh-<name>:<port>`), from an image pinned by its index digest and pulled first, so that a
+   failed pull shows on its own, with no capability, no new privileges and a read-only root, and
+   without the `kit.throwaway` label, which only `app-apply`'s own containers carry (`--rm` removes
+   it once it is stopped):
+
+   ```sh
+   sudo docker pull traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+   sudo docker run -d --rm --name menumesh-leaktest --network edge-menumesh --network-alias menumesh-leaktest --memory 64m --cpus 0.25 --cap-drop ALL --security-opt no-new-privileges --read-only traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+   ```
+
+   and a temporary copy of `menumesh.caddy` with one more block, which imports what the others
+   import, is installed with `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:
 
    ```text
    https://leaktest.menumesh.in {
@@ -1213,15 +1341,16 @@ Then, in order:
    }
    ```
 
-   Until the container stops, hostwatch reports it, as for the server team's own test: its check of
-   the edge networks as `wrong-project` (it is no service of the compose project), and as
-   `not-an-upstream` too unless it was started with `--network-alias menumesh-leaktest` (hostwatch
-   reads the container's network aliases, not its name); and its check of the limits, unless it was
-   started with `--memory` and `--cpus`. Their steps 1 to 4 must then show: forged headers replaced;
-   the log line without an address, a header or a query, and a made-up 16-character `/t/` token in
-   it shown as `/t/_`; nothing answering straight on the server's addresses, IPv4 and IPv6, even
-   with a temporary hPanel accept rule; and a TLS connection without the client certificate refused
-   (step 1's test, the leak test's host added).
+   Until the container stops, hostwatch raises a critical
+   `networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes (it is no service of
+   the compose project), which the chat expects, as for the server team's own test. Its
+   `--network-alias` keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's
+   network aliases, not its name), and its `--memory` and `--cpus` keep it from a limits alert.
+   Their steps 1 to 4 must then show: forged headers replaced; the log line without an address, a
+   header or a query, and a made-up 16-character `/t/` token in it shown as `/t/_`; nothing
+   answering straight on the server's addresses, IPv4 and IPv6, even with a temporary hPanel accept
+   rule; and a TLS connection without the client certificate refused (step 1's test, the leak
+   test's host added).
 
    Their step 5 here, in this order: `menumesh.caddy` as it is installed again,
    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (never removed: it is the zone's only
@@ -1282,7 +1411,12 @@ Then, in order:
    5 minutes; no email sent twice, as Resend's log shows (docs/DECISIONS.md, Tests (VPS Stop A2)).
 
 9. **A day later**: `scheduler-staging` healthy, its `daily` and `digest` lines `HTTP 200`, and
-   staging's heartbeat monitors quiet.
+   staging's heartbeat monitors quiet. Then hostwatch's daily digest line
+   `lines (24 h, against budget): … menumesh <n>/45000 …` goes to the server team's chat. The three
+   budgets, the server team's 30,000, the edge's 10,000 (the host's lines included) and MenuMesh's
+   45,000 (Caddy's lines for its hosts included), fill the journal's 24G for its 187 days exactly,
+   with no margin, so they are set again from real counts: these, and production's after its first
+   week (part 4, step 9), as staging's alone understate production.
 
 Way back, for the whole night: `scheduler-staging` stopped
 (`sudo app-compose menumesh stop scheduler-staging`); the `staging` record to Vercel's value, DNS
@@ -1367,7 +1501,9 @@ Then, in order:
 9. **That morning and the next night**: the 08:45 digest, from the server alone when Resend is set
    (`cron-call digest: HTTP 200 in N s` in `scheduler`'s lines); at 02:00 IST the server's night and
    its heartbeat (Last night's backup); the WAL's heartbeat quiet; `scheduler` healthy; hostwatch's
-   daily report; and the uptime monitor on `https://menumesh.in/api/health` up.
+   daily report; a week later, its `lines` digest sent to the server team as on the staging night
+   (part 3, step 9), from which the owner and the server team set `LOG_LINE_BUDGET` again; and the
+   uptime monitor on `https://menumesh.in/api/health` up.
 
 Everyone signs in again on the server: its keys and its session cookie (`sb-api-auth-token`,
 VPS-20) are not hosted's.
@@ -1676,10 +1812,14 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   A stolen or leaked bucket token (VPS). An object put in after the look still fails that step of
   the copy, with that step's reason.
 
-- **The monthly restore test**, in the third week of the month (the first one before the first
-  restaurant), never while hostwatch reports the server throttled. First the month's copy: the
-  newest whole night names a copy of this month, its line ending `, the month's copy is <id>`, an
-  id of this month, or `, kept in monthly/ as the month's copy` on the night that made it:
+- **The monthly restore test**, on the second weekend of the month, its Saturday (the 8th to the
+  14th) or the Sunday after, or on the third if the second is missed, as the server team's drills
+  take the first (the first one before the first restaurant); outside 20:20 to 21:30 UTC, the
+  shared server's backups; never while hostwatch reports the server throttled; and never beside
+  another one-off of the server's, as `app-compose`'s memory rule refuses it beside the server
+  team's restore test (docs/DECISIONS.md VPS-132). First the month's copy: the newest whole night
+  names a copy of this month, its line ending `, the month's copy is <id>`, an id of this month, or
+  `, kept in monthly/ as the month's copy` on the night that made it:
 
   ```sh
   sudo journalctl COM_DOCKER_COMPOSE_PROJECT=menumesh COM_DOCKER_COMPOSE_SERVICE=backup --since -25d -o cat | grep -E "the month's copy is |kept in monthly/" | tail -1
@@ -1767,8 +1907,9 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
   Someone else wrote to the bucket: A stolen or leaked bucket token (VPS). Record the date, the
   night and the result.
 
-- **The monthly point-in-time drill**, right after the restore test and with the same key on its
-  ramfs (before the `rm` and `umount` of the key):
+- **The monthly point-in-time drill**, right after the restore test has ended, in the same
+  terminal, and with the same key on its ramfs (after `rm -sf restore-db`, before the `rm` and
+  `umount` of the key), as the memory rule refuses the two together:
 
   ```sh
   sudo app-compose menumesh --profile pitr-test run --rm -v /run/age:/run/age:ro pitr-test
@@ -2274,9 +2415,11 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
         out as step 1's did instead, without a migrate reference, as the database holds step 1's
         migrations. If none did, or it is step 1's own, step 1's deploy is all.
 
-  8. The edge, by the admin: new certificates from fresh CSRs, `aop-ca.pem` and `edge.env` from the
-     password manager, then the site and redaction files from this repository, the leak test, and
-     DNS to the new address.
+  8. The edge, by the admin: the redaction file right after step 1's conf (First install, step 9),
+     then new certificates from fresh CSRs, `aop-ca.pem`, `aop-client.pem` and `edge.env` from the
+     password manager, in First install, step 11's order, then the site file from this repository,
+     the leak test, and DNS to the new address. The origin pulls' CA and client certificate stay as
+     they were, the client pair at Cloudflare too.
   9. The key off the ramfs, then a settings archive and `backup.sh` run once by hand, so that a
      night of the new state exists, its base and its archive sealed (Last night's backup):
 
