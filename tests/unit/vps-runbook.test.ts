@@ -98,17 +98,21 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * leak test's container by image digest and flags, the drills on the second weekend, and no copy
  * of a secret left in ~/incoming; and since the copy of their files at their 66c8c61 (VPS-142),
  * step 11's snippets.caddy from their repository, which holds tls_menumesh, and the staging night's
- * stop on an exit 0, which sends the admin to install it again. Since the RUNBOOK follows their
- * merged edge.md §5 and §6 (VPS-143), they also pin step 11's edge.env merged in their form and
- * checked by its names and lengths before the install, Rotation's and disaster recovery's merges,
- * the recreate checked with its way back as the vendored app-apply keeps it, the edge networks
- * checked at step 15, Jainav's hosts refusing a client without a certificate before db, and the
- * leak test's copy of the installed site file, its alert, its checks and its clean-up in their
- * order. Since the last review round (VPS-145) they also pin step 11's CSR key, shredded only once
- * its certificate is in, and the digest pin's steps before edge.env; and since the server team's
- * fix of hostwatch's alerts (VPS-146), the recreate night's wait for their kit on the server to
- * hold it, by their word in their chat, both before that night's edge.env lines, on an earlier
- * night or as that night's first step.
+ * stop on an exit 0. Since the RUNBOOK follows their merged edge.md §5 and §6 (VPS-143), they also
+ * pin step 11's edge.env merged in their form and checked by its names and lengths before the
+ * install, Rotation's and disaster recovery's merges, the recreate checked with its way back as the
+ * vendored app-apply keeps it, the edge networks checked at step 15, Jainav's hosts refusing a
+ * client without a certificate before db, and the leak test's copy of the installed site file, its
+ * alert, its checks and its clean-up in their order. Since the last review round (VPS-145) they
+ * also pin step 11's CSR key, shredded only once its certificate is in, and the digest pin's steps
+ * before edge.env; since the server team's fix of hostwatch's alerts (VPS-146), the recreate
+ * night's wait for their kit on the server to hold it, by their word in their chat, both before
+ * that night's edge.env lines, on an earlier night or as that night's first step; and since the
+ * server team installs their snippets.caddy themselves (VPS-147), step 11's comparison of the
+ * server's file with a Git Bash copy of the commit they name, its sum checked before the scp,
+ * before any edge config and before edge.env, and the stop on DIFFERENT for their answer in their
+ * chat, given the live file's sum, the copy's and its commit, which the staging night's exit 0 and
+ * disaster recovery take too.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2530,6 +2534,20 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
 const STOP_ON_EXIT_0 =
   "An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not the server team's of `66c8c61` or later: stop.";
 
+/** Where that stop sends the admin, since the server team installs their file (VPS-147). */
+const STAGING_ASK =
+  "The admin makes the copy and runs the comparison of First install, step 11, and asks in the server team's chat as its `DIFFERENT` does";
+/** The night goes on only once the comparison and the origin test both pass. */
+const STAGING_SAME =
+  'until they have answered, the comparison prints `SAME` and every exit is not 0';
+
+/** That stop at b2558c3, which had the admin install the server team's file again, unasked. */
+const STAGING_STOP_B2558C3 = [
+  "   the server team's of `66c8c61` or later: stop. The night goes no further until the admin has",
+  '   installed theirs again (First install, step 11) and every exit is not 0. Way back: none needed,',
+  '   as no record sends the server anything yet.',
+].join('\n');
+
 /** That stop at ac976ce, when MenuMesh's own snippet still had client_auth commented out. */
 const OLD_STOP_ON_EXIT_0 = [
   '   An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop. The night goes no',
@@ -2547,7 +2565,8 @@ const OLD_STOP_ON_EXIT_0 = [
  * importing tls_menumesh, and stops on an exit 0; and step 11 says its own proves nothing yet and
  * points to that one. Since the server team's snippets.caddy holds tls_menumesh with client_auth on
  * (their 66c8c61; VPS-142), an exit 0 means the server's file is not theirs, not a client_auth still
- * commented out, so the stop sends the admin to install theirs again (step 11).
+ * commented out; and since they install that file themselves (VPS-147), the stop sends the admin to
+ * step 11's comparison and to their chat, as its DIFFERENT does, never to an install of their own.
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
@@ -2580,10 +2599,10 @@ const originPulls = (runbook: string, site: string) =>
         : [
             'the origin test doesn’t stop the night on an exit 0, the sign of a snippets.caddy that is not the server team’s',
           ]),
-      ...(has(siteNight, 'until the admin has installed theirs again (First install, step 11)')
+      ...(has(siteNight, STAGING_ASK) && has(siteNight, STAGING_SAME)
         ? []
         : [
-            'the origin test’s exit 0 doesn’t send the admin to install the server team’s snippets.caddy again',
+            'the origin test’s exit 0 doesn’t stop for the server team’s answer in their chat, as First install, step 11’s DIFFERENT does',
           ]),
       ...(has(edgeStep, 'For `menumesh.in` that test proves nothing yet') &&
       has(edgeStep, 'The test that proves it runs right after the site file, on the staging night')
@@ -2965,16 +2984,27 @@ const edgeNight = (runbook: string) =>
     ];
   });
 
-/** The server team's snippets.caddy, copied from their repository's root and installed (VPS-142). */
-const SNIPPET_COPY = "scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/";
+/**
+ * The server team's snippets.caddy (VPS-142), which they install themselves: step 11 copies it in
+ * Git Bash at the commit they name, checks the copy's sum, sends it, and compares the server's file
+ * with it, each by its sum, installing the copy only on their word (VPS-147).
+ */
+const SNIPPET_SHOW =
+  'git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy';
+const SNIPPET_SUM = 'sha256sum snippets.caddy';
+const SNIPPET_COPY = "scp snippets.caddy ops@<the tunnel's SSH host>:incoming/";
+const LIVE_SUM = 'sudo sha256sum /srv/edge/config/snippets.caddy';
+const COPY_SUM = 'sha256sum ~/incoming/snippets.caddy';
+const SNIPPET_CMP =
+  'sudo cmp /srv/edge/config/snippets.caddy ~/incoming/snippets.caddy && echo SAME || echo DIFFERENT';
 const SNIPPET = 'sudo app-apply edge config ~/incoming/snippets.caddy';
 
 /**
  * tls_menumesh from the server team's snippets.caddy (their 66c8c61; VPS-142). Their file holds it
  * with client_auth on, Caddy refuses a snippet declared twice, and a later edge config of their file
- * would drop one added on the server. So step 11 installs their file as their edge.md §5, step 5,
- * does, copied from their repository's root, between the certificate and edge.env, says that it
- * holds tls_menumesh with client_auth on, and adds none of MenuMesh's own: the kit has no
+ * would drop one added on the server. So step 11 keeps their file between the certificate and
+ * edge.env, its copy sent and, on their word alone (VPS-147), installed there, says that it holds
+ * tls_menumesh with client_auth on, and adds none of MenuMesh's own: the kit has no
  * tls_menumesh.caddy any more.
  */
 const serverSnippet = (runbook: string) =>
@@ -2988,7 +3018,7 @@ const serverSnippet = (runbook: string) =>
       ...(at.every((found, n) => found >= 0 && (n === 0 || found > at[n - 1]))
         ? []
         : [
-            'First install, step 11, doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+            'First install, step 11, doesn’t keep the server team’s snippets.caddy between the certificate and edge.env',
           ]),
       ...(has(edgeStep, 'holds `tls_menumesh` with `client_auth` on since their `66c8c61`')
         ? []
@@ -3003,6 +3033,138 @@ const serverSnippet = (runbook: string) =>
           ]),
     ];
   });
+
+/** b2558c3's copy, sent from a working tree at whatever commit it had checked out. */
+const TREE_COPY = 'scp docker/edge/config/snippets.caddy';
+/**
+ * What the admin's message on DIFFERENT gives the server team, who know the sum of every version of
+ * their file: an older one they install theirs over, a newer one of a round not yet confirmed they
+ * confirm, and one of no commit, a hand edit, they look at before anything is installed (VPS-147).
+ */
+const THREE_THINGS = "the live file's sum, the copy's sum and the commit the copy came from";
+/** Step 11's words for the copy, its check, and the two outcomes of the comparison (VPS-147). */
+const IN_GIT_BASH = 'in Git Bash, not PowerShell';
+const LATEST = 'at the commit their latest confirmation names';
+const SUM_STOP = '`sha256sum` must print the `snippets.caddy` sum that confirmation gives, or stop';
+const SAME_PATH =
+  '`SAME`, what their install leaves: the server holds their file of that commit, nothing is installed';
+const DIFFERENT_STOP = "`DIFFERENT`: stop, and ask in the server team's chat";
+const HELD = "Run none of this step's lines below until they answer, `edge.env`'s above all";
+const THEIR_INSTALL = 'Either they install their file themselves, and the three lines';
+const THEIR_WORD = `or they say in their chat to install that copy, and only then does the admin run \`${SNIPPET}\``;
+const AGAIN = 'checks every installed site again, and the three lines must print `SAME`';
+const THEIR_FILE = "the server's file is always their file at a commit they name";
+/** Disaster recovery's edge takes the same comparison, once the server team's edge is back. */
+const RECOVERY_SNIPPET =
+  "comes that step's comparison of the snippet: on a rebuilt server the server team's edge comes back first";
+
+/**
+ * The server's snippets.caddy compared with the server team's, and never installed on the way
+ * (their plan of 2026-11-22; VPS-147). `app-apply edge config` installs the whole file, their
+ * tls_jainav too, so step 11's copy from a working tree, "at that commit or a later one", could have
+ * turned their origin pulls off or made their hosts refuse Cloudflare. They install main's file
+ * themselves, right after their kit's refresh, and their confirmation names the commit and gives
+ * the installed file's sum. So the admin makes the copy of that commit's file with git show in Git
+ * Bash, where PowerShell 5.1's `>` would write it as UTF-16 with CRLF, checks its sum against their
+ * confirmation before the scp, and compares the server's file with it, each by its sum, before any
+ * edge config and before edge.env: SAME installs nothing; DIFFERENT stops, asks their chat with the
+ * live file's sum, the copy's and its commit, holds the step's later lines, edge.env above all, and
+ * installs the copy only on their word, the comparison run again after either answer. The staging
+ * night's exit 0 and disaster recovery's edge take the same comparison and give the same three.
+ */
+const snippetGuard = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['vps', 'edgeStep', 'siteNight', 'recoveryEdge'],
+    ({ vps, edgeStep, siteNight, recoveryEdge }) => {
+      const text = flat(edgeStep);
+      const copied = text.indexOf(SNIPPET_SHOW);
+      const summed = text.indexOf(SNIPPET_SUM);
+      const sent = text.indexOf(SNIPPET_COPY);
+      const compared = [LIVE_SUM, COPY_SUM, SNIPPET_CMP].map((words) => text.indexOf(words));
+      const last = compared[compared.length - 1];
+      const installed = text.indexOf(SNIPPET);
+      const merged = text.indexOf(EDGE_COPY);
+      return [
+        ...(has(vps, TREE_COPY)
+          ? ['the RUNBOOK sends snippets.caddy from a working tree, at whatever commit it has']
+          : []),
+        ...(has(vps, 'at that commit or a later one')
+          ? [
+              'the RUNBOOK takes snippets.caddy at that commit or a later one, not at the commit the server team names',
+            ]
+          : []),
+        ...(copied >= 0 && has(edgeStep, IN_GIT_BASH) && has(edgeStep, LATEST)
+          ? []
+          : [
+              'First install, step 11, doesn’t make its copy of snippets.caddy with git show in Git Bash, at the commit of the server team’s latest confirmation',
+            ]),
+        ...(copied >= 0 && summed > copied && sent > summed && has(edgeStep, SUM_STOP)
+          ? []
+          : [
+              'First install, step 11, sends its copy of snippets.caddy before sha256sum shows the sum of the server team’s confirmation',
+            ]),
+        ...(sent >= 0 && compared.every((found, n) => found > (n === 0 ? sent : compared[n - 1]))
+          ? []
+          : [
+              'First install, step 11, doesn’t compare the server’s snippets.caddy with the copy, each by its sum, once the copy is on the server',
+            ]),
+        ...(last >= 0 && installed >= 0 && installed < last
+          ? [
+              'First install, step 11, runs edge config before it compares the server’s snippets.caddy with the copy',
+            ]
+          : []),
+        ...(last >= 0 && merged >= 0 && merged < last
+          ? [
+              'First install, step 11, reaches edge.env before it compares the server’s snippets.caddy with the copy',
+            ]
+          : []),
+        ...(has(edgeStep, SAME_PATH)
+          ? []
+          : ['First install, step 11, doesn’t say that SAME installs nothing']),
+        ...(has(edgeStep, DIFFERENT_STOP)
+          ? []
+          : [
+              'First install, step 11, doesn’t stop on DIFFERENT and ask the server team in their chat',
+            ]),
+        ...(has(edgeStep, HELD)
+          ? []
+          : [
+              'First install, step 11, doesn’t hold its lines below, edge.env above all, until the server team answers',
+            ]),
+        ...(has(edgeStep, `giving ${THREE_THINGS}`)
+          ? []
+          : [
+              'First install, step 11’s DIFFERENT doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+            ]),
+        ...(has(edgeStep, THEIR_WORD)
+          ? []
+          : [
+              'First install, step 11, runs edge config without the server team’s word in their chat',
+            ]),
+        ...(has(edgeStep, THEIR_INSTALL) && has(edgeStep, AGAIN)
+          ? []
+          : [
+              'First install, step 11, goes on after DIFFERENT without the comparison printing SAME again',
+            ]),
+        ...(has(edgeStep, THEIR_FILE)
+          ? []
+          : [
+              'First install, step 11, doesn’t say the server’s snippets.caddy is always the server team’s file at a commit they name',
+            ]),
+        ...(has(siteNight, THREE_THINGS)
+          ? []
+          : [
+              'the staging night’s exit 0 doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+            ]),
+        ...(has(recoveryEdge, RECOVERY_SNIPPET) && has(recoveryEdge, THREE_THINGS)
+          ? []
+          : [
+              'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does, giving the server team the live file’s sum, the copy’s sum and the commit the copy came from',
+            ]),
+      ];
+    },
+  );
 
 /** First install's step 11 at ac976ce, up to its certificate: MenuMesh's own snippet file added. */
 const OLD_EDGE_OPENING = [
@@ -3697,6 +3859,24 @@ const NIGHT_WAIT_776EB08 = [
   '      turning unhealthy (Logs and alerts (VPS), WAL alerts) rely on them (VPS-146);',
 ].join('\n');
 
+/** First install, step 11's snippet at b2558c3: a working tree's file, sent unchecked, installed. */
+const SNIPPET_B2558C3 = [
+  '    Then the snippet, as their `edge.md` §5, step 5, installs it: their own `snippets.caddy`, which',
+  "    holds `tls_menumesh` with `client_auth` on since their `66c8c61`, as MenuMesh's origin pulls",
+  '    are on before any of its containers runs. The admin copies it from the root of their',
+  "    repository, at that commit or a later one, on the admin's own machine, then installs it, which",
+  "    checks every installed site again. MenuMesh's kit never adds a snippet to the server's file:",
+  "    Caddy refuses a snippet declared twice, and the file stays the same as their repository's,",
+  '    whose next `edge config` would drop a snippet added here:',
+  '',
+  '    ```sh',
+  `    ${TREE_COPY} ops@<the tunnel's SSH host>:incoming/     # on the admin's machine, in their repository's root`,
+  `    ${SNIPPET}`,
+  '    ```',
+  '',
+  '',
+].join('\n');
+
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
 const REWRAPPED = [
   'password manager',
@@ -4002,10 +4182,8 @@ const REWRAPPED = [
   // Read by the rules of the copy at the server team's 66c8c61 (VPS-142): a piece of each phrase
   // that stands on one line.
   'has no `client_auth`, so its',
-  'installed theirs again (First install, step 11)',
-  'scp docker/edge/config/snippets.caddy',
   'app-apply edge config ~/incoming/snippets.caddy',
-  'holds `tls_menumesh` with `client_auth` on since',
+  'holds `tls_menumesh` with `client_auth` on',
   "MenuMesh's kit never adds a snippet",
   // Read by the rules of the server team's merged edge.md (VPS-143): a piece of each phrase that
   // stands on one line.
@@ -4046,6 +4224,28 @@ const REWRAPPED = [
   'which the server team confirms in their chat',
   "come before that night's `edge.env` lines",
   REFRESH_NIGHT,
+  // Read by the rules of the server team's own install of their snippets.caddy (VPS-147): a piece
+  // of each phrase that stands on one line.
+  'in Git Bash, not PowerShell',
+  'their latest confirmation names',
+  'must print the `snippets.caddy` sum that',
+  'git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy',
+  'sha256sum snippets.caddy',
+  SNIPPET_COPY,
+  LIVE_SUM,
+  COPY_SUM,
+  'sudo cmp /srv/edge/config/snippets.caddy',
+  '`SAME`, what their install leaves',
+  DIFFERENT_STOP,
+  "none of this step's lines below until they answer",
+  'install their file themselves, and the three lines',
+  'or they say in their chat to install that copy',
+  "the server's file is always their file at a commit they",
+  "and asks in the server team's chat as its `DIFFERENT` does",
+  'the comparison prints `SAME` and every exit is not 0',
+  THREE_THINGS,
+  "comes that step's comparison of the snippet",
+  "on a rebuilt server the server team's edge comes",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -6585,14 +6785,35 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, cut(RUNBOOK, 'An exit 0 means the server', ' The night goes no'), ''),
       'the origin test doesn’t stop the night on an exit 0',
     );
+    // b2558c3's stop, which had the admin install the server team's file again unasked, and one
+    // that sends the admin to turn origin pulls on as their edge.md §3 says.
+    const unasked =
+      'the origin test’s exit 0 doesn’t stop for the server team’s answer in their chat';
     refuses(
       pulls,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, ' The night goes no further until the admin has', ' and every exit is not 0.'),
+        cut(
+          RUNBOOK,
+          "   the server team's of `66c8c61` or later: stop.",
+          '\n\n2. **The leak test**',
+        ),
+        STAGING_STOP_B2558C3,
+      ),
+      unasked,
+    );
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          ' The admin makes the copy and runs the comparison',
+          ' and every exit is not 0.',
+        ),
         " The night goes no further until the admin has turned authenticated origin pulls on as `edge.md` §3 says (Cloudflare's zone-level pulls first, then `client_auth`)",
       ),
-      'the origin test’s exit 0 doesn’t send the admin to install the server team’s snippets.caddy again',
+      unasked,
     );
     // ac976ce's stop, when an exit 0 meant MenuMesh's own snippet with client_auth commented out.
     const commentedOut = swap(
@@ -6601,11 +6822,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       OLD_STOP_ON_EXIT_0,
     );
     refuses(pulls, commentedOut, 'the origin test doesn’t stop the night on an exit 0');
-    refuses(
-      pulls,
-      commentedOut,
-      'doesn’t send the admin to install the server team’s snippets.caddy',
-    );
+    refuses(pulls, commentedOut, unasked);
     // cd6a733's step 11: its own test, which proves nothing before the site file, as the only one.
     refuses(
       pulls,
@@ -6967,7 +7184,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       refuses(serverSnippet, own, `First install, step 11, lacks ${words}`);
     }
     for (const problem of [
-      'doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+      'doesn’t keep the server team’s snippets.caddy between the certificate and edge.env',
       'doesn’t say the server team’s snippets.caddy holds tls_menumesh with client_auth on',
       'adds a snippet of MenuMesh’s own to the server’s snippets.caddy',
     ]) {
@@ -6977,11 +7194,15 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(
       serverSnippet,
       swap(
-        swap(RUNBOOK, `\n    ${SNIPPET}\n`, '\n'),
+        swap(
+          RUNBOOK,
+          `only then does the admin run \`${SNIPPET}\``,
+          'only then does the admin run it',
+        ),
         `    ${EDGE_ENV}\n`,
         `    ${EDGE_ENV}\n    ${SNIPPET}\n`,
       ),
-      'doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+      'doesn’t keep the server team’s snippets.caddy between the certificate and edge.env',
     );
     // A snippet of MenuMesh's own named again.
     refuses(
@@ -7427,6 +7648,93 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(alertsFixed, swap(RUNBOOK, ", or as that night's first step", ''), heldBack);
   });
 
+  it('compares the server’s snippets.caddy with a Git Bash copy of the commit the server team names, its sum checked before the scp, before any edge config and edge.env, and stops on DIFFERENT for their answer, given the live file’s sum, the copy’s and its commit (VPS-147)', () => {
+    expect(snippetGuard(RUNBOOK)).toEqual([]);
+    // b2558c3's block: a working tree's file, at whatever commit it had, sent unchecked and
+    // installed whole.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '    Then the snippet', '    For `menumesh.in` that test proves nothing yet'),
+      SNIPPET_B2558C3,
+    );
+    for (const problem of [
+      'the RUNBOOK sends snippets.caddy from a working tree',
+      'the RUNBOOK takes snippets.caddy at that commit or a later one',
+      'doesn’t make its copy of snippets.caddy with git show in Git Bash',
+      'sends its copy of snippets.caddy before sha256sum shows the sum',
+      'doesn’t compare the server’s snippets.caddy with the copy',
+      'doesn’t say that SAME installs nothing',
+      'doesn’t stop on DIFFERENT and ask the server team in their chat',
+      'doesn’t give the server team the live file’s sum',
+      'runs edge config without the server team’s word in their chat',
+      'doesn’t say the server’s snippets.caddy is always the server team’s file',
+    ]) {
+      refuses(snippetGuard, old, problem);
+    }
+    // The comparison after edge config, and after edge.env.
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, `    ${LIVE_SUM}\n`, `    ${SNIPPET}\n    ${LIVE_SUM}\n`),
+      'runs edge config before it compares the server’s snippets.caddy with the copy',
+    );
+    const compare = `    ${LIVE_SUM}\n    ${COPY_SUM}\n    ${SNIPPET_CMP}\n`;
+    refuses(
+      snippetGuard,
+      swap(swap(RUNBOOK, compare, ''), `    ${EDGE_ENV}\n`, `    ${EDGE_ENV}\n${compare}`),
+      'reaches edge.env before it compares the server’s snippets.caddy with the copy',
+    );
+    // The stop clause dropped: DIFFERENT asks, but neither stops nor holds the lines below.
+    const unstopped = swap(
+      swap(RUNBOOK, DIFFERENT_STOP, "`DIFFERENT`: ask in the server team's chat"),
+      " Run\n      none of this step's lines below until they answer, `edge.env`'s above all.",
+      '',
+    );
+    refuses(snippetGuard, unstopped, 'doesn’t stop on DIFFERENT and ask the server team');
+    refuses(snippetGuard, unstopped, 'doesn’t hold its lines below, edge.env above all');
+    // The admin-side check dropped, and the copy made in PowerShell, whose `>` writes UTF-16.
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        `    ${SNIPPET_SUM}     # the snippets.caddy sum of their latest confirmation, or stop\n`,
+        '',
+      ),
+      'sends its copy of snippets.caddy before sha256sum shows the sum of the server team’s confirmation',
+    );
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, 'in Git Bash, not PowerShell (', 'in PowerShell or Git Bash ('),
+      'doesn’t make its copy of snippets.caddy with git show in Git Bash',
+    );
+    // The three things the server team reads the server's file by, dropped from step 11's message,
+    // from the staging night's and from disaster recovery's.
+    const unnamed =
+      'doesn’t give the server team the live file’s sum, the copy’s sum and the commit the copy came from';
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, cut(RUNBOOK, ", giving the live file's sum, the copy's", ' Run\n'), '.'),
+      `First install, step 11’s DIFFERENT ${unnamed}`,
+    );
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ", giving\n   the live file's sum, the copy's sum and the commit the copy came from.",
+        '.',
+      ),
+      `the staging night’s exit 0 ${unnamed}`,
+    );
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ", giving the live file's\n     sum, the copy's sum and the commit the copy came from.",
+        '.',
+      ),
+      'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does',
+    );
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -7475,5 +7783,6 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(networksChecked(rewrapped)).toEqual([]);
     expect(leakChecks(rewrapped, SNIPPETS, SITE)).toEqual([]);
     expect(alertsFixed(rewrapped)).toEqual([]);
+    expect(snippetGuard(rewrapped)).toEqual([]);
   });
 });

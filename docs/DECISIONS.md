@@ -11998,24 +11998,26 @@ entries below.
   their `snippets.caddy`, which holds `tls_menumesh` with `client_auth` on since their `66c8c61`,
   copied from their repository's root on the admin's machine
   (`scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/`) and installed with
-  `sudo app-apply edge config ~/incoming/snippets.caddy`, which checks every installed site again;
-  MenuMesh's kit never adds a snippet to the server's file. `ac976ce`'s order holds, the certificate
-  with `aop-ca.pem`, the snippet, `edge.env`, the recreate, and so does its point that until the
-  site file is in no site imports `tls_menumesh`; First install's opening says the snippet alone
-  comes from their repository. On the staging night's step 1 an exit 0 now means the server's
-  `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not theirs of `66c8c61` or later:
-  stop, and the admin installs theirs again (step 11), where it meant our `client_auth` still
-  commented out. The kit README's table loses `edge/tls_menumesh.caddy`, a paragraph says where the
-  snippet is, and its Who does what and its checks follow; `menumesh.caddy`'s header names the file
-  of both its snippets. `originPulls` pins the new stop and its pointer to step 11 (2 problems on
-  `ac976ce`'s RUNBOOK, with refusal cases for the sentence gone, the old pointer and `ac976ce`'s
-  paragraph), and the new `serverSnippet` holds step 11 to the two commands, between the
-  certificate and `edge.env`, to the `66c8c61` sentence and to no snippet of ours (5 problems on
-  `ac976ce`'s RUNBOOK; refusal cases for the snippet after `edge.env` and our file named again); the
-  re-wrap test wraps 272 phrases where it wrapped 267, the stop's old piece out. `pnpm lint`,
-  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,323 in 72 files (`vps-kit` 121,
-  two new; `vps-runbook` 59, one new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0
-  failed.
+  `sudo app-apply edge config ~/incoming/snippets.caddy`, which checks every installed site again
+  (since VPS-147 the server team installs it, and step 11 compares the server's file with a copy of
+  the commit they name, installing that copy only on their word); MenuMesh's kit never adds a
+  snippet to the server's file. `ac976ce`'s order holds, the certificate with `aop-ca.pem`, the
+  snippet, `edge.env`, the recreate, and so does its point that until the site file is in no site
+  imports `tls_menumesh`; First install's opening says the snippet alone comes from their
+  repository. On the staging night's step 1 an exit 0 now means the server's `tls_menumesh` has no
+  `client_auth`, so its `snippets.caddy` is not theirs of `66c8c61` or later: stop, and the admin
+  installs theirs again (step 11; since VPS-147, the server team is asked instead), where it meant
+  our `client_auth` still commented out. The kit README's table loses `edge/tls_menumesh.caddy`, a
+  paragraph says where the snippet is, and its Who does what and its checks follow;
+  `menumesh.caddy`'s header names the file of both its snippets. `originPulls` pins the new stop and
+  its pointer to step 11 (2 problems on `ac976ce`'s RUNBOOK, with refusal cases for the sentence
+  gone, the old pointer and `ac976ce`'s paragraph), and the new `serverSnippet` holds step 11 to the
+  two commands, between the certificate and `edge.env`, to the `66c8c61` sentence and to no snippet
+  of ours (5 problems on `ac976ce`'s RUNBOOK; refusal cases for the snippet after `edge.env` and our
+  file named again); the re-wrap test wraps 272 phrases where it wrapped 267, the stop's old piece
+  out. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,323 in 72 files
+  (`vps-kit` 121, two new; `vps-runbook` 59, one new); `pnpm vps:check` 55 checks, 0 failed;
+  `pnpm vps:edge` 22, 0 failed.
 
 - **VPS-143 · The RUNBOOK's edge steps follow the server team's merged `edge.md` §5 and §6 (their
   `66c8c61`):** their onboarding PR merged `docs/runbooks/edge.md` with §5 (adding an app) and §6
@@ -12278,21 +12280,28 @@ entries below.
   they will then include, and that a 5-minute run after the refresh finished without
   `notify: command not found`; the refresh is the first step of their re-apply night, between 01:00
   and 07:00 IST, its date not picked yet, so it lands before the staging night; and their word is of
-  the same kind as the one for their origin-pulls round, which still gates step 16. Their re-apply
-  night may be the recreate night itself, and step 11's "That night comes only after:", read
-  strictly, would then have held that night back for its own first step. What MenuMesh needs is
-  narrower. The refresh and their word come before that night's `edge.env` lines, since from
-  `app-apply edge env` until the recreate, `app-apply` refuses `edge cert`, `config`, `ranges`,
-  `redact`, `reload` and every site file (`… recreate Caddy first (sudo app-compose edge up -d)`),
-  and a refresh in that gap could meet those refusals: `install.sh` runs no `app-apply` command
-  itself, but asks for `cf-ranges apply` when the kit's Cloudflare lists changed, and that goes
-  through `app-apply edge ranges`. Their kit must also be on the server before the staging night,
-  which comes after the recreate in any case. So (a) now takes the refresh and their word on an
-  earlier night, or as that night's first step, as the server team plans it for their re-apply
-  night, before its `edge.env` lines. (d), steps 9 to 11 up to those lines, doesn't wait for the
-  refresh: `edge redact` and `check_edge_env_applied` came into their `app-apply` with their
-  `ecfbf99`, and `edge cert`'s CA argument with their `81e3064`, both of 2026-11-08; and (a) and (d)
-  keep no order between them.
+  the same kind as the one for their origin-pulls round, which still gates step 16. Their messages
+  of the same day on the snippet (VPS-147) widen that word: their confirmation names the commit they
+  installed, once the sha256 of each of the six scripts in `/usr/local/sbin`, their `install.sh`'s
+  `SCRIPTS` (`app-deploy`, `app-compose`, `app-apply`, `app-config-archive`, `cf-ranges` and
+  `hostwatch`), matches that commit's file, and it gives the installed `snippets.caddy`'s sha256
+  beside hostwatch's. Their re-apply night may be the recreate night itself, and step 11's "That
+  night comes only after:", read strictly, would then have held that night back for its own first
+  step. What MenuMesh needs is narrower. The refresh and their word come before that night's
+  `edge.env` lines, since from `app-apply edge env` until the recreate, `app-apply` refuses
+  `edge cert`, `config`, `ranges`, `redact`, `reload` and every site file
+  (`… recreate Caddy first (sudo app-compose edge up -d)`), and a refresh in that gap could meet
+  those refusals: `install.sh` runs no `app-apply` command itself, but asks for `cf-ranges apply`
+  when the kit's Cloudflare lists changed, and that goes through `app-apply edge ranges`. Their kit
+  must also be on the server before the staging night, which comes after the recreate in any case.
+  So (a) now takes the refresh and their word on an earlier night, or as that night's first step, as
+  the server team plans it for their re-apply night, before its `edge.env` lines. Such a combined
+  night works for them, they said the same day: their refresh and their confirmation first, then
+  MenuMesh's `edge.env` lines. (d), steps 9 to 11 up to those lines, waits for the refresh only in
+  the snippet's comparison, which takes the commit and the sum of their confirmation (VPS-147):
+  `edge redact` and `check_edge_env_applied` came into their `app-apply` with their `ecfbf99`, and
+  `edge cert`'s CA argument with their `81e3064`, both of 2026-11-08; and (a) and (d) keep no other
+  order between them.
 
   Checked here, read-only, in their `install.sh` at `ccb9388`, unchanged since `66c8c61`: a refresh
   from `ccb9388` run first that night undoes nothing of (d) and clashes with none of it. It installs
@@ -12300,15 +12309,17 @@ entries below.
   `put_once`, which never overwrites, so `/etc/apps/menumesh.conf` stays and `/etc/apps/edge.conf`
   keeps the digest pin's `CADDY_IMAGE`, the kit's copy, where it differs, only shown as a diff; it
   writes the `Caddyfile` and `snippets.caddy` in `/srv/edge/config`, `edge.env` and `hostwatch.env`
-  only where they are absent, so the `snippets.caddy` that `app-apply edge config` installed stays;
-  it makes `/srv/edge`, `certs`, `config`, `config/sites` and `config/log-redact.d` with
-  `install -d`, which sets a directory's mode and owner and keeps what is in it, so the certificate
-  with `aop-ca.pem`, `aop-client.pem` and the redaction file stay; it never writes the edge's
-  `compose.yml`; and it rewrites `deploy-menumesh`'s key file only from the kit's own key files for
-  that user, a kit with none leaving it as it is. Its `app-apply` at `ccb9388` is the vendored one,
-  so after a refresh from `ccb9388` the night's `edge env` runs the code the kit's checks run. Their
-  reply allows a later main, for which neither was checked: so before that night's `edge.env` lines,
-  the main they install is compared with `ccb9388` in their repository,
+  only where they are absent, with `put_once` too, so a `snippets.caddy` that
+  `app-apply edge config` installed stays, and the refresh alone never brings a new one: the server
+  team installs main's themselves right after it, with `app-apply edge config` (VPS-147); it makes
+  `/srv/edge`, `certs`, `config`, `config/sites` and `config/log-redact.d` with `install -d`, which
+  sets a directory's mode and owner and keeps what is in it, so the certificate with `aop-ca.pem`,
+  `aop-client.pem` and the redaction file stay; it never writes the edge's `compose.yml`; and it
+  rewrites `deploy-menumesh`'s key file only from the kit's own key files for that user, a kit with
+  none leaving it as it is. Its `app-apply` at `ccb9388` is the vendored one, so after a refresh
+  from `ccb9388` the night's `edge env` runs the code the kit's checks run. Their reply allows a
+  later main, for which neither was checked: so before that night's `edge.env` lines, the main they
+  install is compared with `ccb9388` in their repository,
   `git diff ccb9388 <that main> -- docker/host/install.sh docker/host/app-apply`; a change of
   `app-apply` is copied again (the RUNBOOK's Copying the server team's files again), and a change of
   `install.sh` is read, as above, for what the refresh did to (d), whose undone parts go in again
@@ -12329,6 +12340,146 @@ entries below.
   not run for it: the next install runs it, with `pnpm vps:edge`, on its commit (First install).
   `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,329 in 72 files
   (`vps-runbook` 64, one new).
+
+- **VPS-147 · The server's `snippets.caddy` compared with the server team's, and never installed on
+  the way (their plan and answers of 2026-11-22):** First install, step 11, had the admin copy the
+  server team's `snippets.caddy` "from the root of their repository, at that commit or a later one",
+  `scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/` on the admin's
+  machine, and install it with `sudo app-apply edge config ~/incoming/snippets.caddy` (VPS-142). The
+  vendored `cmd_edge_config` (`EDGE_DIR=/srv/edge`) takes the whole file: it checks every installed
+  site again with it, validates the tree, is refused between `edge env` and the recreate
+  (`check_edge_env_applied`), and swaps it in as `/srv/edge/config/snippets.caddy`, 0644. So the
+  install replaced the server team's part too, `tls_jainav` among it, whose `client_auth` at
+  `66c8c61` and `ccb9388` is commented out under "The admin enables this at launch, after zone-level
+  Authenticated Origin Pulls is on at Cloudflare."; their origin-pulls round turns it on. A working
+  tree holds whatever commit it has checked out: a file older than the server's, put in after that
+  round, would have turned Jainav's origin pulls off without a word, and one from a round whose
+  Cloudflare side is not on yet would have made their hosts refuse Cloudflare.
+
+  The server team's plan, in three messages that day: they install main's `snippets.caddy`
+  themselves on their re-apply night, right after the kit refresh
+  (`sudo app-apply edge config ~/incoming/snippets.caddy`), before our step 11, a combined night
+  included. The file has carried `tls_menumesh` since their `5197111`, and against the server's file
+  it changes nothing Jainav serves, they say: the only differences are `tls_menumesh`, which nothing
+  imports yet, and comments. Their `tests/host/app-apply.sh` validates main's file that way in CI,
+  with no certificate of MenuMesh's present, as it reads here at `ccb9388` (the bootstrap tree:
+  their `Caddyfile` and `snippets.caddy`, "no site file and no certificate yet"). Their refresh
+  confirmation names the commit and gives the installed `snippets.caddy`'s sha256 beside hostwatch's
+  (VPS-146). So `SAME` is what step 11 expects, and on that path the admin installs nothing.
+
+  The guard has two outcomes. On the admin's machine, in Git Bash, the copy at the commit of their
+  latest confirmation,
+  `git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy`, then
+  `sha256sum snippets.caddy`, which must print that confirmation's `snippets.caddy` sum, or the
+  admin stops: the copy or the commit is wrong, and nothing goes to the server. A confirmation
+  without that sum, of a round that installed no `snippets.caddy` (they will say so), is asked about
+  in their chat. Then `scp snippets.caddy ops@<the tunnel's SSH host>:incoming/`, and on the server
+  `sudo sha256sum /srv/edge/config/snippets.caddy`, `sha256sum ~/incoming/snippets.caddy` and
+  `sudo cmp /srv/edge/config/snippets.caddy ~/incoming/snippets.caddy && echo SAME || echo DIFFERENT`,
+  after the certificate and before any `edge config` and the `edge.env` lines. `SAME`: the server
+  holds their file of that commit, nothing is installed, and the step goes on. `DIFFERENT`: stop,
+  and ask in their chat, giving the live file's sum, the copy's sum and the commit the copy came
+  from; none of the step's later lines runs until they answer, `edge.env`'s above all, as from
+  `edge env` until the recreate `app-apply` refuses `edge config`, and the night could not mend the
+  file. Either they install their file themselves, and the three lines, with the copy made again if
+  their answer names another commit, must then print `SAME`; or they say in their chat to install
+  that copy, and only then does the admin run
+  `sudo app-apply edge config ~/incoming/snippets.caddy`, after which the three lines must print
+  `SAME`.
+
+  The three things are the server team's ask, made once the guard was agreed: they know the sum of
+  every version of their file, so the live sum tells them what the server holds. An older file of
+  theirs, and they install theirs; a newer one, of a round they haven't confirmed yet, and they
+  confirm that round instead; a sum of no commit, a hand edit, and they look at it before anything
+  is installed. So the server-side lines print the live file's sum in every case, the
+  `sudo sha256sum` line the admin sends, and `cmp` adds the one word the admin goes by.
+
+  The first design had a middle case, which is gone. It took two forms: a comparison of the server's
+  file with the copy less its `tls_menumesh` block, after which the admin would have installed over
+  a file from before `5197111`; and "the server's sum is the confirmation's, and the copy is that
+  commit's file". The first rested on the server's file being `ecfbf99`'s, the most likely one by
+  their account (sha256 `2550e19b6ca13cef943a0a9e44152f7b18ca397b20df94cd66748103cdf68e77`, which
+  `git show ecfbf99:docker/edge/config/snippets.caddy | sha256sum` gives here), but unverified, as
+  `ops` can't read `/srv/edge/config`; and their onboarding PR (#86) changed more than the block:
+  `git diff ecfbf99 ccb9388 -- docker/edge/config/snippets.caddy`, read here, adds a blank line, a
+  three-line comment and the `tls_menumesh` block, and rewrites the closing comment into two lines.
+  The second is `SAME`: their confirmation's sum is that of the file at the commit it names, which
+  is the copy, so the two sums are equal, as the server team pointed out. The file's history to
+  `ccb9388` is `4922f68`, `bd37f55` and `ecfbf99`, all of 2026-11-08, then `5197111` (2026-11-21).
+
+  The copy is made with `git show` in Git Bash, as they advised, since Windows PowerShell 5.1's `>`
+  re-encodes a native command's output. Run here, `powershell.exe -NoProfile` (5.1.26100) with
+  `git -C … show ccb9388:docker/edge/config/snippets.caddy > …` in a scratch folder wrote 6,932
+  bytes of UTF-16LE behind a byte-order mark (`ff fe`), its 81 lines ended in CRLF, sha256
+  `68f528db509d459b5c818c592668a6f2eb4cff5b8a573a4b9d00a8dded0b2c14`, and the `§` of the file's
+  comments came back as `┬º`, as PowerShell read git's UTF-8 through the console's code page; with
+  `Out-File` set to UTF-8 it wrote a UTF-8 byte-order mark and CRLF instead,
+  `15317fae4edb3873e9a3545a7bc2cb05ae76b868ebad34e9de357a26d4976911`. Either way the sum never
+  matches: a false `DIFFERENT`. `git show <commit>:<path>` writes the blob as stored, whatever
+  `core.autocrlf` says, as that converts only on checkout: here, with it `true`, the copy at
+  `ccb9388` was 3,384 bytes in 81 lines, no CR, sha256
+  `3f7e4e636fb9822eabb3254ad39215a3e0562dc93ff2341b8c9538be970e4802`, as
+  `git show ccb9388:docker/edge/config/snippets.caddy | sha256sum` prints; `cmp` found it the
+  vendored copy byte for byte, and `git hash-object --no-filters` gave its blob's id, `c89b8e3`. A
+  working tree's file, which the old `scp` sent, can be another commit's, or carry CRLF where
+  `core.autocrlf` is on, and the `sha256sum` before the scp stops a bad copy, or the wrong commit,
+  before anything reaches the server. `/srv/edge` is `root:root` 0750 (their `install.sh` at
+  `ccb9388`, line 554: `install -d -m 0750 -o root -g root /srv/edge /srv/edge/certs`), so `ops`
+  can't reach `/srv/edge/config`, though that is 0755 (line 555): the live file's sum and `cmp` take
+  `sudo`, and the copy's, in `ops`' own `~/incoming`, doesn't.
+
+  The comparison ran here on scratch files, `sudo` dropped, the live path in a scratch folder and
+  `~` a scratch home: a live file equal to the copy printed `3f7e4e63…` twice and `SAME`;
+  `ecfbf99`'s file as an older live one printed `2550e19b…` and `3f7e4e63…`, `cmp`'s line naming the
+  first difference (line 68), and `DIFFERENT`; a newer stand-in, `tls_jainav`'s `client_auth`
+  uncommented as their round will have it, printed `775bdbbd…` and `DIFFERENT`; and no live file
+  printed `sha256sum`'s and `cmp`'s `No such file or directory` and `DIFFERENT`. Their origin-pulls
+  round changes `snippets.caddy` again, `tls_jainav`'s `client_auth` on and a `log_fields` comment
+  on the client certificate's fields, so the vendored sum moves with it. That round's confirmation
+  names its commit and the installed file's sum the same way, and the kit copies their files again
+  at that commit, `SOURCE`'s `snippets.caddy` line then that sum, so that the kit's checks run the
+  server's file: the RUNBOOK's Copying the server team's files again now says so.
+
+  The rest of the RUNBOOK follows. First install's opening says the snippet alone is the server
+  team's, which they install and step 11 compares, and Who does what gives the admin the check of
+  the `tls_menumesh` snippet. The digest pin's `docker/edge/compose.yml`, "copied as the snippet
+  is", now says what that copy was, from their repository's root on the admin's machine; and (d)
+  takes the snippet's comparison printing `SAME`, after their confirmation of (a), so (a) and (d),
+  which kept no order (VPS-146), now keep that one. The staging night's exit 0, which had the admin
+  install their file again, sends the admin to step 11's copy and comparison and to their chat, as
+  its `DIFFERENT` does, with the same three things, and the night goes no further until they have
+  answered, the comparison prints `SAME` and every exit is not 0. Disaster recovery's edge takes the
+  same comparison before its `edge.env` lines: on a rebuilt server their edge comes back first, and
+  their confirmation then names the commit and the sum. Rotation touches no `snippets.caddy` and
+  stays as it was. The kit README says they install the file at a commit they name, which the admin
+  compares, and the cut-over's intro cites VPS-147, which changed its part 3. VPS-142 and VPS-146
+  say where this entry changed them. Not changed: the digest pin's `docker/edge/compose.yml` still
+  goes from the admin's working tree by `scp`, as their `edge.md` §5, A new Caddy image, has it.
+  `app-apply edge compose` puts in that whole file too, and only its image is held, by `CADDY_IMAGE`
+  and the `grep` that shows `CADDY`; their confirmation gives no sum for it, so a guard of the
+  snippet's kind waits for the server team (Left open, below).
+
+  The new `snippetGuard` holds step 11 to the copy by `git show` in Git Bash at the commit of their
+  latest confirmation, its `sha256sum` before the scp, the three server-side lines after the scp,
+  before any `edge config` and before `edge.env`, `SAME` installing nothing, the stop on `DIFFERENT`
+  with the three things and the step's later lines held, `edge config` on their word alone, the
+  comparison printing `SAME` after either answer, and the server's file always theirs at a commit
+  they name; and it holds the staging night's and disaster recovery's message to the same three
+  things. On `b2558c3`'s RUNBOOK it reports 14 problems, none on the fix, with refusal cases for
+  `b2558c3`'s block, the comparison after `edge config` and after `edge.env`, the stop dropped, the
+  admin-side check dropped, the copy made in PowerShell, and the three things dropped from each of
+  the three places. `serverSnippet` now reads the new `scp` and keeps the server team's file between
+  the certificate and `edge.env` (2 problems on `b2558c3`'s RUNBOOK), and `originPulls` the staging
+  night's stop to their chat (1 problem there; refusal cases for `b2558c3`'s stop, a stop that sends
+  the admin to turn origin pulls on, and `ac976ce`'s). Of the 42 rules the re-wrap test runs, the
+  other 39 report none on `b2558c3`'s RUNBOOK or on the fix; `vps-runbook` has 65 tests (64 before),
+  and the re-wrap test wraps 319 phrases where it wrapped 301, the two of the old copy and stop out.
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-147;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. No script and no service changed, and no file of the kit but
+  its README, so nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook`
+  65, one new).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
@@ -12359,26 +12510,34 @@ Still open:
   call.
 - The server team's origin-pulls round for `jainavinfotech.in`, which comes before our step 16: the
   step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143). That round's
-  PR turns `tls_jainav`'s `client_auth` on, so their `snippets.caddy` changes again: the kit copies
-  their files again at its merge, from the commit and hashes they send (RUNBOOK, Copying the server
-  team's files again). The same PR documents the client certificate's common name and serial in
-  Caddy's access lines, which they keep on purpose: the serial shows which certificate Cloudflare
-  presents after a rotation.
+  PR changes their `snippets.caddy` again: `tls_jainav`'s `client_auth` on, and a `log_fields`
+  comment on the client certificate's fields, its common name and serial, which Caddy's access lines
+  keep on purpose, as the serial shows which certificate Cloudflare presents after a rotation. So
+  the kit copies their files again at its merge, from the commit and hashes they send, and
+  `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
+  install, step 11's comparison then takes (RUNBOOK, Copying the server team's files again;
+  VPS-147).
 - The server team's fix for hostwatch's judged alerts, merged as `ccb9388`
   (nanu1605/jainav-infotech#87): it reaches the server with the server team's kit refresh, the first
   step of their re-apply night, which First install, step 11's (a) takes before the recreate night's
-  `edge.env` lines, on an earlier night or as its first step (VPS-146). Since 2026-11-08 its
-  5-minute and daily runs send nothing to Telegram, as a function they call went missing, while its
-  heartbeat, `hostwatch alert`, the outbox and the daily digest still work. Until that fix is on
-  the server, `backup` turning unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137,
-  VPS-143) reach no one by Telegram, and `hostwatch check` shows them only to whoever runs it. A
-  dead shipper still raises the alarm by MenuMesh's own means: while the shipper runs,
-  `wal-ship.sh`'s own alert through MenuMesh's bot (`notify.sh`),
-  `[menumesh] WAL is not reaching the bucket …`, once a WAL file has waited over 10 minutes or
-  `db`'s archiver has failed for 10, at most once an hour; and the WAL monitor, whose pings
-  (`HEARTBEAT_WAL_URL`, every 5 minutes while all is well) stop with any of those and with a stopped
-  `backup` or a stuck crond, and which alerts after its 10 minutes' grace: the one signal of a
-  stopped `backup` (RUNBOOK, WAL alerts).
+  `edge.env` lines, on an earlier night or as its first step (VPS-146). Right after the refresh they
+  install main's `snippets.caddy`, with `tls_menumesh`, which the server's file, most likely
+  `ecfbf99`'s, lacks until then (VPS-147). Since 2026-11-08 its 5-minute and daily runs send nothing
+  to Telegram, as a function they call went missing, while its heartbeat, `hostwatch alert`, the
+  outbox and the daily digest still work. Until that fix is on the server, `backup` turning
+  unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137, VPS-143) reach no one by
+  Telegram, and `hostwatch check` shows them only to whoever runs it. A dead shipper still raises
+  the alarm by MenuMesh's own means: while the shipper runs, `wal-ship.sh`'s own alert through
+  MenuMesh's bot (`notify.sh`), `[menumesh] WAL is not reaching the bucket …`, once a WAL file has
+  waited over 10 minutes or `db`'s archiver has failed for 10, at most once an hour; and the WAL
+  monitor, whose pings (`HEARTBEAT_WAL_URL`, every 5 minutes while all is well) stop with any of
+  those and with a stopped `backup` or a stuck crond, and which alerts after its 10 minutes' grace:
+  the one signal of a stopped `backup` (RUNBOOK, WAL alerts).
+- The digest pin's `docker/edge/compose.yml`, which First install, step 11, still has the admin copy
+  from a working tree by `scp`, and which `app-apply edge compose` installs whole, as `edge config`
+  does `snippets.caddy`: only its image is held, by `CADDY_IMAGE` and the `grep` that shows `CADDY`,
+  and their confirmation gives no sum for it, so a check of the snippet's kind is a question for the
+  server team (VPS-147).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
