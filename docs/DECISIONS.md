@@ -12295,18 +12295,24 @@ entries below.
   keep no order between them.
 
   Checked here, read-only, in their `install.sh` at `ccb9388`, unchanged since `66c8c61`: a refresh
-  run first that night undoes nothing of (d) and clashes with none of it. It installs each conf of
-  the kit, `edge.conf` and `jainav.conf` (the kit has no `menumesh.conf`), with `put_once`, which
-  never overwrites, so `/etc/apps/menumesh.conf` stays and `/etc/apps/edge.conf` keeps the digest
-  pin's `CADDY_IMAGE`, the kit's copy, where it differs, only shown as a diff; it writes the
-  `Caddyfile` and `snippets.caddy` in `/srv/edge/config`, `edge.env` and `hostwatch.env` only where
-  they are absent, so the `snippets.caddy` that `app-apply edge config` installed stays; it makes
-  `/srv/edge`, `certs`, `config`, `config/sites` and `config/log-redact.d` with `install -d`, which
-  sets a directory's mode and owner and keeps what is in it, so the certificate with `aop-ca.pem`,
-  `aop-client.pem` and the redaction file stay; it never writes the edge's `compose.yml`; and it
-  rewrites `deploy-menumesh`'s key file only from the kit's own key files for that user, a kit with
-  none leaving it as it is. Its `app-apply` at `ccb9388` is the vendored one, so after the refresh
-  the night's `edge env` runs the code the kit's checks run.
+  from `ccb9388` run first that night undoes nothing of (d) and clashes with none of it. It installs
+  each conf of the kit, `edge.conf` and `jainav.conf` (the kit has no `menumesh.conf`), with
+  `put_once`, which never overwrites, so `/etc/apps/menumesh.conf` stays and `/etc/apps/edge.conf`
+  keeps the digest pin's `CADDY_IMAGE`, the kit's copy, where it differs, only shown as a diff; it
+  writes the `Caddyfile` and `snippets.caddy` in `/srv/edge/config`, `edge.env` and `hostwatch.env`
+  only where they are absent, so the `snippets.caddy` that `app-apply edge config` installed stays;
+  it makes `/srv/edge`, `certs`, `config`, `config/sites` and `config/log-redact.d` with
+  `install -d`, which sets a directory's mode and owner and keeps what is in it, so the certificate
+  with `aop-ca.pem`, `aop-client.pem` and the redaction file stay; it never writes the edge's
+  `compose.yml`; and it rewrites `deploy-menumesh`'s key file only from the kit's own key files for
+  that user, a kit with none leaving it as it is. Its `app-apply` at `ccb9388` is the vendored one,
+  so after a refresh from `ccb9388` the night's `edge env` runs the code the kit's checks run. Their
+  reply allows a later main, for which neither was checked: so before that night's `edge.env` lines,
+  the main they install is compared with `ccb9388` in their repository,
+  `git diff ccb9388 <that main> -- docker/host/install.sh docker/host/app-apply`; a change of
+  `app-apply` is copied again (the RUNBOOK's Copying the server team's files again), and a change of
+  `install.sh` is read, as above, for what the refresh did to (d), whose undone parts go in again
+  before those lines.
 
   The new `alertsFixed` holds step 11's (a) to the fix in the refreshed kit, by its commit and PR,
   to the server team's word in their chat, and to the time of both, before that night's `edge.env`
