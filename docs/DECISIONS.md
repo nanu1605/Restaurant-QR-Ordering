@@ -11450,3 +11450,17 @@ wraps 249 phrases where it had 245, a piece of each phrase the new checks read.
 R2-1 and R2-2 closed, the runs as the fixer reported them, and nothing at the bar of a fix in what
 Stop D wrote. Its two low notes are a record only, in Left open (Stop D). With them the review of
 Stop D is closed.
+
+**After the review: the message to the server team, checked** (2026-11-21). Two read-only checks of
+the Stop D part of the message to the server team, one against this repo and one against their kit
+at `66fe8b3` and sudo 1.9.15's source, found three RUNBOOK sentences to correct, all wording. First
+install, step 11, said the server team's origin test can't fail for `menumesh.in` before the site
+file because every handshake then fails: that is Caddy's answer to a name it serves no site for,
+reasoned and never run (a fallback connection policy could pick another certificate, which `curl -k`
+accepts). It now says that the test proves nothing then, whatever it prints, as no site imports
+`tls_menumesh` until the site file is in; the staging night's step 1 still holds the test that
+counts. The leak test now names the owner as adding the `leaktest` record, as the owner already
+deletes it in its step 5. And hostwatch reports the throwaway container under more than
+`wrong-project` (hostwatch at `66fe8b3`): its network check reads the container's network aliases,
+not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-upstream`, and its
+limits check reports it unless it has `--memory` and `--cpus`. Nothing the kit runs changed.

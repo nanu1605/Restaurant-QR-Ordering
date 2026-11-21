@@ -769,16 +769,17 @@ by anyone else, or `app-apply` refuses the compose file.
     (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
     MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose
     step 5 must see a TLS connection to the server without the client certificate refused (§6,
-    step 4). For `menumesh.in` that test can't fail yet: until MenuMesh's site file is in, Caddy
-    serves none of its hosts, so every handshake fails, `client_auth` on or not. The test that
-    proves it runs right after the site file, on the staging night (The server rehearsal and the
-    cut-over, part 3, step 1). Then the two lines of `deploy/vps/edge/edge.env.example` in
-    `/srv/edge/edge.env`, installed with `sudo app-apply edge env edge.env` and
-    `sudo app-compose edge up -d` between 01:00 and 07:00 IST, as recreating Caddy drops every
-    connection on the shared edge. The hash comes from the owner, who makes it on their own machine
-    with the edge's Caddy image, never on the server: there staging's password would stay in the
-    shell's history and show in the process list. Without `--plaintext`, Caddy reads the password
-    from the terminal without echoing it, and the admin gets only the hash:
+    step 4). For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no
+    site imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the
+    test prints. The test that proves it runs right after the site file, on the staging night (The
+    server rehearsal and the cut-over, part 3, step 1). Then the two lines of
+    `deploy/vps/edge/edge.env.example` in `/srv/edge/edge.env`, installed with
+    `sudo app-apply edge env edge.env` and `sudo app-compose edge up -d` between 01:00 and 07:00
+    IST, as recreating Caddy drops every connection on the shared edge. The hash comes from the
+    owner, who makes it on their own machine with the edge's Caddy image, never on the server: there
+    staging's password would stay in the shell's history and show in the process list. Without
+    `--plaintext`, Caddy reads the password from the terminal without echoing it, and the admin gets
+    only the hash:
 
     ```sh
     docker run --rm -it caddy:2.11.9-alpine caddy hash-password
@@ -1180,8 +1181,8 @@ Then, in order:
    `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`. Caddy serves the four hosts
    from now on, but no record sends it anything yet. Then, on the server, the origin test of
    authenticated origin pulls for this zone (the server team's `edge.md` §6, step 4), which only
-   now can fail for these hosts (First install, step 11). Each host `menumesh.caddy` serves, every
-   block of it importing `tls_menumesh`, must fail in the handshake, its exit not 0:
+   now tests these hosts (First install, step 11). Each host `menumesh.caddy` serves, every block
+   of it importing `tls_menumesh`, must fail in the handshake, its exit not 0:
 
    ```sh
    for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
@@ -1193,11 +1194,11 @@ Then, in order:
    none needed, as no record sends the server anything yet.
 
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
-   `leaktest.menumesh.in` to the server's IPv4, proxied, before any app record moves (VPS-115),
-   with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts stay in its
-   `ZONE` and whose upstreams are its `UPSTREAMS`. Their step 1 here: the throwaway container that
-   answers with the request's headers runs on `edge-menumesh` as `menumesh-leaktest` (an upstream
-   is `menumesh-<name>:<port>`); `menumesh-leaktest:<port>` goes into `UPSTREAMS` in
+   `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record
+   moves (VPS-115), with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts
+   stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. Their step 1 here: the throwaway
+   container that answers with the request's headers runs on `edge-menumesh` as `menumesh-leaktest`
+   (an upstream is `menumesh-<name>:<port>`); `menumesh-leaktest:<port>` goes into `UPSTREAMS` in
    `/etc/apps/menumesh.conf` for the test; and a temporary copy of `menumesh.caddy` with one more
    block, which imports what the others import, is installed with
    `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:
@@ -1212,12 +1213,15 @@ Then, in order:
    }
    ```
 
-   Until the container stops, hostwatch's check of the edge networks reports it (`wrong-project`:
-   it is no service of the compose project), as for the server team's own test. Their steps 1 to 4
-   must then show: forged headers replaced; the log line without an address, a header or a query,
-   and a made-up 16-character `/t/` token in it shown as `/t/_`; nothing answering straight on the
-   server's addresses, IPv4 and IPv6, even with a temporary hPanel accept rule; and a TLS
-   connection without the client certificate refused (step 1's test, the leak test's host added).
+   Until the container stops, hostwatch reports it, as for the server team's own test: its check of
+   the edge networks as `wrong-project` (it is no service of the compose project), and as
+   `not-an-upstream` too unless it was started with `--network-alias menumesh-leaktest` (hostwatch
+   reads the container's network aliases, not its name); and its check of the limits, unless it was
+   started with `--memory` and `--cpus`. Their steps 1 to 4 must then show: forged headers replaced;
+   the log line without an address, a header or a query, and a made-up 16-character `/t/` token in
+   it shown as `/t/_`; nothing answering straight on the server's addresses, IPv4 and IPv6, even
+   with a temporary hPanel accept rule; and a TLS connection without the client certificate refused
+   (step 1's test, the leak test's host added).
 
    Their step 5 here, in this order: `menumesh.caddy` as it is installed again,
    `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (never removed: it is the zone's only

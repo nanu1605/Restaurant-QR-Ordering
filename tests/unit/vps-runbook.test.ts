@@ -2498,10 +2498,11 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
 /**
  * Authenticated origin pulls proved for MenuMesh's own hosts (Stop D's review, D1 of the cut-over
  * sequence). First install, step 11, runs the server team's origin test before MenuMesh's site file
- * is in, when Caddy serves none of its hosts and every handshake fails, client_auth on or not, and
- * their command names their own host. So the staging night runs it right after the site file, for
- * every host menumesh.caddy serves and no other, each block of it importing tls_menumesh, and stops
- * on an exit 0; and step 11 says its own can't fail yet and points to that one.
+ * is in, when no site imports tls_menumesh, so the test proves nothing for MenuMesh's hosts
+ * whatever it prints, and their command names their own host. So the staging night runs it right
+ * after the site file, for every host menumesh.caddy serves and no other, each block of it
+ * importing tls_menumesh, and stops on an exit 0; and step 11 says its own proves nothing yet and
+ * points to that one.
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
@@ -2535,11 +2536,11 @@ const originPulls = (runbook: string, site: string) =>
       )
         ? []
         : ['the origin test doesn’t stop the night on an exit 0']),
-      ...(has(edgeStep, "For `menumesh.in` that test can't fail yet") &&
+      ...(has(edgeStep, 'For `menumesh.in` that test proves nothing yet') &&
       has(edgeStep, 'The test that proves it runs right after the site file, on the staging night')
         ? []
         : [
-            'First install, step 11, doesn’t say its origin test can’t fail for menumesh.in yet, nor point to the staging night’s',
+            'First install, step 11, doesn’t say its origin test proves nothing for menumesh.in yet, nor point to the staging night’s',
           ]),
     ];
   });
@@ -3023,7 +3024,7 @@ const REWRAPPED = [
   'It loses nothing until the first real write on the server',
   'write is the point of no return',
   // Read by the rules of Stop D's review: a piece of each phrase that stands on one line.
-  "that test can't fail yet",
+  'that test proves nothing yet',
   'proves it runs right after the site file',
   'is still commented out: stop.',
   'do curl -sk -o /dev/null',
@@ -5599,15 +5600,15 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       'the origin test doesn’t stop the night on an exit 0',
     );
-    // cd6a733's step 11: its own test, which can't fail before the site file, as the only one.
+    // cd6a733's step 11: its own test, which proves nothing before the site file, as the only one.
     refuses(
       pulls,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, " For `menumesh.in` that test can't fail yet", ' Then the two lines of'),
+        cut(RUNBOOK, ' For `menumesh.in` that test proves nothing yet', ' Then the two lines of'),
         '',
       ),
-      'First install, step 11, doesn’t say its origin test can’t fail for menumesh.in yet',
+      'First install, step 11, doesn’t say its origin test proves nothing for menumesh.in yet',
     );
   });
 
@@ -5772,7 +5773,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       edgeWindow,
       swap(
         RUNBOOK,
-        '`sudo app-compose edge up -d` between 01:00 and 07:00 IST, as recreating Caddy drops every\n    connection on the shared edge.',
+        '`sudo app-compose edge up -d` between 01:00 and 07:00\n    IST, as recreating Caddy drops every connection on the shared edge.',
         '`sudo app-compose edge up -d`.',
       ),
       'sudo app-compose edge up -d without the 01:00 to 07:00 IST window',
