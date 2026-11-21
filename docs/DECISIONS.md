@@ -11106,8 +11106,8 @@ header cite moved to VPS-121.
     `windowKept` (Vercel's crons disabled with `CRON_SECRET` kept at both nights and taken out only
     in part 6, `BACKUP_PRODUCTION` off with the pause and on with the way back, the 14 days, and the
     point of no return; since the review, a later production night keeping the first night's admin
-    and settings, VPS-127, and the Vercel rules kept until their parts retire, VPS-128); the re-wrap
-    test reads their phrases wrapped too.
+    and typing again only what hosted's `/super` changed, VPS-127 and VPS-129, and the Vercel rules
+    kept until their parts retire, VPS-128); the re-wrap test reads their phrases wrapped too.
   - `vps-first-admin` (7, new; 8 with the review's case) runs the real `first-admin.mjs` with node,
     its source on stdin as on the server, against a stand-in for the app's `robots.txt`, GoTrue's
     Admin API and PostgREST that keeps every request: the requests in order, with their headers and
@@ -11339,9 +11339,10 @@ header cite, now VPS-31 to VPS-128.
   and `VPS_IMAGES` before the staging night (RUNBOOK, VPS-116), low:** D4: after a way back the
   server's database keeps the first night's joined admin, settings and invites, and the tool refuses
   once the team has anyone, so "part 1's count and part 4 again" ran into its refusal and typed the
-  settings twice: a later night skips the link and steps 3 and 4 when the server's database still
-  holds them, and signs in with that login. D5: `sudo app-compose edge up -d` recreates the shared
-  Caddy and drops every connection on it, the server team's site's among them, which is why
+  settings twice: a later night skips the link and step 3 when the server's database still holds
+  the first night's admin, and signs in with that login, and step 4 retypes only what hosted's
+  `/super` changed during the way back (VPS-129). D5: `sudo app-compose edge up -d` recreates the
+  shared Caddy and drops every connection on it, the server team's site's among them, which is why
   `app-apply` prints `next, between 01:00 and 07:00 IST` and their `server.md` §7 runs it then:
   First install, step 11, and the rotation of staging's password now recreate it in that window.
   D6: the owner's answer turned the VPS CI jobs on with the staging move, but the rehearsal needs
@@ -11374,3 +11375,66 @@ either. `pnpm vps:rehearse` ran again on the kept stack and secrets, the web ima
 6 and 4), its step 8 running the fixed tool as the owner runs it on the server; then the two
 statements above on its database (VPS-122, VPS-125), and `pnpm vps:down` 3 checks, 0 failed. The
 range moved in 7265e21 "docs: point the kit's decision range at the stop d review".
+
+### Review fixes, round 2 (VPS Stop D)
+
+A re-review of round 1's fixes, `56379ce` to `67010b7`, had a reviewer and a skeptic go over each
+fix again. Every finding of the review held as closed, D2 and D7 but for R2-1 and D4 but for R2-2,
+and so did the facts the fixes rest on, read at `66fe8b3`: `app-deploy` swaps a service with
+`up -d --no-deps`, `app-compose` passes `up` and `restart` through, hostwatch flags only containers
+that exist, and `app-apply`'s compose install starts nothing. It found two low findings, both folds,
+R2-1 and R2-2, fixed in the skeptic's words except where they did not fit the text (VPS-129). Each
+RUNBOOK fix is held by a rule that reports problems on the RUNBOOK of `67010b7` and none on the fix.
+The entries above that a fix changed were corrected in place (VPS-127 and Tests (VPS Stop D)), as
+were the range the RUNBOOK, `deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and
+`tests/unit/vps-kit.test.ts`'s header cite, now VPS-31 to VPS-129, the RUNBOOK's cite of the
+cut-over's entries, now VPS-109 to VPS-129, and the header of `tests/unit/vps-runbook.test.ts`.
+VPS-124's account of First install, step 20, still holds and stays as it was, as does round 1's own
+paragraph.
+
+- **VPS-129 · R2-1 and R2-2 of the re-review · Commands that could start `scheduler-staging` early,
+  and a later production night that dropped what hosted changed (RUNBOOK, VPS-127), low:** R2-1:
+  First install, step 20, says to leave `scheduler-staging` out of every command that names it until
+  the staging night's step 5, but those commands said nothing of it, and someone working from
+  Rotation or disaster recovery never reads step 20. In the rehearsal weeks an `up -d` that names it
+  makes its container (`restart` and `exec` make none): Rotation's for a cron secret
+  (`web-staging scheduler-staging`) and for the heartbeats (`scheduler scheduler-staging`), After a
+  change's for the `STAGING_*` values, and disaster recovery's step 7
+  (`up -d scheduler scheduler-staging`). It would then run staging's daily and digest beside Vercel
+  staging's cron jobs, on the hosted staging database and the stale `web-staging` image: D2 and D7
+  again, on staging alone. Each of those sentences now says itself to leave it out until the staging
+  night's step 5, pointing to First install, step 20: Rotation's cron secrets take `web-staging`
+  alone and its heartbeats `scheduler` alone, After a change's `STAGING_*` values need nothing until
+  that step has made the container, and step 7 takes `scheduler` alone before that step, on the same
+  server or a new one, where the skeptic's words named only a rebuilt server, though a recovery on
+  the same server before the staging night would make the container as well. A call by hand and
+  After a change's restarts stay as they were. `stagingScheduler` now also reads Rotation (from its
+  first line to the backup key's bullet), After a change (to Backups and restore (VPS)) and Disaster
+  recovery, and refuses each sentence there (the text's white space folded, split at a full stop
+  before a space) that has an `up -d` and `scheduler-staging` without both
+  "the staging night's step 5" and "First install, step 20": 4 problems on `67010b7`'s RUNBOOK, one
+  for each command, and four refusal cases, each one of those commands as `67010b7` wrote it. R2-2:
+  round 1 had a later production night skip step 4 whenever the server still held the first night's
+  settings, but after a way back hosted production serves, and its `/super` takes edits, for days: a
+  setting, plan, Razorpay plan id, offer or team member changed there was lost on the server. The
+  later night still skips the first admin's link and step 3 when the server's database holds the
+  first night's admin, and step 4 types again only what differs from hosted's `/super` that night,
+  compared with the server's. `windowKept` pins both clauses: a copy without the first gets
+  "doesn't skip just the first admin's link and step 3", one without the second
+  "doesn't type again just what hosted's /super changed", as a copy without that clause types every
+  setting again rather than skipping them (the skeptic's "skips the settings hosted changed" fits
+  `67010b7`'s words alone): 2 problems on `67010b7`'s RUNBOOK, with refusal cases for `cd6a733`'s
+  later night, `67010b7`'s and a copy without the step-4 clause. On `cd6a733`'s RUNBOOK the two
+  rules now report 11 and 3 problems, where round 1's reported 7 and 2. No script, service or tool
+  changed, so nothing was rehearsed again: round 1's runs stand.
+  (386ee16 "docs: fix the cut-over checklist after the re-review")
+
+**After the fixes of round 2 (VPS Stop D)**, which changed only documents, text rules and comments:
+`pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,306 in 72 files
+(`vps-runbook` 51, its refusal cases added to existing tests; the four VPS files 236);
+`pnpm vps:check` 53 checks, 0 failed, after these documents changed `compose.yml`'s header. The two
+rules report 6 problems on the RUNBOOK of `67010b7` (`stagingScheduler` 4, `windowKept` 2) and none
+on the fix, and the other 26 none on either; `67010b7`'s 28 rules report none on its RUNBOOK and 1
+on the fix, `windowKept`'s pin of the sentence this round replaced. Eight more one-mistake copies of
+the fix, beyond the refusal cases, each got a problem from the rule it touched. The re-wrap test
+wraps 249 phrases where it had 245, a piece of each phrase the new checks read.

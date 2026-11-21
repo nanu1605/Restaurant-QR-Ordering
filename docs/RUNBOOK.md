@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-128 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-129 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -1011,7 +1011,7 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 
 ### The server rehearsal and the cut-over
 
-The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-128). Production starts fresh
+The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129). Production starts fresh
 on the server: nothing is copied from hosted production, the first platform admin comes from a
 one-time link made on the server, and the settings edited by hand in `/super` are typed again
 (VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
