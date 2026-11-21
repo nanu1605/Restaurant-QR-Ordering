@@ -12463,23 +12463,24 @@ entries below.
   latest confirmation, its `sha256sum` before the scp, the three server-side lines after the scp,
   before any `edge config` and before `edge.env`, `SAME` installing nothing, the stop on `DIFFERENT`
   with the three things and the step's later lines held, `edge config` on their word alone, the
-  comparison printing `SAME` after either answer, and the server's file always theirs at a commit
-  they name; and it holds the staging night's and disaster recovery's message to the same three
-  things. On `b2558c3`'s RUNBOOK it reports 14 problems, none on the fix, with refusal cases for
-  `b2558c3`'s block, the comparison after `edge config` and after `edge.env`, the stop dropped, the
-  admin-side check dropped, the copy made in PowerShell, and the three things dropped from each of
-  the three places. `serverSnippet` now reads the new `scp` and keeps the server team's file between
-  the certificate and `edge.env` (2 problems on `b2558c3`'s RUNBOOK), and `originPulls` the staging
-  night's stop to their chat (1 problem there; refusal cases for `b2558c3`'s stop, a stop that sends
-  the admin to turn origin pulls on, and `ac976ce`'s). Of the 42 rules the re-wrap test runs, the
-  other 39 report none on `b2558c3`'s RUNBOOK or on the fix; `vps-runbook` has 65 tests (64 before),
-  and the re-wrap test wraps 319 phrases where it wrapped 301, the two of the old copy and stop out.
-  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-147;
-  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
-  left for the next change of the kit. No script and no service changed, and no file of the kit but
-  its README, so nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`,
-  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook`
-  65, one new).
+  comparison printing `SAME` after each of the two answers, and the server's file always theirs at a
+  commit they name; and it holds disaster recovery's comparison before its `edge.env` lines, and the
+  staging night's and disaster recovery's message to the same three things. On `b2558c3`'s RUNBOOK
+  it reports 14 problems, none on the fix, with refusal cases for `b2558c3`'s block, the comparison
+  after `edge config` and after `edge.env`, the stop dropped, the `SAME` dropped from each answer,
+  the admin-side check dropped, the copy made in PowerShell, the three things dropped from each of
+  the three places, and disaster recovery's comparison after its `edge.env` lines. `serverSnippet`
+  now reads the new `scp` and keeps the server team's file between the certificate and `edge.env` (2
+  problems on `b2558c3`'s RUNBOOK), and `originPulls` the staging night's stop to their chat (1
+  problem there; refusal cases for `b2558c3`'s stop, a stop that sends the admin to turn origin
+  pulls on, and `ac976ce`'s). Of the 42 rules the re-wrap test runs, the other 39 report none on
+  `b2558c3`'s RUNBOOK or on the fix; `vps-runbook` has 65 tests (64 before), and the re-wrap test
+  wraps 321 phrases where it wrapped 301, the two of the old copy and stop out. The range the
+  RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-147; `compose.yml`'s
+  header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146, left for the next
+  change of the kit. No script and no service changed, and no file of the kit but its README, so
+  nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`, `pnpm typecheck` and
+  `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, one new).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

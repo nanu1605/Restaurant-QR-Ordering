@@ -3050,13 +3050,14 @@ const SAME_PATH =
   '`SAME`, what their install leaves: the server holds their file of that commit, nothing is installed';
 const DIFFERENT_STOP = "`DIFFERENT`: stop, and ask in the server team's chat";
 const HELD = "Run none of this step's lines below until they answer, `edge.env`'s above all";
-const THEIR_INSTALL = 'Either they install their file themselves, and the three lines';
+const THEIR_INSTALL =
+  'Either they install their file themselves, and the three lines, with the copy made again if their answer names another commit, must print `SAME`';
 const THEIR_WORD = `or they say in their chat to install that copy, and only then does the admin run \`${SNIPPET}\``;
 const AGAIN = 'checks every installed site again, and the three lines must print `SAME`';
 const THEIR_FILE = "the server's file is always their file at a commit they name";
-/** Disaster recovery's edge takes the same comparison, once the server team's edge is back. */
+/** Disaster recovery's edge takes the same comparison, before its edge.env lines too. */
 const RECOVERY_SNIPPET =
-  "comes that step's comparison of the snippet: on a rebuilt server the server team's edge comes back first";
+  "Before the `edge.env` lines comes that step's comparison of the snippet: on a rebuilt server the server team's edge comes back first";
 
 /**
  * The server's snippets.caddy compared with the server team's, and never installed on the way
@@ -3070,7 +3071,8 @@ const RECOVERY_SNIPPET =
  * edge config and before edge.env: SAME installs nothing; DIFFERENT stops, asks their chat with the
  * live file's sum, the copy's and its commit, holds the step's later lines, edge.env above all, and
  * installs the copy only on their word, the comparison run again after either answer. The staging
- * night's exit 0 and disaster recovery's edge take the same comparison and give the same three.
+ * night's exit 0 and disaster recovery's edge, before its edge.env lines, take the same comparison
+ * and give the same three.
  */
 const snippetGuard = (runbook: string) =>
   inPlaces(
@@ -4239,11 +4241,13 @@ const REWRAPPED = [
   DIFFERENT_STOP,
   "none of this step's lines below until they answer",
   'install their file themselves, and the three lines',
+  'names another commit, must print `SAME`',
   'or they say in their chat to install that copy',
   "the server's file is always their file at a commit they",
   "and asks in the server team's chat as its `DIFFERENT` does",
   'the comparison prints `SAME` and every exit is not 0',
   THREE_THINGS,
+  'Before the `edge.env` lines',
   "comes that step's comparison of the snippet",
   "on a rebuilt server the server team's edge comes",
 ];
@@ -7172,7 +7176,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('installs the server team’s snippets.caddy, whose tls_menumesh has client_auth on, between the certificate and edge.env, and adds no snippet of MenuMesh’s own (VPS-142)', () => {
+  it('keeps the server team’s snippets.caddy, whose tls_menumesh has client_auth on, between the certificate and edge.env, its copy sent and, on their word alone, installed there, and adds no snippet of MenuMesh’s own (VPS-142, VPS-147)', () => {
     expect(serverSnippet(RUNBOOK)).toEqual([]);
     // ac976ce's step 11: deploy/vps/edge/tls_menumesh.caddy added to the server's file.
     const own = swap(
@@ -7691,6 +7695,22 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
     refuses(snippetGuard, unstopped, 'doesn’t stop on DIFFERENT and ask the server team');
     refuses(snippetGuard, unstopped, 'doesn’t hold its lines below, edge.env above all');
+    // The comparison's SAME dropped after either answer: their own install, and the copy's.
+    const unchecked = 'goes on after DIFFERENT without the comparison printing SAME again';
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        ', with the copy made again if their answer\n      names another commit, must print `SAME`;',
+        ' need not run again;',
+      ),
+      unchecked,
+    );
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, ', and the three lines must print `SAME`.', '.'),
+      unchecked,
+    );
     // The admin-side check dropped, and the copy made in PowerShell, whose `>` writes UTF-16.
     refuses(
       snippetGuard,
@@ -7731,6 +7751,13 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         ", giving the live file's\n     sum, the copy's sum and the commit the copy came from.",
         '.',
       ),
+      'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does',
+    );
+    // Disaster recovery's comparison after its edge.env lines, when app-apply refuses edge config
+    // until the recreate.
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, 'Before the `edge.env` lines', 'After the `edge.env` lines'),
       'disaster recovery’s edge doesn’t compare the snippet as First install, step 11, does',
     );
   });
