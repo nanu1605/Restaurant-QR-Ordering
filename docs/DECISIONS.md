@@ -4378,8 +4378,8 @@ VPS-45, its review's fixes VPS-46 to VPS-58, the re-review's VPS-59 to VPS-67, t
 re-review's VPS-68 to VPS-77, the third re-review's VPS-78 to VPS-85, the fourth's VPS-86 to
 VPS-90, the fifth's VPS-91 to VPS-94, the sixth's VPS-95 to VPS-98, the seventh's VPS-99 to VPS-101,
 the eighth's VPS-102 to VPS-105 and the ninth's VPS-106 to VPS-108), and Stop D writes the
-cut-over's checklist and two tools for it (VPS-109 to VPS-121); Vercel stays production until that
-cut-over. The server's contract arrived on 2026-11-08, with adjustments the same day, and wins over
+cut-over's checklist and two tools for it (VPS-109 to VPS-121, its review's fixes VPS-122 to
+VPS-128 and the re-review's VPS-129); Vercel stays production until that cut-over. The server's contract arrived on 2026-11-08, with adjustments the same day, and wins over
 the first plans where they differ (VPS-24). The owner's answers: live screens refresh by themselves
 at the first stale tap and other pages show a Refresh toast (VPS-8); no background update check
 (VPS-11); the export size cap is fine for now (VPS-6); single-slot deploys with a 25 s stop
@@ -11208,6 +11208,13 @@ header cite moved to VPS-121.
 - The owner's open choices: the bucket and its locks (VPS-40; RUNBOOK, First install, step 2);
   hosted production's locale, before `db`'s first start (VPS-34; First install, step 4); and a
   rate-limit rule on `menumesh.in/t/*` and `api.menumesh.in/rest/v1/*` (Tests (VPS Stop B)).
+- The final check's two notes, a record only (Review fixes, round 2 (VPS Stop D)): the limit beside
+  the four commands that name `scheduler-staging` before the staging night (RUNBOOK, Secrets (VPS),
+  Rotation, both lines; The scheduler (VPS), After a change; Disaster recovery, step 7) reads "until
+  the staging night's step 5 has started" it, which after a staging way back that stopped it again
+  could be read as allowing it while Vercel staging's cron jobs run once more; and
+  `stagingScheduler` takes its two phrases anywhere in a sentence, so a second, unlimited command
+  added to a sentence that carries them for another would pass.
 
 ### Review fixes (VPS Stop D)
 
@@ -11438,3 +11445,8 @@ on the fix, and the other 26 none on either; `67010b7`'s 28 rules report none on
 on the fix, `windowKept`'s pin of the sentence this round replaced. Eight more one-mistake copies of
 the fix, beyond the refusal cases, each got a problem from the rule it touched. The re-wrap test
 wraps 249 phrases where it had 245, a piece of each phrase the new checks read.
+
+**The final check of round 2**, by one verifier who read both commits and the fixer's logs, found
+R2-1 and R2-2 closed, the runs as the fixer reported them, and nothing at the bar of a fix in what
+Stop D wrote. Its two low notes are a record only, in Left open (Stop D). With them the review of
+Stop D is closed.
