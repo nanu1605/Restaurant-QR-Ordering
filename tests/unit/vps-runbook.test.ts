@@ -98,7 +98,13 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * leak test's container by image digest and flags, the drills on the second weekend, and no copy
  * of a secret left in ~/incoming; and since the copy of their files at their 66c8c61 (VPS-142),
  * step 11's snippets.caddy from their repository, which holds tls_menumesh, and the staging night's
- * stop on an exit 0, which sends the admin to install it again.
+ * stop on an exit 0, which sends the admin to install it again. Since the RUNBOOK follows their
+ * merged edge.md §5 and §6 (VPS-143), they also pin step 11's edge.env merged in their form and
+ * checked by its names and lengths before the install, Rotation's and disaster recovery's merges,
+ * the recreate checked with its way back as the vendored app-apply keeps it, the edge networks
+ * checked at step 15, Jainav's hosts refusing a client without a certificate before db, and the
+ * leak test's copy of the installed site file, its alert, its checks and its clean-up in their
+ * order.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -212,6 +218,10 @@ const PLACES = {
   dbStep: ['\n16. ', '\n17. **GitHub**'],
   beforeStaging: ['#### 3. The staging night', 'Then, in order:'],
   recoveryEdge: ['\n  8. The edge', '\n  9. The key off the ramfs'],
+  // The server team's merged edge.md (VPS-143): First install's step 15 and Rotation's bullet for
+  // staging's password.
+  composeStep: ['\n15. `sudo app-apply menumesh compose', '\n16. '],
+  stagingPassword: ["- Staging's password", '- The deploy key or the Access token'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -2687,37 +2697,61 @@ const oneCount = (runbook: string) =>
     ];
   });
 
-/** The leak test's step 1 as MenuMesh's pieces make it. */
+/**
+ * The leak test's setup as MenuMesh's pieces make it, on the port the image listens on, as the
+ * server team's merged edge.md §6 has it (VPS-143): its UPSTREAMS entry, its block and the install
+ * of the copy that holds it.
+ */
 const LEAK_PIECES = [
   '`edge-menumesh`',
-  '`menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf`',
-  'https://leaktest.menumesh.in { import site_common import tls_menumesh reverse_proxy menumesh-leaktest:<port> { import upstream } }',
-  '`sudo app-apply menumesh site',
+  '`menumesh-leaktest:80` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf`',
+  'https://leaktest.menumesh.in { import site_common import tls_menumesh reverse_proxy menumesh-leaktest:80 { import upstream } }',
+  'sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy',
 ];
+/** The installed site file copied for the test and kept for step 5, which puts it back. */
+const LIVE_COPY = 'sudo cat /srv/edge/config/sites/menumesh.caddy > ~/incoming/menumesh-live.caddy';
+const SITE_BACK = 'sudo app-apply menumesh site ~/incoming/menumesh-live.caddy';
+const LEAK_STOP = 'sudo docker stop menumesh-leaktest';
+const CONF_EDIT = 'sudoedit /etc/apps/menumesh.conf';
+const COPIES_GONE = 'rm ~/incoming/menumesh-live.caddy ~/incoming/menumesh-leaktest.caddy';
+const IMAGE_GONE =
+  'sudo docker image rm traefik/whoami@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44';
 
 /**
  * The leak test's site for leaktest.menumesh.in (Stop D's review, D1 of the docs). The server
  * team's edge.md §6 puts its container on edge-jainav with a leaktest.jainavinfotech.in site file,
  * and app-apply keeps each app to one site file, hosts in its ZONE and upstreams from its
  * UPSTREAMS, so nothing served the leak test's host. MenuMesh's pieces stand in: the container on
- * edge-menumesh, its name in UPSTREAMS for the test, a temporary copy of menumesh.caddy with a
- * leaktest block importing what the others import, installed with app-apply; and their step 5 puts
- * menumesh.caddy back, never removing it, before the UPSTREAMS entry goes.
+ * edge-menumesh, its name in UPSTREAMS for the test, a copy of menumesh.caddy with a leaktest block
+ * importing what the others import, installed with app-apply. Since their merged §6 (VPS-143) the
+ * copy is of the installed file, kept for their step 5, which goes in their order: the kept copy
+ * back first, never removing menumesh.caddy, as the test block needs its UPSTREAMS entry and the
+ * daily validate refuses a site whose upstream isn't listed; then the container stopped, so that
+ * hostwatch never sees it outside UPSTREAMS; then the entry out; then the copies and the image.
  */
 const leakPieces = (runbook: string) =>
   inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
     const text = flat(leakTest);
-    const again = text.indexOf('`menumesh.caddy` as it is installed again');
-    const out = text.indexOf('its `UPSTREAMS` entry taken out');
+    const test = text.indexOf(LEAK_PIECES[3]);
+    const copied = text.indexOf(LIVE_COPY);
+    const back = text.indexOf(SITE_BACK);
+    const stopped = text.indexOf(LEAK_STOP);
+    const out = text.lastIndexOf(CONF_EDIT);
     return [
       ...LEAK_PIECES.filter((piece) => !text.includes(piece)).map(
-        (piece) => `the leak test’s step 1 lacks MenuMesh’s ${piece}`,
+        (piece) => `the leak test’s setup lacks MenuMesh’s ${piece}`,
       ),
-      ...(again >= 0 && out > again && has(leakTest, '(never removed')
+      ...(copied >= 0 && copied < test
+        ? []
+        : ['the leak test’s site copy isn’t made from the installed menumesh.caddy']),
+      ...(back > test && stopped > back && out > stopped && has(leakTest, '(never removed')
         ? []
         : [
-            'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
+            'the leak test’s step 5 doesn’t put menumesh.caddy back, never removing it, then stop the container, then take its UPSTREAMS entry out',
           ]),
+      ...(text.indexOf(COPIES_GONE) > out && text.indexOf(IMAGE_GONE) > out
+        ? []
+        : ['the leak test’s step 5 leaves its copies or its image on the server']),
     ];
   });
 
@@ -2872,9 +2906,9 @@ const redactEarly = (runbook: string) =>
  * VPS-136). app-apply refuses every change that reloads Caddy from `edge env` until Caddy is
  * recreated, so the certificate, with the owner's aop-ca.pem and the client certificate beside it,
  * goes in first, and edge.env last, the recreate right after it. `edge env` installs the file it is
- * given whole, so the admin merges a copy of the live file and shreds it, a refused one too. One
- * recreate takes the server team's digest pin as well, and the staging night first checks that
- * Caddy holds MenuMesh's two lines, by their names alone.
+ * given whole, so the admin merges a copy of the live file and shreds it, also on stopping after a
+ * refusal (VPS-143). One recreate takes the server team's digest pin as well, and the staging night
+ * first checks that Caddy holds MenuMesh's two lines, by their names alone.
  */
 const edgeNight = (runbook: string) =>
   inPlaces(runbook, ['edgeStep', 'beforeStaging'], ({ edgeStep, beforeStaging }) => {
@@ -2893,9 +2927,12 @@ const edgeNight = (runbook: string) =>
         : [
             'First install, step 11, doesn’t put the certificate and the snippet before edge.env, and the recreate right after it',
           ]),
-      ...(has(edgeStep, 'A copy that `app-apply` refuses is shredded all the same')
+      ...(has(
+        edgeStep,
+        'When the admin stops, either way, the copy goes with `shred -u ~/incoming/edge.env`',
+      )
         ? []
-        : ['First install, step 11, leaves a copy of edge.env that app-apply refused']),
+        : ['First install, step 11, leaves a copy of edge.env behind when the admin stops']),
       ...(has(edgeStep, "It also takes the server team's digest pin of Caddy")
         ? []
         : ['First install, step 11, recreates Caddy without the server team’s digest pin']),
@@ -2983,22 +3020,39 @@ const copiesGone = (runbook: string) =>
     ];
   });
 
+/** Their edge.md §5, step 8: each of Jainav's four hosts refuses a client without a certificate. */
+const JAINAV_LOOP =
+  'for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done';
+
 /**
  * MenuMesh's first container waits for the server team's word that origin pulls are on for every
  * zone of the server (their commitment 1; VPS-135): First install, step 16, says so first, and the
- * server rehearsal where it runs First install.
+ * server rehearsal where it runs First install. Since their merged edge.md §5, step 8 (VPS-143),
+ * the step proves it before db's first container: their loop over Jainav's four hosts, run on the
+ * server, and a stop on an exit 0.
  */
 const originGate = (runbook: string) =>
-  inPlaces(runbook, ['dbStep', 'rehearsal'], ({ dbStep, rehearsal }) => [
-    ...(flat(dbStep).startsWith(
-      ' 16. Not before the server team confirms in their chat that authenticated origin pulls are on',
-    ) && has(dbStep, 'until then this step, and every step after it, waits')
-      ? []
-      : ['First install, step 16, starts db without waiting for the server team’s origin pulls']),
-    ...(has(rehearsal, "Step 16 waits for the server team's word")
-      ? []
-      : ['the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls']),
-  ]);
+  inPlaces(runbook, ['dbStep', 'rehearsal'], ({ dbStep, rehearsal }) => {
+    const text = flat(dbStep);
+    const proof = text.indexOf(JAINAV_LOOP);
+    return [
+      ...(text.startsWith(
+        ' 16. Not before the server team confirms in their chat that authenticated origin pulls are on',
+      ) && has(dbStep, 'until then this step, and every step after it, waits')
+        ? []
+        : ['First install, step 16, starts db without waiting for the server team’s origin pulls']),
+      ...(proof >= 0 &&
+      proof < text.indexOf('sudo app-compose menumesh up -d db') &&
+      has(dbStep, "If one ends in 0, stop: the server team's round of origin pulls comes first")
+        ? []
+        : [
+            'First install, step 16, starts db without proving that Jainav’s hosts refuse a client without a certificate',
+          ]),
+      ...(has(rehearsal, "Step 16 waits for the server team's word")
+        ? []
+        : ['the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls']),
+    ];
+  });
 
 /**
  * The drills on the second weekend (the server team's review, Q3; VPS-138): theirs take the first,
@@ -3078,7 +3132,9 @@ const ownCA = (runbook: string) =>
  * traefik/whoami by its index digest, pulled first, then run with LEAK_FLAGS, never with the
  * kit.throwaway label, which hostwatch's limits check passes over; its UPSTREAMS entry goes in
  * before it starts, the admin tells the server team's chat first, and the wrong-project alert it
- * brings is expected.
+ * brings is expected. Since their merged edge.md §6 (VPS-143) the entry names port 80 itself, and
+ * the alert is hostwatch's whole line, on every 5-minute run, which Telegram gets once and then
+ * every 6 hours.
  */
 const leakContainer = (runbook: string) =>
   inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
@@ -3089,7 +3145,7 @@ const leakContainer = (runbook: string) =>
     const image = words.at(-1) ?? '';
     const flags = ` ${words.slice(0, -1).join(' ')} `;
     const text = flat(leakTest);
-    const entry = text.indexOf('`menumesh-leaktest:<port>` goes into `UPSTREAMS`');
+    const entry = text.indexOf('`menumesh-leaktest:80` goes into `UPSTREAMS`');
     const pulled = text.indexOf(`sudo docker pull ${LEAK_IMAGE}`);
     const started = text.indexOf('sudo docker run ');
     return [
@@ -3119,15 +3175,236 @@ const leakContainer = (runbook: string) =>
         : ['the leak test doesn’t tell the server team’s chat before the container starts']),
       ...(has(
         leakTest,
-        '`networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes',
-      )
+        "hostwatch's 5-minute check reports `networks: edge network rules broken: menumesh-leaktest@edge-menumesh:wrong-project` on every run, as critical",
+      ) && has(leakTest, 'Telegram gets it once, then again every 6 hours while it lasts')
         ? []
         : ['the leak test doesn’t say hostwatch’s wrong-project alert comes while it runs']),
-      ...(has(leakTest, '(`<port>` is 80, where the image listens)')
+      ...(has(leakTest, 'the image listens on port 80')
         ? []
         : ['the leak test doesn’t say the image listens on port 80']),
     ];
   });
+
+/** The leak test's step 1 passes on what the server team's upstream snippet sets and removes. */
+const VENDOR = join('deploy', 'vps', 'test', 'vendor', 'jainav-infotech');
+const SNIPPETS = readFileSync(join(VENDOR, 'snippets.caddy'), 'utf8');
+const UPSTREAM_SETS = ['X-Real-IP', 'X-Forwarded-For', 'CF-Connecting-IP', 'Sb-Forwarded-For'];
+const UPSTREAM_DROPS = ['True-Client-IP', 'X-Client-IP', 'Forwarded'];
+
+/**
+ * The leak test's checks as their merged edge.md §6 words them (VPS-143). Step 1: whoami prints
+ * the header names as Go writes them, and it passes when the four address headers hold the admin's
+ * own address, X-Forwarded-Host the host, and the other three are gone, as the vendored upstream
+ * snippet sets and removes them; menumesh.caddy adds no header of its own, so those are what its
+ * upstreams get. Step 3: the origin's addresses time out, again with a temporary hPanel accept rule
+ * for the admin's own address, removed after.
+ */
+const leakChecks = (runbook: string, snippets: string, site: string) =>
+  inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
+    const upstream = (/\n\(upstream\) \{\n([\s\S]*?)\n\}/.exec(snippets)?.[1] ?? '')
+      .split('\n')
+      .map((line) => line.trim());
+    const own = site
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /^(header|header_up|header_down|request_header)\b/.test(line));
+    return [
+      ...UPSTREAM_SETS.filter((name) => !upstream.includes(`header_up ${name} {client_ip}`)).map(
+        (name) => `the server team’s upstream snippet doesn’t set ${name} to the client’s address`,
+      ),
+      ...(upstream.includes('header_up X-Forwarded-Host {host}')
+        ? []
+        : ['the server team’s upstream snippet doesn’t set X-Forwarded-Host to the host']),
+      ...UPSTREAM_DROPS.filter((name) => !upstream.includes(`header_up -${name}`)).map(
+        (name) => `the server team’s upstream snippet doesn’t remove ${name}`,
+      ),
+      ...own.map((line) => `menumesh.caddy sets a header of its own: ${line}`),
+      ...(has(leakTest, 'their names as Go writes them (`X-Real-Ip`, `Cf-Connecting-Ip`)')
+        ? []
+        : ['the leak test’s step 1 doesn’t say whoami prints header names as Go writes them']),
+      ...(has(
+        leakTest,
+        `${UPSTREAM_SETS.slice(0, -1)
+          .map((name) => `\`${name}\``)
+          .join(', ')} and \`${UPSTREAM_SETS.at(-1)}\`, each hold the admin's own address`,
+      ) &&
+      has(leakTest, '`X-Forwarded-Host` is `leaktest.menumesh.in`') &&
+      has(
+        leakTest,
+        `${UPSTREAM_DROPS.slice(0, -1)
+          .map((name) => `\`${name}\``)
+          .join(', ')} and \`${UPSTREAM_DROPS.at(-1)}\` are absent`,
+      ) &&
+      has(leakTest, '`menumesh.caddy` adds no header of its own')
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t pass on the headers the upstream snippet sets and removes, which are MenuMesh’s upstreams’ own',
+          ]),
+      ...(has(
+        leakTest,
+        "again with a temporary hPanel accept rule for the admin's own address, removed after",
+      )
+        ? []
+        : [
+            'the leak test’s step 3 doesn’t run again with a temporary hPanel accept rule for the admin’s own address, removed after',
+          ]),
+    ];
+  });
+
+/** Whether `text` holds each of `words`, each after the end of the one before it. */
+function inOrder(text: string, words: string[]): boolean {
+  let from = 0;
+  return words.every((word) => {
+    const at = text.indexOf(word, from);
+    from = at + word.length;
+    return at >= 0;
+  });
+}
+
+/** The server team's merged edge.env, as their edge.md §5, step 6, makes it (VPS-143). */
+const NEWLINE_GUARD = '[ -z "$(tail -c1 ~/incoming/edge.env)" ] || echo >> ~/incoming/edge.env';
+const APPEND = 'cat >> ~/incoming/edge.env';
+/** Their check of the names and their values' lengths, copied from that step: it prints no value. */
+const NAMES_CHECK = `awk '/^[A-Za-z_][A-Za-z0-9_]*=/ {i = index($0, "="); k = substr($0, 1, i - 1); n[k]++; printf "%s(%d) ", k, length($0) - i} END {for (k in n) if (n[k] > 1) printf "TWICE:%s ", k; print ""}' ~/incoming/edge.env`;
+/** Rotation's removal of the old hash's line from the copy, as a second line of a name is refused. */
+const HASH_OUT = "sed -i '/^MENUMESH_STAGING_AUTH_HASH=/d' ~/incoming/edge.env";
+const EXAMPLE = readFileSync(join('deploy', 'vps', 'edge', 'edge.env.example'), 'utf8');
+
+/**
+ * edge.env merged in the server team's form (their edge.md §5, step 6; VPS-143), where `(echo; cat)`
+ * left a blank line whenever the copy ended in its line end: the copy, the newline guard, the lines
+ * pasted into `cat >>`, which expands nothing of a hash's `$`, then their check of the names and
+ * lengths, before the install, with what it must show for MenuMesh's two lines, and the two lines
+ * kept in the password manager, as the edge has no settings archive. Rotation's new hash goes
+ * through the same copy, its old line taken out first, and disaster recovery's lines through the
+ * same steps; edge.env.example's header gives the same commands and points at step 11.
+ */
+const mergedCopy = (runbook: string, example: string) =>
+  inPlaces(
+    runbook,
+    ['vps', 'edgeStep', 'stagingPassword', 'recoveryEdge'],
+    ({ vps, edgeStep, stagingPassword, recoveryEdge }) => {
+      const text = flat(edgeStep);
+      const header = flat(example);
+      return [
+        ...[NEWLINE_GUARD, APPEND, NAMES_CHECK]
+          .filter((words) => !text.includes(words))
+          .map((words) => `First install, step 11, lacks ${words}`),
+        ...(inOrder(text, [EDGE_COPY, NEWLINE_GUARD, APPEND, NAMES_CHECK, EDGE_ENV])
+          ? []
+          : [
+              'First install, step 11, doesn’t merge edge.env in the server team’s order: the copy, the newline guard, cat >>, the check of names and lengths, then the install',
+            ]),
+        ...(vps.includes('(echo; cat)')
+          ? ['the RUNBOOK still appends to edge.env with (echo; cat)']
+          : []),
+        ...(has(edgeStep, 'none with `(0)`, no `TWICE:`') &&
+        has(edgeStep, 'then `MENUMESH_STAGING_AUTH_USER(8)`') &&
+        has(
+          edgeStep,
+          '`MENUMESH_STAGING_AUTH_HASH(62)`: a 60-character bcrypt hash and its two quotes',
+        )
+          ? []
+          : ['First install, step 11, doesn’t say what the check of names and lengths must show']),
+        ...(has(edgeStep, 'The two lines also go into the password manager')
+          ? []
+          : ['First install, step 11, keeps MenuMesh’s edge.env lines on the server alone']),
+        ...(has(stagingPassword, "through that step's merged copy") &&
+        has(stagingPassword, HASH_OUT) &&
+        has(stagingPassword, "then that step's check of the names and lengths")
+          ? []
+          : [
+              'Rotation doesn’t put staging’s new hash in through step 11’s merged copy, its old line out first and the names and lengths checked',
+            ]),
+        ...(has(
+          recoveryEdge,
+          "through that step's copy, newline guard and `cat >>`, its check of the names and lengths",
+        )
+          ? []
+          : [
+              'disaster recovery’s edge doesn’t merge MenuMesh’s lines into the new server’s edge.env as First install, step 11, does',
+            ]),
+        ...[EDGE_COPY, NEWLINE_GUARD, EDGE_ENV]
+          .filter((words) => !header.includes(words))
+          .map((words) => `edge.env.example’s header lacks ${words}`),
+        ...(has(example, 'docs/RUNBOOK.md, First install, step 11')
+          ? []
+          : ['edge.env.example’s header doesn’t point at First install, step 11']),
+      ];
+    },
+  );
+
+/** The recreate's checks and its way back (their edge.md §5, step 7; VPS-143). */
+const EDGE_PS = 'sudo app-compose edge ps';
+const EDGE_VALIDATE = 'sudo app-apply edge validate';
+const CADDY_JOURNAL = 'sudo journalctl CONTAINER_NAME=edge-caddy-1 -n 20 -o cat --no-pager';
+const EDGE_BACK = 'sudo app-apply edge env /var/lib/app-apply/srv/edge/edge.env.<time>';
+const APP_APPLY = readFileSync(join(VENDOR, 'app-apply'), 'utf8');
+/** What the vendored app-apply does that the recreate's checks and way back tell the admin. */
+const KEPT = [
+  'EDGE_DIR=/srv/edge',
+  'KEEP_DIR=/var/lib/app-apply',
+  'CADDY_CONTAINER=edge-caddy-1',
+  'stamp=$(date -u +%Y%m%dT%H%M%SZ)',
+  'if [ "${#copies[@]}" -gt 5 ]',
+  'keep_previous "$EDGE_DIR/edge.env"',
+  'say "the live edge tree is valid"',
+];
+
+/**
+ * The recreate checked, with a way back (their edge.md §5, step 7; VPS-143): after
+ * `app-compose edge up -d`, `edge ps` and `edge validate`, what each shows when it worked, Caddy's
+ * journal when it didn't, and the edge.env the install replaced put back from where app-apply keeps
+ * it, which the vendored app-apply must still do as the step says: /var/lib/app-apply plus the live
+ * file's path, the name with its UTC stamp, five kept, and validate's line.
+ */
+const recreateChecked = (runbook: string, appApply: string) =>
+  inPlaces(runbook, ['edgeStep'], ({ edgeStep }) => {
+    const text = flat(edgeStep);
+    return [
+      ...KEPT.filter((words) => !appApply.includes(words)).map(
+        (words) =>
+          `the vendored app-apply has no ${words}, which First install, step 11, tells the admin`,
+      ),
+      ...(inOrder(text, [EDGE_ENV, RECREATE, EDGE_PS, EDGE_VALIDATE, EDGE_BACK])
+        ? []
+        : [
+            'First install, step 11, doesn’t check Caddy and the live tree after the recreate, with its way back after them',
+          ]),
+      ...(has(edgeStep, '`edge-caddy-1` is `Up` and turns `(healthy)` within about a minute') &&
+      has(edgeStep, '`validate` prints `the live edge tree is valid`') &&
+      has(edgeStep, CADDY_JOURNAL)
+        ? []
+        : [
+            'First install, step 11, doesn’t say what the recreate’s checks show, or where to look when they fail',
+          ]),
+      ...(has(
+        edgeStep,
+        'keeps the last five it replaced as `edge.env.<time>`, the time in UTC (`YYYYMMDDTHHMMSSZ`), in `/var/lib/app-apply/srv/edge/`',
+      )
+        ? []
+        : ['First install, step 11, doesn’t say where app-apply keeps the edge.env it replaced']),
+    ];
+  });
+
+/** Their edge.md §5, step 2: both edge networks internal, and Caddy on each. */
+const NETWORK_CHECK =
+  "sudo docker network inspect -f '{{.Name}} internal={{.Internal}}:{{range .Containers}} {{.Name}}{{end}}' edge-menumesh edge-menumesh-staging";
+
+/**
+ * Where the RUNBOOK says the edge networks exist already, at First install, step 15 (ask 4;
+ * VPS-135), the server team's own check of them, as their merged edge.md §5, step 2, gives it
+ * (VPS-143), with what each line shows.
+ */
+const networksChecked = (runbook: string) =>
+  inPlaces(runbook, ['composeStep'], ({ composeStep }) =>
+    has(composeStep, NETWORK_CHECK) &&
+    has(composeStep, 'whose two lines each show `internal=true` and `edge-caddy-1`')
+      ? []
+      : [
+          'First install, step 15, doesn’t check that both edge networks are internal, with Caddy on each',
+        ],
+  );
 
 /** First install's step 8 at 21a13bf: origin pulls left to "the admin's certificate". */
 const OLD_ZONE_STEP = [
@@ -3222,6 +3499,116 @@ const LEAK_TEST_21A13BF = [
   '   `leaktest` record. Way back: the same four.',
   '',
   '',
+].join('\n');
+
+/** First install, step 11's edge.env at ac976ce: `(echo; cat)`, no check, the recreate unchecked. */
+const EDGE_ENV_AC976CE = [
+  '    `edge.env` comes last. From `app-apply edge env` until Caddy is recreated, `app-apply` refuses',
+  '    every change that reloads Caddy, a site file, `edge config`, `edge redact` or `edge cert`, the',
+  "    server team's own among them (`edge.env differs from what edge-caddy-1 was created with`). So",
+  '    the order is the certificate, then the snippet, then (the redaction file in since step 9)',
+  '    `edge.env`, then the recreate, the last two on the same night, with nothing of the edge between',
+  '    them. `app-apply edge env` puts the file it is given in place of the live one, so `edge.env` is',
+  "    one merged file, as the server team's `edge.md` gives it: the live file copied, the two lines of",
+  "    `deploy/vps/edge/edge.env.example` appended with the owner's hash on lines of their own (the",
+  '    `echo` first: a live file whose last line has no line end would take the first of them into its',
+  '    value, and a blank line is skipped), the copy installed and then shredded. A copy that',
+  '    `app-apply` refuses is shredded all the same (`shred -u ~/incoming/edge.env`) unless it is',
+  "    mended and run again at once: it holds the server team's values too.",
+  '',
+  '    ```sh',
+  `    ${EDGE_COPY}`,
+  '    (echo; cat) >> ~/incoming/edge.env     # paste the two lines, the hash in its single quotes, then Ctrl-D',
+  `    ${EDGE_ENV}`,
+  `    ${RECREATE}     # between 01:00 and 07:00 IST, on the night the owner picks`,
+  '    ```',
+  '',
+  '    The recreate drops every connection on the shared edge, hence the window. It also takes the',
+  "    server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130): one recreate for",
+  '    both. That night comes only after:',
+  '',
+].join('\n');
+
+/** Rotation's staging password at ac976ce: the hash line edited, no check of names and lengths. */
+const ROTATION_AC976CE = [
+  "- Staging's password: a new hash, made off the server as in First install, step 11, which the admin",
+  "  puts in `edge.env` through that step's merged copy, its `MENUMESH_STAGING_AUTH_HASH` line given",
+  '  the new hash in an editor, as a second line of that name is refused (`app-apply edge env`, then',
+  '  recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared edge); the',
+  '  GitHub secret `STAGING_SMOKE_BASIC_AUTH`; and the testers.',
+  '',
+].join('\n');
+
+/** Disaster recovery's step 8 at ac976ce: edge.env from the password manager, never merged. */
+const RECOVERY_EDGE_AC976CE = [
+  "  8. The edge, by the admin: the redaction file right after step 1's conf (First install, step 9),",
+  '     then new certificates from fresh CSRs, `aop-ca.pem`, `aop-client.pem` and `edge.env` from the',
+  "     password manager, in First install, step 11's order, then the site file from this repository,",
+  "     the leak test, and DNS to the new address. The origin pulls' CA and client certificate stay as",
+  '     they were, the client pair at Cloudflare too.',
+].join('\n');
+
+/** The leak test at ac976ce: `<port>`, a copy of the repository's menumesh.caddy, four steps back. */
+const LEAK_TEST_AC976CE = [
+  "2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record",
+  "   `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record",
+  "   moves (VPS-115), with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts",
+  "   stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. The admin, who runs the server's",
+  "   steps, tells the server team's chat before the container starts. Their step 1 here, in this",
+  '   order: `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test',
+  '   (`<port>` is 80, where the image listens); the throwaway container that answers with the',
+  "   request's headers runs on `edge-menumesh` as `menumesh-leaktest` (an upstream is",
+  '   `menumesh-<name>:<port>`), from an image pinned by its index digest and pulled first, so that a',
+  '   failed pull shows on its own, with no capability, no new privileges and a read-only root, and',
+  "   without the `kit.throwaway` label, which only `app-apply`'s own containers carry (`--rm` removes",
+  '   it once it is stopped):',
+  '',
+  '   ```sh',
+  `   sudo docker pull ${LEAK_IMAGE}`,
+  `   sudo docker run ${LEAK_FLAGS.join(' ')} ${LEAK_IMAGE}`,
+  '   ```',
+  '',
+  '   and a temporary copy of `menumesh.caddy` with one more block, which imports what the others',
+  '   import, is installed with `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:',
+  '',
+  '   ```text',
+  '   https://leaktest.menumesh.in {',
+  '       import site_common',
+  '       import tls_menumesh',
+  '       reverse_proxy menumesh-leaktest:<port> {',
+  '           import upstream',
+  '       }',
+  '   }',
+  '   ```',
+  '',
+  '   Until the container stops, hostwatch raises a critical',
+  '   `networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes (it is no service of',
+  "   the compose project), which the chat expects, as for the server team's own test. Its",
+  "   `--network-alias` keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's",
+  '   network aliases, not its name), and its `--memory` and `--cpus` keep it from a limits alert.',
+  '   Their steps 1 to 4 must then show: forged headers replaced; the log line without an address, a',
+  '   header or a query, and a made-up 16-character `/t/` token in it shown as `/t/_`; nothing',
+  "   answering straight on the server's addresses, IPv4 and IPv6, even with a temporary hPanel accept",
+  "   rule; and a TLS connection without the client certificate refused (step 1's test, the leak",
+  "   test's host added).",
+  '',
+  '   Their step 5 here, in this order: `menumesh.caddy` as it is installed again,',
+  "   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (never removed: it is the zone's only",
+  '   site file); the container stopped; its `UPSTREAMS` entry taken out; and the owner deletes the',
+  '   `leaktest` record. Way back: the same four.',
+  '',
+  '',
+].join('\n');
+
+/** edge.env.example's header at ac976ce, from its fourth line: no newline guard and no check. */
+const EXAMPLE_HEADER_AC976CE = [
+  "# of the live one. So the server's admin copies the live file under umask 077,",
+  `#   ${EDGE_COPY}`,
+  "# appends the two lines below to it with the owner's hash, installs it with",
+  `#   ${EDGE_ENV}`,
+  '# and recreates Caddy between 01:00 and 07:00 IST (sudo app-compose edge up -d), which reads',
+  '# edge.env only when it is created. Values never in git: the password and its hash live in the',
+  "# owner's password manager.",
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -3497,7 +3884,6 @@ const REWRAPPED = [
   'goes into `UPSTREAMS` in',
   'import site_common',
   'app-apply menumesh site',
-  '`menumesh.caddy` as it is installed again',
   'its `UPSTREAMS` entry taken out',
   '(never removed:',
   'app-compose edge up -d',
@@ -3515,7 +3901,6 @@ const REWRAPPED = [
   'app-apply edge redact menumesh ~/incoming/log-redact.caddy',
   "the redaction file right after step 1's conf",
   'the order is the certificate, then the snippet',
-  '`app-apply` refuses is shredded all the same',
   "server team's digest pin of Caddy",
   'its copy in `~/incoming` shredded',
   'Not before the server team confirms in their chat',
@@ -3528,8 +3913,6 @@ const REWRAPPED = [
   "the CA's key never goes to a server",
   "with MenuMesh's own client certificate, which the",
   "tells the server team's chat before the container starts",
-  'menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes',
-  '(`<port>` is 80, where the image listens)',
   // Read by the rules of the copy at the server team's 66c8c61 (VPS-142): a piece of each phrase
   // that stands on one line.
   'has no `client_auth`, so its',
@@ -3538,6 +3921,34 @@ const REWRAPPED = [
   'app-apply edge config ~/incoming/snippets.caddy',
   'holds `tls_menumesh` with `client_auth` on since',
   "MenuMesh's kit never adds a snippet",
+  // Read by the rules of the server team's merged edge.md (VPS-143): a piece of each phrase that
+  // stands on one line.
+  'When the admin stops, either way,',
+  'none with `(0)`, no',
+  'then `MENUMESH_STAGING_AUTH_USER(8)`',
+  '`MENUMESH_STAGING_AUTH_HASH(62)`: a 60-character bcrypt hash and its two quotes',
+  'two lines also go into the',
+  "through that step's merged copy",
+  "then that step's check of the names and lengths",
+  "sed -i '/^MENUMESH_STAGING_AUTH_HASH=/d'",
+  "through that step's copy, newline guard and",
+  '`edge-caddy-1` is `Up` and turns `(healthy)`',
+  'the live edge tree is valid',
+  'sudo journalctl CONTAINER_NAME=edge-caddy-1 -n 20 -o cat --no-pager',
+  'keeps the last five it replaced as',
+  'the time in UTC (`YYYYMMDDTHHMMSSZ`)',
+  'whose two lines each show `internal=true` and `edge-caddy-1`',
+  "If one ends in 0, stop: the server team's round of origin pulls comes first",
+  'the image listens on',
+  "hostwatch's 5-minute check reports",
+  '`networks: edge network rules broken: menumesh-leaktest@edge-menumesh:wrong-project` on every',
+  'Telegram gets it once, then again',
+  'their names as Go writes',
+  "`X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own",
+  '`X-Forwarded-Host` is `leaktest.menumesh.in`',
+  '`Forwarded` are absent',
+  '`menumesh.caddy` adds no header of its own',
+  "a temporary hPanel accept rule for the admin's own",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -6236,35 +6647,65 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('serves the leak test’s host with MenuMesh’s own pieces, and puts its one site file back (Stop D review, D1 of the docs)', () => {
+  it('serves the leak test’s host with MenuMesh’s own pieces, and puts its one site file back (Stop D review, D1 of the docs; the server team’s merged edge.md, VPS-143)', () => {
     expect(leakPieces(RUNBOOK)).toEqual([]);
+    const leakTest = cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**');
+    const backOrder =
+      'the leak test’s step 5 doesn’t put menumesh.caddy back, never removing it, then stop the container, then take its UPSTREAMS entry out';
     // cd6a733's leak test: the server team's steps, with nothing to serve leaktest.menumesh.in,
     // and their step 5 readable as removing menumesh.caddy.
-    const old = swap(
-      RUNBOOK,
-      cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**'),
-      OLD_LEAK_TEST,
-    );
+    const old = swap(RUNBOOK, leakTest, OLD_LEAK_TEST);
     for (const piece of LEAK_PIECES) {
-      refuses(leakPieces, old, `the leak test’s step 1 lacks MenuMesh’s ${piece}`);
+      refuses(leakPieces, old, `the leak test’s setup lacks MenuMesh’s ${piece}`);
     }
-    refuses(
-      leakPieces,
-      old,
-      'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
-    );
-    // The entry taken out before the site file that names it is back.
+    refuses(leakPieces, old, backOrder);
+    // ac976ce's: `<port>`, a copy of the repository's menumesh.caddy, and that file back, never
+    // the copy of what was installed; nothing took the copies or the image away.
+    const ac976ce = swap(RUNBOOK, leakTest, LEAK_TEST_AC976CE);
+    for (const problem of [
+      `the leak test’s setup lacks MenuMesh’s ${LEAK_PIECES[1]}`,
+      `the leak test’s setup lacks MenuMesh’s ${LEAK_PIECES[2]}`,
+      'the leak test’s site copy isn’t made from the installed menumesh.caddy',
+      backOrder,
+      'the leak test’s step 5 leaves its copies or its image on the server',
+    ]) {
+      refuses(leakPieces, ac976ce, problem);
+    }
+    // Their step 5 out of order: the entry out before the site file that needs it is back, and
+    // the container stopped first.
+    const back = `   ${SITE_BACK}\n   ${LEAK_STOP}\n   ${CONF_EDIT}     # menumesh-leaktest:80 out of UPSTREAMS\n`;
     refuses(
       leakPieces,
       swap(
         RUNBOOK,
-        'site file); the container stopped; its `UPSTREAMS` entry taken out; and the owner deletes the',
-        'site file); the container stopped; and the owner deletes the',
-      ).replace(
-        '`menumesh.caddy` as it is',
-        'its `UPSTREAMS` entry taken out, then `menumesh.caddy` as it is',
+        back,
+        `   ${CONF_EDIT}     # menumesh-leaktest:80 out of UPSTREAMS\n   ${SITE_BACK}\n   ${LEAK_STOP}\n`,
       ),
-      'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
+      backOrder,
+    );
+    refuses(
+      leakPieces,
+      swap(
+        RUNBOOK,
+        back,
+        `   ${LEAK_STOP}\n   ${SITE_BACK}\n   ${CONF_EDIT}     # menumesh-leaktest:80 out of UPSTREAMS\n`,
+      ),
+      backOrder,
+    );
+    // The copy made from the repository's file, as before, and the copies left behind.
+    refuses(
+      leakPieces,
+      swap(
+        RUNBOOK,
+        `   ${LIVE_COPY}\n`,
+        '   cp ~/incoming/menumesh.caddy ~/incoming/menumesh-live.caddy\n',
+      ),
+      'the leak test’s site copy isn’t made from the installed menumesh.caddy',
+    );
+    refuses(
+      leakPieces,
+      swap(RUNBOOK, `   ${COPIES_GONE}\n`, ''),
+      'the leak test’s step 5 leaves its copies or its image on the server',
     );
   });
 
@@ -6284,10 +6725,20 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       edgeWindow,
       swap(
         RUNBOOK,
-        'then\n  recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared edge)',
-        'then recreate Caddy)',
+        'then recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared\n  edge, and check',
+        'then recreate Caddy, and check',
       ),
       'recreate Caddy without the 01:00 to 07:00 IST window',
+    );
+    // The recreate of step 11's way back without it.
+    refuses(
+      edgeWindow,
+      swap(
+        RUNBOOK,
+        `    ${RECREATE}     # between 01:00 and 07:00 IST, the same night\n`,
+        `    ${RECREATE}\n`,
+      ),
+      'sudo app-compose edge up -d without the 01:00 to 07:00 IST window',
     );
   });
 
@@ -6343,21 +6794,23 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     }
     for (const problem of [
       'doesn’t put the certificate and the snippet before edge.env',
-      'leaves a copy of edge.env that app-apply refused',
+      'leaves a copy of edge.env behind when the admin stops',
       'recreates Caddy without the server team’s digest pin',
     ]) {
       refuses(edgeNight, old, problem);
     }
-    // The recreate before edge.env, a refused copy kept, and the staging night without its check.
+    // The recreate before edge.env, a copy kept when the admin stops, and the staging night
+    // without its check.
+    const recreate = `    ${RECREATE}     # between 01:00 and 07:00 IST, on the night the owner picks\n`;
     refuses(
       edgeNight,
-      swap(RUNBOOK, `${EDGE_ENV}\n    ${RECREATE}`, `${RECREATE}\n    ${EDGE_ENV}`),
+      swap(swap(RUNBOOK, recreate, ''), `    ${EDGE_ENV}\n`, `${recreate}    ${EDGE_ENV}\n`),
       'doesn’t put the certificate and the snippet before edge.env, and the recreate right after it',
     );
     refuses(
       edgeNight,
-      swap(RUNBOOK, cut(RUNBOOK, ' A copy that\n', ' values too.'), ''),
-      'leaves a copy of edge.env that app-apply refused',
+      swap(RUNBOOK, cut(RUNBOOK, ' When the admin stops,', ' values too.'), ''),
+      'leaves a copy of edge.env behind when the admin stops',
     );
     refuses(
       edgeNight,
@@ -6426,7 +6879,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // 21a13bf's step 16, and its rehearsal's first step.
     refuses(
       originGate,
-      swap(RUNBOOK, cut(RUNBOOK, '16. Not before', 'The database, then the Supabase'), '16. '),
+      swap(RUNBOOK, cut(RUNBOOK, '16. Not before', 'Then the database, then the Supabase'), '16. '),
       'First install, step 16, starts db without waiting for the server team’s origin pulls',
     );
     refuses(
@@ -6437,6 +6890,25 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '',
       ),
       'the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls',
+    );
+    // ac976ce's step 16: the word in the chat alone, no proof on the server (VPS-143); a host of
+    // Jainav's left out; and the loop with no stop on an exit 0.
+    const unproved =
+      'First install, step 16, starts db without proving that Jainav’s hosts refuse a client without a certificate';
+    refuses(
+      originGate,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' Then, on the server and before `db`', ' Then the database,'),
+        '',
+      ),
+      unproved,
+    );
+    refuses(originGate, swap(RUNBOOK, ' analytics.jainavinfotech.in; do', '; do'), unproved);
+    refuses(
+      originGate,
+      swap(RUNBOOK, cut(RUNBOOK, '    If one ends in 0, stop:', ' Then the database,'), '   '),
+      unproved,
     );
   });
 
@@ -6569,17 +7041,207 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       'carries the kit.throwaway label',
     );
     // The container started before its UPSTREAMS entry goes in.
+    const entry = cut(RUNBOOK, '`menumesh-leaktest:80` goes into `UPSTREAMS` in', 'port 80); ');
+    refuses(
+      leakContainer,
+      swap(
+        swap(RUNBOOK, `${entry}port 80); `, ''),
+        '\n\n   then a copy',
+        `\n\n   then ${entry}port 80), and a copy`,
+      ),
+      'the leak test doesn’t put its UPSTREAMS entry in before the container starts',
+    );
+    // ac976ce's alert: `networks: …` every 5 minutes, without hostwatch's whole line, every run,
+    // and Telegram's once and every 6 hours (VPS-143).
     refuses(
       leakContainer,
       swap(
         RUNBOOK,
-        'order: `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test\n   (`<port>` is 80, where the image listens); the throwaway',
-        'order: the throwaway',
-      ).replace(
-        '\n\n   and a temporary copy',
-        '\n\n   then `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test (`<port>` is 80, where the image listens), and a temporary copy',
+        cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**'),
+        LEAK_TEST_AC976CE,
       ),
-      'the leak test doesn’t put its UPSTREAMS entry in before the container starts',
+      'the leak test doesn’t say hostwatch’s wrong-project alert comes while it runs',
+    );
+    refuses(
+      leakContainer,
+      swap(RUNBOOK, ': Telegram gets it once, then again\n   every 6 hours while it lasts.', '.'),
+      'the leak test doesn’t say hostwatch’s wrong-project alert comes while it runs',
+    );
+  });
+
+  it('merges edge.env as the server team’s edge.md §5, step 6, does, its names and lengths checked before the install, in step 11, Rotation, disaster recovery and the example (VPS-143)', () => {
+    expect(mergedCopy(RUNBOOK, EXAMPLE)).toEqual([]);
+    // ac976ce's step 11: `(echo; cat)`, which left a blank line after a copy that ended in its line
+    // end, and no check before the install.
+    const ac976ce = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '    `edge.env` comes last.', '    - (a) the server team'),
+      EDGE_ENV_AC976CE,
+    );
+    for (const words of [NEWLINE_GUARD, APPEND, NAMES_CHECK]) {
+      refuses(
+        (text) => mergedCopy(text, EXAMPLE),
+        ac976ce,
+        `First install, step 11, lacks ${words}`,
+      );
+    }
+    for (const problem of [
+      'doesn’t merge edge.env in the server team’s order',
+      'the RUNBOOK still appends to edge.env with (echo; cat)',
+      'doesn’t say what the check of names and lengths must show',
+      'keeps MenuMesh’s edge.env lines on the server alone',
+    ]) {
+      refuses((text) => mergedCopy(text, EXAMPLE), ac976ce, problem);
+    }
+    // The check after the install, when it can no longer stop it, and a check that prints values.
+    refuses(
+      (text) => mergedCopy(text, EXAMPLE),
+      swap(
+        swap(RUNBOOK, `    ${NAMES_CHECK}\n`, ''),
+        `    ${EDGE_ENV}\n`,
+        `    ${EDGE_ENV}\n    ${NAMES_CHECK}\n`,
+      ),
+      'doesn’t merge edge.env in the server team’s order',
+    );
+    refuses(
+      (text) => mergedCopy(text, EXAMPLE),
+      swap(RUNBOOK, 'printf "%s(%d) ", k, length($0) - i}', 'print}'),
+      `First install, step 11, lacks ${NAMES_CHECK}`,
+    );
+    // ac976ce's Rotation, its line edited in place, and disaster recovery's lines never merged.
+    refuses(
+      (text) => mergedCopy(text, EXAMPLE),
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, "- Staging's password:", '- The deploy key or the Access token'),
+        ROTATION_AC976CE,
+      ),
+      'Rotation doesn’t put staging’s new hash in through step 11’s merged copy',
+    );
+    refuses(
+      (text) => mergedCopy(text, EXAMPLE),
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '  8. The edge, by the admin:', '\n  9. The key off the ramfs'),
+        RECOVERY_EDGE_AC976CE,
+      ),
+      'disaster recovery’s edge doesn’t merge MenuMesh’s lines',
+    );
+    // ac976ce's example header: the copy and the install, but no newline guard, no check and no
+    // pointer to step 11.
+    const oldExample = swap(
+      EXAMPLE,
+      cut(EXAMPLE, '# of the live one.', "\n\n# Staging's basic auth"),
+      EXAMPLE_HEADER_AC976CE,
+    );
+    refuses(
+      (example) => mergedCopy(RUNBOOK, example),
+      oldExample,
+      `edge.env.example’s header lacks ${NEWLINE_GUARD}`,
+    );
+    refuses(
+      (example) => mergedCopy(RUNBOOK, example),
+      oldExample,
+      'edge.env.example’s header doesn’t point at First install, step 11',
+    );
+    // The placeholder the kit's bites need stays as it was.
+    expect(EXAMPLE).toContain("\nMENUMESH_STAGING_AUTH_HASH='$2a$14$replace-me'\n");
+  });
+
+  it('checks Caddy and the live tree after the recreate, with a way back from the edge.env app-apply keeps (VPS-143)', () => {
+    expect(recreateChecked(RUNBOOK, APP_APPLY)).toEqual([]);
+    // ac976ce's step 11: the recreate, and nothing after it.
+    const ac976ce = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '    `edge.env` comes last.', '    - (a) the server team'),
+      EDGE_ENV_AC976CE,
+    );
+    for (const problem of [
+      'doesn’t check Caddy and the live tree after the recreate',
+      'doesn’t say what the recreate’s checks show',
+      'doesn’t say where app-apply keeps the edge.env it replaced',
+    ]) {
+      refuses((text) => recreateChecked(text, APP_APPLY), ac976ce, problem);
+    }
+    // The validate left out, and the way back before the checks.
+    refuses(
+      (text) => recreateChecked(text, APP_APPLY),
+      swap(RUNBOOK, `    ${EDGE_VALIDATE}\n`, ''),
+      'doesn’t check Caddy and the live tree after the recreate',
+    );
+    // An app-apply that kept three copies, or under another folder, would make the step wrong.
+    refuses(
+      (appApply) => recreateChecked(RUNBOOK, appApply),
+      swap(APP_APPLY, 'if [ "${#copies[@]}" -gt 5 ]', 'if [ "${#copies[@]}" -gt 3 ]'),
+      'the vendored app-apply has no if [ "${#copies[@]}" -gt 5 ]',
+    );
+    refuses(
+      (appApply) => recreateChecked(RUNBOOK, appApply),
+      swap(APP_APPLY, 'KEEP_DIR=/var/lib/app-apply', 'KEEP_DIR=/var/backups/app-apply'),
+      'the vendored app-apply has no KEEP_DIR=/var/lib/app-apply',
+    );
+    refuses(
+      (appApply) => recreateChecked(RUNBOOK, appApply),
+      swap(APP_APPLY, 'say "the live edge tree is valid"', 'say "the edge is valid"'),
+      'the vendored app-apply has no say "the live edge tree is valid"',
+    );
+  });
+
+  it('checks that the edge networks are internal, with Caddy on each, where step 15 says they exist (VPS-143)', () => {
+    expect(networksChecked(RUNBOOK)).toEqual([]);
+    // ac976ce's step 15: the networks said to exist, and nothing to show it.
+    refuses(
+      networksChecked,
+      swap(RUNBOOK, cut(RUNBOOK, " Before it, the server team's check", '\n16. '), '\n'),
+      'First install, step 15, doesn’t check that both edge networks are internal',
+    );
+    refuses(
+      networksChecked,
+      swap(RUNBOOK, ' edge-menumesh edge-menumesh-staging\n', ' edge-menumesh\n'),
+      'First install, step 15, doesn’t check that both edge networks are internal',
+    );
+  });
+
+  it('passes the leak test’s headers on what the server team’s upstream snippet sets and removes, and runs the origin check again with a temporary accept rule (VPS-143)', () => {
+    expect(leakChecks(RUNBOOK, SNIPPETS, SITE)).toEqual([]);
+    // ac976ce's checks: "forged headers replaced" and "a temporary hPanel accept rule" alone.
+    const ac976ce = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**'),
+      LEAK_TEST_AC976CE,
+    );
+    for (const problem of [
+      'doesn’t say whoami prints header names as Go writes them',
+      'doesn’t pass on the headers the upstream snippet sets and removes',
+      'doesn’t run again with a temporary hPanel accept rule',
+    ]) {
+      refuses((text) => leakChecks(text, SNIPPETS, SITE), ac976ce, problem);
+    }
+    // A snippet that no longer removes Forwarded, or sets X-Real-IP from elsewhere: the step's
+    // pass would then say what the upstreams don't get.
+    refuses(
+      (snippets) => leakChecks(RUNBOOK, snippets, SITE),
+      swap(SNIPPETS, '\theader_up -Forwarded\n', ''),
+      'the server team’s upstream snippet doesn’t remove Forwarded',
+    );
+    refuses(
+      (snippets) => leakChecks(RUNBOOK, snippets, SITE),
+      swap(
+        SNIPPETS,
+        '\theader_up X-Real-IP {client_ip}\n',
+        '\theader_up X-Real-IP {remote_host}\n',
+      ),
+      'the server team’s upstream snippet doesn’t set X-Real-IP to the client’s address',
+    );
+    // A header of menumesh.caddy's own, which the echo server would not show for the app's hosts.
+    refuses(
+      (site) => leakChecks(RUNBOOK, SNIPPETS, site),
+      swap(
+        SITE,
+        '\treverse_proxy menumesh-web:3000 {\n\t\timport upstream\n',
+        '\treverse_proxy menumesh-web:3000 {\n\t\timport upstream\n\t\theader_up X-Menumesh 1\n',
+      ),
+      'menumesh.caddy sets a header of its own: header_up X-Menumesh 1',
     );
   });
 
@@ -6626,5 +7288,9 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(drillDays(rewrapped)).toEqual([]);
     expect(ownCA(rewrapped)).toEqual([]);
     expect(leakContainer(rewrapped)).toEqual([]);
+    expect(mergedCopy(rewrapped, EXAMPLE)).toEqual([]);
+    expect(recreateChecked(rewrapped, APP_APPLY)).toEqual([]);
+    expect(networksChecked(rewrapped)).toEqual([]);
+    expect(leakChecks(rewrapped, SNIPPETS, SITE)).toEqual([]);
   });
 });

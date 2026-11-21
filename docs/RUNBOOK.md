@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-140 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-143 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -843,28 +843,68 @@ else, or `app-apply` refuses the compose file.
     server rehearsal and the cut-over, part 3, step 1).
 
     `edge.env` comes last. From `app-apply edge env` until Caddy is recreated, `app-apply` refuses
-    every change that reloads Caddy, a site file, `edge config`, `edge redact` or `edge cert`, the
-    server team's own among them (`edge.env differs from what edge-caddy-1 was created with`). So
+    a site file and `edge cert`, `config`, `ranges`, `redact` and `reload`, the server team's own
+    among them (`edge.env differs from what edge-caddy-1 was created with`). So
     the order is the certificate, then the snippet, then (the redaction file in since step 9)
     `edge.env`, then the recreate, the last two on the same night, with nothing of the edge between
-    them. `app-apply edge env` puts the file it is given in place of the live one, so `edge.env` is
-    one merged file, as the server team's `edge.md` gives it: the live file copied, the two lines of
-    `deploy/vps/edge/edge.env.example` appended with the owner's hash on lines of their own (the
-    `echo` first: a live file whose last line has no line end would take the first of them into its
-    value, and a blank line is skipped), the copy installed and then shredded. A copy that
-    `app-apply` refuses is shredded all the same (`shred -u ~/incoming/edge.env`) unless it is
-    mended and run again at once: it holds the server team's values too.
+    them, as the server team's `edge.md` §5, steps 6 and 7, has it. `app-apply edge env` puts the
+    file it is given in place of the live one, so `edge.env` is one merged file, made as their
+    step 6 makes it: a copy of the live file that only the admin can read, its last line given a
+    line end if it has none, so that the first line added can't join the last value, then the two
+    lines of `deploy/vps/edge/edge.env.example`, the owner's hash (below) between the single
+    quotes, pasted into `cat >> ~/incoming/edge.env`, then Enter and Ctrl-D. `cat` expands nothing,
+    which matters for a hash full of `$`:
 
     ```sh
     (umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)
-    (echo; cat) >> ~/incoming/edge.env     # paste the two lines, the hash in its single quotes, then Ctrl-D
+    [ -z "$(tail -c1 ~/incoming/edge.env)" ] || echo >> ~/incoming/edge.env
+    cat >> ~/incoming/edge.env     # paste the two lines, press Enter, then Ctrl-D
+    ```
+
+    Then their check of the names and lengths, which prints no value:
+
+    ```sh
+    awk '/^[A-Za-z_][A-Za-z0-9_]*=/ {i = index($0, "="); k = substr($0, 1, i - 1); n[k]++; printf "%s(%d) ", k, length($0) - i} END {for (k in n) if (n[k] > 1) printf "TWICE:%s ", k; print ""}' ~/incoming/edge.env
+    ```
+
+    Every app's names show, the server team's `JAINAV_…` ones among them, none with `(0)`, no
+    `TWICE:`, then `MENUMESH_STAGING_AUTH_USER(8)`, for the user `menumesh` of `edge.env.example`,
+    and `MENUMESH_STAGING_AUTH_HASH(62)`: a 60-character bcrypt hash and its two quotes. Then the
+    install, and the copy goes only if it worked:
+
+    ```sh
     sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env
+    ```
+
+    If it refuses, the copy is fixed and the command run again. When the admin stops, either way,
+    the copy goes with `shred -u ~/incoming/edge.env`: it holds the server team's values too. The
+    two lines also go into the password manager, as the edge has no settings archive. Then the
+    recreate, and Caddy and the live tree checked:
+
+    ```sh
     sudo app-compose edge up -d     # between 01:00 and 07:00 IST, on the night the owner picks
+    sudo app-compose edge ps
+    sudo app-apply edge validate
+    ```
+
+    `edge-caddy-1` is `Up` and turns `(healthy)` within about a minute, and `validate` prints
+    `the live edge tree is valid`. If `up -d` fails or Caddy doesn't turn healthy, its output and
+    Caddy's journal (`sudo journalctl CONTAINER_NAME=edge-caddy-1 -n 20 -o cat --no-pager`) say
+    why; no site answers while Caddy is down. The way back puts back the `edge.env` this install
+    replaced and recreates Caddy again: `app-apply` keeps the last five it replaced as
+    `edge.env.<time>`, the time in UTC (`YYYYMMDDTHHMMSSZ`), in `/var/lib/app-apply/srv/edge/`
+    (`sudo ls` lists them), the newest the one from before this install. It holds until MenuMesh's
+    site file is in, whose `{$MENUMESH_…}` names need the two lines:
+
+    ```sh
+    sudo app-apply edge env /var/lib/app-apply/srv/edge/edge.env.<time>
+    sudo app-compose edge up -d     # between 01:00 and 07:00 IST, the same night
     ```
 
     The recreate drops every connection on the shared edge, hence the window. It also takes the
-    server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130): one recreate for
-    both. That night comes only after:
+    server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), whose
+    `app-apply edge compose` goes before `edge.env` too, as their `edge.md` §5, step 7, says: one
+    recreate for both. That night comes only after:
     - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit
       is refreshed on the server;
     - (b) `menumesh.in` is on Cloudflare (step 8), its Origin CA certificate made from a CSR
@@ -940,16 +980,34 @@ else, or `app-apply` refuses the compose file.
     mounts, checks that the two edge networks exist and are internal (they do: the server's Caddy
     has joined them since 2026-11-16; it would create a missing one), creates
     `/srv/menumesh/backup-out`, and pins the file's sha256: `app-deploy` refuses to deploy while the
-    installed file differs from it.
+    installed file differs from it. Before it, the server team's check of the two networks (their
+    `edge.md` §5, step 2), whose two lines each show `internal=true` and `edge-caddy-1`; where one
+    doesn't, their chat hears of it before the install:
+
+    ```sh
+    sudo docker network inspect -f '{{.Name}} internal={{.Internal}}:{{range .Containers}} {{.Name}}{{end}}' edge-menumesh edge-menumesh-staging
+    ```
+
 16. Not before the server team confirms in their chat that authenticated origin pulls are on and
     tested for every zone of the server, `jainavinfotech.in` included (their gate before an app's
     first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out): until
-    then this step, and every step after it, waits. The database, then the Supabase services:
+    then this step, and every step after it, waits. Then, on the server and before `db`'s first
+    container, the proof their `edge.md` §5, step 8, gives: a TLS connection without a client
+    certificate to each of Jainav's four hosts must fail in the handshake, every line ending in an
+    exit status other than 0:
+
+    ```sh
+    for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
+    ```
+
+    If one ends in 0, stop: the server team's round of origin pulls comes first, and this step
+    waits for it. Then the database, then the Supabase services:
     `sudo app-compose menumesh up -d db`, and once it is healthy
     (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows `db Up … (healthy)`),
     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each `(healthy)` in the same
     list within a minute. Auth and Storage make their own schemas at their first start, and the
     first migration needs them (VPS-39).
+
 17. **GitHub** (Secrets (VPS), below): the variables, `VPS_IMAGES` set to `true`, and the secrets;
     then Actions → **VPS ping**. While `VPS_IMAGES` is off, the backup image's and the release's
     workflows skip their job and push nothing; once it is on, each merge to `main` also builds the
@@ -1105,10 +1163,13 @@ recreates them; a `restart` keeps the old values.
   may have reached the server, they run on the rebuilt server only, as both put the backup key's
   private half on it (A stolen or leaked bucket token (VPS), step 5).
 - Staging's password: a new hash, made off the server as in First install, step 11, which the admin
-  puts in `edge.env` through that step's merged copy, its `MENUMESH_STAGING_AUTH_HASH` line given
-  the new hash in an editor, as a second line of that name is refused (`app-apply edge env`, then
-  recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared edge); the
-  GitHub secret `STAGING_SMOKE_BASIC_AUTH`; and the testers.
+  puts in `edge.env` through that step's merged copy, its old `MENUMESH_STAGING_AUTH_HASH` line
+  taken out of the copy before the newline guard, as a second line of that name is refused
+  (`sed -i '/^MENUMESH_STAGING_AUTH_HASH=/d' ~/incoming/edge.env`), and the new line alone pasted;
+  then that step's check of the names and lengths and its install and shred (`app-apply edge env`);
+  then recreate Caddy between 01:00 and 07:00 IST, as it drops every connection on the shared
+  edge, and check it as that step does. The new line takes the old one's place in the password
+  manager; then the GitHub secret `STAGING_SMOKE_BASIC_AUTH`; and the testers.
 - The deploy key or the Access token: a new key pair (the admin swaps the public half) or token,
   then the GitHub secrets.
 
@@ -1131,16 +1192,17 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 
 ### The server rehearsal and the cut-over
 
-The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129). Production starts fresh
-on the server: nothing is copied from hosted production, the first platform admin comes from a
-one-time link made on the server, and the settings edited by hand in `/super` are typed again
-(VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
-night, Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in
-a stop of their own (part 6). The contract's order holds: rehearse with the limits and no site
-file, then install the site file, then change DNS last. Each step says what it must show and its way
-back. The server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the
-Origin CA certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an
-app) and §6 (the leak test), `launch.md` and `cloudflare.md`.
+The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
+VPS-139, VPS-142 and VPS-143). Production starts fresh on the server: nothing is copied from hosted
+production, the first platform admin comes from a one-time link made on the server, and the
+settings edited by hand in `/super` are typed again (VPS-110). Staging moves on a night of its own
+before production's. For 14 days after production's night, Vercel and the paused hosted project
+stay the way back (part 5); then the Vercel parts go, in a stop of their own (part 6). The
+contract's order holds: rehearse with the limits and no site file, then install the site file, then
+change DNS last. Each step says what it must show and its way back. The server team's steps stay in
+their runbooks, named where they come: `edge.md` §3 (the Origin CA certificate from a CSR,
+authenticated origin pulls and their origin test), §5 (adding an app) and §6 (the leak test),
+`launch.md` and `cloudflare.md`.
 
 #### 1. Before the server (any day, each step reversible)
 
@@ -1327,48 +1389,85 @@ Then, in order:
    `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record
    moves (VPS-115), with MenuMesh's pieces in place of theirs: an app has one site file, whose hosts
    stay in its `ZONE` and whose upstreams are its `UPSTREAMS`. The admin, who runs the server's
-   steps, tells the server team's chat before the container starts. Their step 1 here, in this
-   order: `menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test
-   (`<port>` is 80, where the image listens); the throwaway container that answers with the
-   request's headers runs on `edge-menumesh` as `menumesh-leaktest` (an upstream is
-   `menumesh-<name>:<port>`), from an image pinned by its index digest and pulled first, so that a
-   failed pull shows on its own, with no capability, no new privileges and a read-only root, and
-   without the `kit.throwaway` label, which only `app-apply`'s own containers carry (`--rm` removes
-   it once it is stopped):
+   steps, tells the server team's chat before the container starts. First, on the server, as their
+   §6 begins, in this order: `menumesh-leaktest:80` goes into `UPSTREAMS` in
+   `/etc/apps/menumesh.conf` for the test (`sudoedit /etc/apps/menumesh.conf`; the image listens on
+   port 80); the throwaway container that answers with the request's headers runs on
+   `edge-menumesh` as `menumesh-leaktest` (an upstream is `menumesh-<name>:<port>`), from an image
+   pinned by its index digest and pulled first, so that a failed pull shows on its own, with no
+   capability, no new privileges and a read-only root, and without the `kit.throwaway` label, which
+   only `app-apply`'s own containers carry (`--rm` removes it once it is stopped):
 
    ```sh
    sudo docker pull traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
    sudo docker run -d --rm --name menumesh-leaktest --network edge-menumesh --network-alias menumesh-leaktest --memory 64m --cpus 0.25 --cap-drop ALL --security-opt no-new-privileges --read-only traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
    ```
 
-   and a temporary copy of `menumesh.caddy` with one more block, which imports what the others
-   import, is installed with `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:
+   then a copy of the installed `menumesh.caddy` (with `sudo`: `/srv/edge` is root's alone), kept
+   for step 5, and a second copy with one more block, which imports what the others import,
+   installed in its place:
 
-   ```text
+   ```sh
+   sudo cat /srv/edge/config/sites/menumesh.caddy > ~/incoming/menumesh-live.caddy
+   cp ~/incoming/menumesh-live.caddy ~/incoming/menumesh-leaktest.caddy
+   cat >> ~/incoming/menumesh-leaktest.caddy <<'EOF'
+
    https://leaktest.menumesh.in {
        import site_common
        import tls_menumesh
-       reverse_proxy menumesh-leaktest:<port> {
+       reverse_proxy menumesh-leaktest:80 {
            import upstream
        }
    }
+   EOF
+   sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy
    ```
 
-   Until the container stops, hostwatch raises a critical
-   `networks: … menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes (it is no service of
-   the compose project), which the chat expects, as for the server team's own test. Its
-   `--network-alias` keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's
-   network aliases, not its name), and its `--memory` and `--cpus` keep it from a limits alert.
-   Their steps 1 to 4 must then show: forged headers replaced; the log line without an address, a
-   header or a query, and a made-up 16-character `/t/` token in it shown as `/t/_`; nothing
-   answering straight on the server's addresses, IPv4 and IPv6, even with a temporary hPanel accept
-   rule; and a TLS connection without the client certificate refused (step 1's test, the leak
-   test's host added).
+   While the container runs, hostwatch's 5-minute check reports
+   `networks: edge network rules broken: menumesh-leaktest@edge-menumesh:wrong-project` on every
+   run, as critical (a container started with `docker run` is no service of a compose project),
+   which the chat expects, as for the server team's own test: Telegram gets it once, then again
+   every 6 hours while it lasts. Nothing else should show: its `--network-alias`, listed in
+   `UPSTREAMS`, keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's
+   network aliases, not its name), and its `--memory` and `--cpus` keep it out of the limits alert.
+   Their steps 1 to 4 must then show, with `zone=menumesh.in` set on the admin's machine for step
+   1's `curl`:
+   - forged headers replaced: the echo server prints the headers it got, their names as Go writes
+     them (`X-Real-Ip`, `Cf-Connecting-Ip`), and the four address headers, `X-Real-IP`,
+     `X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own
+     address, `X-Forwarded-Host` is `leaktest.menumesh.in`, and `True-Client-IP`, `X-Client-IP` and
+     `Forwarded` are absent. The server team's `upstream` snippet sets and removes them, and
+     `menumesh.caddy` adds no header of its own, so these are what `menumesh-web`, `menumesh-gw`
+     and `menumesh-web-staging` get;
+   - the log line without an address, a header or a query, and a made-up 16-character `/t/` token
+     in it shown as `/t/_`;
+   - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an
+     IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own
+     address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;
+   - and a TLS connection without the client certificate refused (step 1's test, the leak test's
+     host added).
 
-   Their step 5 here, in this order: `menumesh.caddy` as it is installed again,
-   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` (never removed: it is the zone's only
-   site file); the container stopped; its `UPSTREAMS` entry taken out; and the owner deletes the
-   `leaktest` record. Way back: the same four.
+   Their step 5 here, in their order: first `menumesh.caddy` back as it was installed, from the
+   kept copy (never removed: it is the zone's only site file), as the test block needs its
+   `UPSTREAMS` entry, and `app-apply edge validate`, which hostwatch runs daily, refuses a site
+   whose upstream isn't listed; then the container stopped (`--rm` removes it), so that hostwatch
+   never sees it outside `UPSTREAMS`; then its `UPSTREAMS` entry taken out:
+
+   ```sh
+   sudo app-apply menumesh site ~/incoming/menumesh-live.caddy
+   sudo docker stop menumesh-leaktest
+   sudoedit /etc/apps/menumesh.conf     # menumesh-leaktest:80 out of UPSTREAMS
+   ```
+
+   The owner deletes the `leaktest` record. Then the two copies and the image go:
+
+   ```sh
+   rm ~/incoming/menumesh-live.caddy ~/incoming/menumesh-leaktest.caddy
+   sudo docker image rm traefik/whoami@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+   ```
+
+   hostwatch's next run is clean, and the one after it sends "resolved". Way back: step 5, as
+   above, from wherever the test stopped.
 
 3. **The `staging` record**: Vercel's record replaced by an `A` record to the server's IPv4,
    proxied. Way back: Vercel's written-down value again, DNS only.
@@ -2430,9 +2529,12 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
 
   8. The edge, by the admin: the redaction file right after step 1's conf (First install, step 9),
      then new certificates from fresh CSRs, `aop-ca.pem`, `aop-client.pem` and `edge.env` from the
-     password manager, in First install, step 11's order, then the site file from this repository,
-     the leak test, and DNS to the new address. The origin pulls' CA and client certificate stay as
-     they were, the client pair at Cloudflare too.
+     password manager, in First install, step 11's order: MenuMesh's two lines merged into the new
+     server's `edge.env` through that step's copy, newline guard and `cat >>`, its check of the
+     names and lengths and its install and shred, unless that check, run on the copy first, shows
+     them there already; then Caddy's recreate and its checks, as there. Then the site file from
+     this repository, the leak test, and DNS to the new address. The origin pulls' CA and client
+     certificate stay as they were, the client pair at Cloudflare too.
   9. The key off the ramfs, then a settings archive and `backup.sh` run once by hand, so that a
      night of the new state exists, its base and its archive sealed (Last night's backup):
 

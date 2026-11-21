@@ -12012,6 +12012,116 @@ entries below.
   two new; `vps-runbook` 59, one new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0
   failed.
 
+- **VPS-143 · The RUNBOOK's edge steps follow the server team's merged `edge.md` §5 and §6 (their
+  `66c8c61`):** their onboarding PR merged `docs/runbooks/edge.md` with §5 (adding an app) and §6
+  (the leak test) written for any app, and the admin, on this server the owner, works from both
+  documents, so ours now gives the same procedure with MenuMesh's names in it. First install, step
+  11, merges `edge.env` as their §5, step 6, does: the copy under `umask 077`, then their newline
+  guard, `[ -z "$(tail -c1 ~/incoming/edge.env)" ] || echo >> ~/incoming/edge.env`, which gives the
+  copy's last line a line end only when it has none, then the two lines pasted into
+  `cat >> ~/incoming/edge.env`, Enter and Ctrl-D, as `cat` expands nothing of a hash full of `$`.
+  They replace `ac976ce`'s `(echo; cat) >>`, whose `echo` added a blank line at every merge, which
+  the parser skips, but which made the admin's steps differ from theirs. Then their check of the
+  names and lengths, the `awk` line copied from that step, which prints each name with its value's
+  length, and `TWICE:<name>` for a name set twice, never a value. Our admin must see every app's
+  names, the server team's `JAINAV_…` ones among them, none with `(0)`, no `TWICE:`,
+  `MENUMESH_STAGING_AUTH_USER(8)`, for the user `menumesh` of `edge.env.example` and of the kit's
+  throwaway `edge.env`, and `MENUMESH_STAGING_AUTH_HASH(62)`, a 60-character bcrypt hash and its two
+  quotes. Both lines ran here in Git Bash on samples in a scratch folder, deleted after: a copy
+  whose last line had no line end got one, and the first pasted line stayed a line of its own; a
+  copy that ended in its line end, and an empty one, got nothing; a 60-character bcrypt hash in
+  single quotes printed `(62)`, a name set twice `TWICE:` and an empty value `(0)`, and no sample's
+  value showed in the output; and the vendored `app-apply`'s `edge_env_hash_check`, sourced with
+  `env_prefixes` defined after, as its comment says, passed the merged sample and refused the
+  doubled name (`is set twice`). Then
+  `sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env`: if it refuses, the
+  copy is fixed and the command run again, and when the admin stops, either way, the copy is
+  shredded; the two lines go into the password manager, as the edge has no settings archive. What
+  `app-apply` refuses until the recreate is now their list, a site file and `edge cert`, `config`,
+  `ranges`, `redact` and `reload`, and the digest pin's `app-apply edge compose` goes before
+  `edge.env` too, as their step 7 says.
+
+  The recreate is checked as their step 7 checks it: `sudo app-compose edge ps` and
+  `sudo app-apply edge validate` after `up -d`, `edge-caddy-1` `Up` and `(healthy)` within about a
+  minute, and `the live edge tree is valid`, the vendored `cmd_edge_validate`'s own line; if not,
+  `up -d`'s output and Caddy's journal say why, and no site answers while Caddy is down. The way
+  back was read off the vendored `app-apply` before it was written: `keep_previous` keeps the file
+  an install replaces as `/var/lib/app-apply` plus that file's path and `.<stamp>`, the stamp
+  `date -u +%Y%m%dT%H%M%SZ`, five per file, so `/var/lib/app-apply/srv/edge/edge.env.<time>`, which
+  `sudo app-apply edge env` puts back (`cmd_edge_env` never waits for a recreate), before a second
+  recreate in the window. It holds until MenuMesh's site file is in, as `recheck_sites` then refuses
+  an `edge.env` without its `{$MENUMESH_…}` names. Rotation's new staging hash goes through the
+  same copy, its old `MENUMESH_STAGING_AUTH_HASH` line taken out first with
+  `sed -i '/^MENUMESH_STAGING_AUTH_HASH=/d' ~/incoming/edge.env`, as a second line of a name is
+  refused, the new line pasted alone, then the check, the install and shred, the recreate and its
+  checks, and the new line into the password manager, where `ac976ce` edited the line in an editor;
+  on a sample, the check showed each name once and `edge_env_hash_check` passed. Disaster recovery,
+  step 8, merges MenuMesh's two lines into the new server's `edge.env` the same way, unless the
+  check, run on the copy first, shows them there already: their §5 keeps an app's lines in the
+  password manager with the rest of `edge.env`, which their `backups.md` puts in whole on a new
+  server. Step 15 runs their §5, step 2, check where it says the networks exist,
+  `sudo docker network inspect -f '{{.Name}} internal={{.Internal}}:{{range .Containers}} {{.Name}}{{end}}' edge-menumesh edge-menumesh-staging`,
+  each line with `internal=true` and `edge-caddy-1`. Step 16 keeps `ac976ce`'s wait for their word
+  in the chat and adds their §5, step 8, proof before `db`'s first container: on the server, a TLS
+  connection without a client certificate to `jainavinfotech.in` and its `www`, `staging` and
+  `analytics` hosts must fail, each line an exit other than 0, and an exit 0 stops the step, as
+  their round of origin pulls comes first.
+
+  The leak test follows their §6. Its `UPSTREAMS` entry, by `sudoedit`, and its block's
+  `reverse_proxy` name `menumesh-leaktest:80`, where VPS-137 kept `<port>`. The test's site file is
+  a copy of the installed one, `sudo cat /srv/edge/config/sites/menumesh.caddy` (the path the
+  vendored `cmd_site` installs to) into `~/incoming/menumesh-live.caddy`, and a second copy with the
+  block appended, installed with `sudo app-apply menumesh site ~/incoming/menumesh-leaktest.caddy`:
+  their way rather than ours, as their step 5 then puts back exactly what was installed, where ours
+  put back `~/incoming/menumesh.caddy`, whatever that copy held by then. The heredoc's delimiter is
+  quoted, `<<'EOF'`, as nothing in it needs expanding once MenuMesh's names are written in (theirs
+  reads `$app` and `$zone`), and its first, empty line keeps the block off the copy's last line.
+  Step 5 goes in their order, where `ac976ce` kept it as VPS-137 wrote it: the kept copy back first,
+  never removing `menumesh.caddy`, as the test block needs its `UPSTREAMS` entry and the daily
+  `app-apply edge validate` refuses a site whose upstream isn't listed; then
+  `sudo docker stop menumesh-leaktest` (`--rm` removes it), so hostwatch never sees it outside
+  `UPSTREAMS`; then the entry out; the owner deletes the record; then the two copies and the image,
+  `sudo docker image rm traefik/whoami@sha256:…`; hostwatch's next run is clean and the one after
+  it sends "resolved" (`CLEAR_RUNS=2` at `66c8c61`). The expected alert is hostwatch's own line,
+  `networks: edge network rules broken: menumesh-leaktest@edge-menumesh:wrong-project`, on every
+  5-minute run, critical, which Telegram gets once and then every 6 hours while it lasts
+  (`REPEAT_SECS=21600`); nothing else should show, the alias in `UPSTREAMS` keeping
+  `not-an-upstream` away and the limits the `limits` alert, and there is no `kit.throwaway` label.
+  Their step 1 passes on what the echo server prints, header names as Go writes them (`X-Real-Ip`,
+  `Cf-Connecting-Ip`): the four address headers each holding the admin's own address,
+  `X-Forwarded-Host` the host, and `True-Client-IP`, `X-Client-IP` and `Forwarded` absent. The
+  vendored `upstream` snippet sets and removes exactly those, and `menumesh.caddy` adds no header of
+  its own, so they are what `menumesh-web`, `menumesh-gw` and `menumesh-web-staging` get. Their
+  step 3 runs `curl -4` and `curl -6` again with a temporary hPanel accept rule for the admin's own
+  address, removed after. Ours stays where MenuMesh differs: step 4's hosts are our site file's with
+  `leaktest.menumesh.in` (their loop names Jainav's), `zone=menumesh.in` is set for step 1's `curl`
+  alone, as our commands name MenuMesh outright, and the redaction file keeps its name in
+  `~/incoming`, `log-redact.caddy`, which can't be taken for the site file `menumesh.caddy`, the
+  reason for their `<app>-log-redact.caddy`; so do our step numbers, the admin who is the owner, and
+  `sudo journalctl`, as every journal command of our RUNBOOK has it (their `install.sh` puts `ops`
+  in `systemd-journal`, so theirs without works too).
+
+  `edge.env.example`'s header gives the guard and the check in brief and points at First install,
+  step 11, its placeholder line byte for byte. The range the RUNBOOK, `deploy/vps/README.md`,
+  `docs/SPEC.md`, `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header cite is now
+  VPS-31 to VPS-143, and the cut-over's intro cites VPS-109 to VPS-129, VPS-135 to VPS-137, VPS-139,
+  VPS-142 and VPS-143, the entries that changed it. Four new rules: `mergedCopy`, the copy, the
+  guard, `cat >>`, the check and the install in that order, what the check shows, the password
+  manager, no `(echo; cat)`, Rotation's and disaster recovery's merges and the example's header;
+  `recreateChecked`, the checks after the recreate, what they show, the journal and the way back,
+  and the vendored `app-apply`'s folder, stamp, count and validate line; `networksChecked`; and
+  `leakChecks`, step 1's headers held to the vendored snippet and to `menumesh.caddy`, and step 3's
+  rerun. `leakPieces` now holds the copy of the installed file and step 5's order, `leakContainer`
+  the `:80` entry and the alert's whole line, `originGate` the proof, and `edgeNight` the copy
+  shredded when the admin stops. On `23d02f6`'s RUNBOOK they report 28 problems (`mergedCopy` 11,
+  `leakPieces` 5, `leakContainer`, `recreateChecked` and `leakChecks` 3 each, `edgeNight`,
+  `originGate` and `networksChecked` 1 each), none on the fix, with refusal cases built from
+  `23d02f6`'s texts; `vps-runbook` has 63 tests (59 before), and the re-wrap test wraps 294 phrases
+  where it wrapped 272. No script and no service changed, so nothing was rehearsed again.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,327 in 72 files
+  (`vps-runbook` 63, four new); `pnpm vps:check` 55 checks, 0 failed, after `compose.yml`'s header
+  changed.
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
@@ -12030,18 +12140,28 @@ sudo 1.9.15p5, with `use_pty` and no input or output logging, hands a redirected
 through whole, its end of file included, and `app-compose`'s `exec -T` keeps it open and passes the
 exit code back (VPS-134).
 
-**Left open (server review):**
+**Left open (server review):** the two items that waited for the server team's PRs are done: their
+files copied again at the merge, with the kit's check through their `edge_env_hash_check` (VPS-141),
+and their `snippets.caddy` with `tls_menumesh` in place of ours, the kit's checks run with origin
+pulls on and the RUNBOOK's text moved to their file (VPS-142). Still open:
 
-- After the server team's scripts PR merges: copy their files again at the merge commit, and add the
-  kit check, through their `edge_env_hash_check`, that the example's placeholder hash is refused and
-  the kit's own Caddy-made hash passes.
-- After their onboarding PR merges: vendor their `snippets.caddy` with `tls_menumesh`, stop appending
-  ours in `vps-kit.mts`'s `snippets()` and delete `deploy/vps/edge/tls_menumesh.caddy`; run
-  `vps:check` and `vps:edge` with a throwaway origin-pulls CA and client pair, proving that a
-  handshake without the client certificate fails; and move the staging night's step 1 check text and
-  First install, step 11's snippet wording to their file.
-- The recreate night's date, which is the owner's (VPS-136).
-- The server team's origin-pulls round, which comes before our step 16 (VPS-135).
+- The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
+  since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
+  call.
+- The server team's origin-pulls round for `jainavinfotech.in`, which comes before our step 16: the
+  step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143).
+- The server team's fix for hostwatch's judged alerts, a separate PR still to come: since 2026-11-08
+  its 5-minute and daily runs send nothing to Telegram, as a function they call went missing, while
+  its heartbeat, `hostwatch alert`, the outbox and the daily digest still work. Until that fix is on
+  the server, `backup` turning unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137,
+  VPS-143) reach no one by Telegram, and `hostwatch check` shows them only to whoever runs it. A
+  dead shipper still raises the alarm by MenuMesh's own means: while the shipper runs,
+  `wal-ship.sh`'s own alert through MenuMesh's bot (`notify.sh`),
+  `[menumesh] WAL is not reaching the bucket …`, once a WAL file has waited over 10 minutes or
+  `db`'s archiver has failed for 10, at most once an hour; and the WAL monitor, whose pings
+  (`HEARTBEAT_WAL_URL`, every 5 minutes while all is well) stop with any of those and with a stopped
+  `backup` or a stuck crond, and which alerts after its 10 minutes' grace: the one signal of a
+  stopped `backup` (RUNBOOK, WAL alerts).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
