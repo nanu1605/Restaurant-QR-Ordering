@@ -11588,16 +11588,17 @@ entries below.
   run goes on (the image's BusyBox 1.37, run here: a minute's job ran every minute beside a 150 s
   one, which started again only once it had ended), so nothing allows for it. The schedulers'
   healthchecks stay, as `app-deploy` never deploys them. A one-off of `backup`, such as a night by
-  hand, gets the same healthcheck and fails it without crond, unhealthy after about 3 minutes, as
-  with `pidof crond` before. In `vps:backup-test`, `walProof`'s outage now makes the spool's files
-  and `last-sent` 25 minutes old (it was 15) and starts the container into them in the first 40 s of
-  a minute, so its first probe comes before crond's first run: healthy within the gate, the probe's
-  line "first seen now". Then, with the rehearsal's bucket stopped, a WAL file waiting in the outbox
-  and `last-sent` made 26 minutes old as the shipper and the mark 11 as root, the script exits 1
-  with its line (and Docker's own next probe failed with the same line), and once the bucket is back
-  and the file has gone up, it exits 0 and the mark is gone. `vps:rehearse`'s step 6 holds `web`
-  alone to the gate and says `app-deploy` never swaps the scheduler, whose wait is a plain 180 s
-  now, and its step 9 times `backup` against the gate. `walShipImage` pins the image's `COPY` with
+  hand, gets the same healthcheck and runs no crond: it turned unhealthy after about 3 minutes, as
+  with `pidof crond` before, until VPS-144 let it pass. In `vps:backup-test`, `walProof`'s outage
+  now makes the spool's files and `last-sent` 25 minutes old (it was 15) and starts the container
+  into them in the first 40 s of a minute, so its first probe comes before crond's first run:
+  healthy within the gate, the probe's line "first seen now". Then, with the rehearsal's bucket
+  stopped, a WAL file waiting in the outbox and `last-sent` made 26 minutes old as the shipper and
+  the mark 11 as root, the script exits 1 with its line, as does Docker's own next probe (which
+  `walProof` waits for since VPS-144), and once the bucket is back and the file has gone up, it
+  exits 0 and the mark is gone. `vps:rehearse`'s step 6 holds `web` alone to the gate and says
+  `app-deploy` never swaps the scheduler, whose wait is a plain 180 s now, and its step 9 times
+  `backup` against the gate. `walShipImage` pins the image's `COPY` with
   `wal-health.sh` and refuses the line without it, and the new `backupHealth` pins the healthcheck
   exactly, refusing the old `pidof crond` test and a copy without `start_interval`. The RUNBOOK's
   paragraph on a dead shipper gives the one filesystem, these numbers and the health, in place of a
@@ -12121,6 +12122,42 @@ entries below.
   `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,327 in 72 files
   (`vps-runbook` 63, four new); `pnpm vps:check` 55 checks, 0 failed, after `compose.yml`'s header
   changed.
+
+- **VPS-144 · A one-off of `backup` passes its healthcheck, and `walProof` waits for Docker's own
+  probe (the last review round, its code findings 1 and 2):** Compose gives a one-off of a service
+  the service's healthcheck. A one-off of a copy of `backup` on the rehearsal's backup image
+  (`run -d --no-deps … backup sleep 330`, in a throwaway project without a network) had
+  `wal-health.sh` with its `start_period` and `start_interval`, `init: true` and no restart policy,
+  and turned unhealthy 180 s after its start, every probe `crond is not running`: the probe at the
+  end of the start period counts, so the third failure comes at 3 minutes, as VPS-133 said, where
+  the review reckoned about 4. Each night by hand
+  (`run --rm --no-deps -T backup /usr/local/bin/backup.sh`: Last night's backup, the drill's way
+  past a rewind, the signing key's rotation, the WAL alerts' cut chain and disaster recovery) can
+  run longer, its base alone up to 2 hours, and hostwatch's 5-minute run reports every running
+  container that is unhealthy as critical, one-offs among them (`check_containers` at `66c8c61`), so
+  a routine step would page the owner once the server team's fix of its judged alerts is on the
+  server. `wal-health.sh` now reads process 1's command line first: under `init: true` it is
+  `docker-init`'s and then the container's command, so the service's own container names `crond`
+  there and goes through every check as before, and a one-off, which runs its own command, passes
+  with `wal-health: a one-off of backup, whose process 1 runs no crond: nothing to watch`. A command
+  line that can't be read fails, as a check that can't see must not pass. `pidof crond` stays, for a
+  service run without `init`: with it the container ends when crond does (a `kill` of crond in such
+  a copy ended it, exit 143). With the new script mounted, a one-off turned healthy at its first
+  probe with that line, and a copy running crond with `no WAL file has waited over 20 minutes`;
+  BusyBox's `tr '\0' ' '` reads `/proc/1/cmdline` there as root without capabilities. `walProof` now
+  also waits, after the script's own exit 1 on the stalled outbox, up to 130 s for a probe of
+  Docker's own that started after the aging and exited 1 with the same line, which VPS-133 had seen
+  but not checked (a probe between the two touches makes the mark and passes, so it may be the
+  second); and last, it starts a one-off of `backup` as the night by hand does,
+  `menumesh-rehearsal-backup-oneoff`, with `sleep 120` in place of `backup.sh`, which must be
+  healthy at Docker's first probe with the one-off's line, and removes it. `healthLog` gives each
+  probe's start. The new `oneOffHealth` pins the script's lines before its crond check (1 problem on
+  `0a35068`'s script, none on the fix), refusing that script, the unreadable case left out and a
+  crond matched as a substring. On the round's final tree `pnpm vps:backup-test` ran 131 checks, 0
+  failed (129 before), in about 34 minutes: Docker's own probe failed with the script's line 6.6 s
+  after it, the one-off was healthy in 2.4 s, and the service itself still went through every
+  check, healthy in 3.7 s in front of the 25-minute backlog with "first seen now"
+  (`vps:rehearse`'s step 9: 3.8 s).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

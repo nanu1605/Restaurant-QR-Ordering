@@ -440,6 +440,35 @@ const backupHealth = (text: string) => {
 };
 
 /**
+ * A one-off of backup, such as the night by hand (`run --rm --no-deps -T backup …`), gets the
+ * service's healthcheck but runs no crond, and turned unhealthy 3 minutes in, which hostwatch
+ * reports as critical. So wal-health.sh passes a container whose process 1 (docker-init, then the
+ * command, under init: true) runs no crond, before its crond check, and fails one whose process 1 it
+ * can't read, as a check that can't see must not pass (VPS-144).
+ */
+const ONE_OFF_PASS = [
+  "cmdline=$(tr '\\0' ' ' 2>/dev/null </proc/1/cmdline)",
+  'case " $cmdline " in',
+  "*' crond '* | *'/crond '*) ;;",
+  "'  ')",
+  "  echo \"wal-health: process 1's command line can't be read, so this container can't be told from a one-off\"",
+  '  exit 1',
+  '  ;;',
+  '*)',
+  "  echo 'wal-health: a one-off of backup, whose process 1 runs no crond: nothing to watch'",
+  '  exit 0',
+  '  ;;',
+  'esac',
+  'if ! pidof crond >/dev/null; then',
+].join('\n');
+const oneOffHealth = (script: string) =>
+  script.includes(ONE_OFF_PASS)
+    ? []
+    : [
+        'wal-health.sh does not pass a one-off of backup, whose process 1 runs no crond, before its crond check, or passes one whose process 1 it can’t read',
+      ];
+
+/**
  * The backup's signing key goes to the backup service alone; the restores get its public key,
  * which they check every night and WAL file against, and the shipper its heartbeat (VPS-43).
  */
@@ -969,6 +998,33 @@ describe('deploy/vps/compose.yml', () => {
       backupHealth,
       swapIn(compose, 'backup', '      start_interval: 2s\n', ''),
       'from a first probe at 2 s',
+    );
+  });
+
+  it('passes a one-off of backup, which runs no crond, and nothing it can’t tell from one (VPS-144)', () => {
+    const script = kit('backup/wal-health.sh');
+    expect(oneOffHealth(script)).toEqual([]);
+    // As 7cec66f had it: the crond check first, so the night by hand turned unhealthy.
+    refuses(
+      oneOffHealth,
+      swap(script, ONE_OFF_PASS, 'if ! pidof crond >/dev/null; then'),
+      'does not pass a one-off',
+    );
+    // A process 1 it can't read taken for a one-off, which would pass the service itself.
+    refuses(
+      oneOffHealth,
+      swap(
+        script,
+        "'  ')\n  echo \"wal-health: process 1's command line can't be read, so this container can't be told from a one-off\"\n  exit 1\n  ;;\n",
+        '',
+      ),
+      'or passes one whose process 1 it can’t read',
+    );
+    // A crond named by a substring, which would take any command line naming it for the service.
+    refuses(
+      oneOffHealth,
+      swap(script, "*' crond '* | *'/crond '*) ;;", '*crond*) ;;'),
+      'does not pass a one-off',
     );
   });
 

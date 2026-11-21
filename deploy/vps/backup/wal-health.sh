@@ -11,6 +11,12 @@
 # into a backlog. A new container started into a backlog it can't ship turns unhealthy about 12
 # minutes after its start, long after app-deploy is done.
 #
+# A one-off of the service, such as the night by hand (`app-compose menumesh run --rm --no-deps -T
+# backup /usr/local/bin/backup.sh`), gets this healthcheck too, but runs its own command and no
+# crond: it passes, as process 1's command line (docker-init's, then the command's, under init:
+# true) names no crond. The service's own container runs crond as that command and ends when crond
+# does.
+#
 # Root here holds no capability but SETUID and SETGID, so it reads only what root owns or everyone
 # may read, and the spool is db's postgres's 0700 (db's wal-spool.sh): the spool and the shipper's
 # own folder in /tmp are read as the image's crontab runs wal-ship.sh, as uid 100 and gid 101,
@@ -27,6 +33,20 @@ mark=/tmp/wal-health.stuck
 # The shipper, as the image's crontab runs wal-ship.sh.
 as_shipper() { gosu 100:101 "$@"; }
 
+# Process 1's command line, its arguments split by spaces: empty when it can't be read, which must
+# not pass for a one-off.
+cmdline=$(tr '\0' ' ' 2>/dev/null </proc/1/cmdline)
+case " $cmdline " in
+*' crond '* | *'/crond '*) ;;
+'  ')
+  echo "wal-health: process 1's command line can't be read, so this container can't be told from a one-off"
+  exit 1
+  ;;
+*)
+  echo 'wal-health: a one-off of backup, whose process 1 runs no crond: nothing to watch'
+  exit 0
+  ;;
+esac
 if ! pidof crond >/dev/null; then
   echo 'wal-health: crond is not running, so neither wal-ship.sh nor backup.sh runs'
   exit 1

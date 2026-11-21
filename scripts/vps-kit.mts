@@ -1804,13 +1804,20 @@ async function waitHealthy(service: string, limit: number, since: number): Promi
 const deployGate = () =>
   Number(/^HEALTH_TIMEOUT=(\d+)$/m.exec(read('test', 'menumesh.conf'))?.[1] ?? 300);
 
-/** A container's last health probes, oldest first (Docker keeps five): each one's exit and line. */
-function healthLog(id: string): { exit: number; line: string }[] {
+/**
+ * A container's last health probes, oldest first (Docker keeps five): each one's start, in ms of
+ * the daemon's clock, its exit and its line.
+ */
+function healthLog(id: string): { start: number; exit: number; line: string }[] {
   const run = docker(['inspect', '--format', '{{json .State.Health}}', id]);
   const health = JSON.parse(run.stdout.trim() || 'null') as {
-    Log?: { ExitCode: number; Output: string }[];
+    Log?: { Start: string; ExitCode: number; Output: string }[];
   } | null;
-  return (health?.Log ?? []).map((probe) => ({ exit: probe.ExitCode, line: probe.Output.trim() }));
+  return (health?.Log ?? []).map((probe) => ({
+    start: Date.parse(probe.Start),
+    exit: probe.ExitCode,
+    line: probe.Output.trim(),
+  }));
 }
 
 /** Runs `docker <first> | docker <second> > file` without a shell; both exit statuses. */
@@ -4126,8 +4133,9 @@ async function shipperPaths(checks: Checks, env: Record<string, string>) {
  * first probe finding no mark (VPS-133); once it runs, with its alert and heartbeat sent into the
  * sinkhole, its first run alerts and ships them, the next says it resumed and pings the heartbeat.
  * Then the bucket stopped: a WAL file waits in the outbox, made 26 minutes old with last-sent, and
- * with the healthcheck's mark 11 minutes old the service's wal-health.sh fails; once the bucket is
- * back and the file has gone up, it passes and its mark is gone.
+ * with the healthcheck's mark 11 minutes old the service's wal-health.sh fails, and so does Docker's
+ * own next probe; once the bucket is back and the file has gone up, it passes and its mark is gone.
+ * Last, a one-off of the service, as the night by hand runs one, is healthy at Docker's first probe.
  */
 async function walProof(checks: Checks, env: Record<string, string>) {
   // The service on the image just built, as app-deploy would bring it.
@@ -4272,14 +4280,32 @@ async function walProof(checks: Checks, env: Record<string, string>) {
   if (stale.status !== 0 || marked.status !== 0) {
     fail(`Aging the outbox, last-sent or the mark failed: ${stale.stderr}${marked.stderr}`);
   }
+  const stuck =
+    /^wal-health: the oldest WAL file has waited 2[6-9] minutes and none went up in the last 10, for 1[1-9] minutes now: WAL is not reaching the bucket/;
   const failing = docker(['exec', backup, '/usr/local/bin/wal-health.sh']);
   checks.expect(
     `the bucket stopped, ${held} waits in the outbox; made 26 minutes old with last-sent, and the healthcheck's mark 11, wal-health.sh exits ${failing.status}: "${failing.stdout.trim()}"`,
-    failing.status === 1 &&
-      /^wal-health: the oldest WAL file has waited 2[6-9] minutes and none went up in the last 10, for 1[1-9] minutes now: WAL is not reaching the bucket/.test(
-        failing.stdout,
-      ),
+    failing.status === 1 && stuck.test(failing.stdout),
     `${failing.stdout}${failing.stderr}`,
+  );
+  // And Docker's own probe, which app-deploy and hostwatch read: the next one after the aging, a
+  // minute apart, or the one after it when a probe between the two touches made the mark.
+  const waited = Date.now();
+  const dockerFailed = () =>
+    healthLog(backup).find((probe) => probe.start > now * 1000 && probe.exit === 1);
+  let probed = dockerFailed();
+  while (!probed && seconds(waited) < 130) {
+    await sleep(2000);
+    probed = dockerFailed();
+  }
+  checks.expect(
+    probed
+      ? `and Docker's own probe of the service, ${seconds(waited)} s later, exits ${probed.exit}: "${probed.line}"`
+      : `and no probe of Docker's own failed within ${seconds(waited)} s`,
+    probed !== undefined && stuck.test(probed.line),
+    healthLog(backup)
+      .map((probe) => `exit ${probe.exit}: ${probe.line}`)
+      .join('\n'),
   );
 
   // The bucket back: the file goes up, and the check passes and drops its mark.
@@ -4296,6 +4322,32 @@ async function walProof(checks: Checks, env: Record<string, string>) {
     sent.found.every((name) => name !== undefined) && passing.status === 0 && mark.status === 1,
     `${passing.stdout}${passing.stderr}`,
   );
+
+  // A one-off of the service, as the night by hand runs one (`run --rm --no-deps -T backup …`),
+  // with sleep for backup.sh: the same healthcheck, its own command and no crond, and healthy at
+  // Docker's first probe, so that hostwatch never reports the night by hand unhealthy.
+  const oneOff = `${PROJECT}-backup-oneoff`;
+  docker(['rm', '--force', oneOff]);
+  const ran = compose(['run', '-d', '--no-deps', '--name', oneOff, 'backup', 'sleep', '120']);
+  if (ran.status !== 0) fail(`A one-off of backup did not start:\n${tail(ran.stderr)}`);
+  try {
+    const since = Date.now();
+    let state = 'starting';
+    while (state === 'starting' && seconds(since) < 30) {
+      await sleep(1000);
+      state = docker(['inspect', '--format', '{{.State.Health.Status}}', oneOff]).stdout.trim();
+    }
+    const probes = healthLog(oneOff);
+    checks.expect(
+      `a one-off of backup, as the night by hand runs one, is ${state} in ${seconds(since)} s: "${probes.at(-1)?.line ?? ''}"`,
+      state === 'healthy' &&
+        probes.at(-1)?.line ===
+          'wal-health: a one-off of backup, whose process 1 runs no crond: nothing to watch',
+      probes.map((probe) => `exit ${probe.exit}: ${probe.line}`).join('\n'),
+    );
+  } finally {
+    docker(['rm', '--force', oneOff]);
+  }
 }
 
 async function rehearse(fresh: boolean, rebuild: boolean) {
