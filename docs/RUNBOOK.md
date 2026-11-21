@@ -857,9 +857,10 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     `CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
     the kit's `CADDY` (VPS-130). If any of them fails, stop and ask in their chat: the
     confirmation, the commit or the clone is wrong, and nothing is checked on the server. A newer
-    pin of theirs is the kit's to follow first: it is pinned again (Copying the server team's files
-    again, step 3) before that night. A confirmation without one of those values is asked about in
-    their chat too:
+    pin of theirs is the kit's to follow first: before that night, their files are copied again at
+    the confirmation's commit and `CADDY` pinned to exactly the image its `CADDY_IMAGE` line names
+    (Copying the server team's files again, steps 1 to 4). A confirmation without one of those
+    values is asked about in their chat too:
 
     ```sh
     git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum     # on the admin's machine, in Git Bash
@@ -889,14 +890,17 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
     The edge's `compose.yml`, its record and `CADDY_IMAGE` are theirs to mend. A copy of
     `snippets.caddy` is made only on their word in their chat to install it from a commit they name:
-    in Git Bash, its `sha256sum` the sum they give, or stop; then sent, installed, which checks
-    every installed site again, and taken out of `~/incoming`; then the check again:
+    in Git Bash, its `sha256sum` the sum they give, or stop; then sent, and on the server its
+    `sha256sum` that sum again, or stop, as a failed `scp` leaves whatever `~/incoming` held; then
+    installed, which checks every installed site again, and taken out of `~/incoming`; then the
+    check again:
 
     ```sh
     git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy     # on the admin's machine, in Git Bash
     sha256sum snippets.caddy     # the sum they give, or stop
     scp snippets.caddy ops@<the tunnel's SSH host>:incoming/
-    sudo app-apply edge config ~/incoming/snippets.caddy && rm ~/incoming/snippets.caddy     # on the server
+    sha256sum ~/incoming/snippets.caddy     # on the server, the sum they give, or stop
+    sudo app-apply edge config ~/incoming/snippets.caddy && rm ~/incoming/snippets.caddy
     ```
 
     For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no site
@@ -983,7 +987,9 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its
       token, the redaction file, the certificate with `aop-ca.pem`, and the check of the server
       team's latest confirmation, made after their confirmation of (a), which covers their snippet
-      and their digest pin, coming out `SAME`.
+      and their digest pin, coming out `SAME`. The check's server lines are run on that night
+      itself, before its `edge.env` lines (above): on a combined night that confirmation comes only
+      then.
 
     Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
     the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own
@@ -3096,10 +3102,10 @@ Supabase stack is only ever read.
   3. If their `edge.conf` names a new Caddy image, or the `CADDY_IMAGE` line of their latest
      confirmation does (First install, step 11), `CADDY` in `scripts/vps-kit.mts` becomes it: the
      tag with the digest `docker buildx imagetools inspect caddy:<tag>` shows, or exactly their
-     `<tag>@sha256:<digest>` when `edge.conf` pins one. `pnpm test` and `vps:check` refuse an
-     `edge.conf` that names neither `CADDY`'s tag nor exactly `CADDY`. The owner's hash command and
-     the `CADDY_IMAGE` line of First install, step 11, and the hash command in `edge.env.example`
-     name `CADDY` and move with it, as `pnpm test` requires.
+     `<tag>@sha256:<digest>` when `edge.conf` or that line pins one. `pnpm test` and `vps:check`
+     refuse an `edge.conf` that names neither `CADDY`'s tag nor exactly `CADDY`. The owner's hash
+     command and the `CADDY_IMAGE` line of First install, step 11, and the hash command in
+     `edge.env.example` name `CADDY` and move with it, as `pnpm test` requires.
   4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
      question for the server team.
 

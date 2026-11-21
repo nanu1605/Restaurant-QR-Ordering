@@ -116,7 +116,10 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * any edge config and before edge.env, SAME on those alone, with no copy on the server, DIFFERENT
  * given the live values, the confirmation's and its commit, a copy made only on their word, no
  * command of the pin left to the admin, and on a combined night their recreate on the pinned image
- * first, two recreates.
+ * first, two recreates; and since its review (VPS-148 too) what each half must print, line by
+ * line, the check's server lines run on the recreate night itself, the copy made on their word
+ * summed again on the server before its install, and a newer pin of theirs followed with their
+ * files copied again at the confirmation's commit.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2974,6 +2977,29 @@ const TWO_RECREATES = [
 /** The night's (d): steps 9 to 11 up to edge.env, the check of their confirmation last. */
 const D_CHECK =
   "and the check of the server team's latest confirmation, made after their confirmation of (a), which covers their snippet and their digest pin, coming out `SAME`";
+/**
+ * The check's time in (d): its server lines on the recreate night itself, before its edge.env
+ * lines, where (d) had made it a condition of that night, as (a) the refresh before VPS-146 (a
+ * review of d27acaf).
+ */
+const D_NIGHT =
+  "The check's server lines are run on that night itself, before its `edge.env` lines";
+/** (d) at d27acaf: the check a condition of the night, its server half among that night's lines. */
+const D_D27ACAF = [
+  '    - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its',
+  '      token, the redaction file, the certificate with `aop-ca.pem`, and the check of the server',
+  "      team's latest confirmation, made after their confirmation of (a), which covers their snippet",
+  '      and their digest pin, coming out `SAME`.',
+].join('\n');
+/**
+ * A newer pin of theirs: their files copied again at the confirmation's commit, CADDY pinned to its
+ * line's image, as caddyRefusal holds CADDY to the vendored edge.conf (a review of d27acaf).
+ */
+const REPIN =
+  "A newer pin of theirs is the kit's to follow first: before that night, their files are copied again at the confirmation's commit and `CADDY` pinned to exactly the image its `CADDY_IMAGE` line names";
+/** That sentence at d27acaf: CADDY pinned again under step 3 alone, the vendored edge.conf left. */
+const REPIN_D27ACAF =
+  " A newer pin of theirs is the kit's to follow first: it is pinned again (Copying the server team's files again, step 3) before that night.";
 
 /**
  * The edge in its order, and edge.env merged (the server team's review, their commitments 3 and 4;
@@ -2988,8 +3014,10 @@ const D_CHECK =
  * (VPS-148): no line of the RUNBOOK has the admin set CADDY_IMAGE, pull the image or run
  * `edge compose`, step 11 says the admin never changes the edge's compose.yml or CADDY_IMAGE, the
  * server's lines of the check of their latest confirmation come before the edge.env copy, every
- * CADDY_IMAGE line it names is the kit's CADDY, (d) waits for that check, and on a combined night
- * their recreate on the pinned image comes first, two recreates, where one took both before.
+ * CADDY_IMAGE line it names is the kit's CADDY, a newer pin of theirs is followed with their files
+ * copied again at the confirmation's commit, never CADDY alone, (d) waits for that check, whose
+ * server lines are that night's own, and on a combined night their recreate on the pinned image
+ * comes first, two recreates, where one took both before.
  */
 const edgeNight = (runbook: string) =>
   inPlaces(runbook, ['vps', 'edgeStep', 'beforeStaging'], ({ vps, edgeStep, beforeStaging }) => {
@@ -2997,6 +3025,7 @@ const edgeNight = (runbook: string) =>
     const order = [EDGE_CERT, EDGE_COPY, EDGE_ENV, RECREATE].map((words) => text.indexOf(words));
     const checked = [...SERVER_LINES, EDGE_COPY].map((words) => text.indexOf(words));
     const images = [...text.matchAll(/CADDY_IMAGE=(caddy:[^\s`'",]*)/g)].map((found) => found[1]);
+    const waits = part(text, ' - (d) ', ' Steps 12 to 21') ?? '';
     return [
       ...[CERT_INSTALL, AOP_CLIENT, EDGE_COPY, EDGE_ENV]
         .filter((words) => !text.includes(words))
@@ -3035,6 +3064,11 @@ const edgeNight = (runbook: string) =>
       ...(images.length > 0 && images.every((image) => image === CADDY)
         ? []
         : ['First install, step 11, takes a CADDY_IMAGE line other than the kit’s CADDY']),
+      ...(has(edgeStep, REPIN)
+        ? []
+        : [
+            'First install, step 11, follows a newer pin of theirs without their files copied again at the confirmation’s commit',
+          ]),
       ...(TWO_RECREATES.every((words) => has(edgeStep, words)) && !has(vps, 'one recreate for both')
         ? []
         : [
@@ -3044,6 +3078,11 @@ const edgeNight = (runbook: string) =>
         ? []
         : [
             'First install, step 11’s (d) doesn’t wait for the check of the server team’s latest confirmation',
+          ]),
+      ...(has(waits, D_NIGHT)
+        ? []
+        : [
+            'First install, step 11’s (d) holds the recreate night back for the check’s server lines, which are run on that night itself',
           ]),
       ...(has(beforeStaging, RECREATED)
         ? []
@@ -3062,7 +3101,7 @@ const SNIPPET_SUM = 'sha256sum snippets.caddy';
 const SNIPPET_COPY = "scp snippets.caddy ops@<the tunnel's SSH host>:incoming/";
 const SNIPPET = 'sudo app-apply edge config ~/incoming/snippets.caddy';
 /** That install's line in step 11's block, the copy taken out once it is in (VPS-148). */
-const SNIPPET_LINE = `    ${SNIPPET} && rm ~/incoming/snippets.caddy     # on the server\n`;
+const SNIPPET_LINE = `    ${SNIPPET} && rm ~/incoming/snippets.caddy\n`;
 /**
  * f6a33d5's server-side lines (VPS-147): the live file's sum, the copy's, and the two compared, the
  * comparison's SAME resting on whatever copy ~/incoming held (VPS-148).
@@ -3071,6 +3110,12 @@ const LIVE_SUM = 'sudo sha256sum /srv/edge/config/snippets.caddy';
 const COPY_SUM = 'sha256sum ~/incoming/snippets.caddy';
 const SNIPPET_CMP =
   'sudo cmp /srv/edge/config/snippets.caddy ~/incoming/snippets.caddy && echo SAME || echo DIFFERENT';
+/**
+ * The copy's sum again on the server, before its install, against the sum they give: a failed scp
+ * leaves whatever ~/incoming held, a copy an install refused or an earlier round left among it,
+ * which d27acaf's install put in (VPS-148, a review of d27acaf).
+ */
+const COPY_CHECK = `${COPY_SUM}     # on the server, the sum they give, or stop`;
 
 /**
  * tls_menumesh from the server team's snippets.caddy (their 66c8c61; VPS-142). Their file holds it
@@ -3121,10 +3166,14 @@ const VALUES_SENT =
 /** Step 11's words for the check's two halves, its two outcomes and the copy (VPS-148). */
 const IN_GIT_BASH = 'in Git Bash, not PowerShell';
 const FETCH = "(`git -C <their checkout> fetch` first, if it doesn't";
+/** What the admin's half must print, and the CADDY_IMAGE line it must see (a review of d27acaf). */
+const ADMIN_VALUES = `The two lines must print the confirmation's \`snippets.caddy\` and \`compose.yml\` sums, and its \`CADDY_IMAGE\` line must be \`CADDY_IMAGE=${CADDY}\``;
 const ADMIN_STOP =
   'If any of them fails, stop and ask in their chat: the confirmation, the commit or the clone is wrong, and nothing is checked on the server';
 const SAME_RULE =
   "`SAME`, what their night leaves: four lines, the confirmation's values in full, every character";
+/** Which of the confirmation's values each of SAME's four lines shows (a review of d27acaf). */
+const SAME_LINES = `${SAME_RULE}: its \`snippets.caddy\` sum before the first line's path, its \`compose.yml\` sum before the second's and the third's, and its \`CADDY_IMAGE\` line as the fourth`;
 const DIFFERENT_STOP =
   "`DIFFERENT`, anything else, a line missing or an error among them: stop, and ask in the server team's chat";
 const HELD = "Run none of this step's lines below until they answer, `edge.env`'s above all";
@@ -3154,7 +3203,12 @@ const RECOVERY_CHECK =
  * the confirmation's and its commit, holds the step's later lines, edge.env above all, and the
  * check runs again after their answer; and a copy of snippets.caddy is made, its sum checked
  * before the scp, and installed only on their word. The staging night's exit 0 and disaster
- * recovery's edge, before its edge.env lines, take the same check and give the same values.
+ * recovery's edge, before its edge.env lines, take the same check and give the same values. Its
+ * review (VPS-148 too) found what each half must print unpinned, and the copy installed unchecked
+ * on the server, where a failed scp leaves whatever ~/incoming held: so the rule also holds the
+ * admin's two lines to the confirmation's two sums and its CADDY_IMAGE line to CADDY, SAME to its
+ * values line by line, and the copy to its sum on the server, the sum they give, after the scp and
+ * before the install, a copy's sum being refused in the check alone.
  */
 const snippetGuard = (runbook: string) =>
   inPlaces(
@@ -3171,6 +3225,9 @@ const snippetGuard = (runbook: string) =>
       );
       const installed = copy[copy.length - 1];
       const merged = text.indexOf(EDGE_COPY);
+      // The check, up to the copy made on their word, which alone may read a copy's sum.
+      const check = word >= 0 ? text.slice(0, word) : text;
+      const received = word >= 0 ? text.indexOf(flat(COPY_CHECK), word) : -1;
       return [
         ...(has(vps, TREE_COPY)
           ? ['the RUNBOOK sends snippets.caddy from a working tree, at whatever commit it has']
@@ -3190,6 +3247,11 @@ const snippetGuard = (runbook: string) =>
           : [
               'First install, step 11, doesn’t fetch the clone first when it lacks the confirmation’s commit',
             ]),
+        ...(has(edgeStep, ADMIN_VALUES)
+          ? []
+          : [
+              'First install, step 11, doesn’t say that the admin’s two lines must print the confirmation’s two sums, and its CADDY_IMAGE line be the kit’s CADDY',
+            ]),
         ...(has(edgeStep, ADMIN_STOP)
           ? []
           : ['First install, step 11, goes on when the confirmation fails on the admin’s machine']),
@@ -3204,7 +3266,7 @@ const snippetGuard = (runbook: string) =>
         ...(last >= 0 && merged >= 0 && merged < last
           ? ['First install, step 11, reaches edge.env before it checks the server’s live values']
           : []),
-        ...([COPY_SUM, 'cmp /srv/edge/config/snippets.caddy'].some((words) => text.includes(words))
+        ...(check.includes(COPY_SUM) || text.includes('cmp /srv/edge/config/snippets.caddy')
           ? [
               'First install, step 11, goes by a copy on the server, which one left from an earlier night can match',
             ]
@@ -3213,6 +3275,11 @@ const snippetGuard = (runbook: string) =>
           ? []
           : [
               'First install, step 11, doesn’t hold SAME to the confirmation’s values in full, every character',
+            ]),
+        ...(has(edgeStep, SAME_LINES)
+          ? []
+          : [
+              'First install, step 11, doesn’t say which of the confirmation’s values each of SAME’s four lines shows',
             ]),
         ...(has(edgeStep, DIFFERENT_STOP)
           ? []
@@ -3238,6 +3305,11 @@ const snippetGuard = (runbook: string) =>
           ? []
           : [
               'First install, step 11, makes its copy of snippets.caddy without the server team’s word, or sends it before sha256sum shows their sum',
+            ]),
+        ...(copy[2] >= 0 && received > copy[2] && received < installed
+          ? []
+          : [
+              'First install, step 11, installs its copy of snippets.caddy unchecked on the server, where a failed scp leaves whatever ~/incoming held',
             ]),
         ...(has(edgeStep, THEIR_FILE)
           ? []
@@ -4426,6 +4498,16 @@ const REWRAPPED = [
   'comes first, on the pinned image, with their `edge ps` and `validate`',
   'one follows, two recreates that night',
   'made after their confirmation of (a)',
+  // Read by the rules of that check's review (VPS-148 too): a piece of each phrase that stands on
+  // one line.
+  '`snippets.caddy` and `compose.yml` sums, and its `CADDY_IMAGE` line must be',
+  'their files are copied again at',
+  'pinned to exactly the image its `CADDY_IMAGE` line names',
+  "its `snippets.caddy` sum before the first line's path",
+  "before the second's and the third's, and its `CADDY_IMAGE` line as the fourth",
+  COPY_SUM,
+  'on the server, the sum they give, or stop',
+  "The check's server lines are run on that night",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7281,7 +7363,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('puts the edge in in its order, edge.env merged, the digest pin left to the server team and their latest confirmation checked before edge.env, Caddy recreated after their own recreate on a combined night, and checks the recreate before the staging night (the server team’s review, VPS-136, VPS-148)', () => {
+  it('puts the edge in in its order, edge.env merged, the digest pin left to the server team, a newer one followed with their files copied again, and their latest confirmation checked before edge.env on that night itself, Caddy recreated after their own recreate on a combined night, and checks the recreate before the staging night (the server team’s review, VPS-136, VPS-148)', () => {
     expect(edgeNight(RUNBOOK)).toEqual([]);
     // 21a13bf's step 11: the certificate without aop-ca.pem, and edge.env as MenuMesh's two lines.
     const old = swap(
@@ -7369,14 +7451,42 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, cut(RUNBOOK, '    - (d) steps 9 to 11', '\n\n    Steps 12 to 21'), D_F6A33D5),
       '(d) doesn’t wait for the check of the server team’s latest confirmation',
     );
+    // d27acaf's (d), which made the check a condition of the night, though its server half is among
+    // that night's lines; the time dropped; and the time moved out of (d).
+    const heldBack = '(d) holds the recreate night back for the check’s server lines';
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, cut(RUNBOOK, '    - (d) steps 9 to 11', '\n\n    Steps 12 to 21'), D_D27ACAF),
+      heldBack,
+    );
+    const dTime = cut(RUNBOOK, " The check's server lines are run", '\n\n    Steps 12 to 21');
+    refuses(edgeNight, swap(RUNBOOK, dTime, ''), heldBack);
+    refuses(
+      edgeNight,
+      swap(
+        swap(RUNBOOK, dTime, ''),
+        ' That night comes only after:',
+        `${dTime} That night comes only after:`,
+      ),
+      heldBack,
+    );
+    // d27acaf's newer pin, CADDY pinned again under step 3 alone, which pnpm test refuses while the
+    // vendored edge.conf names the old digest.
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, cut(RUNBOOK, ' A newer', ' A confirmation without'), REPIN_D27ACAF),
+      'follows a newer pin of theirs without their files copied again at the confirmation’s commit',
+    );
     for (const problem of [
       'doesn’t put the certificate and the snippet before edge.env',
       'leaves a copy of edge.env behind when the admin stops',
       'doesn’t leave the edge’s compose.yml and CADDY_IMAGE to the server team',
       'reaches edge.env before the check of the server team’s latest confirmation',
       'takes a CADDY_IMAGE line other than the kit’s CADDY',
+      'follows a newer pin of theirs without their files copied again',
       'doesn’t put the server team’s recreate on the pinned image first',
       '(d) doesn’t wait for the check of the server team’s latest confirmation',
+      heldBack,
     ]) {
       refuses(edgeNight, old, problem);
     }
@@ -7872,7 +7982,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(alertsFixed, swap(RUNBOOK, ", or as that night's first step", ''), heldBack);
   });
 
-  it('checks the server team’s latest confirmation, first at its commit in Git Bash, the clone fetched first, then on the server before any edge config and edge.env, SAME on the live values alone with no copy on the server, and stops on DIFFERENT for their answer, given the live values, the confirmation’s and its commit, a copy made only on their word (VPS-147, VPS-148)', () => {
+  it('checks the server team’s latest confirmation, first at its commit in Git Bash, the clone fetched first, then on the server before any edge config and edge.env, SAME on the live values alone with no copy on the server, line by line, and stops on DIFFERENT for their answer, given the live values, the confirmation’s and its commit, a copy made only on their word and summed again on the server before its install (VPS-147, VPS-148)', () => {
     expect(snippetGuard(RUNBOOK)).toEqual([]);
     // b2558c3's block: a working tree's file, at whatever commit it had, sent unchecked and
     // installed whole.
@@ -7886,13 +7996,16 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       'the RUNBOOK takes snippets.caddy at that commit or a later one',
       'doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
       'doesn’t fetch the clone first',
+      'doesn’t say that the admin’s two lines must print the confirmation’s two sums',
       'goes on when the confirmation fails on the admin’s machine',
       'doesn’t read the server’s live values after the admin’s check',
       'doesn’t hold SAME to the confirmation’s values in full',
+      'doesn’t say which of the confirmation’s values each of SAME’s four lines shows',
       'doesn’t stop on DIFFERENT, anything but SAME, and ask the server team in their chat',
       'doesn’t give the server team the live values',
       'goes on after DIFFERENT without the check SAME again',
       'makes its copy of snippets.caddy without the server team’s word',
+      'installs its copy of snippets.caddy unchecked on the server',
       'doesn’t say the server’s snippets.caddy is always the server team’s file',
     ]) {
       refuses(snippetGuard, old, problem);
@@ -7911,15 +8024,19 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     for (const problem of [
       'goes by a copy on the server, which one left from an earlier night can match',
       'doesn’t check the confirmation’s two sums at its commit with git show in Git Bash',
+      'doesn’t say that the admin’s two lines must print the confirmation’s two sums',
       'doesn’t read the server’s live values after the admin’s check',
       'doesn’t hold SAME to the confirmation’s values in full',
+      'doesn’t say which of the confirmation’s values each of SAME’s four lines shows',
       'doesn’t give the server team the live values',
       'goes on after DIFFERENT without the check SAME again',
       'makes its copy of snippets.caddy without the server team’s word',
+      'installs its copy of snippets.caddy unchecked on the server',
     ]) {
       refuses(snippetGuard, compared, problem);
     }
-    // f6a33d5's cmp alone, or the copy's sum alone, beside the new lines: still a copy gone by.
+    // f6a33d5's cmp alone, or the copy's sum alone, beside the new lines: still a copy gone by;
+    // and the copy's sum moved from the copy made on their word into the check.
     const byCopy = 'goes by a copy on the server';
     refuses(
       snippetGuard,
@@ -7927,6 +8044,52 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       byCopy,
     );
     refuses(snippetGuard, swap(RUNBOOK, SERVER_BLOCK, `${SERVER_BLOCK}    ${COPY_SUM}\n`), byCopy);
+    refuses(
+      snippetGuard,
+      swap(
+        swap(RUNBOOK, `    ${COPY_CHECK}\n`, ''),
+        SERVER_BLOCK,
+        `${SERVER_BLOCK}    ${COPY_CHECK}\n`,
+      ),
+      byCopy,
+    );
+    // d27acaf's copy, installed from whatever ~/incoming held; its sum on the server with no value
+    // to be held to; and that sum before the scp, which a failed scp leaves passing.
+    const unchecked = 'installs its copy of snippets.caddy unchecked on the server';
+    refuses(snippetGuard, swap(RUNBOOK, `    ${COPY_CHECK}\n`, ''), unchecked);
+    refuses(
+      snippetGuard,
+      swap(RUNBOOK, `    ${COPY_CHECK}\n`, `    ${COPY_SUM}     # on the server\n`),
+      unchecked,
+    );
+    refuses(
+      snippetGuard,
+      swap(
+        swap(RUNBOOK, `    ${COPY_CHECK}\n`, ''),
+        `    ${SNIPPET_COPY}\n`,
+        `    ${COPY_CHECK}\n    ${SNIPPET_COPY}\n`,
+      ),
+      unchecked,
+    );
+    // What each half must print dropped: the admin's two sums, and SAME's line for each value.
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        " The two lines must print the\n    confirmation's `snippets.caddy` and `compose.yml` sums, and its `CADDY_IMAGE` line must be\n",
+        ' Its `CADDY_IMAGE` line must be\n',
+      ),
+      'doesn’t say that the admin’s two lines must print the confirmation’s two sums',
+    );
+    refuses(
+      snippetGuard,
+      swap(
+        RUNBOOK,
+        "character: its `snippets.caddy` sum before the first line's path, its `compose.yml` sum\n      before the second's and the third's, and its `CADDY_IMAGE` line as the fourth. Nothing is\n      installed,",
+        'character. Nothing is installed,',
+      ),
+      'doesn’t say which of the confirmation’s values each of SAME’s four lines shows',
+    );
     // The check after edge config, and after edge.env.
     refuses(
       snippetGuard,
