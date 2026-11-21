@@ -1,7 +1,10 @@
 # MenuMesh's sites on the shared edge (docs/DECISIONS.md VPS-37). The owner installs this file with
 # `sudo app-apply menumesh site menumesh.caddy`, which checks it against the edge's rules first;
 # deploys never touch it. The hosts are literal, so edge.env holds only staging's basic-auth pair.
-# No regexp here may hold {...}: Caddy would read it as a placeholder.
+# No regexp here may hold {...}: Caddy would read it as a placeholder. Each block imports the
+# edge's site_common and tls_menumesh, both in the server team's snippets.caddy: tls_menumesh's
+# client_auth takes a connection only with a client certificate that the owner's CA (aop-ca.pem)
+# signed, the one Cloudflare presents (docs/DECISIONS.md VPS-142).
 
 # The app. Next.js caps a server action at 2 MiB and the app caps a webhook at 1 MB.
 https://menumesh.in {

@@ -17,8 +17,11 @@
 #                          vps-kit.mts ran on the host with caddy_run's own flags, once it has
 #                          compared the files with the ones adapted there
 #
-#   kit-check.sh prepare   a throwaway certificate in /out/certs, and /out/edge.env parsed as
-#                          app-apply parses edge.env, for vps-kit.mts's Caddy runs
+#   kit-check.sh prepare   for vps-kit.mts's Caddy runs: a throwaway certificate in /out/certs,
+#                          with a throwaway origin pulls CA beside it (aop-ca.pem), its client
+#                          pair in /out/aop and another CA's in /out/aop-other; and /out/edge.env
+#                          parsed as app-apply parses edge.env, which app-apply edge env's own
+#                          checks must take
 #   kit-check.sh check     the compose file, the contract's own rules and the edge files; then
 #                          broken copies of each, which every rule must refuse
 #
@@ -304,6 +307,28 @@ edge_case() { # edge_case env|site|redact <file>
   )
 }
 
+# What edge_env_hash_check, the entry point app-apply keeps for other apps' kit checks, prints for
+# an edge.env file, then its status: the checks app-apply edge env runs before it installs
+# anything, edge_env_parse and then check_auth_hashes (every *_AUTH_HASH a 60-character bcrypt
+# hash). It works in a directory of its own; its env_prefixes reads the confs install_server put in
+# /etc/apps, MenuMesh's among them, so it needs no stub.
+hash_check() { # hash_check <edge.env file>
+  (
+    setup_lib
+    edge_env_hash_check "$1"
+    printf 'status %s\n' "$?"
+  )
+}
+expect_hash() { # expect_hash <name> <what hash_check printed> [<text its refusal must hold>]
+  if [ -z "${3-}" ]; then
+    if [ "$2" = 'status 0' ]; then ok "$1"; else bad "$1" "refused, but should pass" "$2"; fi
+  elif [[ $2 == *"$3"* && $2 == *$'\n''status 1' ]]; then
+    ok "$1"
+  else
+    bad "$1" "not refused with status 1 for: $3" "$2"
+  fi
+}
+
 # What the site file's JSON check (app-apply menumesh site, check 2) refuses in Caddy's adapted
 # config. caddy_run replays the host's adapt (/out/adapt), once the three files app-apply put
 # together for it are the ones the host adapted; <json> is what it hands back.
@@ -357,6 +382,9 @@ edge_bite() { # edge_bite <name> <env|site|redact> <file> <text the refusal hold
 check_edge() {
   local site=$kit/edge/menumesh.caddy redact=$kit/edge/log-redact.caddy env=$kit/edge/edge.env.example
   expect_clean 'edge.env.example passes edge_env_parse' "$(edge_case env "$env")"
+  # app-apply edge env's install path refuses the example as it is: its placeholder is no hash.
+  expect_hash 'edge_env_hash_check (app-apply edge env'"'"'s checks) refuses edge.env.example'"'"'s placeholder hash' \
+    "$(hash_check "$env")" 'MENUMESH_STAGING_AUTH_HASH holds no bcrypt hash'
   expect_clean 'menumesh.caddy passes app-apply menumesh site, check 1 (the text)' "$(edge_case site "$site")"
   if [ -s "$out/adapt/adapted.json" ] && [ -s "$out/adapt/status" ]; then
     expect_clean 'menumesh.caddy passes app-apply menumesh site, check 2 (Caddy'"'"'s adapted JSON)' \
@@ -401,9 +429,25 @@ check_edge() {
 
 # --- prepare: what the host's Caddy runs need ---
 
+# The origin pulls' CA and a client certificate it signs, made in a new folder with First install,
+# step 8's own lines (docs/RUNBOOK.md) but for the folder, the subjects and the days, which
+# tests/unit/vps-kit.test.ts holds to step 8's. So vps:edge, whose requests present this client
+# certificate to Caddy's client_auth, also shows that the owner's commands make a pair it takes. In
+# a subshell, which keeps the umask and the cd to itself.
+aop_pair() ( # aop_pair <folder> <name in the subjects>
+  umask 077 && mkdir "$1" && cd "$1" &&
+    printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext &&
+    printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext &&
+    openssl req -new -newkey rsa:2048 -nodes -subj "/CN=$2 origin pulls CA" -keyout aop-ca-key.pem -out aop-ca.csr &&
+    openssl x509 -req -sha256 -days 2 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem &&
+    openssl req -new -newkey rsa:2048 -nodes -subj "/CN=$2 origin pulls" -keyout aop-client-key.pem -out aop-client.csr &&
+    openssl x509 -req -sha256 -days 2 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem &&
+    openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
+)
+
 prepare() {
   local dir=$out/certs/menumesh
-  mkdir -p "$dir"
+  mkdir -p "$dir" "$out/aop" "$out/aop-other"
   # A throwaway pair for the zone's names; the server's is Cloudflare's Origin CA certificate.
   if openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 \
     -subj '/CN=menumesh.in' -addext 'subjectAltName=DNS:menumesh.in,DNS:*.menumesh.in' \
@@ -415,6 +459,28 @@ prepare() {
   else
     bad 'a throwaway certificate for menumesh.in and *.menumesh.in' 'openssl failed' "$(cat "$T/openssl.err")"
   fi
+  # The origin pulls' CA goes beside it as app-apply edge cert installs aop-ca.pem, 0644: the
+  # server team's tls_menumesh trusts it alone (client_auth), and Caddy reads it once a site
+  # imports that snippet. Its client pair goes to /out/aop, for vps:edge's requests to present as
+  # Cloudflare presents the owner's. The CA keys stay in this container, as the owner's stays off
+  # the server.
+  if aop_pair "$T/aop" kit-check >"$T/aop.out" 2>&1 &&
+    install -m 0644 "$T/aop/aop-ca.pem" "$dir/aop-ca.pem" &&
+    install -m 0644 "$T/aop/aop-client.pem" "$out/aop/aop-client.pem" &&
+    install -m 0600 "$T/aop/aop-client-key.pem" "$out/aop/aop-client-key.pem"; then
+    ok 'a throwaway origin pulls CA in certs/menumesh/aop-ca.pem and its client pair, made with First install, step 8'"'"'s commands'
+  else
+    bad 'a throwaway origin pulls CA in certs/menumesh/aop-ca.pem and its client pair, made with First install, step 8'"'"'s commands' \
+      'openssl or install failed' "$(cat "$T/aop.out")"
+  fi
+  # A client pair from another CA, made the same way, for the handshakes Caddy must refuse.
+  if aop_pair "$T/aop-other" 'kit-check other' >"$T/aop-other.out" 2>&1 &&
+    install -m 0644 "$T/aop-other/aop-client.pem" "$out/aop-other/aop-client.pem" &&
+    install -m 0600 "$T/aop-other/aop-client-key.pem" "$out/aop-other/aop-client-key.pem"; then
+    ok 'a client pair from another throwaway CA'
+  else
+    bad 'a client pair from another throwaway CA' 'openssl or install failed' "$(cat "$T/aop-other.out")"
+  fi
   # edge.env as app-apply hands it to docker run --env-file (edge_env_parse): the host's Caddy
   # runs read /out/edge.docker.
   expect_clean 'the throwaway edge.env passes edge_env_parse' "$(
@@ -422,9 +488,14 @@ prepare() {
     edge_env_parse "$out/edge.env" "$out/edge"
     cat "$work/problems"
   )"
+  # And the checks app-apply edge env runs before its first finish take it: its staging hash, from
+  # the pinned Caddy's hash-password --algorithm bcrypt, is the 60-character bcrypt hash that
+  # check_auth_hashes wants. A refusal stops the run before any Caddy reads the file.
+  expect_hash 'the throwaway edge.env passes edge_env_hash_check (app-apply edge env'"'"'s checks), its staging hash with it' \
+    "$(hash_check "$out/edge.env")"
   # Root made these in a folder of the host's user, who removes it afterwards: on a Linux host
   # the files must be that user's (Docker Desktop's mounts take no owner).
-  chown -R "$(stat -c %u:%g "$out")" "$out/certs" "$out/edge.docker" "$out/edge.keys" 2>/dev/null || true
+  chown -R "$(stat -c %u:%g "$out")" "$out/certs" "$out/aop" "$out/aop-other" "$out/edge.docker" "$out/edge.keys" 2>/dev/null || true
 }
 
 install_server

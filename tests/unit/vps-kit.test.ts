@@ -28,6 +28,7 @@ import {
   serviceKey as key,
   serviceMounts,
   SIGNING_PAIR_CHECK,
+  snippets,
   statsMib,
   WAL_FILE,
   walMessage,
@@ -5986,6 +5987,88 @@ const runbookConf = (runbook: string, confText = conf) => {
       ];
 };
 
+/**
+ * The kit's origin pulls pair is made the owner's way (VPS-142): kit-check.sh's aop_pair runs First
+ * install, step 8's lines, from its umask and the folder it makes to its openssl verify, the same
+ * but for the folder, the subjects and the days, and for the MSYS_NO_PATHCONV=1 only Git Bash
+ * reads. So vps:edge, whose every request presents that client certificate to the edge's
+ * client_auth, also shows that the owner's commands make a pair Caddy takes.
+ */
+const aopCommands = (runbook: string, kitCheck: string) => {
+  const normal = (line: string) =>
+    line
+      .trim()
+      .replace(/ &&$/, '')
+      .replace(/^MSYS_NO_PATHCONV=1 /, '')
+      .replace(/ mkdir \S+ && cd \S+$/, ' mkdir <folder> && cd <folder>')
+      .replace(/ -subj (?:'[^']*'|"[^"]*")/, ' -subj <subject>')
+      .replace(/ -days \d+ /, ' -days <days> ');
+  /** The lines from the umask to the openssl verify, or none when either is missing. */
+  const making = (text: string) => {
+    const lines = text.split('\n').map(normal);
+    const first = lines.findIndex((line) => line.startsWith('umask '));
+    const last = lines.findIndex((line) => line.startsWith('openssl verify '));
+    return first < 0 || last < first ? [] : lines.slice(first, last + 1);
+  };
+  const block = /\n8\. \*\*The zone:\*\*[\s\S]*?```sh\n([\s\S]*?)\n\s*```/.exec(runbook)?.[1];
+  const pair = /\naop_pair\(\) \( #[^\n]*\n([\s\S]*?)\n\)\n/.exec(kitCheck)?.[1];
+  const owner = making(block ?? '');
+  const kit = making(pair ?? '');
+  if (!owner.length) return ['First install, step 8, makes no origin pulls pair'];
+  if (!kit.length) return ['kit-check.sh has no aop_pair that makes an origin pulls pair'];
+  return [...Array(Math.max(owner.length, kit.length)).keys()]
+    .filter((at) => owner[at] !== kit[at])
+    .map(
+      (at) =>
+        `aop_pair runs ${kit[at] ?? 'nothing'} where First install, step 8, runs ${owner[at] ?? 'nothing'}`,
+    );
+};
+
+/** tls_menumesh as the server team's snippets.caddy declares it: client_auth on, their CA file. */
+const TLS_MENUMESH = [
+  'tls /certs/menumesh/origin.pem /certs/menumesh/origin-key.pem {',
+  'client_auth {',
+  'mode require_and_verify',
+  'trust_pool file /certs/menumesh/aop-ca.pem',
+  '}',
+  '}',
+];
+
+/**
+ * tls_menumesh is the server team's (their review, commitment 2; VPS-142): the snippets.caddy the
+ * kit's Caddy runs read is theirs as it is, which declares it once, with client_auth requiring a
+ * client certificate from /certs/menumesh/aop-ca.pem, and no file of the kit declares a snippet, as
+ * Caddy refuses one declared twice and the server's file stays the same as their repository's.
+ */
+const theirSnippet = (vendored: string, kitFiles: readonly (readonly [string, string])[]) => {
+  const declared = vendored.split('\n').filter((line) => line === '(tls_menumesh) {').length;
+  const body = /\n\(tls_menumesh\) \{\n([\s\S]*?)\n\}\n/.exec(vendored)?.[1] ?? '';
+  return [
+    ...(declared === 1 ? [] : [`snippets.caddy declares tls_menumesh ${declared} times, not once`]),
+    ...(JSON.stringify(code(body).map((line) => line.trim())) === JSON.stringify(TLS_MENUMESH)
+      ? []
+      : ['tls_menumesh does not require a client certificate from /certs/menumesh/aop-ca.pem']),
+    ...kitFiles
+      .filter(([, text]) => /^\([a-z_][a-z0-9_]*\) \{$/m.test(text))
+      .map(([path]) => `${path} declares a snippet`),
+  ];
+};
+
+/** MenuMesh's own snippet as deploy/vps/edge/tls_menumesh.caddy had it until VPS-142. */
+const OLD_TLS_MENUMESH = [
+  '(tls_menumesh) {',
+  '\ttls /certs/menumesh/origin.pem /certs/menumesh/origin-key.pem {',
+  '\t\t# The admin turns this on before any MenuMesh container runs, with zone-level',
+  '\t\t# Authenticated Origin Pulls on at Cloudflare.',
+  '\t\t# client_auth {',
+  '\t\t# \tmode require_and_verify',
+  '\t\t# \ttrust_pool file /certs/menumesh/aop-ca.pem',
+  '\t\t# }',
+  '\t}',
+  '}',
+  '',
+].join('\n');
+
 describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
   it('is the conf the RUNBOOK gives the server’s admin, line for line', () => {
     const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -6088,9 +6171,10 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
     const conf = readFileSync(join(VENDOR, 'edge.conf'), 'utf8');
     expect(conf).toMatch(/^CADDY_IMAGE=\S+$/m);
     expect(CADDY).toMatch(/^caddy:[\w.-]+@sha256:[0-9a-f]{64}$/);
+    // The copy as it is, which names exactly the pin since the server team's scripts PR (copied at
+    // 66c8c61); the pin's tag alone, as their edge.conf named it before (66fe8b3); exactly the pin.
+    expect(conf).toContain(`\nCADDY_IMAGE=${CADDY}\n`);
     const naming = (line: string) => conf.replace(/^CADDY_IMAGE=.*\n/m, line);
-    // The copy as it is; the pin's tag alone, as at 66fe8b3; exactly the pin, as the server team's
-    // scripts PR has it.
     expect(caddyRefusal(conf)).toBeUndefined();
     expect(caddyRefusal(naming(`CADDY_IMAGE=${CADDY.split('@')[0]}\n`))).toBeUndefined();
     expect(caddyRefusal(naming(`CADDY_IMAGE=${CADDY}\n`))).toBeUndefined();
@@ -6106,6 +6190,79 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
       `The vendored edge.conf names caddy:2.11.8-alpine, but vps-kit.mts pins ${CADDY}: pin the new tag and its digest as CADDY.`,
     );
     expect(caddyRefusal(naming(''))).toContain('names no CADDY_IMAGE');
+  });
+
+  it('runs the server team’s snippets.caddy as it is, whose tls_menumesh requires a client certificate from MenuMesh’s CA, and declares no snippet of its own (VPS-142)', () => {
+    const vendored = readFileSync(join(VENDOR, 'snippets.caddy'), 'utf8');
+    expect(snippets()).toBe(vendored);
+    const files = readdirSync(KIT, { recursive: true, encoding: 'utf8' })
+      .map((path) => path.replaceAll('\\', '/'))
+      .filter((path) => !path.startsWith('test/vendor/'))
+      .flatMap((path) => {
+        try {
+          return [[`deploy/vps/${path}`, kit(path)] as const];
+        } catch {
+          return []; // a folder
+        }
+      });
+    expect(files.map(([path]) => path)).toContain('deploy/vps/edge/menumesh.caddy');
+    expect(theirSnippet(vendored, files)).toEqual([]);
+    const rule = (text: string) => theirSnippet(text, files);
+    // 2a41f7d's snippets(): MenuMesh's own appended, which Caddy refuses once theirs holds it.
+    refuses(rule, `${vendored}\n${OLD_TLS_MENUMESH}`, 'declares tls_menumesh 2 times, not once');
+    // Theirs with client_auth commented out, as MenuMesh's own had it.
+    refuses(
+      rule,
+      vendored.replace(/\(tls_menumesh\) \{\n[\s\S]*?\n\}\n/, OLD_TLS_MENUMESH),
+      'tls_menumesh does not require a client certificate from /certs/menumesh/aop-ca.pem',
+    );
+    // A file of the kit that declares it again.
+    expect(
+      theirSnippet(vendored, [
+        ...files,
+        ['deploy/vps/edge/tls_menumesh.caddy', OLD_TLS_MENUMESH],
+      ]).join('\n'),
+    ).toContain('deploy/vps/edge/tls_menumesh.caddy declares a snippet');
+  });
+
+  it('makes its origin pulls pair with First install, step 8’s commands, but for the folder, the subjects and the days (VPS-142)', () => {
+    const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
+    const kitCheck = kit('test/kit-check.sh');
+    expect(aopCommands(runbook, kitCheck)).toEqual([]);
+    // The days, like the subjects and the folder, are the kit's own.
+    expect(aopCommands(swap(runbook, '-days 825', '-days 397'), kitCheck)).toEqual([]);
+    const rule = (text: string) => aopCommands(runbook, text);
+    // A client certificate without client authentication, which Caddy refuses, and a weaker key.
+    refuses(
+      rule,
+      swap(kitCheck, 'digitalSignature\\nextendedKeyUsage=clientAuth\\n', 'digitalSignature\\n'),
+      "aop_pair runs printf 'basicConstraints=CA:FALSE\\nkeyUsage=critical,digitalSignature\\n' > client.ext",
+    );
+    refuses(
+      rule,
+      swap(
+        kitCheck,
+        'rsa:2048 -nodes -subj "/CN=$2 origin pulls CA"',
+        'rsa:1024 -nodes -subj "/CN=$2 origin pulls CA"',
+      ),
+      'aop_pair runs openssl req -new -newkey rsa:1024',
+    );
+    // No verify: the pair could be one openssl itself refuses for client authentication.
+    refuses(
+      rule,
+      swap(
+        kitCheck,
+        ' &&\n    openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem\n',
+        '\n',
+      ),
+      'kit-check.sh has no aop_pair that makes an origin pulls pair',
+    );
+    // Step 8 changed and the kit not: a pass would no longer speak for the owner's commands.
+    refuses(
+      (text) => aopCommands(text, kitCheck),
+      swap(runbook, '-sha256 -days 825', '-sha384 -days 825'),
+      'where First install, step 8, runs openssl x509 -req -sha384',
+    );
   });
 
   it('validates the gateway as start.sh fills it in, with every resource inline', () => {

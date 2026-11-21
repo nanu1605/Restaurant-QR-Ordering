@@ -11884,6 +11884,134 @@ entries below.
   tests 1,320 in 72 files (`vps-runbook` 58, seven new); `pnpm vps:check` 54 checks, 0 failed, after
   `compose.yml`'s header changed.
 
+- **VPS-141 · The server team's files copied again at `66c8c61` (their scripts PR, merged as
+  `c53eeee`, and their onboarding PR, merged as `66c8c61`):** both merged into their main, the
+  scripts PR (nanu1605/jainav-infotech#83) as `c53eeee` and the onboarding PR (#86) as
+  `66c8c615dd1b849a94b8890b3ec9fe1c0896ad5f` (2026-11-21), so the six files are copied from that
+  commit, byte for byte, as the RUNBOOK's step for copying them again says: `SOURCE` names the
+  commit and the day, its six sha256 lines are the files' (`sha256sum --strict -c SOURCE` passes in
+  that folder), and `app-apply` keeps 100755. The `Caddyfile` and `cloudflare-ranges.caddy` are as
+  at `66fe8b3`; the other four changed, `app-apply` all in `c53eeee`:
+  - `app-apply edge env` runs `check_auth_hashes` after `edge_env_parse`, so its install path
+    refuses a `*_AUTH_HASH` whose value inside its single quotes is not
+    `^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$`, with
+    `<NAME> holds no bcrypt hash: make one as in docs/runbooks/server.md §2 and put its 60 characters between the single quotes`,
+    and `edge validate` only warns of one. For MenuMesh: the owner's hash goes in only as the bcrypt
+    hash VPS-131's command makes, and `edge.env.example`'s placeholder never goes in by mistake.
+  - `edge_env_hash_check <edge.env file>`, an entry point for other apps' kit checks that source
+    the file: `edge_env_parse`, then `check_auth_hashes`, in a directory of its own, each problem on
+    a line of its own, status 1 on one, 0 on none and 2 for a usage error; it installs nothing and
+    runs no Caddy.
+  - `swap_in` holds INT and TERM until its swap ends, and the docker calls of `caddy_running`,
+    `running_env` and the reload have time limits (30, 30 and 120 s): the server's own, as the kit
+    never swaps. `edge_env_parse`, `cmd_compose` and `caddy_run` are as they were, so
+    `caddyRunArgs` reads the same flags and every compose check runs as before.
+  - `edge.conf`'s `CADDY_IMAGE` is
+    `caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
+    exactly `CADDY` since VPS-130, which `caddyRefusal` accepts; the unit test now holds the copy to
+    name exactly `CADDY`. `jainav.conf` changed a comment only, and `snippets.caddy` holds
+    `tls_menumesh` (VPS-142).
+
+  kit-check now calls their `edge_env_hash_check` as its other cases call `app-apply`, in a
+  subshell after `setup_lib`, which undoes the sourcing's `set -eu`; its `env_prefixes` reads the
+  confs `install_server` puts in `/etc/apps`, MenuMesh's among them, so it needs no stub. Its
+  `check` refuses `edge.env.example`'s placeholder, status 1 and the line
+  `MENUMESH_STAGING_AUTH_HASH holds no bcrypt hash: …`, the case the server team asked for (Q6),
+  and its `prepare` passes the throwaway `edge.env` with the pinned Caddy's bcrypt hash, status 0
+  and nothing printed, where a refusal stops `vps:check` and `vps:edge` before any Caddy reads the
+  file. `edge.env.example passes edge_env_parse` stays as it is. So the rule lives only in their
+  code: `AUTH_HASH` and the host's check
+  `the staging hash is a 60-character bcrypt hash, the only kind app-apply edge env takes`
+  (VPS-131) are gone from `scripts/vps-kit.mts`, `workFolder()` takes the checker alone again, and
+  the kit's `hash-password` keeps `--algorithm bcrypt`. With the copy alone, `vps:check` failed 4
+  of 52 checks: Caddy 2.11.9 refused the adapt and both validates with
+  `redeclaration of previously declared snippet tls_menumesh, at /etc/caddy/snippets.caddy:89`,
+  ours appended after theirs, and check 2 then found no adapt. Now `vps:check` has 55 checks, 0
+  failed (54 before: the host's hash check out, kit-check's refusal of the placeholder in, and
+  VPS-142's validate without the CA in), 44 of them `kit-check.sh check`'s (43), and `vps:edge` 22,
+  0 failed (21 before: the hash check out, VPS-142's two handshakes in). `prepare`'s own lines, now
+  5 (2 before), are printed by `vps:check` and counted by neither, as before. The live mentions of
+  `66fe8b3`, in `SOURCE` and in the comments of `caddyRefusal` and its test, now describe the copy
+  at `66c8c61`; the entries above keep it where they say what that copy had. kit-check's
+  `installed_steady` stub keeps Jainav's 4,480 MiB and the edge's 256: between the two commits
+  their compose files changed only their image pins.
+
+- **VPS-142 · `tls_menumesh` from the server team's `snippets.caddy` (their commitment 2, and the
+  owner's origin pulls of 2026-11-21):** their onboarding PR adds `tls_menumesh` to their
+  `docker/edge/config/snippets.caddy`, after `tls_jainav`: the Origin CA pair from
+  `/certs/menumesh/` and `client_auth`, `mode require_and_verify` with
+  `trust_pool file /certs/menumesh/aop-ca.pem`, on from the start, as MenuMesh's origin pulls are on
+  before any of its containers runs. Its closing comment says every app's `tls_<app>` lives in that
+  file, as Caddy refuses a snippet declared twice, which they checked on the pinned 2.11.9 and
+  `vps:check` showed (VPS-141). So ours, `deploy/vps/edge/tls_menumesh.caddy`, its `client_auth`
+  commented out for the admin to turn on, is deleted, and `snippets()` returns the vendored file as
+  it is: the server's file stays the same as their repository's, whose next
+  `app-apply edge config snippets.caddy` would drop a snippet added on the server. A new test holds
+  `snippets()` to the copy byte for byte, and its `theirSnippet` the copy to one `tls_menumesh` with
+  exactly that `client_auth` and every file of the kit to no snippet of its own; it refuses
+  `2a41f7d`'s appended copy, a `client_auth` commented out and a kit file declaring the snippet.
+
+  The kit's checks run with origin pulls on. `kit-check.sh prepare` makes a throwaway origin pulls
+  CA and a client certificate it signs with `aop_pair`, which runs First install, step 8's lines in
+  a subshell, `umask 077` and a new folder, `ca.ext` and `client.ext` from its two `printf` lines
+  (the CA's `CA:TRUE` with certificate and CRL signing, the client's `CA:FALSE`, `digitalSignature`
+  and `clientAuth`), RSA 2048 keys, `-sha256` and the verify, but for the folder, the subjects and 2
+  days; and a second pair the same way, from another CA. `aop-ca.pem` goes to `certs/menumesh/`,
+  0644 as `origin.pem` is, since Caddy runs as root without DAC_OVERRIDE, as `app-apply edge cert`
+  installs it; the client pairs go to `/out/aop` and `/out/aop-other`, and both CA keys stay in the
+  checker container. The kit installs no certificate through `app-apply edge cert`, so it has no
+  fourth argument to give. The new `aopCommands` holds `aop_pair`'s lines to step 8's, the folder,
+  `-subj`, `-days` and Git Bash's `MSYS_NO_PATHCONV=1` apart; it refuses a `client.ext` without
+  `clientAuth`, a CA of `rsa:1024`, a pair without the verify and a step 8 changed alone
+  (`-sha384`), and takes other days. So a pass of `vps:edge`, which presents that client
+  certificate on every request, also shows that the owner's commands make a pair Caddy's
+  `client_auth` takes.
+
+  `vps:check`: Caddy's validate of the tree with `menumesh.caddy` passes with the CA in place, and a
+  new bite runs it on a copy of `certs/` without `aop-ca.pem`, which must fail naming the file;
+  Caddy says
+  `provisioning client CA: loading module 'file': provision tls.ca_pool.source.file: reading /certs/menumesh/aop-ca.pem: open /certs/menumesh/aop-ca.pem: no such file or directory`.
+  So `app-apply`'s check 3 refuses MenuMesh's site file until the CA is in, as their
+  `tests/host/app-apply.sh` at `66c8c61` shows for a `client_auth` site beside Jainav's. The adapt
+  reads no CA, and check 2 takes the adapted `client_authentication`, its file under
+  `/certs/menumesh/`. `vps:edge`: the real Caddy runs `tls_menumesh` with `client_auth` on, and
+  every request presents the throwaway client pair (Node's `https` with `cert` and `key`), so each
+  of its checks passes only through a client certificate made with step 8's commands, and all did.
+  Two new checks, for each host block of `menumesh.caddy` as the file lists them (`menumesh.in`,
+  `www`, `api` and `staging`): a request without a client certificate fails in the handshake with
+  TLS 1.3's alert "certificate required" (Node's `ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED`), and
+  one with the other CA's with "unknown CA" (`ERR_SSL_TLSV1_ALERT_UNKNOWN_CA`), before any HTTP
+  answer, where the staging night's `curl` loop sees an exit other than 0. A Caddy that never
+  answers now says what the last request met. With a client certificate, Caddy's access line holds
+  `request.tls.client_common_name` and `client_serial` (here `kit-check origin pulls`): on the
+  server those of Cloudflare's certificate, the owner's, the same on every line of MenuMesh's hosts
+  and nothing of a visitor's; the log checks still find no header, address, login or query.
+  `vps:rehearse` and `vps:backup-test` read neither the snippets nor the certificates, so neither
+  ran again.
+
+  First install, step 11, now installs the snippet as the server team's `edge.md` §5, step 5, does:
+  their `snippets.caddy`, which holds `tls_menumesh` with `client_auth` on since their `66c8c61`,
+  copied from their repository's root on the admin's machine
+  (`scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/`) and installed with
+  `sudo app-apply edge config ~/incoming/snippets.caddy`, which checks every installed site again;
+  MenuMesh's kit never adds a snippet to the server's file. `ac976ce`'s order holds, the certificate
+  with `aop-ca.pem`, the snippet, `edge.env`, the recreate, and so does its point that until the
+  site file is in no site imports `tls_menumesh`; First install's opening says the snippet alone
+  comes from their repository. On the staging night's step 1 an exit 0 now means the server's
+  `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not theirs of `66c8c61` or later:
+  stop, and the admin installs theirs again (step 11), where it meant our `client_auth` still
+  commented out. The kit README's table loses `edge/tls_menumesh.caddy`, a paragraph says where the
+  snippet is, and its Who does what and its checks follow; `menumesh.caddy`'s header names the file
+  of both its snippets. `originPulls` pins the new stop and its pointer to step 11 (2 problems on
+  `ac976ce`'s RUNBOOK, with refusal cases for the sentence gone, the old pointer and `ac976ce`'s
+  paragraph), and the new `serverSnippet` holds step 11 to the two commands, between the
+  certificate and `edge.env`, to the `66c8c61` sentence and to no snippet of ours (5 problems on
+  `ac976ce`'s RUNBOOK; refusal cases for the snippet after `edge.env` and our file named again); the
+  re-wrap test wraps 272 phrases where it wrapped 267, the stop's old piece out. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,323 in 72 files (`vps-kit` 121,
+  two new; `vps-runbook` 59, one new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0
+  failed.
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and

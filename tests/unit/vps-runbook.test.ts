@@ -96,7 +96,9 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * with edge.env merged and Caddy recreated once, checked before the staging night, origin pulls
  * from the owner's own CA, the first container only after the server team's word on theirs, the
  * leak test's container by image digest and flags, the drills on the second weekend, and no copy
- * of a secret left in ~/incoming.
+ * of a secret left in ~/incoming; and since the copy of their files at their 66c8c61 (VPS-142),
+ * step 11's snippets.caddy from their repository, which holds tls_menumesh, and the staging night's
+ * stop on an exit 0, which sends the admin to install it again.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2510,6 +2512,18 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
   return blocks;
 }
 
+/** The staging night's stop on an exit 0 of the origin test, since the server team's 66c8c61. */
+const STOP_ON_EXIT_0 =
+  "An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not the server team's of `66c8c61` or later: stop.";
+
+/** That stop at ac976ce, when MenuMesh's own snippet still had client_auth commented out. */
+const OLD_STOP_ON_EXIT_0 = [
+  '   An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop. The night goes no',
+  '   further until the admin has turned authenticated origin pulls on as `edge.md` §3 says',
+  "   (Cloudflare's zone-level pulls first, then `client_auth`) and every exit is not 0. Way back:",
+  '   none needed, as no record sends the server anything yet.',
+].join('\n');
+
 /**
  * Authenticated origin pulls proved for MenuMesh's own hosts (Stop D's review, D1 of the cut-over
  * sequence). First install, step 11, runs the server team's origin test before MenuMesh's site file
@@ -2517,7 +2531,9 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
  * whatever it prints, and their command names their own host. So the staging night runs it right
  * after the site file, for every host menumesh.caddy serves and no other, each block of it
  * importing tls_menumesh, and stops on an exit 0; and step 11 says its own proves nothing yet and
- * points to that one.
+ * points to that one. Since the server team's snippets.caddy holds tls_menumesh with client_auth on
+ * (their 66c8c61; VPS-142), an exit 0 means the server's file is not theirs, not a client_auth still
+ * commented out, so the stop sends the admin to install theirs again (step 11).
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
@@ -2545,12 +2561,16 @@ const originPulls = (runbook: string, site: string) =>
       ...blocks
         .filter((block) => !block.imports)
         .map((block) => `menumesh.caddy’s ${block.host} block doesn’t import tls_menumesh`),
-      ...(has(
-        siteNight,
-        'An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop.',
-      )
+      ...(has(siteNight, STOP_ON_EXIT_0)
         ? []
-        : ['the origin test doesn’t stop the night on an exit 0']),
+        : [
+            'the origin test doesn’t stop the night on an exit 0, the sign of a snippets.caddy that is not the server team’s',
+          ]),
+      ...(has(siteNight, 'until the admin has installed theirs again (First install, step 11)')
+        ? []
+        : [
+            'the origin test’s exit 0 doesn’t send the admin to install the server team’s snippets.caddy again',
+          ]),
       ...(has(edgeStep, 'For `menumesh.in` that test proves nothing yet') &&
       has(edgeStep, 'The test that proves it runs right after the site file, on the staging night')
         ? []
@@ -2884,6 +2904,66 @@ const edgeNight = (runbook: string) =>
         : ['the staging night doesn’t check that Caddy was recreated with MenuMesh’s two lines']),
     ];
   });
+
+/** The server team's snippets.caddy, copied from their repository's root and installed (VPS-142). */
+const SNIPPET_COPY = "scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/";
+const SNIPPET = 'sudo app-apply edge config ~/incoming/snippets.caddy';
+
+/**
+ * tls_menumesh from the server team's snippets.caddy (their 66c8c61; VPS-142). Their file holds it
+ * with client_auth on, Caddy refuses a snippet declared twice, and a later edge config of their file
+ * would drop one added on the server. So step 11 installs their file as their edge.md §5, step 5,
+ * does, copied from their repository's root, between the certificate and edge.env, says that it
+ * holds tls_menumesh with client_auth on, and adds none of MenuMesh's own: the kit has no
+ * tls_menumesh.caddy any more.
+ */
+const serverSnippet = (runbook: string) =>
+  inPlaces(runbook, ['edgeStep'], ({ edgeStep }) => {
+    const text = flat(edgeStep);
+    const at = [EDGE_CERT, SNIPPET_COPY, SNIPPET, EDGE_COPY].map((words) => text.indexOf(words));
+    return [
+      ...[SNIPPET_COPY, SNIPPET]
+        .filter((words) => !text.includes(words))
+        .map((words) => `First install, step 11, lacks ${words}`),
+      ...(at.every((found, n) => found >= 0 && (n === 0 || found > at[n - 1]))
+        ? []
+        : [
+            'First install, step 11, doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+          ]),
+      ...(has(edgeStep, 'holds `tls_menumesh` with `client_auth` on since their `66c8c61`')
+        ? []
+        : [
+            'First install, step 11, doesn’t say the server team’s snippets.caddy holds tls_menumesh with client_auth on',
+          ]),
+      ...(has(edgeStep, "MenuMesh's kit never adds a snippet to the server's file") &&
+      !text.includes('tls_menumesh.caddy')
+        ? []
+        : [
+            'First install, step 11, adds a snippet of MenuMesh’s own to the server’s snippets.caddy',
+          ]),
+    ];
+  });
+
+/** First install's step 11 at ac976ce, up to its certificate: MenuMesh's own snippet file added. */
+const OLD_EDGE_OPENING = [
+  '11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the',
+  '    server, the snippet of `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`',
+  '    (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any',
+  "    MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose",
+  '    step 5 must see a TLS connection to the server without the client certificate refused (§6,',
+  "    step 4). The certificate goes in with `aop-ca.pem`, the owner's CA (step 8), which Caddy checks",
+  "    Cloudflare's client certificate against; then `aop-client.pem`, that client certificate without",
+  "    its key, goes beside it by hand, as `edge.md` §3 does for theirs, so that hostwatch's daily run",
+  '    warns before it expires too:',
+  '',
+  '    ```sh',
+  `    ${EDGE_CERT}`,
+  `    ${AOP_CLIENT}`,
+  '    shred -u ~/csr/origin-key.pem && rm -r ~/csr',
+  '    ```',
+  '',
+  '',
+].join('\n');
 
 /**
  * The copies of the install's secrets that scp leaves in ops' ~/incoming go once they are installed
@@ -3405,7 +3485,6 @@ const REWRAPPED = [
   // Read by the rules of Stop D's review: a piece of each phrase that stands on one line.
   'that test proves nothing yet',
   'proves it runs right after the site file',
-  'is still commented out: stop.',
   'do curl -sk -o /dev/null',
   'menumesh up -d scheduler-staging',
   'menumesh stop scheduler-staging',
@@ -3451,6 +3530,14 @@ const REWRAPPED = [
   "tells the server team's chat before the container starts",
   'menumesh-leaktest@edge-menumesh:wrong-project` every 5 minutes',
   '(`<port>` is 80, where the image listens)',
+  // Read by the rules of the copy at the server team's 66c8c61 (VPS-142): a piece of each phrase
+  // that stands on one line.
+  'has no `client_auth`, so its',
+  'installed theirs again (First install, step 11)',
+  'scp docker/edge/config/snippets.caddy',
+  'app-apply edge config ~/incoming/snippets.caddy',
+  'holds `tls_menumesh` with `client_auth` on since',
+  "MenuMesh's kit never adds a snippet",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -5987,12 +6074,29 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
     refuses(
       pulls,
+      swap(RUNBOOK, cut(RUNBOOK, 'An exit 0 means the server', ' The night goes no'), ''),
+      'the origin test doesn’t stop the night on an exit 0',
+    );
+    refuses(
+      pulls,
       swap(
         RUNBOOK,
-        ' An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop.',
-        '',
+        cut(RUNBOOK, ' The night goes no further until the admin has', ' and every exit is not 0.'),
+        " The night goes no further until the admin has turned authenticated origin pulls on as `edge.md` §3 says (Cloudflare's zone-level pulls first, then `client_auth`)",
       ),
-      'the origin test doesn’t stop the night on an exit 0',
+      'the origin test’s exit 0 doesn’t send the admin to install the server team’s snippets.caddy again',
+    );
+    // ac976ce's stop, when an exit 0 meant MenuMesh's own snippet with client_auth commented out.
+    const commentedOut = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '   An exit 0 means', '\n\n2. **The leak test**'),
+      OLD_STOP_ON_EXIT_0,
+    );
+    refuses(pulls, commentedOut, 'the origin test doesn’t stop the night on an exit 0');
+    refuses(
+      pulls,
+      commentedOut,
+      'doesn’t send the admin to install the server team’s snippets.caddy',
     );
     // cd6a733's step 11: its own test, which proves nothing before the site file, as the only one.
     refuses(
@@ -6262,6 +6366,46 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
+  it('installs the server team’s snippets.caddy, whose tls_menumesh has client_auth on, between the certificate and edge.env, and adds no snippet of MenuMesh’s own (VPS-142)', () => {
+    expect(serverSnippet(RUNBOOK)).toEqual([]);
+    // ac976ce's step 11: deploy/vps/edge/tls_menumesh.caddy added to the server's file.
+    const own = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '11. The edge:', '    For `menumesh.in` that test proves nothing yet'),
+      OLD_EDGE_OPENING,
+    );
+    for (const words of [SNIPPET_COPY, SNIPPET]) {
+      refuses(serverSnippet, own, `First install, step 11, lacks ${words}`);
+    }
+    for (const problem of [
+      'doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+      'doesn’t say the server team’s snippets.caddy holds tls_menumesh with client_auth on',
+      'adds a snippet of MenuMesh’s own to the server’s snippets.caddy',
+    ]) {
+      refuses(serverSnippet, own, problem);
+    }
+    // Their file installed only after edge.env, when app-apply refuses it until the recreate.
+    refuses(
+      serverSnippet,
+      swap(
+        swap(RUNBOOK, `\n    ${SNIPPET}\n`, '\n'),
+        `    ${EDGE_ENV}\n`,
+        `    ${EDGE_ENV}\n    ${SNIPPET}\n`,
+      ),
+      'doesn’t install the server team’s snippets.caddy between the certificate and edge.env',
+    );
+    // A snippet of MenuMesh's own named again.
+    refuses(
+      serverSnippet,
+      swap(
+        RUNBOOK,
+        "MenuMesh's kit never adds a snippet to the server's file:",
+        "MenuMesh's `deploy/vps/edge/tls_menumesh.caddy` goes into the server's file too:",
+      ),
+      'adds a snippet of MenuMesh’s own to the server’s snippets.caddy',
+    );
+  });
+
   it('shreds the copies of the install’s secrets in ~/incoming once they are installed (VPS-140)', () => {
     expect(copiesGone(RUNBOOK)).toEqual([]);
     // 21a13bf's step 14 and Rotation's env files: the copies left where scp put them.
@@ -6476,6 +6620,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(edgeWindow(rewrapped)).toEqual([]);
     expect(redactEarly(rewrapped)).toEqual([]);
     expect(edgeNight(rewrapped)).toEqual([]);
+    expect(serverSnippet(rewrapped)).toEqual([]);
     expect(copiesGone(rewrapped)).toEqual([]);
     expect(originGate(rewrapped)).toEqual([]);
     expect(drillDays(rewrapped)).toEqual([]);

@@ -670,8 +670,9 @@ EDGE_NETWORKS="edge-menumesh edge-menumesh-staging"
 
 Files go to the server in `~/incoming` (`scp` through the tunnel), from this repository at the
 commit being installed, after `pnpm vps:check` and `pnpm vps:edge` passed on it (Checking the kit
-here). Every file under `/srv/menumesh` is root's, and nothing on the way up to `/` may be writable
-by anyone else, or `app-apply` refuses the compose file.
+here); the edge's `snippets.caddy` alone comes from the server team's repository (step 11). Every
+file under `/srv/menumesh` is root's, and nothing on the way up to `/` may be writable by anyone
+else, or `app-apply` refuses the compose file.
 
 **The owner, before the server:**
 
@@ -809,19 +810,31 @@ by anyone else, or `app-apply` refuses the compose file.
 10. The deploy user with `gha-menumesh-staging.pub`, and the Access service token
     `github-deploy-menumesh` for the tunnel. Step 17's **VPS ping** proves both.
 11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the
-    server, the snippet of `deploy/vps/edge/tls_menumesh.caddy` added to `snippets.caddy`
-    (`sudo app-apply edge config snippets.caddy`), and authenticated origin pulls on, **before any
-    MenuMesh container runs**: the CSR, the order and the origin test are `edge.md` §3's, whose
-    step 5 must see a TLS connection to the server without the client certificate refused (§6,
-    step 4). The certificate goes in with `aop-ca.pem`, the owner's CA (step 8), which Caddy checks
-    Cloudflare's client certificate against; then `aop-client.pem`, that client certificate without
-    its key, goes beside it by hand, as `edge.md` §3 does for theirs, so that hostwatch's daily run
-    warns before it expires too:
+    server, then the server team's `snippets.caddy` with `tls_menumesh` in it, and authenticated
+    origin pulls on, **before any MenuMesh container runs**: the CSR, the order and the origin test
+    are `edge.md` §3's, whose step 5 must see a TLS connection to the server without the client
+    certificate refused (§6, step 4). The certificate goes in with `aop-ca.pem`, the owner's CA
+    (step 8), which Caddy checks Cloudflare's client certificate against; then `aop-client.pem`,
+    that client certificate without its key, goes beside it by hand, as `edge.md` §3 does for
+    theirs, so that hostwatch's daily run warns before it expires too:
 
     ```sh
     sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem
     sudo install -m 0644 -o root -g root ~/incoming/aop-client.pem /srv/edge/certs/menumesh/
     shred -u ~/csr/origin-key.pem && rm -r ~/csr
+    ```
+
+    Then the snippet, as their `edge.md` §5, step 5, installs it: their own `snippets.caddy`, which
+    holds `tls_menumesh` with `client_auth` on since their `66c8c61`, as MenuMesh's origin pulls
+    are on before any of its containers runs. The admin copies it from the root of their
+    repository, at that commit or a later one, on the admin's own machine, then installs it, which
+    checks every installed site again. MenuMesh's kit never adds a snippet to the server's file:
+    Caddy refuses a snippet declared twice, and the file stays the same as their repository's,
+    whose next `edge config` would drop a snippet added here:
+
+    ```sh
+    scp docker/edge/config/snippets.caddy ops@<the tunnel's SSH host>:incoming/     # on the admin's machine, in their repository's root
+    sudo app-apply edge config ~/incoming/snippets.caddy
     ```
 
     For `menumesh.in` that test proves nothing yet: until MenuMesh's site file is in, no site
@@ -1305,10 +1318,10 @@ Then, in order:
    for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
    ```
 
-   An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop. The night goes no
-   further until the admin has turned authenticated origin pulls on as `edge.md` §3 says
-   (Cloudflare's zone-level pulls first, then `client_auth`) and every exit is not 0. Way back:
-   none needed, as no record sends the server anything yet.
+   An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not
+   the server team's of `66c8c61` or later: stop. The night goes no further until the admin has
+   installed theirs again (First install, step 11) and every exit is not 0. Way back: none needed,
+   as no record sends the server anything yet.
 
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
    `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record

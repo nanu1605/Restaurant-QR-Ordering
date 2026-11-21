@@ -6,11 +6,13 @@
  *   pnpm vps:check   the server's own rules on the kit. deploy/vps/test/kit-check.sh runs the
  *                    vendored app-apply as root in a throwaway Ubuntu container (Dockerfile.kitcheck,
  *                    built here once and never pushed). Around it, on this machine: Caddy adapts and
- *                    validates the edge's tree with menumesh.caddy and the redact file, with
- *                    app-apply's own caddy_run flags; Envoy validates the gateway's config;
- *                    shellcheck reads every script; the crontabs are linted.
+ *                    validates the edge's tree with menumesh.caddy and the redact file, and refuses
+ *                    it without the origin pulls' CA, with app-apply's own caddy_run flags; Envoy
+ *                    validates the gateway's config; shellcheck reads every script; the crontabs
+ *                    are linted.
  *   pnpm vps:edge    how the edge behaves: the server's Caddy tree with menumesh.caddy, in front of
- *                    three stub upstreams, answering on 127.0.0.1:8443.
+ *                    three stub upstreams, answering on 127.0.0.1:8443, with authenticated origin
+ *                    pulls on: every request presents a throwaway client certificate.
  *
  * The local rehearsal of the whole stack, as compose project menumesh-rehearsal: compose.yml in a
  * mirror of /srv/menumesh (.vps-rehearsal/, gitignored) with deploy/vps/local/compose.rehearsal.yml
@@ -73,6 +75,7 @@ import {
 } from 'node:crypto';
 import {
   closeSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -130,11 +133,6 @@ export const CADDY =
   'caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0';
 /** MemTotal as the server reports it, in MiB (read there on 2026-11-21). */
 const MEMTOTAL_MIB = 15_992;
-/**
- * A staging hash as app-apply edge env's install path takes it (the server team's scripts PR),
- * inside its single quotes: a 60-character bcrypt hash.
- */
-const AUTH_HASH = /^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$/;
 /** Where vps:edge's Caddy listens, on this machine only. */
 const EDGE_PORT = 8443;
 /** The edge network of vps:edge: a plain bridge, so Caddy can publish its port. */
@@ -294,9 +292,10 @@ export function caddyRunArgs(
 }
 
 /**
- * Whether the pinned Caddy is the one the server's edge.conf names: its CADDY_IMAGE must be the
- * pin's tag alone (as at 66fe8b3) or exactly the pin, tag and digest (as the server team's scripts
- * PR has it). What to pin instead, or undefined when it passes.
+ * Whether the pinned Caddy is the one the server's edge.conf names: its CADDY_IMAGE must be exactly
+ * the pin, tag and digest, as the vendored edge.conf names it since the server team's scripts PR
+ * (c53eeee, copied at 66c8c61), or the pin's tag alone, as theirs named it before (66fe8b3). What
+ * to pin instead, or undefined when it passes.
  */
 export function caddyRefusal(edgeConf: string, pinned = CADDY): string | undefined {
   const named = /^CADDY_IMAGE=(\S+)$/m.exec(edgeConf)?.[1];
@@ -700,10 +699,7 @@ function caddyImage(): string {
 }
 
 /** A work folder with what the checker and the Caddy runs share. */
-function workFolder(
-  checker: string,
-  checks: Checks,
-): { dir: string; password: string; checks: string } {
+function workFolder(checker: string): { dir: string; password: string; checks: string } {
   const dir = mkdtempSync(join(tmpdir(), 'menumesh-kit-'));
   try {
     // MemTotal for check_sum, as the server reports it.
@@ -713,7 +709,9 @@ function workFolder(
     );
     // A throwaway basic-auth account for staging, hashed by the edge's own Caddy as the RUNBOOK
     // has the owner do it: bcrypt, and without --plaintext, so the password is read, here from
-    // stdin, and is in no process's arguments.
+    // stdin, and is in no process's arguments. kit-check.sh prepare then runs app-apply edge
+    // env's own checks on the file (edge_env_hash_check), which take only a bcrypt hash, and a
+    // refusal there stops the run before any Caddy reads it.
     const password = randomBytes(12).toString('base64url');
     const hash = docker(
       [
@@ -733,24 +731,12 @@ function workFolder(
       `${password}\n`,
     );
     if (hash.status !== 0) fail(`caddy hash-password failed: ${hash.stderr}`);
-    const hashed = hash.stdout.trim();
-    // The server team's app-apply edge env refuses, on its install path, a *_AUTH_HASH that is
-    // not a 60-character bcrypt hash: the kit's own hash must pass that rule as the owner's must.
-    if (!AUTH_HASH.test(hashed)) {
-      fail(
-        `caddy hash-password --algorithm bcrypt wrote ${hashed.length} characters from ` +
-          `${hashed.slice(0, 7)}, which app-apply edge env refuses: its install path takes only a ` +
-          `60-character bcrypt hash (${AUTH_HASH.source}).`,
-      );
-    }
-    checks.ok(
-      'the staging hash is a 60-character bcrypt hash, the only kind app-apply edge env takes',
-    );
     writeFileSync(
       join(dir, 'edge.env'),
-      `MENUMESH_STAGING_AUTH_USER=menumesh\nMENUMESH_STAGING_AUTH_HASH='${hashed}'\n`,
+      `MENUMESH_STAGING_AUTH_USER=menumesh\nMENUMESH_STAGING_AUTH_HASH='${hash.stdout.trim()}'\n`,
     );
-    // The certificate, and edge.env as app-apply hands it to docker run.
+    // The certificate, the origin pulls' CA and client pairs, and edge.env as app-apply hands it
+    // to docker run.
     const prepared = runChecker(checker, dir, 'prepare');
     if (prepared.status !== 0)
       fail(`kit-check.sh prepare failed:\n${prepared.stdout}${prepared.stderr}`);
@@ -790,9 +776,12 @@ function put(dir: string, files: Record<string, string>) {
   }
 }
 
-/** snippets.caddy as the server's admin makes it: the server's, with MenuMesh's tls_menumesh added. */
-const snippets = () =>
-  `${readFileSync(join(VENDOR, 'snippets.caddy'), 'utf8')}\n${read('edge', 'tls_menumesh.caddy')}`;
+/**
+ * snippets.caddy as the server has it: the server team's own, as it is. It holds MenuMesh's
+ * tls_menumesh, client_auth on, since their 66c8c61, and nothing is added to it: Caddy refuses a
+ * snippet declared twice.
+ */
+export const snippets = () => readFileSync(join(VENDOR, 'snippets.caddy'), 'utf8');
 
 /** The edge's config tree as it will be: the server's files, with MenuMesh's site and redact files. */
 function edgeTree(dir: string, redact: string | null, ranges?: string) {
@@ -871,7 +860,7 @@ async function check() {
     fail('Docker is not running.');
   }
   const checker = checkerImage();
-  const work = workFolder(checker, checks);
+  const work = workFolder(checker);
   try {
     process.stdout.write(work.checks);
     const certs = join(work.dir, 'certs');
@@ -906,10 +895,13 @@ async function check() {
     );
 
     // Check 3 of app-apply menumesh site and app-apply edge redact: the whole tree, with the
-    // certificates, through Caddy's own validate.
+    // certificates, through Caddy's own validate. The server team's tls_menumesh takes a client
+    // certificate only from the CA in certs/menumesh/aop-ca.pem, which validate loads once a site
+    // imports the snippet: so app-apply refuses MenuMesh's site file until that CA is in, as their
+    // tests/host/app-apply.sh shows for theirs.
     const tree = join(work.dir, 'tree');
-    const validate = () =>
-      caddyRun(tree, certs, envFile, [
+    const validate = (from = certs) =>
+      caddyRun(tree, from, envFile, [
         'validate',
         '--config',
         '/etc/caddy/Caddyfile',
@@ -919,9 +911,18 @@ async function check() {
     edgeTree(tree, null);
     let run = validate();
     checks.expect(
-      'caddy validate of the edge tree with menumesh.caddy',
+      'caddy validate of the edge tree with menumesh.caddy, tls_menumesh’s client_auth trusting certs/menumesh/aop-ca.pem',
       run.status === 0,
       caddyProblems(run.stderr),
+    );
+    const withoutCa = join(work.dir, 'certs-without-ca');
+    cpSync(certs, withoutCa, { recursive: true });
+    rmSync(join(withoutCa, 'menumesh', 'aop-ca.pem'));
+    run = validate(withoutCa);
+    checks.expect(
+      'caddy validate refuses that tree without certs/menumesh/aop-ca.pem, as app-apply’s check 3 does',
+      run.status !== 0 && run.stderr.includes('/certs/menumesh/aop-ca.pem'),
+      `exit ${run.status}\n${caddyProblems(run.stderr)}`,
     );
     edgeTree(tree, read('edge', 'log-redact.caddy'));
     run = validate();
@@ -1050,22 +1051,25 @@ type Reply = {
   body: string;
 };
 
+/** A client certificate and its key, for the edge's authenticated origin pulls (client_auth). */
+type Client = { cert: Buffer; key: Buffer };
+
+type EdgeOptions = {
+  client?: Client;
+  method?: string;
+  headers?: Record<string, string>;
+  send?: string | Buffer;
+  chunked?: boolean;
+  length?: number;
+};
+
 /**
- * One request to the edge on 127.0.0.1, as Cloudflare sends it: TLS with the host's name, HTTP/1.1.
- * `send` is the body (none by default), sent chunked, without a Content-Length, with `chunked`;
- * `length` claims a Content-Length without sending a body.
+ * One request to the edge on 127.0.0.1, as Cloudflare sends it: TLS with the host's name and
+ * `client`'s certificate (none without it), HTTP/1.1. `send` is the body (none by default), sent
+ * chunked, without a Content-Length, with `chunked`; `length` claims a Content-Length without
+ * sending a body.
  */
-function edgeRequest(
-  host: string,
-  path: string,
-  options: {
-    method?: string;
-    headers?: Record<string, string>;
-    send?: string | Buffer;
-    chunked?: boolean;
-    length?: number;
-  } = {},
-): Promise<Reply> {
+function edgeRequest(host: string, path: string, options: EdgeOptions = {}): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const headers: Record<string, string | number> = { Host: host, ...options.headers };
     if (options.length !== undefined) headers['Content-Length'] = options.length;
@@ -1081,6 +1085,7 @@ function edgeRequest(
         path,
         method: options.method ?? 'GET',
         headers,
+        ...(options.client && { cert: options.client.cert, key: options.client.key }),
         rejectUnauthorized: false,
         agent: false,
         timeout: 10_000,
@@ -1179,7 +1184,7 @@ async function edge() {
   if (docker(['version', '--format', '{{.Server.Version}}']).status !== 0)
     fail('Docker is not running.');
   const checker = checkerImage();
-  const work = workFolder(checker, checks);
+  const work = workFolder(checker);
   const names = ['web', 'gw', 'web-staging'].map((name) => `menumesh-kit-edge-${name}`);
   const caddy = 'menumesh-kit-edge-caddy';
   const cleanup = () => {
@@ -1263,16 +1268,31 @@ async function edge() {
       caddyImage(),
     ]);
     if (started.status !== 0) fail(`Caddy did not start: ${started.stderr}`);
+    // The origin pulls' client pairs that kit-check.sh prepare made with First install, step 8's
+    // commands. Every request to the edge presents the first, from the CA in certs/menumesh, as
+    // Cloudflare presents the owner's: the server team's tls_menumesh, client_auth on, takes no
+    // connection without it. The other is from a CA of its own.
+    const pair = (folder: string): Client => ({
+      cert: readFileSync(join(work.dir, folder, 'aop-client.pem')),
+      key: readFileSync(join(work.dir, folder, 'aop-client-key.pem')),
+    });
+    const client = pair('aop');
     let ready = false;
+    let last = '';
     for (let attempt = 0; attempt < 40 && !ready; attempt++) {
-      ready = await edgeRequest('www.menumesh.in', '/').then(
+      ready = await edgeRequest('www.menumesh.in', '/', { client }).then(
         () => true,
-        () => false,
+        (error: NodeJS.ErrnoException) => {
+          last = error.code ?? error.message;
+          return false;
+        },
       );
       if (!ready) await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (!ready) {
-      fail(`Caddy does not answer on 127.0.0.1:${EDGE_PORT}:\n${docker(['logs', caddy]).stderr}`);
+      fail(
+        `Caddy does not answer on 127.0.0.1:${EDGE_PORT} (${last}):\n${docker(['logs', caddy]).stderr}`,
+      );
     }
 
     const auth = {
@@ -1290,9 +1310,9 @@ async function edge() {
       host: string,
       path: string,
       status: number,
-      options: Parameters<typeof edgeRequest>[2] = {},
+      options: Omit<EdgeOptions, 'client'> = {},
     ) => {
-      const reply = await edgeRequest(host, path, options);
+      const reply = await edgeRequest(host, path, { ...options, client });
       if (reply.status !== status) {
         throw new Error(
           `${options.method ?? 'GET'} ${host}${path}: ${reply.status}, not ${status}`,
@@ -1300,6 +1320,29 @@ async function edge() {
       }
       return reply;
     };
+
+    // Authenticated origin pulls on every host block of the site file, as the staging night's
+    // step 1 tests them on the server, where curl's exit must not be 0: a TLS connection without a
+    // client certificate, or with one from another CA, ends in the handshake, in the edge's alert,
+    // before any HTTP answer.
+    const hosts = [...read('edge', 'menumesh.caddy').matchAll(/^https:\/\/([^\s{]+) \{$/gm)].map(
+      (match) => match[1],
+    );
+    const refused = async (other: Client | undefined, alert: string) => {
+      const through: string[] = [];
+      for (const host of hosts) {
+        const outcome = await edgeRequest(host, '/', { client: other }).then(
+          (reply) => `HTTP ${reply.status}`,
+          (error: NodeJS.ErrnoException) => error.code ?? error.message,
+        );
+        if (outcome !== alert) through.push(`${host}: ${outcome}, not ${alert}`);
+      }
+      if (through.length) throw new Error(through.join('\n'));
+    };
+    test(`without a client certificate, a TLS connection to each host of menumesh.caddy (${hosts.join(', ')}) fails in the handshake (TLS 1.3's alert "certificate required")`, () =>
+      refused(undefined, 'ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED'));
+    test('so does one with a client certificate from another CA (the alert "unknown CA")', () =>
+      refused(pair('aop-other'), 'ERR_SSL_TLSV1_ALERT_UNKNOWN_CA'));
 
     test('www.menumesh.in redirects to menumesh.in with 308, path and query kept', async () => {
       const reply = await expectStatus('www.menumesh.in', '/menu?table=4', 308);

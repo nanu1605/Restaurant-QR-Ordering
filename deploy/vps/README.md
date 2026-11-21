@@ -20,11 +20,15 @@ their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this
 | (not in git) Supabase's CA certificate | `/srv/menumesh/config/migrate/supabase-ca.crt`       | root, 0644  | the owner downloads it, the admin installs it with `config/`           |
 | `edge/menumesh.caddy`                  | `/srv/edge/config/sites/menumesh.caddy`              | root, 0644  | the owner: `sudo app-apply menumesh site menumesh.caddy`               |
 | `edge/log-redact.caddy`                | `/srv/edge/config/log-redact.d/menumesh.caddy`       | root, 0644  | the admin: `sudo app-apply edge redact menumesh log-redact.caddy`      |
-| `edge/tls_menumesh.caddy`              | a snippet in `/srv/edge/config/snippets.caddy`       | root, 0644  | the server's admin: `sudo app-apply edge config snippets.caddy`        |
 | `edge/edge.env.example`                | the `MENUMESH_*` lines of `/srv/edge/edge.env`       | root, 0600  | the server's admin: `sudo app-apply edge env ~/incoming/edge.env`      |
 | `migrate/`, `backup/`                  | images in `ghcr.io/nanu1605/menumesh`, run by digest |             | CI builds them; `app-deploy` brings them                               |
 | `tools/`                               | `~/incoming/` only, for a run by hand                | `ops`       | the owner copies a tool there for its run (The owner's tools, below)   |
 | `local/`, `test/`                      | never installed                                      |             | checks on a development machine                                        |
+
+The snippet every block of `edge/menumesh.caddy` imports with the edge's `site_common`,
+`tls_menumesh`, is the server team's: their `snippets.caddy` holds it, with `client_auth` on, and
+the admin installs that file from their repository. This folder adds no snippet to it, as Caddy
+refuses a snippet declared twice.
 
 `app-apply` also creates `/srv/menumesh/backup-out` (root, 0755), where the host's settings
 archive lands every night. `config/db/` holds, beside the init SQL, `pg_hba.conf` (the database
@@ -37,13 +41,14 @@ only.
 ## Who does what
 
 - **The server's admin** writes `/etc/apps/menumesh.conf` (the values are in the RUNBOOK) and
-  installs the redact file right after it, adds `tls_menumesh` to the edge's snippets with the
-  Origin CA certificate for `menumesh.in` and `*.menumesh.in` and the owner's origin-pulls CA
-  (`aop-ca.pem`), turns authenticated origin pulls on before any MenuMesh container runs, adds the
-  two `MENUMESH_STAGING_AUTH_*` lines to a merged copy of the edge's `edge.env`, which Caddy takes
-  at one recreate on a night the owner picks, adds the 20:20 UTC drop-in for
-  `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves it to the
-  admin), with the CA certificate the owner downloads. On this server the owner is also the admin.
+  installs the redact file right after it, puts in the Origin CA certificate for `menumesh.in` and
+  `*.menumesh.in` with the owner's origin-pulls CA (`aop-ca.pem`), then the server team's
+  `snippets.caddy` with its `tls_menumesh`, so that authenticated origin pulls are on before any
+  MenuMesh container runs, adds the two `MENUMESH_STAGING_AUTH_*` lines to a merged copy of the
+  edge's `edge.env`, which Caddy takes at one recreate on a night the owner picks, adds the 20:20
+  UTC drop-in for `app-config-archive@menumesh.timer`, and installs `config/` (the contract leaves
+  it to the admin), with the CA certificate the owner downloads. On this server the owner is also
+  the admin.
 - **The owner**, through the same `ops` account, makes `.env` and `env/*.env` with
   `pnpm vps:secrets --out <dir>` (a folder outside the repository), fills in each line under
   `# FILL IN`, checks them with `pnpm vps:secrets --check <dir>` and installs them with `images.env`;
@@ -168,11 +173,13 @@ for `pnpm vps:probe`, and `tests/unit/vps-runbook.test.ts` for the RUNBOOK's ste
 runs). `pnpm vps:check` runs the server's own `app-apply` checks on this folder, as root in a
 throwaway container, with `test/menumesh.conf` as `/etc/apps/menumesh.conf`, then the contract's
 extra rules, Caddy's and Envoy's own validation and shellcheck. `pnpm vps:edge` puts the server's
-Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers. Both need only
-Docker. Run them before every install, after copying the server team's files again if those
-changed. Once records point at the server, `pnpm vps:probe staging` or `production` checks, from
-the owner's machine, what Cloudflare and the edge answer (RUNBOOK, The server rehearsal and the
-cut-over).
+Caddy tree with `menumesh.caddy` in front of stub apps and tests how it answers, with
+authenticated origin pulls on: every request presents a throwaway client certificate, made as the
+owner makes theirs, and a connection without one, or with one from another CA, fails in the
+handshake. Both need only Docker. Run them before every install, after copying the server team's
+files again if those changed. Once records point at the server, `pnpm vps:probe staging` or
+`production` checks, from the owner's machine, what Cloudflare and the edge answer (RUNBOOK, The
+server rehearsal and the cut-over).
 
 `pnpm vps:rehearse` runs the whole stack on Docker Desktop as project `menumesh-rehearsal`, the way
 the install and `app-deploy` would: `compose.yml` in a mirror of `/srv/menumesh` (`.vps-rehearsal/`,
