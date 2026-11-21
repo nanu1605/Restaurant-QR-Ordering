@@ -10878,8 +10878,11 @@ header cite moved to VPS-121.
     member's own), and inserts the `platform_admins` row as `platform_invite_member` does: role
     `admin`, the name, invited by nobody, the digest on, a 7-day expiry and the token's hash, an
     HMAC-SHA256 keyed by `CUSTOMER_COOKIE_SECRET` (`src/lib/one-time-code.ts`). If that insert
-    fails it removes the login again; a failure exits 1 and says what is left. It writes no audit
-    line: `platform_invite_member` writes one under the inviting admin, and there is none. The join
+    fails it removes the login again; a failure exits 1 and says what is left. When the answer to
+    making the login is lost, no answer at all or a 5xx that is not GoTrue's own JSON error (the
+    gateway's 502, 503 or 504), the login may exist without its row: the tool says to remove it if
+    it does, never that nothing was made (VPS-122). It writes no audit line:
+    `platform_invite_member` writes one under the inviting admin, and there is none. The join
     writes `platform_admin.joined` as for any member.
   - **Prints** the link once, with its expiry in UTC and IST and a warning that whoever opens it
     becomes the platform admin until it is used or expires. It prints no secret and no error's
@@ -10895,7 +10898,9 @@ header cite moved to VPS-121.
     send the token to another host.
   - **A new link.** A waiting invite, expired or not, makes a second run refuse. The RUNBOOK removes
     it with its login, one `delete from auth.users` in `db`'s psql that removes nothing once anyone
-    has joined, the row going with the login by its foreign key; then the tool runs again.
+    has joined, the row going with the login by its foreign key; then the tool runs again. A login
+    that a lost answer may have left goes by its email, as a login with no row, and again only
+    while no one has joined (VPS-122).
 
 - **VPS-112 · A probe of the edge from the owner's machine:** `pnpm smoke` checks the app at its
   public address, not what Cloudflare and the edge must add or must never do, and the leak test is
@@ -10984,16 +10989,19 @@ header cite moved to VPS-121.
 - **VPS-114 · The server rehearsal, with the first install's checks:** the first install said what
   to do, but often not what it must show. Where a line does, each step now says it: the conf's
   recipient, the deploy user and the Access token proved by **VPS ping**, the CSR and the origin
-  test by `edge.md` §3 and §6, the archive timer's next run, `ps` with each service `(healthy)`, the
-  GitHub values a production build needs first, monitors whose alerts were tried once, and a health
-  check from inside the web containers, as no smoke test reaches a deploy before DNS. Production's
-  scheduler starts on the fresh database: no restaurant to remind, no digest until the first admin
-  joins (it goes to joined admins whose role sees money), and its other steps clean up or count.
-  Until the staging night, staging's scheduler and Vercel staging's cron jobs both run staging's
-  `daily` and `digest` on its hosted database, which is safe for the reasons a second run by hand is
-  (VPS-38). The outline's checks got commands and results: `hostwatch check: clean`; the deploys
-  with a rollback by hand; the night, the restore test and the drill; the schedulers' first day; a
-  stop's time and exit code; a day of journal lines; and Envoy's counter, read through bash's
+  test by `edge.md` §3 and §6 (which can't fail for MenuMesh's hosts before their site file is in:
+  the staging night's test proves them, VPS-123), the archive timer's next run, `ps` with each
+  service `(healthy)`, the GitHub values a production build needs first, monitors whose alerts were
+  tried once, and a health check from inside the web containers, as no smoke test reaches a deploy
+  before DNS. Production's scheduler starts on the fresh database: no restaurant to remind, no
+  digest until the first admin joins (it goes to joined admins whose role sees money), and its
+  other steps clean up or count. Staging's scheduler starts only on the staging night, once Vercel
+  staging's cron jobs are disabled: before, the two would run staging's `daily` and `digest` on its
+  hosted database at the same minutes, and on the image First install deployed by hand while
+  Vercel staging moved on (VPS-124). The outline's checks got commands and results:
+  `hostwatch check: clean`; the deploys with a rollback by hand; the night, the restore test and
+  the drill; production's scheduler's first day; a stop's time and exit code; a day of journal
+  lines; and Envoy's counter, read through bash's
   `/dev/tcp`, as the gateway's image has no curl (tried here against `envoyproxy/envoy:v1.39.6` by
   its digest, in a throwaway container: `cluster.rest.upstream_cx_destroy_remote: 0`). The stop of a
   web container with an export, Hindi names and announcement emails in flight moves to the staging
@@ -11005,20 +11013,34 @@ header cite moved to VPS-121.
   `leaktest.<zone>` site, which needs a proxied record either way. A temporary
   `leaktest.menumesh.in`, at the staging night after the site file and before the `staging` record
   moves, meets both: the zone is on Cloudflare with its settings, and no app record reaches the
-  server before the test passes. The record is deleted after the test, with their step 5.
+  server before the test passes. Their step 1 serves its host with their own app's pieces, which
+  `app-apply` refuses for another zone, and it keeps each app to one site file, its hosts in the
+  app's `ZONE` and its upstreams from its `UPSTREAMS`, so MenuMesh's stand in (VPS-126): a
+  throwaway container on `edge-menumesh` named `menumesh-leaktest`, its `menumesh-leaktest:<port>`
+  in `UPSTREAMS` in `/etc/apps/menumesh.conf` for the test, and a temporary copy of
+  `menumesh.caddy` with a `https://leaktest.menumesh.in` block importing what the other blocks
+  import, installed with `app-apply menumesh site`. Their step 5 is, for this zone and in this
+  order, the normal `menumesh.caddy` installed again (never removed: it is the zone's only site
+  file), the container stopped, its `UPSTREAMS` entry taken out and the record deleted.
 - **VPS-116 · Staging first, on a night of its own:** a night that moves only staging proves the
   edge, CI's deploys through the tunnel, the schedulers and the probe on the real zone while
   production stays on Vercel. Its switches go together: the `staging` record to the server,
   `VPS_IMAGES` and `VPS_DEPLOY_STAGING` true, and `DEPLOY_STAGING` false besides, so that turning
   `VPS_DEPLOY_STAGING` off later never sends staging's deploys back to Vercel by itself; and Vercel
-  staging's cron jobs disabled (VPS-118). The outline turned `VPS_DEPLOY_STAGING` on only after the
-  move, which left merges deploying to Vercel while the record named the server. Staging's env file
-  carries Vercel staging's `STAFF_EMAIL_DOMAIN` and `CUSTOMER_COOKIE_SECRET`, as its hosted database
-  keeps the staff logins, codes, invite links and device ids made with them, and the secrets of the
-  dashboards' staging webhooks, whose URLs don't change. The way back is the record, the three
-  variables and the crons. Staging first also gives production's release a commit that went through
-  VPS staging: **VPS release** reuses that run's migrate image (`vps-build.yml`), so production runs
-  the migrations staging ran.
+  staging's cron jobs disabled (VPS-118), after which `scheduler-staging` starts, its first run on
+  the server (VPS-124). The outline turned `VPS_DEPLOY_STAGING` on only after the move, which left
+  merges deploying to Vercel while the record named the server. `VPS_IMAGES` goes on earlier, at
+  First install, step 17, for the rehearsal's images only, and may go off between its builds; it
+  stays on from the staging night (VPS-127), and is on for the merge whose **VPS build** gives that
+  night its by-hand deploy: the same day, before the record moves, `web-staging` is deployed by
+  hand from the **VPS build** run of the commit Vercel staging serves, as CI never replaced the
+  image last deployed there by hand (VPS-124). Staging's env file carries Vercel staging's
+  `STAFF_EMAIL_DOMAIN` and `CUSTOMER_COOKIE_SECRET`, as its hosted database keeps the staff logins,
+  codes, invite links and device ids made with them, and the secrets of the dashboards' staging
+  webhooks, whose URLs don't change. The way back is `scheduler-staging` stopped, then the record,
+  the three variables and the crons. Staging first also gives production's release a commit that
+  went through VPS staging: **VPS release** reuses that run's migrate image (`vps-build.yml`), so
+  production runs the migrations staging ran.
 - **VPS-117 · The production night, 03:35 to 06:30 IST on a quiet weekday:** after the 02:00 night
   and the 03:00 daily runs, inside maintenance, clear of the blackouts (02:55 to 03:30 and 08:40 to
   08:50) and hours before breakfast service. What can come earlier does: the release, from a commit
@@ -11072,30 +11094,35 @@ header cite moved to VPS-121.
 
 ### Tests (VPS Stop D)
 
-- **Unit (1,230 to 1,300 tests, 70 to 72 files):**
-  - `vps-runbook` (43 to 46) gains three rules for the cut-over, each clean on the RUNBOOK and
-    refusing a copy with one mistake, the outline's own words among them: `zoneAndLeak` (Vercel's
-    records DNS only and written down in part 1, and back to those values, DNS only, in part 5; the
-    leak test through `leaktest.menumesh.in` before the `staging` record moves, no record moved to
-    the server in parts 1 and 2, and First install, step 22, before any app record moves),
-    `stagingSwitches` (`VPS_IMAGES` and `VPS_DEPLOY_STAGING` true and `DEPLOY_STAGING` false at the
-    staging night, and Deploys on the VPS naming that night) and `windowKept` (Vercel's crons
-    disabled with `CRON_SECRET` kept at both nights and taken out only in part 6,
-    `BACKUP_PRODUCTION` off with the pause and on with the way back, the 14 days, and the point of
-    no return); the re-wrap test reads their phrases wrapped too.
-  - `vps-first-admin` (7, new) runs the real `first-admin.mjs` with node, its source on stdin as on
-    the server, against a stand-in for the app's `robots.txt`, GoTrue's Admin API and PostgREST that
-    keeps every request: the requests in order, with their headers and bodies (the key in `apikey`
-    alone and never to the app, no password field); the row's columns equal to
-    `platform_invite_member`'s insert list, read from the migration, and its expiry to
+- **Unit (1,230 to 1,300 tests, 70 to 72 files; 1,306 after the review's fixes, below):**
+  - `vps-runbook` (43 to 46, then 51 with the review's five rules) gains three rules for the
+    cut-over, each clean on the RUNBOOK and refusing a copy with one mistake, the outline's own
+    words among them: `zoneAndLeak` (Vercel's records DNS only and written down in part 1, and back
+    to those values, DNS only, in part 5; the leak test through `leaktest.menumesh.in` before the
+    `staging` record moves, no record moved to the server in parts 1 and 2, and First install,
+    step 22, before any app record moves), `stagingSwitches` (`VPS_IMAGES` and `VPS_DEPLOY_STAGING`
+    true and `DEPLOY_STAGING` false at the staging night, and Deploys on the VPS naming that night;
+    since the review, First install, step 17, leaving `VPS_DEPLOY_STAGING` off, VPS-128) and
+    `windowKept` (Vercel's crons disabled with `CRON_SECRET` kept at both nights and taken out only
+    in part 6, `BACKUP_PRODUCTION` off with the pause and on with the way back, the 14 days, and the
+    point of no return; since the review, a later production night keeping the first night's admin
+    and settings, VPS-127, and the Vercel rules kept until their parts retire, VPS-128); the re-wrap
+    test reads their phrases wrapped too.
+  - `vps-first-admin` (7, new; 8 with the review's case) runs the real `first-admin.mjs` with node,
+    its source on stdin as on the server, against a stand-in for the app's `robots.txt`, GoTrue's
+    Admin API and PostgREST that keeps every request: the requests in order, with their headers and
+    bodies (the key in `apikey` alone and never to the app, no password field); the row's columns
+    equal to `platform_invite_member`'s insert list, read from the migration, and its expiry to
     `INVITE_DAYS`; the link printed once; the stored hash equal to the HMAC of the link's token and
     to the app's own `hashCode('team-invite', token)`; the refusal once the team has a member,
     joined or not; the login removed when the insert fails, and named when that removal fails too;
-    an `email_exists` refused and a GoTrue 500 reported, neither removing anything; 12 bad emails
-    and names refused before any request, as `inviteSchema` refuses them, and good ones taken; a
-    missing setting, no app, a `robots.txt` without its sitemap line and no gateway; neither key in
-    any output; and text rules on `src/app/robots.ts`'s sitemap line, the Team page's link, and
-    the invite functions, which no later migration redefines.
+    an `email_exists` refused and GoTrue's own 500 (its JSON with an `error_code`) reported,
+    neither removing anything; a lost answer (no answer, or the gateway's plain-text 503 or 504)
+    told as a login that may exist, and the RUNBOOK's removal of it by email (VPS-122); 12 bad
+    emails and names refused before any request, as `inviteSchema` refuses them, and good ones
+    taken; a missing setting, no app, a `robots.txt` without its sitemap line and no gateway;
+    neither key in any output; and text rules on `src/app/robots.ts`'s sitemap line, the Team
+    page's link, and the invite functions, which no later migration redefines.
   - `vps-probe` (60, new) runs the probe against a stand-in edge that answers as the kit promises:
     every check passing; 45 wrong answers, each failing its own check with its exact line while
     every other line stays `ok`; a wrong pair; answers that never come; the requests' shapes and
@@ -11181,3 +11208,169 @@ header cite moved to VPS-121.
 - The owner's open choices: the bucket and its locks (VPS-40; RUNBOOK, First install, step 2);
   hosted production's locale, before `db`'s first start (VPS-34; First install, step 4); and a
   rate-limit rule on `menumesh.in/t/*` and `api.menumesh.in/rest/v1/*` (Tests (VPS Stop B)).
+
+### Review fixes (VPS Stop D)
+
+A review of Stop D at `cd6a733` had three reviewers, of the tools, of the cut-over's sequence and of
+the documents' consistency, and a skeptic, who ruled on 14 findings: five to fix (T1 of the tools,
+D1, D2 and D3 of the sequence, and D1 of the documents), seven to fold in (D4 to D7 of the
+sequence, and T1, D2 and D3 of the documents), and two rejected: T2 of the documents, phrase checks
+that any rewording evades, with nothing wrong in the tree, and K1, the orchestrator's own, as D3's
+duplicate, which D3's fix closes. D2 and D7 are fixed together by the orchestrator's design:
+staging's scheduler does not run before the staging night. Each fix of the RUNBOOK is held by a
+rule that reports problems on the RUNBOOK of `cd6a733` and none on the fix, and the tool's by a
+unit test that sends it the gateway's plain-text answers; every rule of `cd6a733` still reports
+none on the fix. The entries above that a fix changed were corrected in place (VPS-111, VPS-114,
+VPS-115, VPS-116 and Tests (VPS Stop D)), as were the kit README's first install, the RUNBOOK's
+cite of the cut-over's entries, now VPS-109 to VPS-128, and the range the RUNBOOK,
+`deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s
+header cite, now VPS-31 to VPS-128.
+
+- **VPS-122 · T1 of the tools · A lost answer to making the login read as "nothing was made"
+  (first-admin.mjs, RUNBOOK), low:** GoTrue can commit the new login and lose its connection to
+  Envoy before answering, as when it restarts. Envoy then answers a plain-text 503
+  (`upstream connect error or disconnect/reset before headers`), or a 504 once the route's 30 s run
+  out, which is also the tool's own `TIMEOUT_MS`. Only no answer at all said the login might exist;
+  any other failure said `could not make the login (503 ); nothing was made`, and a second run was
+  then refused for an email that had a login, which neither of the RUNBOOK's removals could take:
+  the first needs a waiting invite, the second a user id this path never printed. Now no answer, or
+  a 5xx without GoTrue's own JSON error (its `error_code`), ends
+  `if <email> has a login now, remove it before running this again`, a 5xx as
+  `no answer from GoTrue to making the login (503 from the gateway)`; GoTrue's own 5xx (v2.197.0's
+  `unexpected_failure`, from a transaction that made nothing) still says nothing was made. The
+  RUNBOOK's "A new link" removes such a login by its email, only while no one has joined and only
+  one with no `platform_admins` row: the skeptic's SQL with the guard of the paragraph's first
+  command, so that it prints `DELETE 0` once anyone has joined,
+  `delete from auth.users where email = '<email>' and id not in (select user_id from public.platform_admins) and not exists (select 1 from public.platform_admins where joined_at is not null)`.
+  Step 2 says what such a failure leaves. A scratch run of `cd6a733`'s tool against a stub printed
+  `nothing was made` for a plain-text 503 and 504; the fix prints the removal for both and for a
+  dropped connection. Pinned by `vps-first-admin`'s new case (the three answers, each exit 1 with
+  those words, never "nothing was made", no invite and no removal sent) and its rule on the
+  RUNBOOK's paragraph, `lostLogin` (2 problems on `cd6a733`'s RUNBOOK, none on the fix). The
+  existing GoTrue 500 case now carries GoTrue's `error_code`, as GoTrue sends it. On the
+  rehearsal's database, after its run, with a login made through the Admin API from inside `web`
+  and no `platform_admins` row, as a lost answer leaves one: with the seed's admin joined the
+  removal took nothing (`DELETE 0`, for that login and for the seed's own); with no one joined (in
+  a transaction rolled back after) it took that login and its identity (`DELETE 1`, 1 identity
+  then 0), nothing on a second run (`DELETE 0`), and never the seed's login, which has a row
+  (`DELETE 0`); the removal by id then took the login for good (`DELETE 1`).
+  (56379ce "fix: treat a lost login answer as an unknown outcome")
+- **VPS-123 · D1 of the cut-over sequence · Nothing on the checklist proved MenuMesh's
+  authenticated origin pulls (RUNBOOK), medium:** First install, step 11, runs the server team's
+  origin test (`edge.md` §6, step 4) before any MenuMesh container runs, when no Caddy site imports
+  `tls_menumesh`: a handshake for `menumesh.in` then fails for want of a site, `client_auth` on or
+  not, and their command names their own host. `tls_menumesh.caddy` ships `client_auth` commented
+  out, and the staging night's leak test named no host for it, so a `client_auth` left commented
+  out would have taken both nights live without authenticated origin pulls, which `edge.md` §3
+  makes a launch gate. The staging night's step 1 now runs the test on the server right after the
+  site file goes in, for each host `menumesh.caddy` serves (all four of its blocks import
+  `tls_menumesh`):
+  `for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done`,
+  each exit not 0. `-o /dev/null` keeps a page that does answer out of the terminal. An exit 0
+  means `client_auth` in `tls_menumesh` is still commented out: stop; the night goes no further
+  until the admin has turned authenticated origin pulls on as §3 says (Cloudflare's zone-level
+  pulls first, then `client_auth`) and every exit is not 0, and its way back is none, as no record
+  sends the server anything yet. Step 11 says its own test can't fail for `menumesh.in` yet and
+  points there, step 22 names the test, and the leak test's TLS check is the same loop with its
+  host added. Pinned by `originPulls`, which holds the loop's hosts to `menumesh.caddy`'s blocks,
+  and refuses a host left out or one the file doesn't serve, a block without
+  `import tls_menumesh`, the loop missing or before the site file, no stop on an exit 0, and step
+  11 without its pointer: 3 problems on `cd6a733`'s RUNBOOK. (4a4cc80 "docs: fix the cut-over
+  checklist after the stop d review", as are VPS-124 to VPS-128)
+- **VPS-124 · D2 and D7 of the cut-over sequence · `scheduler-staging` ran First install's image
+  beside Vercel staging's cron jobs (RUNBOOK, VPS-114, VPS-116), medium:** First install deployed
+  `web-staging` once by hand and started `scheduler-staging` with production's scheduler. Until the
+  staging night each merge still deploys Vercel staging and migrates hosted staging
+  (`deploy.yml`), CI never redeploys `web-staging` while `VPS_DEPLOY_STAGING` is off, and
+  migrations stay compatible for one release only: over a rehearsal of weeks staging's daily ran
+  old code against changed functions, and the staging night's step 3 sent testers to that image
+  until step 6's deploy (D2). And `vercel.json` and `staging.crontab` run the daily and the digest
+  at the same minutes, so the two callers could start together, where each run reads its log,
+  sends, then writes it, and only Resend's idempotency key, which holds within one Resend account,
+  stops a second email; step 20's "safe for the reasons a second run by hand is" assumed one run
+  after the other (D7). By the orchestrator's design, `scheduler-staging` does not run before the
+  staging night. First install, step 20, starts production's `scheduler` alone and says how the
+  other stays stopped: it gets no container, as `up -d` creates only the services it names and
+  what they depend on (nothing depends on it; it depends on `web-staging`) and `app-deploy` swaps
+  one service with `--no-deps` (`66fe8b3`), so every command that names it leaves it out until
+  then (Rotation, the scheduler's call by hand and After a change, and disaster recovery's step
+  7), and `up -d` never runs without names; hostwatch checks only the containers there are. Part
+  2 checks production's scheduler alone. The staging night gets, the same day and before the
+  record moves, with no merge to `main` between it and step 6's, a by-hand deploy of `web-staging`
+  with the staging and migrate references of the **VPS build** run of the commit Vercel staging
+  serves, checked from inside; `scheduler-staging` starts at step 5, once Vercel staging's cron
+  jobs are disabled; step 5's way back stops it before they go on again, and the night's way back
+  stops it first. Step 9's check a day later stays. The kit README's first install says the same.
+  Pinned by `stagingScheduler`: 7 problems on `cd6a733`'s RUNBOOK.
+- **VPS-125 · D3 of the cut-over sequence, and K1 · Part 1's count ran two statements (RUNBOOK),
+  medium:** Supabase's SQL editor shows only the last statement's result of a block, as libpq's
+  `PQexec` and psql before version 15 do (the review's reading; Supabase's docs don't say), so the
+  block showed the logins' count alone, without the `restaurants` and `site_leads` rows that decide
+  the fresh start. The count is one statement now, the logins folded in as
+  `union all select 'auth', 'users', (select count(*) from auth.users)` before its `order by`, and
+  the text names the `auth` `users` row as the logins. On the rehearsal's database, sent whole with
+  `psql -c` as one simple query, the statement gave 59 rows, the `auth` `users` row (5 logins)
+  beside the 58 tables' (`restaurants` 1, the seed's; `site_leads` 0); with psql's
+  `SHOW_ALL_RESULTS` off, which shows the last result alone, `cd6a733`'s block gave only a `count`
+  column, and the fix's every row. Pinned by `oneCount`: 2 problems on `cd6a733`'s RUNBOOK (two
+  statements, no logins row).
+- **VPS-126 · D1 of the documents · Nothing served the leak test's host (RUNBOOK, VPS-115),
+  medium:** the server team's `edge.md` §6 starts its echo container on `edge-jainav` and installs a
+  `leaktest.jainavinfotech.in` site file, and `app-apply` keeps each app to one site file
+  (`sites/<app>.caddy`) whose hosts stay in its `ZONE` and whose upstreams are its `UPSTREAMS`
+  (`66fe8b3`, `SITE_JQ` and `cmd_site`). `menumesh.caddy` had no `leaktest` block and
+  `menumesh.conf` no upstream for one, so the leak test's first step had nothing to answer it, and
+  "their step 5 removes the test site" read as removing `menumesh.caddy`, the zone's only site
+  file, just before the `staging` record moves. The RUNBOOK's step 2 now says how MenuMesh's pieces
+  stand in: the container on `edge-menumesh` as `menumesh-leaktest` (an upstream must be
+  `menumesh-<name>:<port>`), `menumesh-leaktest:<port>` in `UPSTREAMS` in `/etc/apps/menumesh.conf`
+  for the test, and a temporary copy of `menumesh.caddy` with one more block,
+  `https://leaktest.menumesh.in`, that imports what the others import (`site_common`,
+  `tls_menumesh`, and `upstream` in its `reverse_proxy`, as the site check requires), installed
+  with `sudo app-apply menumesh site`; and their step 5 for this zone, in this order: the normal
+  `menumesh.caddy` installed again (never removed: `app-apply` has no way to remove one), the
+  container stopped, its `UPSTREAMS` entry taken out (after the site file, as a site naming an
+  upstream its conf lacks fails `app-apply`'s checks of the live edge, hostwatch's daily
+  `edge validate` among them), and the record deleted. VPS-115 says the same. The step also says
+  that hostwatch's check of the edge networks (`check_networks` at `66fe8b3`) reports the
+  container, which belongs to no compose project, as `wrong-project` until it stops, as it would
+  the server team's own. Pinned by `leakPieces`: 5 problems on `cd6a733`'s RUNBOOK.
+- **VPS-127 · D4, D5 and D6 of the cut-over sequence · A later production night, Caddy's window,
+  and `VPS_IMAGES` before the staging night (RUNBOOK, VPS-116), low:** D4: after a way back the
+  server's database keeps the first night's joined admin, settings and invites, and the tool refuses
+  once the team has anyone, so "part 1's count and part 4 again" ran into its refusal and typed the
+  settings twice: a later night skips the link and steps 3 and 4 when the server's database still
+  holds them, and signs in with that login. D5: `sudo app-compose edge up -d` recreates the shared
+  Caddy and drops every connection on it, the server team's site's among them, which is why
+  `app-apply` prints `next, between 01:00 and 07:00 IST` and their `server.md` §7 runs it then:
+  First install, step 11, and the rotation of staging's password now recreate it in that window.
+  D6: the owner's answer turned the VPS CI jobs on with the staging move, but the rehearsal needs
+  `VPS_IMAGES` earlier, for its images; VPS-116 records the exception, in the skeptic's words, and
+  that it is on for the merge whose **VPS build** the staging night's by-hand deploy takes
+  (VPS-124). D4 is pinned by `windowKept` (1 problem on `cd6a733`'s RUNBOOK) and D5 by
+  `edgeWindow` (2 problems); D6 is in the decision log alone, which no rule reads.
+- **VPS-128 · T1, D2 and D3 of the documents · Step 17's switch unpinned, step 6's merge
+  forbidden, and the Vercel rules until Stop D (tests, RUNBOOK), low:** T1: `stagingSwitches` never
+  read First install, step 17, so putting `VPS_DEPLOY_STAGING` back there, the regression VPS-116
+  describes, passed; it now reads the step and refuses `VPS_DEPLOY_STAGING` turned `true` there or
+  not left for the staging night. `cd6a733`'s step 17 was right, so this reports nothing there; two
+  refusal cases turn it on beside `VPS_IMAGES` and drop the wait. D2: the staging night allowed "no
+  merge to `main` while it runs", though its step 6 is a merge, the only way CI deploys staging on
+  the server; it now reads "other than step 6's", which `stagingSwitches` pins (1 problem). D3: the
+  web image's "After the move" said the Vercel rules held "until the cut-over (Stop D) rewrites
+  them", but they stay until the Vercel parts retire, 14 days after the production night (part 6),
+  as an earlier rewrite ends the way back: the live deploy path until each environment's night,
+  and its way back after it; `windowKept` pins it (1 problem).
+
+**After the fixes (VPS Stop D)**, which changed the first-admin tool, documents, text rules and
+comments: `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,306 in 72
+files (`vps-runbook` 51 and `vps-first-admin` 8, the others as they were; the four VPS files 236);
+`pnpm vps:check` 53 checks, 0 failed, after these documents changed `compose.yml`'s header. The
+new and extended rules report 24 problems on the RUNBOOK of `cd6a733` (`stagingSwitches` 1,
+`windowKept` 2, `originPulls` 3, `stagingScheduler` 7, `oneCount` 2, `leakPieces` 5, `edgeWindow`
+2, and `vps-first-admin`'s `lostLogin` 2) and none on the fix; `cd6a733`'s 23 rules report none on
+either. `pnpm vps:rehearse` ran again on the kept stack and secrets, the web image kept from
+`56379ce` as nothing it is built from changed: 46 checks, 0 failed (by step 1, 6, 5, 8, 1, 4, 11,
+6 and 4), its step 8 running the fixed tool as the owner runs it on the server; then the two
+statements above on its database (VPS-122, VPS-125), and `pnpm vps:down` 3 checks, 0 failed. The
+range moved in 7265e21 "docs: point the kit's decision range at the stop d review".
