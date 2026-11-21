@@ -938,8 +938,9 @@ workflows:
 recreates them; a `restart` keeps the old values.
 
 - `CRON_SECRET` or `STAGING_CRON_SECRET`: a new 32-byte base64url value in `.env`, then
-  `sudo app-compose menumesh up -d web scheduler` (staging: `web-staging scheduler-staging`); the
-  minute between the two may log one 401 line.
+  `sudo app-compose menumesh up -d web scheduler` (staging: `web-staging scheduler-staging`, or
+  `web-staging` alone until the staging night's step 5 has started `scheduler-staging`: First
+  install, step 20); the minute between the two may log one 401 line.
 - A value in `env/web.env` or `env/web-staging.env`: the provider's step as in Rotating secrets, the
   edited file installed again, then `up -d web` (or `web-staging`). A new `CUSTOMER_COOKIE_SECRET`
   gives phones new device ids, as on Vercel.
@@ -949,7 +950,8 @@ recreates them; a `restart` keeps the old values.
   dashboard's database settings), then `STAGING_DB_PASSWORD` in `.env` and the GitHub secret
   `STAGING_SUPABASE_DB_PASSWORD`; only `migrate-staging` reads it, at the next staging deploy.
 - The bucket's token, Telegram and the heartbeat addresses: `.env`, then `up -d backup`, and
-  `scheduler scheduler-staging` for the heartbeats. A bucket token someone else may hold, or a
+  `scheduler scheduler-staging` for the heartbeats (`scheduler` alone until the staging night's
+  step 5: First install, step 20). A bucket token someone else may hold, or a
   leaked `.env`: A stolen or leaked bucket token (VPS). A leaked `.env` leaked every value in it,
   so the backup's heartbeat addresses and the bot's token go new with the token, and so, each by
   its step here, do both cron secrets, the schedulers' heartbeat addresses, hosted staging's
@@ -1393,8 +1395,10 @@ then, note from `/super` whom it took (Leads, Restaurants), to contact them.
    test passed; then sign in with hosted's login and the authenticator's hosted entry.
 
 A later production night is part 1's count and part 4 again, without the first admin's link and
-steps 3 and 4 when the server's database still holds the first night's admin and settings: sign in
-with that login instead. It comes once the server's trouble is fixed and
+step 3 when the server's database still holds the first night's admin: sign in with that login
+instead. Step 4 then types again only what differs from hosted's `/super` that night (a setting,
+plan, Razorpay plan id, offer or team member changed while hosted served during the way back),
+compared with the server's `/super`. It comes once the server's trouble is fixed and
 `sudo app-compose menumesh up -d web scheduler` has brought them back.
 
 #### 6. After the 14 days (a stop of its own)
@@ -1516,8 +1520,8 @@ through Cloudflare (VPS-38). Times are UTC:
   which both mount, `scheduler` alone for `production.crontab` and `scheduler-staging` alone for
   `staging.crontab`. A new cron secret or heartbeat address in `.env` needs `up -d` of the scheduler
   that reads it, since `start.sh` writes the values when the container is made: `scheduler` for
-  production's, `scheduler-staging` for the `STAGING_*` ones, each with its web container for a
-  cron secret (Rotation).
+  production's, `scheduler-staging` for the `STAGING_*` ones once the staging night's step 5 has
+  made it (First install, step 20), each with its web container for a cron secret (Rotation).
 
 ### Backups and restore (VPS)
 
@@ -2189,8 +2193,10 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
      `sudo app-compose menumesh up -d auth rest realtime storage api-gw backup` (on a new server
      this starts `backup`, stopped since step 4, after `db`).
   7. Production's image, by the admin form, and staging's; then
-     `sudo app-compose menumesh up -d scheduler scheduler-staging`. Production's release follows
-     from the recovered state, whatever kind of recovery brought it back, in this order:
+     `sudo app-compose menumesh up -d scheduler scheduler-staging` (`scheduler` alone before the
+     staging night's step 5, on the same server or a new one: First install, step 20).
+     Production's release follows from the recovered state, whatever kind of recovery brought it
+     back, in this order:
 
      1. **The release live then**: the one live at the recovered state's last transaction, a
         night's stamp, the point, or after `latest` the last transaction `pitr.sh` printed,

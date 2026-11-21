@@ -84,13 +84,14 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * and written down for the way back, the leak test through a temporary record before any app
  * record moves, the staging night's switches, and Vercel's cron jobs, CRON_SECRET and the hosted
  * project's backup kept for the 14 days of the way back, which the first real write on the server
- * ends; and since Stop D's review (VPS-123 to VPS-128) the origin test of authenticated origin pulls
- * for every host the site file serves, right after it goes in, scheduler-staging only from the
- * staging night, once Vercel staging's cron jobs are off and web-staging runs their commit,
- * part 1's count in one statement, the leak test served by MenuMesh's own pieces, Caddy recreated
- * only in the shared server's window, VPS_DEPLOY_STAGING left off at First install, step 17, the
- * merge of the staging night's step 6, a later production night that keeps the first night's
- * admin, and the Vercel rules kept until their parts retire.
+ * ends; and since Stop D's review (VPS-123 to VPS-129) the origin test of authenticated origin
+ * pulls for every host the site file serves, right after it goes in, scheduler-staging only from
+ * the staging night, once Vercel staging's cron jobs are off and web-staging runs their commit,
+ * each earlier command that would make it saying so, part 1's count in one statement, the leak
+ * test served by MenuMesh's own pieces, Caddy recreated only in the shared server's window,
+ * VPS_DEPLOY_STAGING left off at First install, step 17, the merge of the staging night's step 6,
+ * a later production night that keeps the first night's admin and types again just what hosted
+ * changed, and the Vercel rules kept until their parts retire.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -135,6 +136,9 @@ const flat = (text: string) => text.replace(/\s+/g, ' ');
 
 /** Whether `text` holds `phrase`, both read with their white space folded. */
 const has = (text: string, phrase: string) => flat(text).includes(flat(phrase));
+
+/** The sentences of `text`, its white space folded, each ending at a full stop before a space. */
+const sentences = (text: string) => flat(text).split(/(?<=\.) /);
 
 /** `text` as a literal in a regular expression. */
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -187,6 +191,10 @@ const PLACES = {
   siteNight: ['1. **The site file and the redaction file**', '2. **The leak test**'],
   leakTest: ['2. **The leak test**', '\n3. **The'],
   afterMove: ['- **After the move:**', '- **Checking an image here**'],
+  // Stop D's re-review: the commands outside First install that could make scheduler-staging early
+  // (Secrets (VPS)'s Rotation and the scheduler's After a change; disaster recovery is `recovery`).
+  envRotation: ['**Rotation.** After changing `.env`', '- The backup key: a new pair'],
+  schedulerChange: ['**After a change:**', '### Backups and restore (VPS)'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -2395,9 +2403,11 @@ const stagingSwitches = (runbook: string) =>
  * back, and the secret leaves both projects only after the 14 days. The hosted project's nightly
  * backup goes off after its pause, as a paused project's night fails, and on again with the way
  * back. The way back lasts 14 days, and the first real write on the server is its point of no
- * return. A later production night after a way back keeps the first night's admin and settings,
- * which the tool would refuse to make again (Stop D's review, D4 of the cut-over sequence); and
- * the Vercel rules stay until the Vercel parts retire, not until Stop D (D3 of the docs).
+ * return. A later production night after a way back keeps the first night's admin, which the tool
+ * would refuse to make again (Stop D's review, D4 of the cut-over sequence), and its step 4 types
+ * again just what hosted's /super changed while hosted served, neither every setting nor none
+ * (Stop D's re-review, R2-2); and the Vercel rules stay until the Vercel parts retire, not until
+ * Stop D (D3 of the docs).
  */
 const windowKept = (runbook: string) =>
   inPlaces(
@@ -2445,11 +2455,16 @@ const windowKept = (runbook: string) =>
             ]),
         ...(has(
           wayBack,
-          "without the first admin's link and steps 3 and 4 when the server's database still holds the first night's admin and settings",
+          "without the first admin's link and step 3 when the server's database still holds the first night's admin",
         )
           ? []
           : [
-              'a later production night makes the first admin and types the settings again over the first night’s',
+              'a later production night doesn’t skip just the first admin’s link and step 3 while the server holds the first night’s admin',
+            ]),
+        ...(has(wayBack, "only what differs from hosted's `/super` that night")
+          ? []
+          : [
+              'a later production night doesn’t type again just what hosted’s /super changed during the way back',
             ]),
         ...(has(afterMove, 'until the Vercel parts retire, 14 days after the production night') &&
         !has(afterMove, 'until the cut-over (Stop D) rewrites them')
@@ -2538,13 +2553,17 @@ const originPulls = (runbook: string, site: string) =>
  * argument that the two callers were as safe as a second run by hand; the rehearsal checks no
  * staging scheduler; and the staging night deploys web-staging by hand on the commit Vercel
  * staging serves before its record moves, starts scheduler-staging once, after Vercel staging's
- * cron jobs are disabled, and its way back stops it, in step 5 before they are on again.
+ * cron jobs are disabled, and its way back stops it, in step 5 before they are on again. Someone
+ * working from Rotation, the scheduler's After a change or disaster recovery never reads step 20,
+ * and an `up -d` that names scheduler-staging makes its container: so each sentence there with one
+ * says itself to leave it out until the staging night's step 5, pointing to First install, step 20
+ * (Stop D's re-review, R2-1).
  */
 const stagingScheduler = (runbook: string) =>
   inPlaces(
     runbook,
-    ['schedulers', 'rehearsal', 'stagingNight'],
-    ({ schedulers, rehearsal, stagingNight }) => {
+    ['schedulers', 'rehearsal', 'stagingNight', 'envRotation', 'schedulerChange', 'recovery'],
+    ({ schedulers, rehearsal, stagingNight, envRotation, schedulerChange, recovery }) => {
       const night = flat(stagingNight);
       const start = 'sudo app-compose menumesh up -d scheduler-staging';
       const stop = 'sudo app-compose menumesh stop scheduler-staging';
@@ -2583,6 +2602,28 @@ const stagingScheduler = (runbook: string) =>
         ...(wayBack >= 0 && night.indexOf(stop, wayBack) > wayBack
           ? []
           : ['the staging night’s way back doesn’t stop scheduler-staging']),
+        ...(
+          [
+            ['Secrets (VPS), Rotation,', envRotation],
+            ['The scheduler (VPS), After a change,', schedulerChange],
+            ['Backups and restore (VPS), Disaster recovery,', recovery],
+          ] as const
+        ).flatMap(([where, text]) =>
+          sentences(text)
+            .filter(
+              (sentence) =>
+                /\bup -d\b/.test(sentence) &&
+                /\bscheduler-staging\b/.test(sentence) &&
+                !(
+                  sentence.includes("the staging night's step 5") &&
+                  sentence.includes('First install, step 20')
+                ),
+            )
+            .map(
+              (sentence) =>
+                `${where} starts scheduler-staging before the staging night: ${/`[^`]*\bscheduler-staging\b[^`]*`/.exec(sentence)?.[0] ?? 'scheduler-staging'}`,
+            ),
+        ),
       ];
     },
   );
@@ -2714,6 +2755,13 @@ const OLD_STAGING_CRONS = [
   "5. **Vercel's staging project**: Schedules → Cron Jobs → **Disable Cron Jobs**, so that",
   "   `scheduler-staging` runs staging's jobs alone. `CRON_SECRET` stays (part 6 takes it out). Way",
   '   back: **Enable Cron Jobs** there.',
+].join('\n');
+
+/** The later production night's skips at 67010b7: step 4 too, with the link and step 3. */
+const OLD_LATER_NIGHT = [
+  ", without the first admin's link and",
+  "steps 3 and 4 when the server's database still holds the first night's admin and settings: sign in",
+  'with that login instead. ',
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -2999,6 +3047,11 @@ const REWRAPPED = [
   "while it runs other than step 6's",
   "without the first admin's link and",
   'the Vercel parts retire, 14 days',
+  // Read by the rules of Stop D's re-review: a piece of each phrase that stands on one line.
+  "the staging night's step 5",
+  'First install, step 20',
+  "step 3 when the server's database still holds",
+  "only what differs from hosted's `/super` that night",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -5464,7 +5517,26 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(
       windowKept,
       swap(RUNBOOK, `${laterNight}It comes once`, ', once'),
-      'a later production night makes the first admin and types the settings again over the first night’s',
+      'a later production night doesn’t skip just the first admin’s link and step 3 while the server holds the first night’s admin',
+    );
+    // 67010b7's later night, which skipped step 4 too, losing what hosted's /super changed during
+    // the way back (Stop D's re-review, R2-2).
+    const skipped = swap(RUNBOOK, laterNight, OLD_LATER_NIGHT);
+    refuses(
+      windowKept,
+      skipped,
+      'a later production night doesn’t skip just the first admin’s link and step 3 while the server holds the first night’s admin',
+    );
+    refuses(
+      windowKept,
+      skipped,
+      'a later production night doesn’t type again just what hosted’s /super changed during the way back',
+    );
+    // Without its step-4 clause the night types every setting again over the first night's.
+    refuses(
+      windowKept,
+      swap(RUNBOOK, cut(RUNBOOK, 'Step 4 then types again', 'It comes once'), ''),
+      'a later production night doesn’t type again just what hosted’s /super changed during the way back',
     );
     // cd6a733's After the move: the Vercel rules until Stop D rewrote them (D3 of the docs).
     refuses(
@@ -5539,7 +5611,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('starts scheduler-staging only on the staging night, once Vercel staging’s cron jobs are off and web-staging runs Vercel staging’s commit, and its way back stops it (Stop D review, D2 and D7 of the cut-over sequence)', () => {
+  it('starts scheduler-staging only on the staging night, once Vercel staging’s cron jobs are off and web-staging runs Vercel staging’s commit, and its way back stops it, every earlier command that would make it saying to leave it out (Stop D review, D2 and D7 of the cut-over sequence, and its re-review’s R2-1)', () => {
     expect(stagingScheduler(RUNBOOK)).toEqual([]);
     // cd6a733's step 20: both schedulers at the first install, called safe together.
     const both = swap(RUNBOOK, cut(RUNBOOK, '\n20. ', '\n21. ').slice(1), OLD_SCHEDULERS);
@@ -5601,6 +5673,38 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         'Way back, for the whole night: nothing on the server',
       ),
       'the staging night’s way back doesn’t stop scheduler-staging',
+    );
+    // 67010b7's commands outside First install, each without the limit (Stop D's re-review, R2-1):
+    // Rotation's cron secrets and its heartbeats, After a change's STAGING_* values, and disaster
+    // recovery's step 7.
+    refuses(
+      stagingScheduler,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '`web-staging scheduler-staging`, or', '); the minute'),
+        '`web-staging scheduler-staging`',
+      ),
+      'Secrets (VPS), Rotation, starts scheduler-staging before the staging night: `web-staging scheduler-staging`',
+    );
+    refuses(
+      stagingScheduler,
+      swap(RUNBOOK, cut(RUNBOOK, ' (`scheduler` alone until the staging night', '. A bucket'), ''),
+      'Secrets (VPS), Rotation, starts scheduler-staging before the staging night: `scheduler scheduler-staging`',
+    );
+    refuses(
+      stagingScheduler,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, "ones once the staging night's step 5", ', each with its web container'),
+        'ones',
+      ),
+      'The scheduler (VPS), After a change, starts scheduler-staging before the staging night: `scheduler-staging`',
+    );
+    const stepSeven = cut(RUNBOOK, ' (`scheduler` alone before the', 'First install, step 20)');
+    refuses(
+      stagingScheduler,
+      swap(RUNBOOK, `${stepSeven}First install, step 20)`, ''),
+      'Backups and restore (VPS), Disaster recovery, starts scheduler-staging before the staging night: `sudo app-compose menumesh up -d scheduler scheduler-staging`',
     );
   });
 
