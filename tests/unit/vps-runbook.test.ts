@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
+import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
 
 /**
  * The steps of docs/RUNBOOK.md's "The shared server (VPS)" that no script runs: the owner follows
@@ -104,7 +104,8 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * the recreate checked with its way back as the vendored app-apply keeps it, the edge networks
  * checked at step 15, Jainav's hosts refusing a client without a certificate before db, and the
  * leak test's copy of the installed site file, its alert, its checks and its clean-up in their
- * order.
+ * order. Since the last review round (VPS-145) they also pin step 11's CSR key, shredded only once
+ * its certificate is in, and the digest pin's steps before edge.env.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2841,6 +2842,15 @@ const EDGE_CERT =
   'sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem';
 const AOP_CLIENT =
   'sudo install -m 0644 -o root -g root ~/incoming/aop-client.pem /srv/edge/certs/menumesh/';
+/** The CSR's key goes only once its certificate is in (their edge.md §3, step 4; VPS-145). */
+const KEY_SHRED = 'shred -u ~/csr/origin-key.pem';
+const CERT_INSTALL = `${EDGE_CERT} && ${KEY_SHRED} && rm -r ~/csr`;
+/** The server team's digest pin, as their edge.md §5, A new Caddy image, steps 1 to 3 (VPS-145). */
+const PIN_COPY =
+  "scp docker/edge/compose.yml ops@<the tunnel's SSH host>:incoming/edge-compose.yml";
+const PIN_CONF = 'sudoedit /etc/apps/edge.conf';
+const PIN_PULL = `sudo docker pull "$(sed -n 's/^CADDY_IMAGE=//p' /etc/apps/edge.conf)"`;
+const PIN_COMPOSE = 'sudo app-apply edge compose ~/incoming/edge-compose.yml';
 const EDGE_COPY = '(umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)';
 const EDGE_ENV = 'sudo app-apply edge env ~/incoming/edge.env && shred -u ~/incoming/edge.env';
 const RECREATE = 'sudo app-compose edge up -d';
@@ -2907,17 +2917,25 @@ const redactEarly = (runbook: string) =>
  * recreated, so the certificate, with the owner's aop-ca.pem and the client certificate beside it,
  * goes in first, and edge.env last, the recreate right after it. `edge env` installs the file it is
  * given whole, so the admin merges a copy of the live file and shreds it, also on stopping after a
- * refusal (VPS-143). One recreate takes the server team's digest pin as well, and the staging night
- * first checks that Caddy holds MenuMesh's two lines, by their names alone.
+ * refusal (VPS-143). One recreate takes the server team's digest pin as well, its three steps before
+ * edge.env, and the staging night first checks that Caddy holds MenuMesh's two lines, by their names
+ * alone. The CSR's key goes only once the certificate is in, as in their edge.md §3: a refused
+ * install would have shredded the only copy (VPS-145).
  */
 const edgeNight = (runbook: string) =>
   inPlaces(runbook, ['edgeStep', 'beforeStaging'], ({ edgeStep, beforeStaging }) => {
     const text = flat(edgeStep);
     const order = [EDGE_CERT, EDGE_COPY, EDGE_ENV, RECREATE].map((words) => text.indexOf(words));
+    const pin = [PIN_COPY, PIN_CONF, PIN_PULL, PIN_COMPOSE, EDGE_COPY].map((words) =>
+      text.indexOf(words),
+    );
     return [
-      ...[EDGE_CERT, AOP_CLIENT, EDGE_COPY, EDGE_ENV]
+      ...[CERT_INSTALL, AOP_CLIENT, EDGE_COPY, EDGE_ENV]
         .filter((words) => !text.includes(words))
         .map((words) => `First install, step 11, lacks ${words}`),
+      ...(text.split(KEY_SHRED).length === text.split(`${EDGE_CERT} && ${KEY_SHRED}`).length
+        ? []
+        : ['First install, step 11, shreds the CSR’s key whether or not its certificate went in']),
       ...(order.every((at, n) => at >= 0 && (n === 0 || at > order[n - 1])) &&
       has(
         edgeStep,
@@ -2933,7 +2951,9 @@ const edgeNight = (runbook: string) =>
       )
         ? []
         : ['First install, step 11, leaves a copy of edge.env behind when the admin stops']),
-      ...(has(edgeStep, "It also takes the server team's digest pin of Caddy")
+      ...(has(edgeStep, "It also takes the server team's digest pin of Caddy") &&
+      pin.every((at, n) => at >= 0 && (n === 0 || at > pin[n - 1])) &&
+      text.includes(`CADDY_IMAGE=${CADDY}`)
         ? []
         : ['First install, step 11, recreates Caddy without the server team’s digest pin']),
       ...(has(beforeStaging, RECREATED)
@@ -3949,6 +3969,11 @@ const REWRAPPED = [
   '`Forwarded` are absent',
   '`menumesh.caddy` adds no header of its own',
   "a temporary hPanel accept rule for the admin's own",
+  // Read by the rules of the last review round (VPS-145): a piece of each phrase that stands on
+  // one line.
+  '&& shred -u ~/csr/origin-key.pem',
+  'scp docker/edge/compose.yml',
+  'app-apply edge compose ~/incoming/edge-compose.yml',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -6138,7 +6163,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     for (const problem of [began, counted, ofTheDay]) refuses(releaseDeployed, before, problem);
     // The notes the deploy design notes found unpinned: the rollback's details dropped or turned,
     // and Production's note moved to the Staging bullet.
-    const staging = 'and any deploy with under 5 GB of disk free.';
+    const staging = 'and any deploy with under 5 GiB of disk free.';
     for (const bad of [
       swap(
         RUNBOOK,
@@ -6789,9 +6814,48 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       cut(RUNBOOK, '11. The edge:', '\n\n    ```sh\n    docker run --rm -it'),
       OLD_EDGE_STEP,
     );
-    for (const words of [EDGE_CERT, AOP_CLIENT, EDGE_COPY, EDGE_ENV]) {
+    for (const words of [CERT_INSTALL, AOP_CLIENT, EDGE_COPY, EDGE_ENV]) {
       refuses(edgeNight, old, `First install, step 11, lacks ${words}`);
     }
+    // ac976ce's block, kept to 0a35068: the CSR's key shredded on a line of its own, whatever the
+    // install did.
+    const unchained = swap(
+      RUNBOOK,
+      `    ${CERT_INSTALL}\n    ${AOP_CLIENT}\n`,
+      `    ${EDGE_CERT}\n    ${AOP_CLIENT}\n    ${KEY_SHRED} && rm -r ~/csr\n`,
+    );
+    refuses(edgeNight, unchained, `First install, step 11, lacks ${CERT_INSTALL}`);
+    refuses(edgeNight, unchained, 'shreds the CSR’s key whether or not its certificate went in');
+    // 0a35068's step 11: the digest pin named, none of its steps, so `edge compose` was refused;
+    // its `edge compose` after edge.env; and a CADDY_IMAGE that is not the kit's CADDY.
+    const unpinned = 'recreates Caddy without the server team’s digest pin';
+    refuses(
+      edgeNight,
+      swap(
+        RUNBOOK,
+        cut(
+          RUNBOOK,
+          "    Then the server team's digest pin of Caddy",
+          '    `edge.env` comes last.',
+        ),
+        '',
+      ),
+      unpinned,
+    );
+    refuses(
+      edgeNight,
+      swap(
+        swap(RUNBOOK, `    ${PIN_COMPOSE}\n`, ''),
+        `    ${EDGE_ENV}\n`,
+        `    ${EDGE_ENV}\n    ${PIN_COMPOSE}\n`,
+      ),
+      unpinned,
+    );
+    refuses(
+      edgeNight,
+      swap(RUNBOOK, `\`CADDY_IMAGE=${CADDY}\``, '`CADDY_IMAGE=caddy:2.11.9-alpine`'),
+      unpinned,
+    );
     for (const problem of [
       'doesn’t put the certificate and the snippet before edge.env',
       'leaves a copy of edge.env behind when the admin stops',

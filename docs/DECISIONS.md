@@ -11639,9 +11639,10 @@ entries below.
   here, with no console at hand). It exports `valuesFile()`, `checkEmail()` and `checkName()` and
   asks only when run (`import.meta.main`), so the tests and `vps:rehearse` import it. The RUNBOOK's
   step 2 now pipes it to
-  `ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'`, says
-  that the file is made only with this tool and that ssh's passphrase, if it asks, comes after the
-  two values, then runs
+  `ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'` (with
+  `-o BatchMode=yes`, after a login that asks nothing, its key in the agent, since VPS-145, where
+  this said that ssh's passphrase, if it asks, comes after the two values), says that the file is
+  made only with this tool, then runs
   `cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs | sudo app-compose menumesh exec -T web node --input-type=module -`
   and `shred -u ~/incoming/first-admin.values.mjs`, whether the tool succeeded or not, so that
   neither the journal nor any shell history holds the values; and once the link is in the password
@@ -11763,7 +11764,8 @@ entries below.
   (`edge cert <app> <origin.pem> <origin-key.pem> [<aop-ca.pem>]`), then `aop-client.pem` by hand
   into `/srv/edge/certs/menumesh/`, as `edge.md` §3 does for theirs, since `edge cert` copies only
   those three and hostwatch reads every public `.pem` there and never a file named for a key; the
-  CSR's key is shredded after, as there. `app-apply edge env` puts the file it is given in place of
+  CSR's key is shredded only once that install has worked, joined to it by `&&` as there (since
+  VPS-145: it was a line of its own). `app-apply edge env` puts the file it is given in place of
   `/srv/edge/edge.env`, so the example's two lines alone would have dropped every `JAINAV_*` line at
   the next recreate. Step 11 now merges, as their commitment 4 has it:
   `(umask 077; sudo cat /srv/edge/edge.env > ~/incoming/edge.env)`, the two lines appended after an
@@ -11784,9 +11786,9 @@ entries below.
   `menumesh.in` on Cloudflare, its Origin CA certificate made from a CSR generated on the server; (c)
   the owner's staging hash, `aop-ca.pem` and `aop-client.pem` made, and the client pair uploaded for
   `menumesh.in`; (d) steps 9 to 11 done up to the `edge.env` lines: the conf, the deploy user and its
-  token, the redaction file, the certificate with `aop-ca.pem` and the snippet. Steps 12 to 21 don't
-  wait for it, nor does the rehearsal; the staging night does: its Before it checks that Caddy holds
-  both names, with
+  token, the redaction file, the certificate with `aop-ca.pem`, the snippet and, since VPS-145, the
+  digest pin's steps. Steps 12 to 21 don't wait for it, nor does the rehearsal; the staging night
+  does: its Before it checks that Caddy holds both names, with
   `sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'`,
   which prints `2`, a count and never the hash (`edge-caddy-1` is the vendored `app-apply`'s
   `CADDY_CONTAINER`), as its step 1's site file is refused until then. Step 11's snippet wording stays
@@ -12158,6 +12160,71 @@ entries below.
   after it, the one-off was healthy in 2.4 s, and the service itself still went through every
   check, healthy in 3.7 s in front of the 25-minute backlog with "first seen now"
   (`vps:rehearse`'s step 9: 3.8 s).
+
+- **VPS-145 · The last review round's other fixes (its security finding 1, procedure findings 2 to
+  6 and code finding 3):** three read-only reviewers, of the kit's code, its security and the
+  RUNBOOK's procedure, read `21a13bf..0a35068`.
+  - First install, step 11, shredded the CSR's key on a line of its own after
+    `app-apply edge cert`, so a refused install (`recreate Caddy first`, an `aop-ca.pem` missing or
+    with CRLF line ends, a file that holds no certificate, Caddy's validate) still destroyed the
+    only copy of the key, made on the server, and the Origin CA certificate just issued for it went
+    with it. Their `edge.md` §3, step 4, joins the two with `&&` ("the key copy goes only if that
+    worked"), as VPS-136 said ours did. Step 11's line is now theirs with `menumesh`,
+    `aop-client.pem`'s install on the next line, and a sentence says that the key stays when
+    `edge cert` refuses and both lines are run again; disaster recovery, step 8, takes step 11's
+    lines.
+  - The first platform admin's values: the maker and the pipe's ssh start together and read the
+    same terminal, so "If ssh asks for a passphrase, answer it after the two values" could not be
+    followed: ssh's prompt could take the email typed for the maker, or the maker take the
+    passphrase for a value and send it to the server. Their `server.md` §1, step 12, puts the admin
+    keys behind a passphrase, so a prompt is the likely case. Step 2 now puts the owner's key in
+    ssh's agent first, then runs `ssh -o BatchMode=yes ops@<the tunnel's SSH host> true`, which must
+    exit 0 without asking (a failure means the agent or `known_hosts` is mended first), and pipes
+    the maker to `ssh -o BatchMode=yes …`, which fails where it would ask; the maker's header
+    follows. Not run here, with no tunnel to log in through.
+  - The digest pin: step 11 named the server team's pin of Caddy and its `app-apply edge compose`,
+    but none of its steps, and `install.sh` never overwrites a conf, so their pinned `compose.yml`
+    would have been refused (`service caddy runs …, not CADDY_IMAGE from /etc/apps/edge.conf`), or
+    the pin left for a second recreate. Their `edge.md` §5, A new Caddy image, steps 1 to 3, now
+    come before `edge.env`: their `docker/edge/compose.yml` sent as `~/incoming/edge-compose.yml`,
+    as step 15's `~/incoming/compose.yml` is MenuMesh's, `CADDY_IMAGE` set with `sudoedit`, a
+    `grep` that shows it as `CADDY`, the pull, and
+    `sudo app-apply edge compose ~/incoming/edge-compose.yml`; the night's (d) names the pin, and
+    VPS-136's list with it.
+  - Step 11's opening put the origin test at the certificate, as `edge.md` §3's step 5, where their
+    merged §3 runs it after the site file for another app's zone, and the step's own paragraph says
+    it proves nothing before then: the opening now says that the test follows the site file.
+  - Deploys on the VPS said `app-deploy` refuses a deploy under 5 GB free: it checks 5,242,880 KiB,
+    5 GiB, as the WAL paragraph says (VPS-133).
+  - The kit README's Changing a file later had every edge file go in through `app-apply` and a
+    reload: `edge.env`'s lines take the merged copy and a recreate in the window, and until that
+    recreate `app-apply` refuses every other change to the edge.
+  - `vps:edge`'s two handshake checks read the host blocks with a pattern and would pass on none:
+    they now fail unless at least one host line is read and as many as there are blocks that import
+    `tls_menumesh` (4 and 4 now; a comment after a block's brace, two names on one address line, a
+    block without the import and an empty file each fail it).
+  - Not changed: the owner pastes `aop-client-key.pem` into Cloudflare's form, and Windows'
+    clipboard history, off unless turned on, could keep it (the security finding 2). Every secret
+    the RUNBOOK puts in the password manager can take the same way, the backup key and the signing
+    key among them, so a step for this one would leave the rest, and the owner's machine is the
+    owner's to keep.
+
+  `edgeNight` now holds the key's shred to `edge cert` (no `shred -u ~/csr/origin-key.pem` but right
+  after `edge cert … &&`) and the pin's four commands before `edge.env`'s copy, with `CADDY_IMAGE=`
+  and `CADDY` as `grep` shows them: 3 problems on `0a35068`'s RUNBOOK, none on the fix, and still 8
+  on `21a13bf`'s. `valuesPath` holds the login that asks nothing before the pipe, `BatchMode` in it,
+  the agent's sentence and no "answer it after the two values": 2 problems on `0a35068`'s RUNBOOK,
+  with a refusal case for each part. Of the 40 rules the re-wrap test runs, the other 39 report none
+  on `0a35068`'s RUNBOOK or on the fix. The kit test's re-pin case now replaces `CADDY` wherever the
+  RUNBOOK names it, twice since this change, and the re-wrap test wraps 297 phrases (294 before).
+  The range the RUNBOOK, `deploy/vps/README.md`, `docs/SPEC.md`, `compose.yml`'s header and
+  `tests/unit/vps-kit.test.ts`'s header cite is now VPS-31 to VPS-145. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,328 in 72 files (`vps-kit` 122,
+  one new); `pnpm audit --prod --audit-level=high` passes, its 13 findings 2 low and 11 moderate;
+  `pnpm vps:check` 55 checks, 0 failed, its shellcheck over the new `wal-health.sh`;
+  `pnpm vps:edge` 22, 0 failed, both handshakes on the 4 hosts; `pnpm vps:rehearse`, on the kept
+  secrets and web image, 47, 0 failed; `pnpm vps:backup-test` 131, 0 failed (VPS-144); then
+  `pnpm vps:down` 3, 0 failed.
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

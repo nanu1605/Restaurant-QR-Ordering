@@ -254,8 +254,16 @@ function valuesFirst(tool: string): string[] {
   ];
 }
 
-/** The RUNBOOK's commands for the values file (VPS-134), each exactly. */
+/**
+ * The RUNBOOK's commands for the values file (VPS-134), each exactly. The maker and ssh share the
+ * terminal, so ssh asks nothing: its key in the agent, a login that asks nothing first, and
+ * BatchMode on both (VPS-145).
+ */
+const NO_PROMPT = "ssh -o BatchMode=yes ops@<the tunnel's SSH host> true";
 const MAKE_VALUES =
+  "node deploy/vps/tools/first-admin-values.mjs | ssh -o BatchMode=yes ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'";
+/** The pipe as VPS-134 had it: an ssh that could ask for its passphrase in the maker's terminal. */
+const OLD_MAKE_VALUES =
   "node deploy/vps/tools/first-admin-values.mjs | ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'";
 const RUN_TOOL =
   'cat ~/incoming/first-admin.values.mjs ~/incoming/first-admin.mjs | sudo app-compose menumesh exec -T web node --input-type=module -';
@@ -288,9 +296,13 @@ function valuesPath(runbook: string): string[] {
     ...(flat.includes('The file is made only with this tool')
       ? []
       : ['step 2 doesn’t make the values file with this tool alone']),
-    ...(flat.includes('If ssh asks for a passphrase, answer it after the two values')
+    ...(at(NO_PROMPT) >= 0 &&
+    (at(MAKE_VALUES) < 0 || at(NO_PROMPT) < at(MAKE_VALUES)) &&
+    !text.includes(OLD_MAKE_VALUES) &&
+    flat.includes("So the owner's key goes into ssh's agent first") &&
+    !flat.includes('answer it after the two values')
       ? []
-      : ['step 2 doesn’t say when to answer ssh’s passphrase']),
+      : ['step 2 lets the ssh of the pipe ask for anything in the maker’s terminal']),
     ...(at(RUN_TOOL) >= 0 && at(SHRED_VALUES) > at(RUN_TOOL)
       ? []
       : ['step 2 doesn’t run the tool after the values file on stdin, then shred the values file']),
@@ -694,6 +706,39 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
     expect(valuesPath(RUNBOOK.replace(MAKE_VALUES, 'node first-admin-values.mjs'))).toEqual([
       'step 2 doesn’t make the values file with the maker over ssh',
     ]);
+    // As VPS-134 had it: an ssh that could ask for its passphrase in the maker's terminal, told
+    // to be answered after the two values; and the login that asks nothing left out, or after.
+    const asking = 'step 2 lets the ssh of the pipe ask for anything in the maker’s terminal';
+    expect(
+      valuesPath(
+        RUNBOOK.replace(`   ${NO_PROMPT}\n`, '')
+          .replace(MAKE_VALUES, OLD_MAKE_VALUES)
+          .replace(
+            /So the owner's key goes into ssh's agent first[\s\S]*?must exit 0\s+before the second:/,
+            'If ssh asks for a passphrase, answer it after the two values:',
+          ),
+      ),
+    ).toEqual(['step 2 doesn’t make the values file with the maker over ssh', asking]);
+    expect(valuesPath(RUNBOOK.replace(`   ${NO_PROMPT}\n`, ''))).toEqual([asking]);
+    expect(
+      valuesPath(
+        RUNBOOK.replace(
+          `   ${NO_PROMPT}\n   ${MAKE_VALUES}\n`,
+          `   ${MAKE_VALUES}\n   ${NO_PROMPT}\n`,
+        ),
+      ),
+    ).toEqual([asking]);
+    expect(
+      valuesPath(RUNBOOK.replace("So the owner's key goes into ssh's agent first", 'So')),
+    ).toEqual([asking]);
+    expect(
+      valuesPath(
+        RUNBOOK.replace(
+          'The first login through Access opens the browser',
+          'If ssh asks for a passphrase, answer it after the two values. The first login through Access opens the browser',
+        ),
+      ),
+    ).toEqual([asking]);
     // The values file shredded before the tool could read it, or only when the tool succeeded.
     expect(
       valuesPath(

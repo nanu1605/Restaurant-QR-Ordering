@@ -1324,11 +1324,17 @@ async function edge() {
     // Authenticated origin pulls on every host block of the site file, as the staging night's
     // step 1 tests them on the server, where curl's exit must not be 0: a TLS connection without a
     // client certificate, or with one from another CA, ends in the handshake, in the edge's alert,
-    // before any HTTP answer.
-    const hosts = [...read('edge', 'menumesh.caddy').matchAll(/^https:\/\/([^\s{]+) \{$/gm)].map(
-      (match) => match[1],
-    );
+    // before any HTTP answer. A block whose address line this doesn't read, or one without
+    // tls_menumesh, fails both checks: the host lines must be as many as the snippet's imports.
+    const siteFile = read('edge', 'menumesh.caddy');
+    const hosts = [...siteFile.matchAll(/^https:\/\/([^\s{]+) \{$/gm)].map((match) => match[1]);
+    const guarded = siteFile.match(/^[ \t]+import tls_menumesh$/gm)?.length ?? 0;
     const refused = async (other: Client | undefined, alert: string) => {
+      if (!hosts.length || hosts.length !== guarded) {
+        throw new Error(
+          `menumesh.caddy: ${hosts.length} host lines read (${hosts.join(', ')}), ${guarded} blocks import tls_menumesh`,
+        );
+      }
       const through: string[] = [];
       for (const host of hosts) {
         const outcome = await edgeRequest(host, '/', { client: other }).then(

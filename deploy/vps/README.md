@@ -3,7 +3,7 @@
 Everything MenuMesh needs on the shared server, and nothing the server team owns. The server runs
 their host scripts (`app-apply`, `app-compose`, `app-deploy`, `hostwatch`); this folder mirrors
 `/srv/menumesh/` and holds the files those scripts check and run. Why each piece is the way it is:
-`docs/DECISIONS.md` VPS-31 to VPS-143. Every step in detail: `docs/RUNBOOK.md`, "The shared server
+`docs/DECISIONS.md` VPS-31 to VPS-145. Every step in detail: `docs/RUNBOOK.md`, "The shared server
 (VPS)".
 
 ## What goes where
@@ -162,7 +162,12 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
   volume.
 - An env file: install it again, then `sudo app-compose menumesh up -d <service>` for each service
   that reads it; a restart keeps the old values.
-- The edge files: `app-apply` again; Caddy reloads without dropping connections.
+- The edge files: `menumesh.caddy` and `log-redact.caddy` through `app-apply` again, which reloads
+  Caddy without dropping connections. `edge.env`'s lines go in only through the RUNBOOK's merged
+  copy (First install, step 11, and Rotation's staging password), then Caddy is recreated between
+  01:00 and 07:00 IST, which drops every connection on the shared edge, with nothing of the edge in
+  between: until that recreate, `app-apply` refuses every other change to the edge, the server
+  team's own among them.
 
 ## Checking it here first
 

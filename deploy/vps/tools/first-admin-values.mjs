@@ -4,10 +4,11 @@
  * server, so that the email and the name are on no command line there (sudo's journal keeps one up
  * to 187 days), in no shell's history and in no process list. The owner runs it on their own
  * machine with Node 24 (Windows with Git Bash or PowerShell, or any other system), its output piped
- * straight to the server:
+ * straight to the server by an ssh that asks nothing (its key in the agent, BatchMode on), as this
+ * file reads the terminal:
  *
  *   node deploy/vps/tools/first-admin-values.mjs |
- *     ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'
+ *     ssh -o BatchMode=yes ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'
  *
  * It asks for the email and the name on stderr, reads the answers from the terminal and checks them
  * as first-admin.mjs does, in its words, then writes these two lines to stdout and nothing else:

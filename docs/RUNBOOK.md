@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-143 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-145 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -811,18 +811,22 @@ else, or `app-apply` refuses the compose file.
     `github-deploy-menumesh` for the tunnel. Step 17's **VPS ping** proves both.
 11. The edge: the Origin CA certificate for `menumesh.in` and `*.menumesh.in` from a CSR made on the
     server, then the server team's `snippets.caddy` with `tls_menumesh` in it, and authenticated
-    origin pulls on, **before any MenuMesh container runs**: the CSR, the order and the origin test
-    are `edge.md` §3's, whose step 5 must see a TLS connection to the server without the client
-    certificate refused (§6, step 4). The certificate goes in with `aop-ca.pem`, the owner's CA
-    (step 8), which Caddy checks Cloudflare's client certificate against; then `aop-client.pem`,
-    that client certificate without its key, goes beside it by hand, as `edge.md` §3 does for
-    theirs, so that hostwatch's daily run warns before it expires too:
+    origin pulls on, **before any MenuMesh container runs**: the CSR and the order are `edge.md`
+    §3's, and its origin test, a TLS connection to the server without the client certificate
+    refused (its step 5, §6, step 4), follows the site file, as their §3 has it for another app's
+    zone. The certificate goes in with `aop-ca.pem`, the owner's CA (step 8), which Caddy checks
+    Cloudflare's client certificate against; then `aop-client.pem`, that client certificate without
+    its key, goes beside it by hand, as `edge.md` §3 does for theirs, so that hostwatch's daily run
+    warns before it expires too:
 
     ```sh
-    sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem
+    sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem && shred -u ~/csr/origin-key.pem && rm -r ~/csr
     sudo install -m 0644 -o root -g root ~/incoming/aop-client.pem /srv/edge/certs/menumesh/
-    shred -u ~/csr/origin-key.pem && rm -r ~/csr
     ```
+
+    The CSR's key goes only once the install has worked, as in their §3, step 4: when `edge cert`
+    refuses, the key stays in `~/csr` (and the second line fails while `/srv/edge/certs/menumesh/`
+    doesn't exist), and both lines are run again once what it named is mended.
 
     Then the snippet, as their `edge.md` §5, step 5, installs it: their own `snippets.caddy`, which
     holds `tls_menumesh` with `client_auth` on since their `66c8c61`, as MenuMesh's origin pulls
@@ -841,6 +845,28 @@ else, or `app-apply` refuses the compose file.
     imports `tls_menumesh`, so its `client_auth` guards none of MenuMesh's hosts, whatever the test
     prints. The test that proves it runs right after the site file, on the staging night (The
     server rehearsal and the cut-over, part 3, step 1).
+
+    Then the server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), as
+    their `edge.md` §5, **A new Caddy image**, steps 1 to 3, puts it in: its
+    `app-apply edge compose` goes before `edge.env` too. `install.sh` never overwrites a conf, so
+    `/etc/apps/edge.conf` keeps the image it had until the admin sets its `CADDY_IMAGE`, tag and
+    digest, as their `docker/host/apps/edge.conf` has it; then the image is pulled, and their
+    `docker/edge/compose.yml`, copied as the snippet is, goes in, which `app-apply` refuses while
+    its image differs from `CADDY_IMAGE`. It goes to `~/incoming` under a name of its own, as
+    MenuMesh's `compose.yml` goes there for step 15:
+
+    ```sh
+    scp docker/edge/compose.yml ops@<the tunnel's SSH host>:incoming/edge-compose.yml     # on the admin's machine, in their repository's root
+    sudoedit /etc/apps/edge.conf     # CADDY_IMAGE= as their docker/host/apps/edge.conf has it
+    grep '^CADDY_IMAGE=' /etc/apps/edge.conf
+    sudo docker pull "$(sed -n 's/^CADDY_IMAGE=//p' /etc/apps/edge.conf)"
+    sudo app-apply edge compose ~/incoming/edge-compose.yml
+    ```
+
+    `grep` prints
+    `CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
+    the index the server runs, which the kit's checks pin too (VPS-130), and `edge compose`
+    validates the live tree with that image. The recreate below starts Caddy on it.
 
     `edge.env` comes last. From `app-apply edge env` until Caddy is recreated, `app-apply` refuses
     a site file and `edge cert`, `config`, `ranges`, `redact` and `reload`, the server team's own
@@ -902,9 +928,8 @@ else, or `app-apply` refuses the compose file.
     ```
 
     The recreate drops every connection on the shared edge, hence the window. It also takes the
-    server team's digest pin of Caddy (their `edge.conf`'s `CADDY_IMAGE`, VPS-130), whose
-    `app-apply edge compose` goes before `edge.env` too, as their `edge.md` §5, step 7, says: one
-    recreate for both. That night comes only after:
+    server team's digest pin of Caddy, put in before `edge.env` (above), as their `edge.md` §5,
+    step 7, says: one recreate for both. That night comes only after:
     - (a) the server team's two PRs, their scripts and their onboarding, are merged, and their kit
       is refreshed on the server;
     - (b) `menumesh.in` is on Cloudflare (step 8), its Origin CA certificate made from a CSR
@@ -912,7 +937,8 @@ else, or `app-apply` refuses the compose file.
     - (c) the owner has the staging hash, `aop-ca.pem` and `aop-client.pem`, and the client pair is
       uploaded for `menumesh.in` (step 8);
     - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its
-      token, the redaction file, the certificate with `aop-ca.pem`, and the snippet.
+      token, the redaction file, the certificate with `aop-ca.pem`, the snippet and the digest
+      pin.
 
     Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
     the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own
@@ -1685,7 +1711,7 @@ its own, with pgTAP 440, 660 and 680 changed with it (VPS-25, VPS-121).
   runs `migrate-staging` on hosted staging's database and swaps `web-staging`; then the smoke tests
   run against staging with its password. Inside the blackouts below the deploy job fails at once:
   run it again after. `app-deploy` also refuses staging while hostwatch reports the server
-  CPU-throttled, and any deploy with under 5 GB of disk free.
+  CPU-throttled, and any deploy with under 5 GiB of disk free.
 - **Production**, by the owner:
   1. Actions → **VPS release** → Run workflow: the version (`vX.Y.Z`, never one used before),
      optionally a commit of `main` whose CI passed, and `production` in the confirm box. Its summary
@@ -3055,16 +3081,26 @@ shared server (VPS), The server rehearsal and the cut-over, part 4), with
    `deploy/vps/tools/first-admin-values.mjs` (Node 24, in Git Bash, PowerShell or any other
    shell). It asks for the owner's email and name (1 to 80 characters), refuses what the tool would
    refuse, and writes two lines of plain ASCII, which any shell's pipe passes unchanged, to `ssh`,
-   which takes them to `ops` through the tunnel, as First install's `scp` does:
+   which takes them to `ops` through the tunnel, as First install's `scp` does. That `ssh` must ask
+   nothing: it starts with the maker and shares the terminal the maker reads the two values from,
+   so its passphrase or host key prompt could take a value typed for the maker, or give the maker
+   the passphrase as a value. So the owner's key goes into ssh's agent first (`ssh-add` with the
+   key's file, with an agent running: in Git Bash `eval "$(ssh-agent -s)"` starts one, and
+   Windows' own ssh needs its `ssh-agent` service on), and the first line below, a login through
+   the tunnel with `-o BatchMode=yes`, which makes ssh fail wherever it would ask, must exit 0
+   before the second:
 
    ```sh
-   node deploy/vps/tools/first-admin-values.mjs | ssh ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'
+   ssh -o BatchMode=yes ops@<the tunnel's SSH host> true
+   node deploy/vps/tools/first-admin-values.mjs | ssh -o BatchMode=yes ops@<the tunnel's SSH host> 'umask 077 && cat > ~/incoming/first-admin.values.mjs'
    ```
 
-   The file is made only with this tool: a hand-written one brings back the quoting problems, as an
-   apostrophe or a backslash in a quoted value changes what the file says. If ssh asks for a
-   passphrase, answer it after the two values. When `first-admin-values.mjs` refuses a value it
-   writes nothing, and the empty file left on the server makes the tool refuse: run the command
+   The first login through Access opens the browser, and `cloudflared` keeps its token. When the
+   first line fails (`Permission denied`, `Host key verification failed`), the agent or
+   `known_hosts` is mended before the second runs. The file is made only with this tool: a
+   hand-written one brings back the quoting problems, as an apostrophe or a backslash in a quoted
+   value changes what the file says. When `first-admin-values.mjs` refuses a value it writes
+   nothing, and the empty file left on the server makes the tool refuse: run the second line
    again. Then, through `ops`, the owner runs the tool once inside the `web` container, which gives
    it that container's own keys, with the values file before it on its stdin, and then removes the
    values file, whether the tool succeeded or not:

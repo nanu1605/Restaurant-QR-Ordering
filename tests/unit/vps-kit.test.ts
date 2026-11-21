@@ -52,7 +52,7 @@ import {
 } from '../../scripts/vps-seal.mts';
 
 /**
- * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-143) is checked by the
+ * The shared server kit (deploy/vps; docs/DECISIONS.md VPS-31 to VPS-145) is checked by the
  * server's own code only when the owner installs it, and some of it only when it first runs there.
  * These text rules pin what each file must keep, so a change that would break the contract, leak a
  * secret or undo a decision fails in CI first. Every rule is also run on a copy with one mistake
@@ -1694,11 +1694,12 @@ describe('the edge files (deploy/vps/edge)', () => {
       swap(runbook, `    ${HASH_COMMAND}\n`, `    ${HASH_COMMAND.replace(' -it ', ' ')}\n`),
       notPinned,
     );
-    // The old pin in both texts, as they would read had CADDY moved without them.
+    // The old pin in both texts, as they would read had CADDY moved without them (the RUNBOOK
+    // names it twice: the hash command, and step 11's CADDY_IMAGE).
     const old =
       'caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee';
     refuses(
-      (text) => stagingHash(text, swap(runbook, CADDY, old)),
+      (text) => stagingHash(text, runbook.replaceAll(CADDY, old)),
       swap(example, CADDY, old),
       notPinned,
     );
