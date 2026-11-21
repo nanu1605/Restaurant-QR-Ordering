@@ -11462,5 +11462,7 @@ accepts). It now says that the test proves nothing then, whatever it prints, as 
 counts. The leak test now names the owner as adding the `leaktest` record, as the owner already
 deletes it in its step 5. And hostwatch reports the throwaway container under more than
 `wrong-project` (hostwatch at `66fe8b3`): its network check reads the container's network aliases,
-not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-upstream`, and its
-limits check reports it unless it has `--memory` and `--cpus`. Nothing the kit runs changed.
+not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-upstream` (on Docker
+29.9.3, as a run here showed, a plain `docker run` has no `Aliases`, its name only in `DNSNames`;
+with that flag `Aliases` holds `menumesh-leaktest`), and its limits check reports it unless it has
+`--memory` and `--cpus`. Nothing the kit runs changed.
