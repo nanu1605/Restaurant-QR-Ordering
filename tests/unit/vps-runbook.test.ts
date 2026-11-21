@@ -84,7 +84,13 @@ import { SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * and written down for the way back, the leak test through a temporary record before any app
  * record moves, the staging night's switches, and Vercel's cron jobs, CRON_SECRET and the hosted
  * project's backup kept for the 14 days of the way back, which the first real write on the server
- * ends.
+ * ends; and since Stop D's review (VPS-123 to VPS-128) the origin test of authenticated origin pulls
+ * for every host the site file serves, right after it goes in, scheduler-staging only from the
+ * staging night, once Vercel staging's cron jobs are off and web-staging runs their commit,
+ * part 1's count in one statement, the leak test served by MenuMesh's own pieces, Caddy recreated
+ * only in the shared server's window, VPS_DEPLOY_STAGING left off at First install, step 17, the
+ * merge of the staging night's step 6, a later production night that keeps the first night's
+ * admin, and the Vercel rules kept until their parts retire.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -172,6 +178,15 @@ const PLACES = {
   wayBack: ['#### 5. The way back', '#### 6. After the 14 days'],
   retirement: ['#### 6. After the 14 days', '### Deploys on the VPS'],
   cutover: ['### The server rehearsal and the cut-over', '#### 6. After the 14 days'],
+  // Stop D's review: First install's steps 11, 17 and 20, part 1's count, the staging night's site
+  // file and leak test, and the web image's rule for after the move.
+  edgeStep: ['\n11. The edge:', '\n12. `/srv/menumesh`'],
+  gitHub: ['\n17. **GitHub**', '\n18. '],
+  schedulers: ['\n20. ', '\n21. '],
+  count: ['1. **Hosted production, read-only.**', '2. **The zone, from GoDaddy'],
+  siteNight: ['1. **The site file and the redaction file**', '2. **The leak test**'],
+  leakTest: ['2. **The leak test**', '\n3. **The'],
+  afterMove: ['- **After the move:**', '- **Checking an image here**'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -2340,16 +2355,28 @@ const STAGING_SWITCHES = [
  * The staging night's switches (VPS-116): VPS_IMAGES and VPS_DEPLOY_STAGING on and DEPLOY_STAGING
  * off, together, at that night, and Deploys on the VPS says staging follows main on the server from
  * then. The outline turned VPS_DEPLOY_STAGING on only after the move, so merges would have gone on
- * deploying staging to Vercel while the record named the server.
+ * deploying staging to Vercel while the record named the server. First install, step 17, turns on
+ * VPS_IMAGES alone and says VPS_DEPLOY_STAGING waits for that night: turned on there, CI would
+ * deploy staging to the server and stop Vercel's staging deploys while the record named Vercel
+ * (Stop D's review, T1 of the docs). And the night allows the one merge its step 6 needs (D2 of the
+ * docs).
  */
 const stagingSwitches = (runbook: string) =>
   inPlaces(
     runbook,
-    ['stagingNight', 'retirement', 'deploys'],
-    ({ stagingNight, retirement, deploys }) => [
+    ['stagingNight', 'retirement', 'deploys', 'gitHub'],
+    ({ stagingNight, retirement, deploys, gitHub }) => [
       ...STAGING_SWITCHES.filter((words) => !has(stagingNight, words)).map(
         (words) => `the staging night doesn’t set ${words}`,
       ),
+      ...(has(gitHub, '`VPS_DEPLOY_STAGING` waits for the staging night') &&
+      !/`VPS_DEPLOY_STAGING`[^.;:]*`true`/.test(flat(gitHub))
+        ? []
+        : ['First install turns VPS_DEPLOY_STAGING on before the staging night']),
+      ...(has(stagingNight, 'with no merge to `main` while it runs') &&
+      !has(stagingNight, "with no merge to `main` while it runs other than step 6's")
+        ? ['the staging night forbids the merge its step 6 needs']
+        : []),
       ...(has(retirement, 'VPS_DEPLOY_STAGING')
         ? ['VPS_DEPLOY_STAGING waits for the Vercel parts to retire']
         : []),
@@ -2368,13 +2395,15 @@ const stagingSwitches = (runbook: string) =>
  * back, and the secret leaves both projects only after the 14 days. The hosted project's nightly
  * backup goes off after its pause, as a paused project's night fails, and on again with the way
  * back. The way back lasts 14 days, and the first real write on the server is its point of no
- * return.
+ * return. A later production night after a way back keeps the first night's admin and settings,
+ * which the tool would refuse to make again (Stop D's review, D4 of the cut-over sequence); and
+ * the Vercel rules stay until the Vercel parts retire, not until Stop D (D3 of the docs).
  */
 const windowKept = (runbook: string) =>
   inPlaces(
     runbook,
-    ['stagingNight', 'productionNight', 'wayBack', 'retirement', 'cutover'],
-    ({ stagingNight, productionNight, wayBack, retirement, cutover }) => {
+    ['stagingNight', 'productionNight', 'wayBack', 'retirement', 'cutover', 'afterMove'],
+    ({ stagingNight, productionNight, wayBack, retirement, cutover, afterMove }) => {
       const night = flat(productionNight);
       const paused = night.indexOf('**Pause project**');
       const backupOff = night.indexOf('**`BACKUP_PRODUCTION`** `false`');
@@ -2414,9 +2443,227 @@ const windowKept = (runbook: string) =>
           : [
               'the way back doesn’t end at the first real write on the server, its point of no return',
             ]),
+        ...(has(
+          wayBack,
+          "without the first admin's link and steps 3 and 4 when the server's database still holds the first night's admin and settings",
+        )
+          ? []
+          : [
+              'a later production night makes the first admin and types the settings again over the first night’s',
+            ]),
+        ...(has(afterMove, 'until the Vercel parts retire, 14 days after the production night') &&
+        !has(afterMove, 'until the cut-over (Stop D) rewrites them')
+          ? []
+          : ['After the move ends the Vercel rules before the Vercel parts retire']),
       ];
     },
   );
+
+/** menumesh.caddy, whose hosts the staging night's origin test must name. */
+const SITE = readFileSync(join('deploy', 'vps', 'edge', 'menumesh.caddy'), 'utf8');
+
+/** Each site block of a Caddy site file: its address's host, and whether it imports `snippet`. */
+function siteBlocks(site: string, snippet: string): { host: string; imports: boolean }[] {
+  const blocks: { host: string; imports: boolean }[] = [];
+  let open: { host: string; imports: boolean } | undefined;
+  for (const line of site.split('\n')) {
+    const address = /^https:\/\/([^\s{]+) \{$/.exec(line);
+    if (address) {
+      open = { host: address[1], imports: false };
+      blocks.push(open);
+    } else if (line === '}') {
+      open = undefined;
+    } else if (open && line.trim() === `import ${snippet}`) {
+      open.imports = true;
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Authenticated origin pulls proved for MenuMesh's own hosts (Stop D's review, D1 of the cut-over
+ * sequence). First install, step 11, runs the server team's origin test before MenuMesh's site file
+ * is in, when Caddy serves none of its hosts and every handshake fails, client_auth on or not, and
+ * their command names their own host. So the staging night runs it right after the site file, for
+ * every host menumesh.caddy serves and no other, each block of it importing tls_menumesh, and stops
+ * on an exit 0; and step 11 says its own can't fail yet and points to that one.
+ */
+const originPulls = (runbook: string, site: string) =>
+  inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
+    const night = flat(siteNight);
+    const loop =
+      /for h in ([^;]+); do curl -sk [^;]*--resolve "\$h:443:127\.0\.0\.1" "https:\/\/\$h\/"; echo "\$h exit \$\?"; done/.exec(
+        night,
+      );
+    const blocks = siteBlocks(site, 'tls_menumesh');
+    const served = blocks.map((block) => block.host);
+    const tested = loop ? loop[1].trim().split(' ') : [];
+    return [
+      ...(loop && loop.index > night.indexOf('`sudo app-apply menumesh site')
+        ? [
+            ...served
+              .filter((host) => !tested.includes(host))
+              .map((host) => `the origin test leaves out ${host}, which menumesh.caddy serves`),
+            ...tested
+              .filter((host) => !served.includes(host))
+              .map((host) => `the origin test names ${host}, which menumesh.caddy doesn’t serve`),
+          ]
+        : [
+            'the staging night doesn’t run the origin test for MenuMesh’s hosts right after its site file',
+          ]),
+      ...blocks
+        .filter((block) => !block.imports)
+        .map((block) => `menumesh.caddy’s ${block.host} block doesn’t import tls_menumesh`),
+      ...(has(
+        siteNight,
+        'An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop.',
+      )
+        ? []
+        : ['the origin test doesn’t stop the night on an exit 0']),
+      ...(has(edgeStep, "For `menumesh.in` that test can't fail yet") &&
+      has(edgeStep, 'The test that proves it runs right after the site file, on the staging night')
+        ? []
+        : [
+            'First install, step 11, doesn’t say its origin test can’t fail for menumesh.in yet, nor point to the staging night’s',
+          ]),
+    ];
+  });
+
+/**
+ * scheduler-staging only from the staging night (Stop D's review, D2 and D7 of the cut-over
+ * sequence). Until then Vercel staging's cron jobs run the same daily and digest on the same hosted
+ * database at the same minutes, where neither run's log can stop the other's emails, and
+ * web-staging keeps the image First install deployed by hand while each merge moves Vercel staging
+ * and that database on. So First install, step 20, starts production's scheduler alone, without the
+ * argument that the two callers were as safe as a second run by hand; the rehearsal checks no
+ * staging scheduler; and the staging night deploys web-staging by hand on the commit Vercel
+ * staging serves before its record moves, starts scheduler-staging once, after Vercel staging's
+ * cron jobs are disabled, and its way back stops it, in step 5 before they are on again.
+ */
+const stagingScheduler = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['schedulers', 'rehearsal', 'stagingNight'],
+    ({ schedulers, rehearsal, stagingNight }) => {
+      const night = flat(stagingNight);
+      const start = 'sudo app-compose menumesh up -d scheduler-staging';
+      const stop = 'sudo app-compose menumesh stop scheduler-staging';
+      const started = night.indexOf(start);
+      const disabled = night.indexOf('**Disable Cron Jobs**');
+      const record = night.indexOf('**The `staging` record**');
+      const byHand = night.indexOf('a by-hand deploy as in First install, step 19');
+      const wayBack = night.indexOf('Way back, for the whole night:');
+      return [
+        ...(/up -d[^`]*\bscheduler-staging\b/.test(flat(schedulers))
+          ? ['First install, step 20, starts scheduler-staging before the staging night']
+          : []),
+        ...(has(schedulers, 'safe for the reasons a second run by hand is')
+          ? [
+              'First install, step 20, calls Vercel staging’s cron jobs and scheduler-staging safe together',
+            ]
+          : []),
+        ...(/`scheduler-staging`'s the same|up -d[^`]*\bscheduler-staging\b/.test(flat(rehearsal))
+          ? ['the server rehearsal checks scheduler-staging before the staging night']
+          : []),
+        ...(byHand >= 0 && byHand < record && has(stagingNight, '**VPS build** run of that commit')
+          ? []
+          : [
+              'the staging night doesn’t deploy web-staging by hand on the commit Vercel staging serves before its record moves',
+            ]),
+        ...(started > disabled && disabled >= 0 && started === night.lastIndexOf(start)
+          ? []
+          : [
+              'the staging night doesn’t start scheduler-staging once, after Vercel staging’s cron jobs are disabled',
+            ]),
+        ...(started >= 0 && night.indexOf(`${stop}\` first, then **Enable Cron Jobs**`) > started
+          ? []
+          : [
+              'step 5’s way back doesn’t stop scheduler-staging before Vercel staging’s cron jobs go on',
+            ]),
+        ...(wayBack >= 0 && night.indexOf(stop, wayBack) > wayBack
+          ? []
+          : ['the staging night’s way back doesn’t stop scheduler-staging']),
+      ];
+    },
+  );
+
+/**
+ * Part 1's count in one statement (Stop D's review, D3 of the cut-over sequence): Supabase's SQL
+ * editor shows only the last statement's result, so the two statements before showed the logins
+ * alone, without the restaurants row the go or stop rests on. The logins are a row of the same
+ * result, which the text names.
+ */
+const oneCount = (runbook: string) =>
+  inPlaces(runbook, ['count'], ({ count }) => {
+    const sql = /```sql\n([\s\S]*?)```/.exec(count)?.[1] ?? '';
+    const statements = sql.split(';').filter((piece) => piece.trim() !== '').length;
+    return [
+      ...(statements === 1
+        ? []
+        : [
+            `part 1’s count runs ${statements} statements, and the SQL editor shows only the last one’s result`,
+          ]),
+      ...(has(sql, "union all select 'auth', 'users', (select count(*) from auth.users)") &&
+      has(count, 'The logins are the `auth` `users` row')
+        ? []
+        : ['part 1’s count doesn’t give the logins as a named row of its one result']),
+    ];
+  });
+
+/** The leak test's step 1 as MenuMesh's pieces make it. */
+const LEAK_PIECES = [
+  '`edge-menumesh`',
+  '`menumesh-leaktest:<port>` goes into `UPSTREAMS` in `/etc/apps/menumesh.conf`',
+  'https://leaktest.menumesh.in { import site_common import tls_menumesh reverse_proxy menumesh-leaktest:<port> { import upstream } }',
+  '`sudo app-apply menumesh site',
+];
+
+/**
+ * The leak test's site for leaktest.menumesh.in (Stop D's review, D1 of the docs). The server
+ * team's edge.md §6 puts its container on edge-jainav with a leaktest.jainavinfotech.in site file,
+ * and app-apply keeps each app to one site file, hosts in its ZONE and upstreams from its
+ * UPSTREAMS, so nothing served the leak test's host. MenuMesh's pieces stand in: the container on
+ * edge-menumesh, its name in UPSTREAMS for the test, a temporary copy of menumesh.caddy with a
+ * leaktest block importing what the others import, installed with app-apply; and their step 5 puts
+ * menumesh.caddy back, never removing it, before the UPSTREAMS entry goes.
+ */
+const leakPieces = (runbook: string) =>
+  inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
+    const text = flat(leakTest);
+    const again = text.indexOf('`menumesh.caddy` as it is installed again');
+    const out = text.indexOf('its `UPSTREAMS` entry taken out');
+    return [
+      ...LEAK_PIECES.filter((piece) => !text.includes(piece)).map(
+        (piece) => `the leak test’s step 1 lacks MenuMesh’s ${piece}`,
+      ),
+      ...(again >= 0 && out > again && has(leakTest, '(never removed')
+        ? []
+        : [
+            'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
+          ]),
+    ];
+  });
+
+/**
+ * Caddy recreated only in the shared server's window (Stop D's review, D5 of the cut-over
+ * sequence): `app-compose edge up -d` drops every connection on the shared edge, the server team's
+ * own site's among them, which is why app-apply prints the window and their server.md §7 runs it
+ * there.
+ */
+const edgeWindow = (runbook: string) =>
+  inPlaces(runbook, ['vps'], ({ vps }) => {
+    const text = flat(vps);
+    const problems: string[] = [];
+    for (const words of ['sudo app-compose edge up -d', 'recreate Caddy']) {
+      for (let at = text.indexOf(words); at >= 0; at = text.indexOf(words, at + 1)) {
+        const after = text.slice(at + words.length, at + words.length + 40);
+        if (!after.includes('between 01:00 and 07:00 IST')) {
+          problems.push(`${words} without the 01:00 to 07:00 IST window`);
+        }
+      }
+    }
+    return problems;
+  });
 
 /** The cut-over's outline before Stop D (935373d): its step 4, the leak test before any DNS. */
 const OUTLINE_LEAK =
@@ -2429,6 +2676,44 @@ const OLD_LAST_STEP = [
   "    `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`; then the admin's leak test",
   "    (the server team's `edge.md` §6, with a made-up 16-character `/t/` token, which the log must",
   '    show as `/t/_`); then DNS.',
+].join('\n');
+
+/** The staging night's step 1 at cd6a733: the site file, and no origin test after it. */
+const OLD_SITE_STEP = [
+  '1. **The site file and the redaction file** (First install, step 22):',
+  '   `sudo app-apply menumesh site ~/incoming/menumesh.caddy` and',
+  '   `sudo app-apply edge redact menumesh ~/incoming/log-redact.caddy`. Caddy serves the four hosts',
+  '   from now on, but no record sends it anything yet. Way back: none needed.',
+  '',
+].join('\n');
+
+/** The leak test at cd6a733: the server team's steps, with nothing to serve the leak test's host. */
+const OLD_LEAK_TEST = [
+  "2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record",
+  "   `leaktest.menumesh.in` to the server's IPv4, proxied, before any app record moves (VPS-115):",
+  '   forged headers replaced; the log line without an address, a header or a query, and a made-up',
+  "   16-character `/t/` token in it shown as `/t/_`; nothing answering straight on the server's",
+  '   addresses, IPv4 and IPv6, even with a temporary hPanel accept rule; and a TLS connection without',
+  '   the client certificate refused. Then their step 5 removes the test site, and the owner deletes',
+  '   the `leaktest` record. Way back: the record deleted.',
+  '',
+].join('\n');
+
+/** First install's step 20 at cd6a733: both schedulers at once. */
+const OLD_SCHEDULERS = [
+  '20. The schedulers: `sudo app-compose menumesh up -d scheduler scheduler-staging`. Each turns',
+  "    healthy at its first answered minute call. Production's runs on a fresh database: no restaurant",
+  '    to remind, no digest until the first admin joins (it goes to joined admins only: The server',
+  '    rehearsal and the cut-over, part 4), and the rest cleans up or counts what is there. Until the',
+  "    staging night, `scheduler-staging` and Vercel staging's cron jobs both run staging's `daily`",
+  '    and `digest`, which is safe for the reasons a second run by hand is (The scheduler (VPS)).',
+].join('\n');
+
+/** The staging night's step 5 at cd6a733: Vercel's crons off, and scheduler-staging already on. */
+const OLD_STAGING_CRONS = [
+  "5. **Vercel's staging project**: Schedules → Cron Jobs → **Disable Cron Jobs**, so that",
+  "   `scheduler-staging` runs staging's jobs alone. `CRON_SECRET` stays (part 6 takes it out). Way",
+  '   back: **Enable Cron Jobs** there.',
 ].join('\n');
 
 /** Phrases the rules read, each wrapped at its first space as a reformat might wrap it. */
@@ -2689,6 +2974,31 @@ const REWRAPPED = [
   'For 14 days after the production night',
   'It loses nothing until the first real write on the server',
   'write is the point of no return',
+  // Read by the rules of Stop D's review: a piece of each phrase that stands on one line.
+  "that test can't fail yet",
+  'proves it runs right after the site file',
+  'is still commented out: stop.',
+  'do curl -sk -o /dev/null',
+  'menumesh up -d scheduler-staging',
+  'menumesh stop scheduler-staging',
+  '**Disable Cron Jobs**',
+  'for the whole night:',
+  'deploy as in First install, step 19',
+  'run of that commit',
+  "select 'auth', 'users'",
+  'are the `auth` `users` row',
+  'goes into `UPSTREAMS` in',
+  'import site_common',
+  'app-apply menumesh site',
+  '`menumesh.caddy` as it is installed again',
+  'its `UPSTREAMS` entry taken out',
+  '(never removed:',
+  'app-compose edge up -d',
+  'between 01:00 and 07:00 IST',
+  'waits for the staging night',
+  "while it runs other than step 6's",
+  "without the first admin's link and",
+  'the Vercel parts retire, 14 days',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -5071,6 +5381,32 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, cut(RUNBOOK, ', from the staging\n', ' A merge that\n'), '.'),
       'Deploys on the VPS doesn’t say staging follows main on the server from the staging night',
     );
+    // First install, step 17, turning VPS_DEPLOY_STAGING on with VPS_IMAGES, or not waiting (Stop D
+    // review, T1 of the docs).
+    refuses(
+      stagingSwitches,
+      swap(
+        RUNBOOK,
+        'the variables, `VPS_IMAGES` set to `true`, and the secrets;',
+        'the variables, `VPS_IMAGES` and `VPS_DEPLOY_STAGING` set to `true`, and the secrets;',
+      ),
+      'First install turns VPS_DEPLOY_STAGING on before the staging night',
+    );
+    refuses(
+      stagingSwitches,
+      swap(
+        RUNBOOK,
+        '`VPS_DEPLOY_STAGING` waits for the staging night',
+        '`VPS_DEPLOY_STAGING` goes on with it',
+      ),
+      'First install turns VPS_DEPLOY_STAGING on before the staging night',
+    );
+    // cd6a733's intro, which forbade the merge of its own step 6 (D2 of the docs).
+    refuses(
+      stagingSwitches,
+      swap(RUNBOOK, " other than step 6's", ''),
+      'the staging night forbids the merge its step 6 needs',
+    );
   });
 
   it('keeps Vercel’s cron jobs, CRON_SECRET and the hosted project’s backup as the way back for its 14 days, until the first real write on the server (Stop D, VPS-117 to VPS-120)', () => {
@@ -5122,6 +5458,230 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       swap(RUNBOOK, noReturn, ''),
       'the way back doesn’t end at the first real write on the server, its point of no return',
     );
+    // cd6a733's later night, which ran the tool and the settings again (Stop D review, D4 of the
+    // cut-over sequence).
+    const laterNight = cut(RUNBOOK, ", without the first admin's link and", 'It comes once');
+    refuses(
+      windowKept,
+      swap(RUNBOOK, `${laterNight}It comes once`, ', once'),
+      'a later production night makes the first admin and types the settings again over the first night’s',
+    );
+    // cd6a733's After the move: the Vercel rules until Stop D rewrote them (D3 of the docs).
+    refuses(
+      windowKept,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '- **After the move:** until', ' (Deploying, One-time setup'),
+        '- **After the move:** until the cut-over (Stop D) rewrites them, the Vercel rules in this runbook\n  describe the live deploy path',
+      ),
+      'After the move ends the Vercel rules before the Vercel parts retire',
+    );
+  });
+
+  it('proves authenticated origin pulls for every host the site file serves, right after it goes in (Stop D review, D1 of the cut-over sequence)', () => {
+    expect(siteBlocks(SITE, 'tls_menumesh')).toEqual(
+      ['menumesh.in', 'www.menumesh.in', 'api.menumesh.in', 'staging.menumesh.in'].map((host) => ({
+        host,
+        imports: true,
+      })),
+    );
+    expect(originPulls(RUNBOOK, SITE)).toEqual([]);
+    const pulls = (text: string) => originPulls(text, SITE);
+    // cd6a733's step 1: the site file, and no origin test for its hosts after it.
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, '1. **The site file and the redaction file**', '2. **The leak test**'),
+        OLD_SITE_STEP,
+      ),
+      'the staging night doesn’t run the origin test for MenuMesh’s hosts right after its site file',
+    );
+    // A host left out, and the server team's own host, whose snippet is not MenuMesh's.
+    refuses(
+      pulls,
+      swap(RUNBOOK, ' api.menumesh.in; do curl', '; do curl'),
+      'the origin test leaves out api.menumesh.in, which menumesh.caddy serves',
+    );
+    refuses(
+      pulls,
+      swap(RUNBOOK, 'for h in menumesh.in ', 'for h in jainavinfotech.in menumesh.in '),
+      'the origin test names jainavinfotech.in, which menumesh.caddy doesn’t serve',
+    );
+    // A block of the site file that the test could not speak for.
+    refuses(
+      (site) => originPulls(RUNBOOK, site),
+      swap(
+        SITE,
+        'https://api.menumesh.in {\n\timport site_common\n\timport tls_menumesh\n',
+        'https://api.menumesh.in {\n\timport site_common\n',
+      ),
+      'menumesh.caddy’s api.menumesh.in block doesn’t import tls_menumesh',
+    );
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        ' An exit 0 means `client_auth` in `tls_menumesh` is still commented out: stop.',
+        '',
+      ),
+      'the origin test doesn’t stop the night on an exit 0',
+    );
+    // cd6a733's step 11: its own test, which can't fail before the site file, as the only one.
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, " For `menumesh.in` that test can't fail yet", ' Then the two lines of'),
+        '',
+      ),
+      'First install, step 11, doesn’t say its origin test can’t fail for menumesh.in yet',
+    );
+  });
+
+  it('starts scheduler-staging only on the staging night, once Vercel staging’s cron jobs are off and web-staging runs Vercel staging’s commit, and its way back stops it (Stop D review, D2 and D7 of the cut-over sequence)', () => {
+    expect(stagingScheduler(RUNBOOK)).toEqual([]);
+    // cd6a733's step 20: both schedulers at the first install, called safe together.
+    const both = swap(RUNBOOK, cut(RUNBOOK, '\n20. ', '\n21. ').slice(1), OLD_SCHEDULERS);
+    refuses(
+      stagingScheduler,
+      both,
+      'First install, step 20, starts scheduler-staging before the staging night',
+    );
+    refuses(
+      stagingScheduler,
+      both,
+      'First install, step 20, calls Vercel staging’s cron jobs and scheduler-staging safe together',
+    );
+    // cd6a733's part 2: the staging scheduler's first day checked in the rehearsal.
+    refuses(
+      stagingScheduler,
+      swap(
+        RUNBOOK,
+        " (staging's come\n     on the staging night, part 3, step 9):",
+        " (and\n     `scheduler-staging`'s the same):",
+      ),
+      'the server rehearsal checks scheduler-staging before the staging night',
+    );
+    // No deploy by hand before the record moves: testers would get First install's image.
+    refuses(
+      stagingScheduler,
+      swap(RUNBOOK, cut(RUNBOOK, '- **The same day**', '\nThen, in order:'), ''),
+      'the staging night doesn’t deploy web-staging by hand on the commit Vercel staging serves before its record moves',
+    );
+    // cd6a733's step 5: Vercel's crons off, with nothing started or stopped after them.
+    const step5 = cut(RUNBOOK, "5. **Vercel's staging project**", '\n6. **The first deploy**');
+    const oldStep5 = swap(RUNBOOK, step5, OLD_STAGING_CRONS);
+    refuses(
+      stagingScheduler,
+      oldStep5,
+      'the staging night doesn’t start scheduler-staging once, after Vercel staging’s cron jobs are disabled',
+    );
+    refuses(
+      stagingScheduler,
+      oldStep5,
+      'step 5’s way back doesn’t stop scheduler-staging before Vercel staging’s cron jobs go on',
+    );
+    // Started before Vercel's crons are off too.
+    refuses(
+      stagingScheduler,
+      swap(
+        RUNBOOK,
+        '- **The same day**',
+        '- `sudo app-compose menumesh up -d scheduler-staging` the day before.\n- **The same day**',
+      ),
+      'the staging night doesn’t start scheduler-staging once, after Vercel staging’s cron jobs are disabled',
+    );
+    // cd6a733's way back for the whole night, which left it running.
+    refuses(
+      stagingScheduler,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, 'Way back, for the whole night: ', "; the `staging` record to Vercel's value"),
+        'Way back, for the whole night: nothing on the server',
+      ),
+      'the staging night’s way back doesn’t stop scheduler-staging',
+    );
+  });
+
+  it('counts the app’s tables and the logins in one statement, the logins a named row (Stop D review, D3 of the cut-over sequence)', () => {
+    expect(oneCount(RUNBOOK)).toEqual([]);
+    // cd6a733's count: two statements, of which the SQL editor shows the logins alone.
+    const two = swap(
+      RUNBOOK,
+      "   union all\n   select 'auth', 'users', (select count(*) from auth.users)\n   order by rows desc, 1, 2;\n",
+      '   order by rows desc, 1, 2;\n   select count(*) from auth.users;\n',
+    );
+    refuses(
+      oneCount,
+      two,
+      'part 1’s count runs 2 statements, and the SQL editor shows only the last one’s result',
+    );
+    refuses(
+      oneCount,
+      two,
+      'part 1’s count doesn’t give the logins as a named row of its one result',
+    );
+    refuses(
+      oneCount,
+      swap(RUNBOOK, 'The logins are the `auth` `users` row; ', ''),
+      'part 1’s count doesn’t give the logins as a named row of its one result',
+    );
+  });
+
+  it('serves the leak test’s host with MenuMesh’s own pieces, and puts its one site file back (Stop D review, D1 of the docs)', () => {
+    expect(leakPieces(RUNBOOK)).toEqual([]);
+    // cd6a733's leak test: the server team's steps, with nothing to serve leaktest.menumesh.in,
+    // and their step 5 readable as removing menumesh.caddy.
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '2. **The leak test**', '3. **The `staging` record**'),
+      OLD_LEAK_TEST,
+    );
+    for (const piece of LEAK_PIECES) {
+      refuses(leakPieces, old, `the leak test’s step 1 lacks MenuMesh’s ${piece}`);
+    }
+    refuses(
+      leakPieces,
+      old,
+      'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
+    );
+    // The entry taken out before the site file that names it is back.
+    refuses(
+      leakPieces,
+      swap(
+        RUNBOOK,
+        'site file); the container stopped; its `UPSTREAMS` entry taken out; and the owner deletes the',
+        'site file); the container stopped; and the owner deletes the',
+      ).replace(
+        '`menumesh.caddy` as it is',
+        'its `UPSTREAMS` entry taken out, then `menumesh.caddy` as it is',
+      ),
+      'the leak test’s step 5 doesn’t install menumesh.caddy again, never removing it, before its UPSTREAMS entry goes',
+    );
+  });
+
+  it('recreates Caddy only between 01:00 and 07:00 IST (Stop D review, D5 of the cut-over sequence)', () => {
+    expect(edgeWindow(RUNBOOK)).toEqual([]);
+    // cd6a733's step 11 and staging's password rotation, each with no window.
+    refuses(
+      edgeWindow,
+      swap(
+        RUNBOOK,
+        '`sudo app-compose edge up -d` between 01:00 and 07:00 IST, as recreating Caddy drops every\n    connection on the shared edge.',
+        '`sudo app-compose edge up -d`.',
+      ),
+      'sudo app-compose edge up -d without the 01:00 to 07:00 IST window',
+    );
+    refuses(
+      edgeWindow,
+      swap(
+        RUNBOOK,
+        'then recreate Caddy between 01:00 and 07:00 IST, as it\n  drops every connection on the shared edge)',
+        'then recreate Caddy)',
+      ),
+      'recreate Caddy without the 01:00 to 07:00 IST window',
+    );
   });
 
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
@@ -5154,5 +5714,10 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(zoneAndLeak(rewrapped)).toEqual([]);
     expect(stagingSwitches(rewrapped)).toEqual([]);
     expect(windowKept(rewrapped)).toEqual([]);
+    expect(originPulls(rewrapped, SITE)).toEqual([]);
+    expect(stagingScheduler(rewrapped)).toEqual([]);
+    expect(oneCount(rewrapped)).toEqual([]);
+    expect(leakPieces(rewrapped)).toEqual([]);
+    expect(edgeWindow(rewrapped)).toEqual([]);
   });
 });

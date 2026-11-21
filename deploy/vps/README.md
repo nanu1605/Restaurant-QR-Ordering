@@ -122,13 +122,17 @@ and a pair, naming the one to mend, as the RUNBOOK's disaster recovery and rotat
 3. `sudo app-compose menumesh up -d db`, then `auth rest realtime storage api-gw`. Auth and
    Storage create their own schemas at start, and the first migration needs them.
 4. The backup image (`app-deploy menumesh backup ...`) and the first deploys, which run the
-   migrations; then `sudo app-compose menumesh up -d scheduler scheduler-staging`. Then a restore
-   test and a point-in-time drill, once a night has run and the WAL has shipped for an hour
-   (`restore-test`, then `pitr-test`, each under its own profile; the RUNBOOK has the commands).
-5. Rehearse everything before the site file goes in. Then, at the staging night, the site file and
-   the redact file, the leak test through a temporary record, and staging's DNS; production's DNS
-   comes on a night of its own, with its first admin from `tools/first-admin.mjs` (RUNBOOK, The
-   server rehearsal and the cut-over).
+   migrations; then `sudo app-compose menumesh up -d scheduler`, production's alone:
+   `scheduler-staging` waits for the staging night, after Vercel staging's cron jobs are disabled.
+   Then a restore test and a point-in-time drill, once a night has run and the WAL has shipped for
+   an hour (`restore-test`, then `pitr-test`, each under its own profile; the RUNBOOK has the
+   commands).
+5. Rehearse everything before the site file goes in. Then, at the staging night, `web-staging`
+   deployed by hand on the commit Vercel staging serves, the site file and the redact file, the
+   origin test of authenticated origin pulls for MenuMesh's hosts, the leak test through a
+   temporary record, staging's DNS, and `scheduler-staging` once Vercel staging's cron jobs are
+   disabled; production's DNS comes on a night of its own, with its first admin from
+   `tools/first-admin.mjs` (RUNBOOK, The server rehearsal and the cut-over).
 
 ## Changing a file later
 
