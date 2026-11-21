@@ -776,13 +776,13 @@ by anyone else, or `app-apply` refuses the compose file.
     `deploy/vps/edge/edge.env.example` in `/srv/edge/edge.env`, installed with
     `sudo app-apply edge env edge.env` and `sudo app-compose edge up -d` between 01:00 and 07:00
     IST, as recreating Caddy drops every connection on the shared edge. The hash comes from the
-    owner, who makes it on their own machine with the edge's Caddy image, never on the server: there
-    staging's password would stay in the shell's history and show in the process list. Without
-    `--plaintext`, Caddy reads the password from the terminal without echoing it, and the admin gets
-    only the hash:
+    owner, who makes it on their own machine with the edge's pinned Caddy image and bcrypt, the only
+    kind `app-apply` takes, never on the server: there staging's password would stay in the shell's
+    history and show in the process list. Without `--plaintext`, Caddy reads the password from the
+    terminal without echoing it, and the admin gets only the hash:
 
     ```sh
-    docker run --rm -it caddy:2.11.9-alpine caddy hash-password
+    docker run --rm -it caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0 caddy hash-password --algorithm bcrypt
     ```
 
 12. `/srv/menumesh` and `config/`:
@@ -2747,14 +2747,18 @@ Supabase stack is only ever read.
      byte for byte; nothing there is ever edited.
   2. In `SOURCE`, the commit, the date and the sha256 lines (`sha256sum` of the six files in that
      folder); `app-apply` keeps its mode, 100755 (`git update-index --chmod=+x`).
-  3. If their `edge.conf` names a new Caddy image, pin its digest as `CADDY` in
-     `scripts/vps-kit.mts` (`docker buildx imagetools inspect caddy:<tag>`): `vps:check` refuses a
-     tag the copy no longer names.
+  3. If their `edge.conf` names a new Caddy image, `CADDY` in `scripts/vps-kit.mts` becomes it: the
+     tag with the digest `docker buildx imagetools inspect caddy:<tag>` shows, or exactly their
+     `<tag>@sha256:<digest>` when `edge.conf` pins one. `pnpm test` and `vps:check` refuse an
+     `edge.conf` that names neither `CADDY`'s tag nor exactly `CADDY`. The owner's hash command in
+     First install, step 11, and in `edge.env.example` names `CADDY` and moves with it, as
+     `pnpm test` requires.
   4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
      question for the server team.
 
-  Once the server exists, `MEMTOTAL_MIB` in `scripts/vps-kit.mts` becomes the MemTotal it reports
-  (`awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`).
+  `MEMTOTAL_MIB` in `scripts/vps-kit.mts` holds the MemTotal the server reports, 15,992 MiB. After a
+  resize or on a new server it becomes what `awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`
+  prints there.
 
 ## Razorpay live switch
 

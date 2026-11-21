@@ -117,14 +117,23 @@ const USAGE = `Usage: pnpm vps:check
 const SHELLCHECK =
   'koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d';
 /**
- * The edge's Caddy: the tag the server's edge.conf names (CADDY_IMAGE), pinned here by the digest
- * that tag had on 2026-11-11 (pushed 2026-11-06). caddyImage() refuses a tag that no longer
- * matches the vendored edge.conf.
+ * The edge's Caddy: the image the server's edge.conf names (CADDY_IMAGE), pinned here by the index
+ * digest Docker Hub has listed for caddy:2.11.9-alpine since 2026-11-13 (riscv64 added), the one
+ * the server pulled on 2026-11-16. Its linux/amd64 manifest,
+ * sha256:fc9cbc100585871d18d4e451cca7021785c90a7006087427ae5ceb3e4efe6424, is the one the earlier
+ * index (sha256:0bbb055b…) listed, so the runs made with that pin stand. caddyImage() refuses an
+ * edge.conf that names neither this tag nor exactly this reference. The owner's hash command in
+ * edge.env.example and the RUNBOOK names it too (tests/unit/vps-kit.test.ts holds them to it).
  */
-const CADDY =
-  'caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee';
-/** What the KVM 4 is expected to report as MemTotal, in MiB (to be read on the server). */
-const MEMTOTAL_MIB = 15_990;
+export const CADDY =
+  'caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0';
+/** MemTotal as the server reports it, in MiB (read there on 2026-11-21). */
+const MEMTOTAL_MIB = 15_992;
+/**
+ * A staging hash as app-apply edge env's install path takes it (the server team's scripts PR),
+ * inside its single quotes: a 60-character bcrypt hash.
+ */
+const AUTH_HASH = /^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$/;
 /** Where vps:edge's Caddy listens, on this machine only. */
 const EDGE_PORT = 8443;
 /** The edge network of vps:edge: a plain bridge, so Caddy can publish its port. */
@@ -281,6 +290,22 @@ export function caddyRunArgs(
       });
       return [filled];
     });
+}
+
+/**
+ * Whether the pinned Caddy is the one the server's edge.conf names: its CADDY_IMAGE must be the
+ * pin's tag alone (as at 66fe8b3) or exactly the pin, tag and digest (as the server team's scripts
+ * PR has it). What to pin instead, or undefined when it passes.
+ */
+export function caddyRefusal(edgeConf: string, pinned = CADDY): string | undefined {
+  const named = /^CADDY_IMAGE=(\S+)$/m.exec(edgeConf)?.[1];
+  if (named === pinned.split('@')[0] || named === pinned) return undefined;
+  return (
+    `The vendored edge.conf names ${named ?? 'no CADDY_IMAGE'}, but vps-kit.mts pins ${pinned}: ` +
+    (named?.includes('@')
+      ? 'pin that reference as CADDY.'
+      : 'pin the new tag and its digest as CADDY.')
+  );
 }
 
 /** The key names start.sh writes into the listener template (its printf lines for sed). */
@@ -666,27 +691,28 @@ function checkerImage(): string {
   return tag;
 }
 
-/** The edge's Caddy image, as long as the vendored edge.conf still names its tag. */
+/** The edge's Caddy image, CADDY, while the vendored edge.conf names it (caddyRefusal). */
 function caddyImage(): string {
-  const tag = /^CADDY_IMAGE=(\S+)$/m.exec(readFileSync(join(VENDOR, 'edge.conf'), 'utf8'))?.[1];
-  if (!tag || !CADDY.startsWith(`${tag}@sha256:`)) {
-    fail(`The vendored edge.conf names ${tag}, but vps-kit.mts pins ${CADDY}: pin the new tag.`);
-  }
+  const refusal = caddyRefusal(readFileSync(join(VENDOR, 'edge.conf'), 'utf8'));
+  if (refusal) fail(refusal);
   return CADDY;
 }
 
 /** A work folder with what the checker and the Caddy runs share. */
-function workFolder(checker: string): { dir: string; password: string; checks: string } {
+function workFolder(
+  checker: string,
+  checks: Checks,
+): { dir: string; password: string; checks: string } {
   const dir = mkdtempSync(join(tmpdir(), 'menumesh-kit-'));
   try {
-    // MemTotal for check_sum, as the server is expected to report it.
+    // MemTotal for check_sum, as the server reports it.
     writeFileSync(
       join(dir, 'meminfo'),
       `MemTotal:       ${MEMTOTAL_MIB * 1024} kB\nMemFree:        ${MEMTOTAL_MIB * 512} kB\n`,
     );
     // A throwaway basic-auth account for staging, hashed by the edge's own Caddy as the RUNBOOK
-    // has the owner do it: without --plaintext, so the password is read, here from stdin, and is
-    // in no process's arguments.
+    // has the owner do it: bcrypt, and without --plaintext, so the password is read, here from
+    // stdin, and is in no process's arguments.
     const password = randomBytes(12).toString('base64url');
     const hash = docker(
       [
@@ -700,13 +726,28 @@ function workFolder(checker: string): { dir: string; password: string; checks: s
         CADDY,
         'caddy',
         'hash-password',
+        '--algorithm',
+        'bcrypt',
       ],
       `${password}\n`,
     );
     if (hash.status !== 0) fail(`caddy hash-password failed: ${hash.stderr}`);
+    const hashed = hash.stdout.trim();
+    // The server team's app-apply edge env refuses, on its install path, a *_AUTH_HASH that is
+    // not a 60-character bcrypt hash: the kit's own hash must pass that rule as the owner's must.
+    if (!AUTH_HASH.test(hashed)) {
+      fail(
+        `caddy hash-password --algorithm bcrypt wrote ${hashed.length} characters from ` +
+          `${hashed.slice(0, 7)}, which app-apply edge env refuses: its install path takes only a ` +
+          `60-character bcrypt hash (${AUTH_HASH.source}).`,
+      );
+    }
+    checks.ok(
+      'the staging hash is a 60-character bcrypt hash, the only kind app-apply edge env takes',
+    );
     writeFileSync(
       join(dir, 'edge.env'),
-      `MENUMESH_STAGING_AUTH_USER=menumesh\nMENUMESH_STAGING_AUTH_HASH='${hash.stdout.trim()}'\n`,
+      `MENUMESH_STAGING_AUTH_USER=menumesh\nMENUMESH_STAGING_AUTH_HASH='${hashed}'\n`,
     );
     // The certificate, and edge.env as app-apply hands it to docker run.
     const prepared = runChecker(checker, dir, 'prepare');
@@ -829,7 +870,7 @@ async function check() {
     fail('Docker is not running.');
   }
   const checker = checkerImage();
-  const work = workFolder(checker);
+  const work = workFolder(checker, checks);
   try {
     process.stdout.write(work.checks);
     const certs = join(work.dir, 'certs');
@@ -1137,7 +1178,7 @@ async function edge() {
   if (docker(['version', '--format', '{{.Server.Version}}']).status !== 0)
     fail('Docker is not running.');
   const checker = checkerImage();
-  const work = workFolder(checker);
+  const work = workFolder(checker, checks);
   const names = ['web', 'gw', 'web-staging'].map((name) => `menumesh-kit-edge-${name}`);
   const caddy = 'menumesh-kit-edge-caddy';
   const cleanup = () => {

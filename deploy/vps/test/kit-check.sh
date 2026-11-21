@@ -3,7 +3,7 @@
 # `pnpm vps:check` (scripts/vps-kit.mts) in a throwaway container of Dockerfile.kitcheck: Ubuntu
 # 24.04 as root, no network, the server's Docker CLI 29.9.3 and Compose 5.7.0, deploy/vps at /kit
 # (read-only), a directory shared with vps-kit.mts at /out, and a /proc/meminfo whose MemTotal is
-# the 15,990 MiB the KVM 4 is expected to report (to be read on the server).
+# the 15,992 MiB the server reports (read there on 2026-11-21).
 #
 # It sources the vendored app-apply (test/vendor/jainav-infotech; SOURCE names the commit) as the
 # server team's own tests/host/app-apply.sh does, with APP_APPLY_SOURCE_ONLY=1, so every rule here
@@ -262,7 +262,7 @@ check_compose() {
   compose_bite 'IPv6 on a network' 'network staging enables IPv6' - '  staging: {}' '  staging:\n    enable_ipv6: true'
   # One more long-running service of 4 GiB: with Jainav's and the edge's limits and the host's
   # 1,536 MiB, more than MemTotal.
-  compose_bite 'limits over MemTotal' 'are not below MemTotal (15990 MiB)' - 'services:' \
+  compose_bite 'limits over MemTotal' 'are not below MemTotal (15992 MiB)' - 'services:' \
     "services:\n  kit-hog:\n    <<: *steady\n    image: kit/hog:1\n    networks: [data]\n    healthcheck:\n      test: ['CMD', 'true']\n    mem_limit: 4096m\n    memswap_limit: 4096m\n    cpus: 0.5\n    cpu_shares: 128\n    pids_limit: 64\n    oom_score_adj: 900"
   # The contract's rules, where app-apply lets the copy pass.
   compose_bite 'a cpu_shares left out' 'service backup: cpu_shares is not set' backup '    cpu_shares: 128' ''
@@ -356,7 +356,7 @@ edge_bite() { # edge_bite <name> <env|site|redact> <file> <text the refusal hold
 
 check_edge() {
   local site=$kit/edge/menumesh.caddy redact=$kit/edge/log-redact.caddy env=$kit/edge/edge.env.example
-  expect_clean 'edge.env.example passes app-apply edge env (edge_env_parse)' "$(edge_case env "$env")"
+  expect_clean 'edge.env.example passes edge_env_parse' "$(edge_case env "$env")"
   expect_clean 'menumesh.caddy passes app-apply menumesh site, check 1 (the text)' "$(edge_case site "$site")"
   if [ -s "$out/adapt/adapted.json" ] && [ -s "$out/adapt/status" ]; then
     expect_clean 'menumesh.caddy passes app-apply menumesh site, check 2 (Caddy'"'"'s adapted JSON)' \

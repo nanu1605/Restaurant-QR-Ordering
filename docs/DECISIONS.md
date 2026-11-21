@@ -11466,3 +11466,73 @@ not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-ups
 29.9.3, as a run here showed, a plain `docker run` has no `Aliases`, its name only in `DNSNames`;
 with that flag `Aliases` holds `menumesh-leaktest`), and its limits check reports it unless it has
 `--memory` and `--cpus`. Nothing the kit runs changed.
+
+### The server team's review (VPS, 2026-11-21)
+
+The server team reviewed the kit at `21a13bf`, read-only, and found it fine for the server. Their
+nine answers, eight asks and four commitments, with the owner's two choices of 2026-11-21, gave the
+entries below.
+
+- **VPS-130 · The edge's Caddy pinned to the index the server runs (Q4, Caddy digest):** `CADDY` in
+  `scripts/vps-kit.mts` moves from `caddy:2.11.9-alpine@sha256:0bbb055b…`, the tag's earlier index,
+  to `caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
+  the index Docker Hub has listed since 2026-11-13, when riscv64 was added: the one the server
+  pulled on 2026-11-16, and the one the server team's scripts PR (in review) pins as `CADDY_IMAGE`
+  in `edge.conf`. Both indexes list the same linux/amd64 manifest,
+  `sha256:fc9cbc100585871d18d4e451cca7021785c90a7006087427ae5ceb3e4efe6424`, so every check run with
+  the old pin ran the same amd64 bytes, and those runs stand. `caddyImage()` tested that `CADDY`
+  began with the vendored `CADDY_IMAGE` and `@sha256:`, which a `CADDY_IMAGE` holding a digest, as
+  their merge makes it, fails even when it is `CADDY` itself. It now takes the answer of
+  `caddyRefusal()`, an exported pure function: an `edge.conf` that names `CADDY`'s tag alone (as at
+  `66fe8b3`) or exactly `CADDY` (after their merge) passes, and anything else, the old index
+  included, is refused with what to pin. A unit test holds it to those cases and to the vendored
+  copy, so `pnpm test` refuses a copy that names another image, as `vps:check` does. The owner's
+  hash command names `CADDY` itself (VPS-131), so a later re-pin moves both together, as the
+  RUNBOOK's step for copying the server team's files now says. `pnpm vps:check` and `pnpm vps:edge`
+  passed with the new pin, pulled once: 54 and 21 checks, 0 failed, each one more than before for
+  the kit's staging hash (VPS-131).
+
+- **VPS-131 · Staging's hash made as bcrypt by the pinned Caddy (ask 3, and Q6's item A):** the
+  server team's scripts PR (in review) has the install path of `app-apply edge env` refuse a
+  `*_AUTH_HASH` whose value, inside its single quotes, is not a 60-character bcrypt hash,
+  `^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$`; `edge_env_parse` stays as it is. Caddy 2.11.9's
+  `hash-password` takes `--algorithm argon2id` (its help calls it recommended) or `bcrypt`, and with
+  no flag still writes a 60-character `$2a$14$` bcrypt hash, so no hash made so far is refused, but
+  a later default could be. The owner's command, in `edge.env.example` and First install, step 11,
+  is now
+  `docker run --rm -it caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0 caddy hash-password --algorithm bcrypt`,
+  and the step says the edge's pinned Caddy image and bcrypt, the only kind `app-apply` takes. The
+  example's header now gives the admin's merged `edge.env` (VPS-136), and its comment says the hash
+  is bcrypt, 60 characters from `$2a$`, and that `app-apply edge env` refuses anything else; its
+  placeholder line stays byte for byte, as kit-check's bites need it. The kit's own staging hash is
+  made with `--algorithm bcrypt` too, and until the server team's `edge_env_hash_check` can be
+  called (after their merge and the next copy of their files), `vps:check` and `vps:edge` test it
+  against that rule themselves: a miss stops the run with a message naming the rule of
+  `app-apply edge env`, and a match shows as one more check among the host's. `stagingHash` now
+  holds both texts to exactly `docker run --rm -it ${CADDY} caddy hash-password --algorithm bcrypt`,
+  with `CADDY` imported from the script, where a regex took any tag; its check that the two texts
+  agree went, as one exact line leaves nothing else to compare. It refuses `--plaintext`, a missing
+  `-it`, the old digest in both texts, a missing `--algorithm bcrypt` and the bare tag, and reports
+  2 problems on `21a13bf`'s texts, none on the fix. kit-check's
+  `edge.env.example passes app-apply edge env (edge_env_parse)` is now
+  `edge.env.example passes edge_env_parse`: it runs the parse alone, and after their merge the
+  install path refuses the example's placeholder, which a later change proves. This replaces S2's
+  command (Review fixes (VPS Stop B)).
+
+- **VPS-132 · MemTotal as the server reports it (Q3, memory):** the server reports MemTotal 15,992
+  MiB (swap 4,095 MiB, 4 vCPU), not the 15,990 MiB VPS-33 assumed until it was read there.
+  `MEMTOTAL_MIB` in `scripts/vps-kit.mts`, `kit-check.sh`'s header and its `limits over MemTotal`
+  bite (`are not below MemTotal (15992 MiB)`) now say 15,992, and the RUNBOOK says the constant
+  holds what the server reports, its `awk` line the way to read it again after a resize or on a new
+  server. `vps:check` prints
+  `steady memory limits: 11296 MiB, plus 1536 MiB for the host, of 15992 MiB`, and the bite still
+  bites: its service of 4,096 MiB makes 11,296 + 4,096 + 1,536 = 16,928 MiB, not below 15,992.
+  Steady use is 6,560 + 4,480 + 256 = 11,296 MiB, plus 1,536 for the host: 12,832, which `app-apply`
+  accepts. A one-off starts only while the running limits, its own and 1,536 MiB stay strictly below
+  MemTotal (`app-compose`'s `headroom` tests with `-lt`, at `66fe8b3`), so with every steady service
+  up the largest is 3,159 MiB, one less than the plain difference of 3,160; VPS-33's 3,158 was then
+  one more than the true 3,157. Each of ours fits alone: the recover set 2,304, the restore test
+  1,920, `pitr-test` 1,536, `recover-pitr` 1,024 and `migrate` 512. Refused together, and a refusal
+  starts nothing: our restore test with the server team's (3,840), our `pitr-test` with their
+  restore test (3,456), and our restore test with our `pitr-test` (3,456), which our RUNBOOK runs
+  one after the other. The drills' days are in VPS-138.

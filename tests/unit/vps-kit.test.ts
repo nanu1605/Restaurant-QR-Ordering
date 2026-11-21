@@ -8,6 +8,8 @@ import { posthogHosts } from '@/lib/posthog-hosts';
 
 import {
   accessLines,
+  CADDY,
+  caddyRefusal,
   caddyRunArgs,
   compareDumps,
   composeServices as services,
@@ -1457,19 +1459,20 @@ const redaction = (text: string) =>
 /**
  * Staging's basic-auth hash is made off the server, Caddy reading the password from the terminal:
  * never with --plaintext, which leaves it in a shell's history and a process list (review finding
- * S2, VPS-37). edge.env.example and the RUNBOOK give the same command.
+ * S2, VPS-37). The Caddy is the edge's pinned one, CADDY, and the hash bcrypt, the only kind
+ * app-apply edge env takes (the server team's review, VPS-131). edge.env.example and the RUNBOOK
+ * give exactly that command, so a re-pin of CADDY fails here until both move with it.
  */
+const HASH_COMMAND = `docker run --rm -it ${CADDY} caddy hash-password --algorithm bcrypt`;
 const stagingHash = (example: string, runbook: string) => {
   const commands = (text: string) =>
     [...text.matchAll(/^[#\s]*(.*\bhash-password\b.*)$/gm)].map((match) => match[1].trim());
-  const all = [...commands(example), ...commands(runbook)];
   return [
     ...(commands(example).length ? [] : ['edge.env.example gives no hash-password command']),
     ...(commands(runbook).length ? [] : ['the RUNBOOK gives no hash-password command']),
-    ...all
-      .filter((line) => !/^docker run --rm -it caddy:[\w.-]+ caddy hash-password$/.test(line))
-      .map((line) => `a hash-password command that does not read from the terminal: ${line}`),
-    ...(new Set(all).size > 1 ? ['edge.env.example and the RUNBOOK give different commands'] : []),
+    ...[...commands(example), ...commands(runbook)]
+      .filter((line) => line !== HASH_COMMAND)
+      .map((line) => `a hash-password command other than the pinned Caddy's bcrypt one: ${line}`),
   ];
 };
 
@@ -1568,29 +1571,46 @@ describe('the edge files (deploy/vps/edge)', () => {
     refuses(redaction, swap(redact, ' /t/_', ' /t/x'), 'not exactly the one');
   });
 
-  it('has staging’s hash made off the server, the password never in a command line', () => {
+  it('has staging’s hash made off the server by the pinned Caddy, as bcrypt, the password never in a command line', () => {
     const example = kit('edge/edge.env.example');
     const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
     expect(stagingHash(example, runbook)).toEqual([]);
-    // As before the review: the password in the command's arguments.
+    const notPinned = 'other than the pinned Caddy';
+    // As before review finding S2: the password in the command's arguments.
     refuses(
       (text) => stagingHash(text, runbook),
-      swap(example, 'caddy hash-password\n', "caddy hash-password --plaintext '<password>'\n"),
-      'does not read from the terminal',
+      swap(
+        example,
+        'caddy hash-password --algorithm bcrypt\n',
+        "caddy hash-password --algorithm bcrypt --plaintext '<password>'\n",
+      ),
+      notPinned,
     );
+    // No terminal, so Caddy can't read the password.
     refuses(
       (text) => stagingHash(example, text),
-      swap(
-        runbook,
-        '    docker run --rm -it caddy:2.11.9-alpine caddy hash-password\n',
-        '    docker run --rm caddy:2.11.9-alpine caddy hash-password\n',
-      ),
-      'does not read from the terminal',
+      swap(runbook, `    ${HASH_COMMAND}\n`, `    ${HASH_COMMAND.replace(' -it ', ' ')}\n`),
+      notPinned,
     );
+    // The old pin in both texts, as they would read had CADDY moved without them.
+    const old =
+      'caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee';
+    refuses(
+      (text) => stagingHash(text, swap(runbook, CADDY, old)),
+      swap(example, CADDY, old),
+      notPinned,
+    );
+    // Caddy's default algorithm, bcrypt in 2.11.9, which a later Caddy may change.
     refuses(
       (text) => stagingHash(text, runbook),
-      swap(example, 'caddy:2.11.9-alpine', 'caddy:2.11.8-alpine'),
-      'different commands',
+      swap(example, ' --algorithm bcrypt\n', '\n'),
+      notPinned,
+    );
+    // The bare tag, as before the server team's review: no image pinned.
+    refuses(
+      (text) => stagingHash(example, text),
+      swap(runbook, `${CADDY} caddy hash`, `${CADDY.split('@')[0]} caddy hash`),
+      notPinned,
     );
   });
 });
@@ -6010,6 +6030,30 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
         [],
       ),
     ).toThrow('caddy_run uses $HOME');
+  });
+
+  it('runs the Caddy the server’s edge.conf names: the pin’s tag alone, or exactly the pin', () => {
+    const conf = readFileSync(join(VENDOR, 'edge.conf'), 'utf8');
+    expect(conf).toMatch(/^CADDY_IMAGE=\S+$/m);
+    expect(CADDY).toMatch(/^caddy:[\w.-]+@sha256:[0-9a-f]{64}$/);
+    const naming = (line: string) => conf.replace(/^CADDY_IMAGE=.*\n/m, line);
+    // The copy as it is; the pin's tag alone, as at 66fe8b3; exactly the pin, as the server team's
+    // scripts PR has it.
+    expect(caddyRefusal(conf)).toBeUndefined();
+    expect(caddyRefusal(naming(`CADDY_IMAGE=${CADDY.split('@')[0]}\n`))).toBeUndefined();
+    expect(caddyRefusal(naming(`CADDY_IMAGE=${CADDY}\n`))).toBeUndefined();
+    // The index pinned before the server team's review: the same tag, another digest.
+    expect(
+      caddyRefusal(
+        naming(
+          'CADDY_IMAGE=caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee\n',
+        ),
+      ),
+    ).toContain('pin that reference as CADDY');
+    expect(caddyRefusal(naming('CADDY_IMAGE=caddy:2.11.8-alpine\n'))).toBe(
+      `The vendored edge.conf names caddy:2.11.8-alpine, but vps-kit.mts pins ${CADDY}: pin the new tag and its digest as CADDY.`,
+    );
+    expect(caddyRefusal(naming(''))).toContain('names no CADDY_IMAGE');
   });
 
   it('validates the gateway as start.sh fills it in, with every resource inline', () => {
