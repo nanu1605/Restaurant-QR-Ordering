@@ -534,10 +534,15 @@ update public.restaurant_subscriptions set deal_id = :'deal', status = 'active',
   billing_cycle = 'monthly', current_period_end = now() + interval '20 days'
 where restaurant_id = :'cafe';
 
+-- Usage takes business dates, as its page sends them: the cafe's today, not the
+-- session's UTC date, which is a day behind it from 22:30 to 24:00 UTC.
+select private.business_date(now(), timezone, business_day_start_hour) as cafe_today
+from public.restaurants where id = :'cafe' \gset
+
 select tests.authenticate_as_platform_admin(:'admin');
-select ok(public.platform_usage_report((current_date - 20)::date, current_date) -> 'by_city' @> '[{"name": "Sa680ville"}]',
+select ok(public.platform_usage_report(:'cafe_today'::date - 20, :'cafe_today'::date) -> 'by_city' @> '[{"name": "Sa680ville"}]',
   'usage counts a restaurant closed during its dates');
-select ok(not public.platform_usage_report((current_date - 3)::date, current_date) -> 'by_city' @> '[{"name": "Sa680ville"}]',
+select ok(not public.platform_usage_report(:'cafe_today'::date - 3, :'cafe_today'::date) -> 'by_city' @> '[{"name": "Sa680ville"}]',
   'but not one closed before them');
 select (public.platform_list_standees('open') ->> 'total')::int as standees_closed \gset
 select (public.platform_revenue_report(current_date, current_date) #>> '{discounts,on_deal_now}')::int as deals_closed \gset
