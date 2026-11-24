@@ -11754,7 +11754,8 @@ entries below.
   `openssl x509 -req -extfile` reads, where `req -addext` needs OpenSSL 1.1.1, and each `-subj` line
   starts with `MSYS_NO_PATHCONV=1`: without it Git Bash turned `'/CN=MenuMesh origin pulls CA'` into
   `C:/Program Files/Git/CN=MenuMesh origin pulls CA`, which openssl refused, and the variable means
-  nothing to other shells. The lines ran here in Git Bash, OpenSSL 3.5.6, in a scratch folder deleted
+  nothing to other shells. The lines ran here in Git Bash, OpenSSL 3.5.6 (the native build that Git
+  Bash finds first, which writes CRLF line endings: VPS-151), in a scratch folder deleted
   after: `openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem` printed
   `aop-client.pem: OK`, the CA showed `CA:TRUE` with Certificate Sign and CRL Sign, both critical, the
   client certificate `CA:FALSE`, Digital Signature (critical) and TLS Web Client Authentication, and a
@@ -11819,11 +11820,13 @@ entries below.
   as it was: their onboarding PR puts `tls_menumesh` into their `snippets.caddy` (Left open, below).
   `ownCA` holds step 8's certificates to client authentication, the two lifetimes and the verify,
   each `-subj` behind `MSYS_NO_PATHCONV=1`, zone-level pulls and never the global toggle, the two
-  certificates alone for the server, and part 1's line and disaster recovery's; `edgeNight` holds
-  step 11's certificate with the CA, the client certificate, the merged copy, `edge env` with its
-  shred, the order, the shred of a refused copy and the digest pin (since VPS-148, none of the pin's
-  commands left to the admin, and the check of the server team's confirmation before `edge.env`),
-  and the staging night's check: 8 and 8 problems on `21a13bf`'s RUNBOOK.
+  certificates alone for the server (since VPS-151, every openssl line's `/usr/bin/openssl`, the
+  count of carriage returns, the two certificates kept until step 11 and a copy from the password
+  manager counted first too), and part 1's line and disaster recovery's; `edgeNight` holds step 11's
+  certificate with the CA, the client certificate, the merged copy, `edge env` with its shred, the
+  order, the shred of a refused copy and the digest pin (since VPS-148, none of the pin's commands
+  left to the admin, and the check of the server team's confirmation before `edge.env`), and the
+  staging night's check: 8 and 8 problems on `21a13bf`'s RUNBOOK.
 
 - **VPS-137 · The leak test's container (Q8, the leak test):** the RUNBOOK said only what the
   throwaway container does, with no image and no command, so nothing held it to a pin. It is now
@@ -12910,11 +12913,12 @@ entries below.
   VPS-146 and VPS-147 say where this entry changed them, and Left open (server review) has the
   round done.
 
-  Nothing else changes for MenuMesh now. First install, step 8, has the owner turn zone-level pulls
-  on at Cloudflare and gives the admin `aop-ca.pem` and `aop-client.pem` (step 11); step 11
-  installs the certificate with `aop-ca.pem` in one `sudo app-apply edge cert menumesh …` line,
-  before the check of their snippet, `edge.env` and step 22's site file, as their §3 has it for
-  another app's zone. That `app-apply` refuses the site file without the CA, the RUNBOOK doesn't
+  Nothing else changes for MenuMesh now (but step 8's openssl, which this entry missed: their §3,
+  step 1, also names `/usr/bin/openssl`, VPS-151). First install, step 8, has the owner turn
+  zone-level pulls on at Cloudflare and gives the admin `aop-ca.pem` and `aop-client.pem` (step 11);
+  step 11 installs the certificate with `aop-ca.pem` in one `sudo app-apply edge cert menumesh …`
+  line, before the check of their snippet, `edge.env` and step 22's site file, as their §3 has it
+  for another app's zone. That `app-apply` refuses the site file without the CA, the RUNBOOK doesn't
   say in words: `vps:check` shows it, its `caddy validate` of the tree without
   `certs/menumesh/aop-ca.pem` failing on that file, as `app-apply`'s check 3 does (VPS-142), and
   the RUNBOOK's order never meets it, so nothing is added for it.
@@ -12933,6 +12937,118 @@ entries below.
   the kit's files only the vendored `snippets.caddy`, `SOURCE` and the README's range.
   `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
   (`vps-runbook` 65, none new).
+
+- **VPS-151 · First install, step 8, makes the origin pulls' files with LF line endings, by
+  `/usr/bin/openssl` (the server team's `edge.md` §3 at `0c23a8f`, which VPS-150 missed;
+  2026-11-25):** step 8 had the owner make MenuMesh's origin pulls CA and client certificate with
+  plain `openssl`. In Git Bash that is `/mingw64/bin/openssl`, the first on its `PATH`: a native
+  Windows build, OpenSSL 3.5.6 7 Apr 2026, linked to `libssl-3-x64.dll` and `libcrypto-3-x64.dll`,
+  which writes its PEM files with CRLF line endings. `2f840ac`'s lines, run here with it in a
+  scratch folder deleted after, wrote `aop-ca.pem` with 19 lines and 19 CR bytes, its first line
+  `-----BEGIN CERTIFICATE-----\r\n`, `aop-client.pem` with 20 and 20, and each key with 28 and 28.
+  The server's `app-apply` refuses such a file. In the vendored copy
+  (`deploy/vps/test/vendor/jainav-infotech/app-apply`, at `0c23a8f`), `take_in()` has, at line 139,
+  `if grep -q $'\r' "$2"; then die "$1 has CRLF line endings: convert it to LF first"; fi`, and
+  `cmd_edge_cert` passes its `aop-ca.pem` through `take_in` (line 1399), so step 11's
+  `sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem`
+  would have refused the owner's CA, one of the refusals VPS-145 lists for that line ("an
+  `aop-ca.pem` missing or with CRLF line ends"). `/usr/bin/openssl` is Git for Windows' MSYS
+  build, OpenSSL 3.5.6 7 Apr 2026 too, linked to `msys-2.0.dll`, `msys-ssl-3.dll` and
+  `msys-crypto-3.dll`: it writes LF, and takes `-subj '/CN=…'` as written, with or without
+  `MSYS_NO_PATHCONV=1`. The server team's `edge.md` §3, Authenticated origin pulls (a launch gate),
+  step 1, names it for this: its commands name `/usr/bin/openssl`, which "writes the LF line
+  endings `app-apply` needs", and "The `openssl` that Git Bash finds first is a native build, which
+  turns `/CN=…` into a Windows path and writes CRLF." That text is at their `0c23a8f`, and the same
+  at `d0a7b14`, their `main` in the checkout here (nanu1605/jainav-infotech#92, merged
+  2026-11-25), which changes their documents alone: `PROGRESS.md`, `docs/decisions.md` and three
+  runbooks, `edge.md`, `launch.md` and `server.md`, with a leak-test fix and the results of their
+  origin-pulls round. None of the six vendored files changed, so `SOURCE` stays at `0c23a8f`.
+  VPS-150, which recorded that round at `0c23a8f`, missed it, and VPS-136's run in Git Bash was the
+  native build's: its `-subj` turned into a Windows path, which Git Bash does only for a native
+  program.
+
+  Step 8 now holds the lines the owner was given on 2026-11-25, byte for byte. Every one that runs
+  openssl names `/usr/bin/openssl`. The lines that make the files are one paste, chained with `&&`
+  from `umask 077 && mkdir ~/aop && cd ~/aop &&` to the client certificate's `x509 -req`, so a
+  failed `mkdir` or command stops the rest: if `mkdir` says the folder exists, nothing else ran,
+  and a failed command, which can still leave a new key behind, has the folder removed and the
+  paste run again. They print dots, dashes and each certificate's subject line, never a key. The
+  checks have a block of their own:
+  `/usr/bin/openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem`, which prints
+  `aop-client.pem: OK`; `/usr/bin/openssl x509 -noout -enddate -in aop-client.pem`, a `notAfter=`
+  about 825 days ahead, for the calendar; and
+  `for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done`, which must print `0 CR`
+  for each of the four files. The step's three blocks, run here in a scratch folder deleted after,
+  gave `aop-client.pem: OK`, a `notAfter=` in February 2029, the CA with `CA:TRUE`, Certificate
+  Sign and CRL Sign, both critical, the client certificate with `CA:FALSE`, Digital Signature
+  (critical) and TLS Web Client Authentication, issued by the CA, and `0 CR` for `aop-ca.pem`,
+  `aop-client.pem`, `aop-ca-key.pem` and `aop-client-key.pem`; then the cleanup,
+  `shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls`,
+  listed `aop-ca.pem` and `aop-client.pem` alone. The native build, for comparison, ended every
+  line of every file with a CR, as counted above, and without `MSYS_NO_PATHCONV=1` refused its
+  `-subj`, turned into `C:/Program Files/Git/CN=…`. Cloudflare's upload and the zone-level switch
+  stay as they were.
+
+  Why: `/usr/bin/openssl`, as in their step 1, makes the files right as they are made, where a
+  conversion afterwards would be one more step to get wrong. On macOS and Linux it is the system's
+  own, LibreSSL on macOS; the lines were not tried there, here or for VPS-136. They still use only
+  `req -new`, `x509 -req` with `-extfile` and `-CAcreateserial`, `verify -purpose sslclient` and
+  `x509 -enddate`, VPS-136's `-extfile` over `req -addext` kept for older builds.
+  `MSYS_NO_PATHCONV=1` stays on the two `-subj` lines: it changes nothing for the MSYS build, which
+  takes the subject as written anyway, and keeps `-subj` whole if a native build ever runs them,
+  whose CRLF the loop would then show. The `&&` chain, as their step 1 is one paste, lets no line
+  run on what a failed one left. The count is `tr`'s, as Git Bash's grep, GNU grep 3.0, misreads
+  carriage returns. On a 2-line LF file and a 2-line CRLF file here, `grep -c $'\r'` run straight,
+  its output to a pipe or a file, printed 0 and 0: without `-U` it drops the CR of a CRLF line end
+  before it matches. `grep -cU $'\r'` printed 0 and 2, but inside a command substitution both
+  printed 2 and 2, as `$'\r'` reached the command empty there (`printf '%s' $'\r'` inside one
+  printed nothing). `tr -cd '\r' < f | wc -c` printed 0 and 2, straight and inside one, as the loop
+  runs it: its `'\r'` is `tr`'s own escape. Their step 1 checks with `grep -c $'\r' *.pem` and
+  expects `:0` for every file; run straight in this Git Bash, it printed `:0` for a CRLF file too.
+  That is the owner's to raise with them; their text stays as it is.
+
+  The keys go off the disk by the cleanup, with the CSRs, the `.ext` files and `aop-ca.srl`, where
+  the step had them go "with the rest of the folder". `aop-ca.pem` and `aop-client.pem` hold no
+  secret and stay in the folder until the admin has them (step 11), so that the files the admin
+  installs are the ones the loop counted. A copy pasted back out of a password manager on Windows
+  can come back with CRLF, so a copy that must come from there gets the same `0 CR` check first:
+  step 8 says so, and disaster recovery's edge (its step 8), which takes both from the password
+  manager, now gives the two `.pem` files step 8's `0 CR` check first. Step 8's next client
+  certificate is made the same way, with the same checks. No clipboard step is added, as VPS-145
+  decided: every secret the RUNBOOK puts in the password manager could take the same way, and the
+  owner's machine is the owner's to keep.
+
+  `ownCA` now reads step 8's command blocks as well: every line of them that names `openssl` any way
+  but `/usr/bin/openssl`, by its bare name wherever it stands (at a command's start, after a
+  variable such as `MSYS_NO_PATHCONV=1`, after `&&` or `sudo`, in a `$(`) or by another path such as
+  `/mingw64/bin/openssl`, is a problem ("First install, step 8, runs the openssl Git Bash finds
+  first, which writes CRLF: <line>"), and prose is never read for it; the `tr` loop must be one of
+  those lines, and the step must say `0 CR` for each of the four files; the cleanup must be there,
+  with the two certificates kept in the folder until the admin has them (step 11); and a copy from
+  the password manager must get the same `0 CR` check first, in step 8 and in disaster recovery's
+  edge. Its `-subj` problem now says that Git Bash turns the subject into a path when a native build
+  runs it. On `2f840ac`'s RUNBOOK the new checks find 11 problems, its six lines that run `openssl`,
+  the count with `tr`, the `0 CR`, the two certificates kept and the two copies counted first, and
+  none on the fix; of the 42 rules the re-wrap test runs, the other 41 report none on `2f840ac`'s
+  RUNBOOK or on the fix. New refusal cases: `2f840ac`'s block, its six lines and the count; the bare
+  name after `&&`, in a `$(` and after `sudo`, and `/mingw64/bin/openssl`; `grep -c $'\r' *.pem` in
+  place of the loop; the `0 CR` unsaid; a cleanup that removes the folder; how long the certificates
+  stay unsaid; and either copy from the password manager left uncounted; with a pass case, a line of
+  prose that starts with `openssl`. The `-subj` case swaps the new client `req` line, and the
+  re-wrap test wraps 341 phrases where it wrapped 337. `vps-kit.test.ts`'s `aopCommands`, which
+  holds `kit-check.sh`'s `aop_pair` to step 8's lines (VPS-142), read only the step's first block,
+  where the verify no longer is, and took `openssl` bare: it now reads every sh block of the step
+  and takes `/usr/bin/openssl` for the kit's `openssl`, Ubuntu's only one, with a refusal case for a
+  `/mingw64/bin/openssl` line. `aop_pair` is unchanged.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-151;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. VPS-136 and VPS-150 say where this entry changed them. Not
+  changed: their text; Who does what, part 1's line on origin pulls and step 11, which still hold;
+  and `deploy/vps/config/migrate/README.md`'s `openssl x509 … -noout`, which only reads a
+  certificate. No script, no service and no file of the kit changed. `pnpm lint`, `pnpm typecheck`
+  and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook` 65 and `vps-kit`
+  122, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

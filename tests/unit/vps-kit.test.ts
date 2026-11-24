@@ -6047,9 +6047,12 @@ const runbookConf = (runbook: string, confText = conf) => {
 /**
  * The kit's origin pulls pair is made the owner's way (VPS-142): kit-check.sh's aop_pair runs First
  * install, step 8's lines, from its umask and the folder it makes to its openssl verify, the same
- * but for the folder, the subjects and the days, and for the MSYS_NO_PATHCONV=1 only Git Bash
- * reads. So vps:edge, whose every request presents that client certificate to the edge's
- * client_auth, also shows that the owner's commands make a pair Caddy takes.
+ * but for the folder, the subjects and the days, for the MSYS_NO_PATHCONV=1 only Git Bash reads,
+ * and, since VPS-151, for the /usr/bin/openssl that picks Git for Windows' MSYS build in Git Bash,
+ * as the kit's Ubuntu has one openssl. The lines are read from every sh block of the step, as its
+ * checks have a block of their own. So vps:edge, whose every request presents that client
+ * certificate to the edge's client_auth, also shows that the owner's commands make a pair Caddy
+ * takes.
  */
 const aopCommands = (runbook: string, kitCheck: string) => {
   const normal = (line: string) =>
@@ -6057,6 +6060,7 @@ const aopCommands = (runbook: string, kitCheck: string) => {
       .trim()
       .replace(/ &&$/, '')
       .replace(/^MSYS_NO_PATHCONV=1 /, '')
+      .replace(/^\/usr\/bin\/openssl /, 'openssl ')
       .replace(/ mkdir \S+ && cd \S+$/, ' mkdir <folder> && cd <folder>')
       .replace(/ -subj (?:'[^']*'|"[^"]*")/, ' -subj <subject>')
       .replace(/ -days \d+ /, ' -days <days> ');
@@ -6067,9 +6071,11 @@ const aopCommands = (runbook: string, kitCheck: string) => {
     const last = lines.findIndex((line) => line.startsWith('openssl verify '));
     return first < 0 || last < first ? [] : lines.slice(first, last + 1);
   };
-  const block = /\n8\. \*\*The zone:\*\*[\s\S]*?```sh\n([\s\S]*?)\n\s*```/.exec(runbook)?.[1];
+  const step =
+    /\n8\. \*\*The zone:\*\*[\s\S]*?\n\*\*The server's admin\*\*/.exec(runbook)?.[0] ?? '';
+  const blocks = [...step.matchAll(/```sh\n([\s\S]*?)\n\s*```/g)].map((match) => match[1]);
   const pair = /\naop_pair\(\) \( #[^\n]*\n([\s\S]*?)\n\)\n/.exec(kitCheck)?.[1];
-  const owner = making(block ?? '');
+  const owner = making(blocks.join('\n'));
   const kit = making(pair ?? '');
   if (!owner.length) return ['First install, step 8, makes no origin pulls pair'];
   if (!kit.length) return ['kit-check.sh has no aop_pair that makes an origin pulls pair'];
@@ -6282,7 +6288,7 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
     ).toContain('deploy/vps/edge/tls_menumesh.caddy declares a snippet');
   });
 
-  it('makes its origin pulls pair with First install, step 8’s commands, but for the folder, the subjects and the days (VPS-142)', () => {
+  it('makes its origin pulls pair with First install, step 8’s commands, but for the folder, the subjects, the days and /usr/bin/ (VPS-142, VPS-151)', () => {
     const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
     const kitCheck = kit('test/kit-check.sh');
     expect(aopCommands(runbook, kitCheck)).toEqual([]);
@@ -6319,6 +6325,16 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
       (text) => aopCommands(text, kitCheck),
       swap(runbook, '-sha256 -days 825', '-sha384 -days 825'),
       'where First install, step 8, runs openssl x509 -req -sha384',
+    );
+    // Only /usr/bin/ goes: the native openssl that Git Bash finds first is not the kit's (VPS-151).
+    refuses(
+      (text) => aopCommands(text, kitCheck),
+      swap(
+        runbook,
+        '/usr/bin/openssl x509 -req -sha256 -days 825',
+        '/mingw64/bin/openssl x509 -req -sha256 -days 825',
+      ),
+      'where First install, step 8, runs /mingw64/bin/openssl x509 -req -sha256',
     );
   });
 

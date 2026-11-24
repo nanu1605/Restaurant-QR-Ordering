@@ -121,7 +121,10 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * summed again on the server before its install, and a newer pin of theirs followed with their
  * files copied again at the confirmation's commit. Since the copy of their files at their a0bb599
  * (VPS-149), the check takes their Caddyfile and hostwatch too: four lines on the admin's machine,
- * four on the server, and SAME's six lines.
+ * four on the server, and SAME's six lines. Since VPS-151, step 8 makes the origin pulls' files
+ * with /usr/bin/openssl, which in Git Bash writes the LF line endings app-apply needs, counts each
+ * file's carriage returns with tr, and keeps the two certificates in the folder until step 11; a
+ * copy from the password manager, there or in disaster recovery, is counted first.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2933,6 +2936,11 @@ const RECREATED =
   "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'";
 const SHRED_COPIES = 'shred -u ~/incoming/.env ~/incoming/web.env ~/incoming/web-staging.env';
 const AOP_VERIFY = 'openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem';
+/** Step 8's count of each file's carriage returns: Git Bash's grep misreads them (VPS-151). */
+const CR_COUNT = String.raw`for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done`;
+/** Step 8's cleanup: the keys shredded, and the rest but the two certificates removed. */
+const AOP_CLEANUP =
+  'shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls';
 /** The leak test's image, by the digest of its index (an OCI index with linux/amd64). */
 const LEAK_IMAGE =
   'traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44';
@@ -3456,13 +3464,37 @@ const drillDays = (runbook: string) =>
       : ['the drill doesn’t wait in the same terminal for the restore test to end']),
   ]);
 
+/** The lines of `text`'s command blocks, each trimmed, without their fences. */
+function blockLines(text: string): string[] {
+  const lines: string[] = [];
+  let inBlock = false;
+  for (const line of text.split('\n').map((each) => each.trim())) {
+    if (line.startsWith('```')) inBlock = !inBlock;
+    else if (inBlock) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * openssl named any way but /usr/bin/openssl, Git for Windows' MSYS build in Git Bash: by its bare
+ * name wherever it stands (at a command's start, after a variable such as MSYS_NO_PATHCONV=1, after
+ * `&&` or sudo, in a `$(`), which is the native build Git Bash finds first and writes CRLF, or by
+ * another path, such as that build's own /mingw64/bin/openssl.
+ */
+const OTHER_OPENSSL = /(?<![\w.-])(?<!\/usr\/bin\/)openssl\b/;
+
 /**
  * Origin pulls from MenuMesh's own CA (the server team's review, their commitment 3; VPS-136). The
  * owner makes the CA and a client certificate for client authentication alone, which Caddy's check
- * requires, each -subj kept from Git Bash's path rewriting, and checks the pair with openssl;
- * uploads the client pair at the zone level, never the global toggle's shared certificate; keeps
- * the keys in the password manager and off the server; and the admin gets the two certificates
- * alone, which a new server takes from the password manager too.
+ * requires, each -subj behind MSYS_NO_PATHCONV=1 should a native build run it, and checks the pair
+ * with openssl; uploads the client pair at the zone level, never the global toggle's shared
+ * certificate; keeps the keys in the password manager and off the server; and the admin gets the
+ * two certificates alone, which a new server takes from the password manager too. Since VPS-151
+ * every command block line of step 8 that runs openssl names /usr/bin/openssl, Git for Windows'
+ * MSYS build in Git Bash, as the openssl Git Bash finds first writes CRLF and app-apply refuses
+ * that; tr counts each file's carriage returns, which must be 0 CR, as Git Bash's grep misreads
+ * them; the cleanup leaves the two certificates in the folder until the admin has them; and a copy
+ * taken from the password manager, in step 8 or in disaster recovery's edge, is counted first.
  */
 const ownCA = (runbook: string) =>
   inPlaces(
@@ -3470,6 +3502,7 @@ const ownCA = (runbook: string) =>
     ['zoneStep', 'zoneMove', 'recoveryEdge'],
     ({ zoneStep, zoneMove, recoveryEdge }) => {
       const lines = zoneStep.split('\n').map((line) => line.trim());
+      const commands = blockLines(zoneStep);
       return [
         ...['extendedKeyUsage=clientAuth', '-days 3650', '-days 825', AOP_VERIFY]
           .filter((words) => !lines.some((line) => line.includes(words)))
@@ -3479,7 +3512,37 @@ const ownCA = (runbook: string) =>
           ),
         ...lines
           .filter((line) => line.includes("-subj '/") && !line.startsWith('MSYS_NO_PATHCONV=1 '))
-          .map((line) => `a -subj that Git Bash turns into a path: ${line}`),
+          .map(
+            (line) =>
+              `a -subj that Git Bash turns into a path when a native build runs it: ${line}`,
+          ),
+        ...commands
+          .filter((line) => OTHER_OPENSSL.test(line))
+          .map(
+            (line) =>
+              `First install, step 8, runs the openssl Git Bash finds first, which writes CRLF: ${line}`,
+          ),
+        ...(commands.includes(CR_COUNT)
+          ? []
+          : [
+              'First install, step 8, doesn’t count the four files’ carriage returns with tr, as Git Bash’s grep misreads them',
+            ]),
+        ...(has(zoneStep, '`0 CR` for each of the four files')
+          ? []
+          : [
+              'First install, step 8, doesn’t say the loop must print 0 CR for each of the four files',
+            ]),
+        ...(commands.includes(AOP_CLEANUP) &&
+        has(zoneStep, 'stay in the folder until the admin has them (step 11)')
+          ? []
+          : [
+              'First install, step 8, doesn’t leave the two certificates alone in the folder until the admin has them (step 11)',
+            ]),
+        ...(has(zoneStep, 'a copy that must come from there gets the same `0 CR` check first')
+          ? []
+          : [
+              'First install, step 8, doesn’t give a copy of the certificates from the password manager the same 0 CR check first',
+            ]),
         ...(has(zoneStep, 'never the global toggle')
           ? []
           : [
@@ -3500,6 +3563,14 @@ const ownCA = (runbook: string) =>
         ...(has(recoveryEdge, '`aop-ca.pem`, `aop-client.pem` and `edge.env` from the')
           ? []
           : ['disaster recovery’s edge doesn’t take both certificates from the password manager']),
+        ...(has(
+          recoveryEdge,
+          "the two `.pem` files given First install, step 8's `0 CR` check first",
+        )
+          ? []
+          : [
+              'disaster recovery’s edge doesn’t give the two certificates from the password manager step 8’s 0 CR check first',
+            ]),
       ];
     },
   );
@@ -3836,6 +3907,26 @@ const OLD_ZONE_STEP = [
   '8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server',
   '   rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls',
   "   ready for the admin's certificate (the server team's `edge.md` §3).",
+].join('\n');
+
+/** The openssl lines of First install, step 8's block at 2f840ac, each the openssl Git Bash finds first. */
+const AOP_OPENSSL_2F840AC = [
+  "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr",
+  'openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem',
+  "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr",
+  'openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem',
+  AOP_VERIFY,
+  'openssl x509 -noout -enddate -in aop-client.pem',
+];
+
+/** First install, step 8's block at 2f840ac: files that hold CRLF, and no count of carriage returns. */
+const AOP_BLOCK_2F840AC = [
+  '   ```sh',
+  '   umask 077 && mkdir ~/aop && cd ~/aop',
+  String.raw`   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext`,
+  String.raw`   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext`,
+  ...AOP_OPENSSL_2F840AC.map((line) => `   ${line}`),
+  '   ```',
 ].join('\n');
 
 /** First install's step 9 at 21a13bf: the conf alone. */
@@ -4584,6 +4675,12 @@ const REWRAPPED = [
   "its `compose.yml` sum before the third's and the fourth's",
   "and its hostwatch sum before the sixth's",
   '`Caddyfile`, their snippet, their digest pin and hostwatch',
+  // Read by the rules of step 8's files made with the openssl that writes LF (VPS-151): a piece of
+  // each phrase that stands on one line.
+  '`0 CR` for each of the',
+  'until the admin has them (step 11)',
+  'must come from there gets the same `0 CR` check first',
+  "given First install, step 8's `0 CR` check first",
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7727,7 +7824,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('makes the origin pulls’ CA and client certificate the owner’s, uploaded at the zone level, and gives the server only the two certificates (the server team’s review, VPS-136)', () => {
+  it('makes the origin pulls’ CA and client certificate the owner’s with /usr/bin/openssl, no carriage return in any file, uploaded at the zone level, and gives the server only the two certificates, kept until step 11 (the server team’s review, VPS-136, VPS-151)', () => {
     expect(ownCA(RUNBOOK)).toEqual([]);
     // 21a13bf's step 8: pulls "ready for the admin's certificate", and nothing made.
     const old = swap(
@@ -7746,8 +7843,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ownCA,
       swap(
         RUNBOOK,
-        "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
-        "openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+        "MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+        "/usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
       ),
       'a -subj that Git Bash turns into a path',
     );
@@ -7773,6 +7870,79 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         OLD_RECOVERY_EDGE,
       ),
       'disaster recovery’s edge doesn’t take both certificates from the password manager',
+    );
+    // 2f840ac's block: the openssl Git Bash finds first, which writes CRLF, on every line that runs
+    // it, and no count of the carriage returns; then that openssl after && and in a $(, by its own
+    // path and after sudo: any name but /usr/bin/openssl (VPS-151).
+    const native = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '   ```sh\n   umask 077', '\n\n   The first prints'),
+      AOP_BLOCK_2F840AC,
+    );
+    for (const line of AOP_OPENSSL_2F840AC) {
+      refuses(ownCA, native, `runs the openssl Git Bash finds first, which writes CRLF: ${line}`);
+    }
+    const uncounted = 'doesn’t count the four files’ carriage returns with tr';
+    refuses(ownCA, native, uncounted);
+    for (const [from, to] of [
+      [
+        'umask 077 && mkdir ~/aop && cd ~/aop &&',
+        'umask 077 && mkdir ~/aop && cd ~/aop && openssl version &&',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        'echo "$(openssl x509 -noout -enddate -in aop-client.pem)"',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        '/mingw64/bin/openssl x509 -noout -enddate -in aop-client.pem',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        'sudo openssl x509 -noout -enddate -in aop-client.pem',
+      ],
+    ]) {
+      refuses(
+        ownCA,
+        swap(RUNBOOK, from, to),
+        `runs the openssl Git Bash finds first, which writes CRLF: ${to}`,
+      );
+    }
+    // Prose is no command, even a line of it that starts with openssl's name.
+    expect(
+      ownCA(swap(RUNBOOK, '   The first prints', '   openssl verify, the first, prints')),
+    ).toEqual([]);
+    // The count made with grep, which Git Bash's grep misreads, its 0 CR unsaid, and the two
+    // certificates gone with the folder, or kept without a word of how long (VPS-151).
+    refuses(ownCA, swap(RUNBOOK, CR_COUNT, "grep -c $'\\r' *.pem"), uncounted);
+    refuses(
+      ownCA,
+      swap(RUNBOOK, '`0 CR` for each of the', 'a count for each of the'),
+      'doesn’t say the loop must print 0 CR for each of the four files',
+    );
+    const gone =
+      'doesn’t leave the two certificates alone in the folder until the admin has them (step 11)';
+    refuses(
+      ownCA,
+      swap(
+        RUNBOOK,
+        AOP_CLEANUP,
+        'shred -u aop-ca-key.pem aop-client-key.pem && cd ~ && rm -r ~/aop',
+      ),
+      gone,
+    );
+    refuses(ownCA, swap(RUNBOOK, 'until the admin has them (step 11)', 'for now'), gone);
+    // A copy taken from the password manager without the count first, in step 8 and in disaster
+    // recovery's edge, which could bring back CRLF (VPS-151).
+    refuses(
+      ownCA,
+      swap(RUNBOOK, 'gets the same `0 CR` check first', 'goes to the admin as it is'),
+      'doesn’t give a copy of the certificates from the password manager the same 0 CR check first',
+    );
+    refuses(
+      ownCA,
+      swap(RUNBOOK, ", the two `.pem` files given First install, step 8's `0 CR` check first", ''),
+      'disaster recovery’s edge doesn’t give the two certificates from the password manager step 8’s 0 CR check first',
     );
   });
 

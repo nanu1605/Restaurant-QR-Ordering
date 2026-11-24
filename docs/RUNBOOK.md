@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-150 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-151 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -768,42 +768,66 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
    rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
    from MenuMesh's own CA (the server team's `edge.md` §3, Authenticated origin pulls, whose steps 1
    and 2 are the owner's here, as the zone's), never Cloudflare's shared certificate, which proves
-   only that a request came through Cloudflare. On the owner's own machine (Git Bash on Windows, or a terminal on macOS or
-   Linux), in a folder only the owner can read: the CA, for 10 years, and the client certificate it
-   signs, for 825 days, both RSA 2048, the client's marked for client authentication, without which
-   Caddy refuses it. `MSYS_NO_PATHCONV=1` keeps Git Bash from turning `-subj`'s `/CN=…` into a
-   Windows path, and changes nothing elsewhere:
+   only that a request came through Cloudflare. On the owner's own machine (Git Bash on Windows, or
+   a terminal on macOS or Linux), in a folder only the owner can read: the CA, for 10 years, and the
+   client certificate it signs, for 825 days, both RSA 2048, the client's marked for client
+   authentication, without which Caddy refuses it. The commands name `/usr/bin/openssl`: in Git
+   Bash that is Git for Windows' MSYS build, which writes the LF line endings that the server's
+   `app-apply` needs, as it refuses a file with CRLF
+   (`… has CRLF line endings: convert it to LF first`). The `openssl` that Git Bash finds first is
+   a native build, which writes CRLF. On macOS and Linux, `/usr/bin/openssl` is the system's own.
+   `MSYS_NO_PATHCONV=1` stays on the `-subj` lines: it changes nothing for `/usr/bin/openssl`, and
+   it keeps `-subj`'s `/CN=…` whole if a native build ever runs them, whose CRLF the loop below
+   would then show. The lines that make the files go in as one paste, chained with `&&`:
 
    ```sh
-   umask 077 && mkdir ~/aop && cd ~/aop
-   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext
-   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext
-   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr
-   openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem
-   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr
-   openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem
-   openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
-   openssl x509 -noout -enddate -in aop-client.pem
+   umask 077 && mkdir ~/aop && cd ~/aop &&
+   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext &&
+   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext &&
+   MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr &&
+   /usr/bin/openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem &&
+   MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr &&
+   /usr/bin/openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem
    ```
 
-   `openssl verify` prints `aop-client.pem: OK` (a client certificate without client authentication
-   fails it with `unsuitable certificate purpose`), and the last line the client certificate's
-   expiry, which goes on the calendar. Then Cloudflare → `menumesh.in` → SSL/TLS → Origin Server →
-   Authenticated Origin Pulls → Zone-level → **Upload certificate**, with `aop-client.pem` and
-   `aop-client-key.pem` pasted: the client certificate itself and its key, as a CA certificate is
-   refused (`missing leaf certificate`). Once its status has gone from `pending_deployment` to
-   `active`, zone-level pulls go on (in the API,
+   They print dots, dashes and each certificate's subject line, never a key. A failed `mkdir` or a
+   failed command stops the rest: if `mkdir` says the folder exists, nothing else ran. A failed
+   command can still leave a new key behind: remove the folder and start again. Then the checks, in
+   the same folder:
+
+   ```sh
+   /usr/bin/openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
+   /usr/bin/openssl x509 -noout -enddate -in aop-client.pem
+   for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done
+   ```
+
+   The first prints `aop-client.pem: OK` (a client certificate without client authentication fails
+   it with `unsuitable certificate purpose`); the second, `notAfter=` and the client certificate's
+   expiry, about 825 days ahead, which goes on the calendar; and the loop, `0 CR` for each of the
+   four files: `tr` counts the carriage returns, as Git Bash's grep misreads them. Then Cloudflare →
+   `menumesh.in` → SSL/TLS → Origin Server → Authenticated Origin Pulls → Zone-level →
+   **Upload certificate**, with `aop-client.pem` and `aop-client-key.pem` pasted: the client
+   certificate itself and its key, as a CA certificate is refused (`missing leaf certificate`). Once
+   its status has gone from `pending_deployment` to `active`, zone-level pulls go on (in the API,
    `PUT /zones/<zone id>/origin_tls_client_auth/settings` with `{"enabled": true}`, which needs SSL
    and Certificates Write), never the global toggle, Cloudflare's shared certificate. They cover
    every proxied record of the zone, and none is proxied yet: Vercel's stay DNS only. The four
    files go into the password manager; then `aop-ca-key.pem` and `aop-client-key.pem` go off the
-   disk with the rest of the folder, and the CA's key never goes to a server. The admin gets only
-   `aop-ca.pem` and `aop-client.pem` (step 11). Cloudflare also alerts 30 and 14 days before the
-   client certificate expires, and never deletes an expired one itself. The next one is made the
-   same way, from `aop-ca.pem` and the CA's key out of the password manager, without the lines that
-   make the CA, and uploaded beside the old one; once it is `active`, the old one is deleted there
-   (of two active ones, the one deployed last is used), and the admin puts the new `aop-client.pem`
-   in the old one's place (step 11).
+   disk with the CSRs, the `.ext` files and `aop-ca.srl`, and the CA's key never goes to a server:
+
+   ```sh
+   shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls
+   ```
+
+   `ls` shows `aop-ca.pem` and `aop-client.pem` alone: they hold no secret, and stay in the folder
+   until the admin has them (step 11). The admin gets only `aop-ca.pem` and `aop-client.pem`. A
+   copy pasted back out of a password manager on Windows can come back with CRLF, so a copy that
+   must come from there gets the same `0 CR` check first. Cloudflare also alerts 30 and 14 days
+   before the client certificate expires, and never deletes an expired one itself. The next one is
+   made the same way, with the same checks, from `aop-ca.pem` and the CA's key out of the password
+   manager, without the lines that make the CA, and uploaded beside the old one; once it is
+   `active`, the old one is deleted there (of two active ones, the one deployed last is used), and
+   the admin puts the new `aop-client.pem` in the old one's place (step 11).
 
 **The server's admin** (the server team's `server.md` §2 and `edge.md` §3 and §5):
 
@@ -2623,9 +2647,10 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
 
   8. The edge, by the admin: the redaction file right after step 1's conf (First install, step 9),
      then new certificates from fresh CSRs, `aop-ca.pem`, `aop-client.pem` and `edge.env` from the
-     password manager, in First install, step 11's order: MenuMesh's two lines merged into the new
-     server's `edge.env` through that step's copy, newline guard and `cat >>`, its check of the
-     names and lengths and its install and shred, unless that check, run on the copy first, shows
+     password manager, the two `.pem` files given First install, step 8's `0 CR` check first,
+     in First install, step 11's order: MenuMesh's two lines merged into the new server's
+     `edge.env` through that step's copy, newline guard and `cat >>`, its check of the names
+     and lengths and its install and shred, unless that check, run on the copy first, shows
      them there already; then Caddy's recreate and its checks, as there. Before the `edge.env` lines
      comes that step's check of the server team's latest confirmation: on a rebuilt server their
      edge comes back first, their digest pin of Caddy included, and their confirmation then names
