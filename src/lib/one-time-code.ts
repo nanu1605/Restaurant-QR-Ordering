@@ -4,6 +4,7 @@ import { createHmac, randomInt } from 'node:crypto';
 
 import { headers } from 'next/headers';
 
+import { ipFromHeaders } from '@/lib/client-ip';
 import { getServerEnv } from '@/lib/env.server';
 
 /**
@@ -21,10 +22,5 @@ export const hashCode = (purpose: 'signup' | 'password-reset' | 'team-invite', c
 
 /** The visitor's IP address as the host reports it, for rate limits. */
 export async function clientIp(): Promise<string | null> {
-  const requestHeaders = await headers();
-  return (
-    requestHeaders.get('x-real-ip') ??
-    requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    null
-  );
+  return ipFromHeaders(await headers());
 }

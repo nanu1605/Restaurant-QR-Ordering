@@ -1,3 +1,4 @@
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 import { SENTRY_OPTIONS } from '@/lib/sentry-options';
 
 // Zod compiles fast parsers with `new Function`. The pages' policy forbids
@@ -18,6 +19,10 @@ if (SENTRY_OPTIONS.enabled) {
         ...SENTRY_OPTIONS,
         // Errors only: no session ping on every page load.
         integrations: (defaults) => defaults.filter((i) => i.name !== 'BrowserSession'),
+        // An older build's action after a deploy is no bug: the page refreshes onto the new
+        // build, and the server logs a "Failed to find Server Action" warning for each
+        // (docs/DECISIONS.md VPS-9). A script that didn't load is still reported.
+        beforeSend: (event, hint) => (isUnrecognizedAction(hint.originalException) ? null : event),
       }),
     );
   if ('requestIdleCallback' in window) window.requestIdleCallback(load, { timeout: 3000 });

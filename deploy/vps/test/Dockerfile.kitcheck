@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+
+# The checker image of `pnpm vps:check` (scripts/vps-kit.mts, deploy/vps/test/kit-check.sh;
+# docs/DECISIONS.md VPS-42): what the shared server's app-apply is written for and runs with, so
+# its checks run on this machine as root runs them on the server. Ubuntu 24.04 (bash, mawk,
+# coreutils, util-linux), jq, and the server's Docker CLI 29.9.3 and Compose plugin 5.7.0, plus
+# openssl for a throwaway certificate. Built locally, tagged menumesh-kit-check:<hash of this
+# file>, never pushed; nothing in it runs on the server.
+#
+# The two binaries are downloaded at build time and checked against pinned sha256 sums. Compose's
+# sum is its release's own (checksums.txt of v5.7.0). Docker publishes none for its static bundles:
+# the sum below was taken on 2026-11-11 from the official URL, and the docker binary in that bundle
+# is byte for byte the one in the docker:29.9.3-cli official image (index digest
+# sha256:2357639ad1ea7d0194134bf3292622fd4e562483966ed674e5d7c945b5f3b28d). x86-64 only, as the
+# server: scripts/vps-kit.mts builds it with --platform linux/amd64, which another machine runs
+# under emulation.
+
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS fetch
+ADD --checksum=sha256:3fb5d1f13014c18cc54945bc177c58a9056a482dada031e17d12cf2e6922c973 \
+    https://download.docker.com/linux/static/stable/x86_64/docker-29.9.3.tgz /tmp/docker.tgz
+RUN tar -xzf /tmp/docker.tgz -C /tmp docker/docker
+
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends jq openssl \
+ && rm -rf /var/lib/apt/lists/*
+# Where Docker's own packages put them on Ubuntu, so app-apply's PATH (/usr/sbin:/usr/bin:/sbin:/bin)
+# finds the CLI and the CLI finds the plugin.
+COPY --from=fetch /tmp/docker/docker /usr/bin/docker
+ADD --checksum=sha256:7758048ad38e580f22559603312874fec8bb638d021a9e64182385fc17cc12a2 --chmod=755 \
+    https://github.com/docker/compose/releases/download/v5.7.0/docker-compose-linux-x86_64 \
+    /usr/libexec/docker/cli-plugins/docker-compose

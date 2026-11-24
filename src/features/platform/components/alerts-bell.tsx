@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { currentDeploymentId } from '@/features/new-version/stale';
 import { formatINR } from '@/lib/money';
 
 import { markAlertsSeen } from '../actions';
@@ -73,7 +74,7 @@ export function AlertsBell() {
 
   useEffect(() => {
     let stopped = false;
-    const deployment = (globalThis as { NEXT_DEPLOYMENT_ID?: string }).NEXT_DEPLOYMENT_ID;
+    const deployment = currentDeploymentId();
     async function poll() {
       const sentAt = Date.now();
       try {

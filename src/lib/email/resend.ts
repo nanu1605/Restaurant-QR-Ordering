@@ -73,6 +73,26 @@ export class EmailError extends Error {
   }
 }
 
+export type SendFailure = 'in_flight' | 'already_sent' | 'refused' | 'unavailable';
+
+/**
+ * What a failed send means for sending it again (docs/DECISIONS.md VPS-28), from Resend's answer:
+ * - in_flight: a 409 naming concurrent_idempotent_requests, Resend still busy with a request
+ *   under the same key; asking again later is safe;
+ * - already_sent: any other 409, such as invalid_idempotent_request (the key went within 24 hours
+ *   with other content, as after an edit): Resend holds an email for the key and sends no other;
+ * - refused: 400 or 422, an email Resend won't take, such as a bad address;
+ * - unavailable: anything else (no answer, 401, 403, 408, 429, 5xx), nothing to do with the email.
+ */
+export function sendFailure(error: unknown): SendFailure {
+  if (!(error instanceof EmailError)) return 'unavailable';
+  if (error.status === 409) {
+    return error.message.includes('concurrent_idempotent_requests') ? 'in_flight' : 'already_sent';
+  }
+  if (error.status === 400 || error.status === 422) return 'refused';
+  return 'unavailable';
+}
+
 export type Email = {
   to: string[];
   subject: string;

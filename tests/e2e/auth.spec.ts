@@ -94,7 +94,9 @@ test('platform admin needs a second factor, then lands on super-admin', async ({
 
   await main.getByLabel('6-digit code').fill(totpCode(secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  // The answer to Verify carries Home, which reads the whole platform: as long as
+  // passSecondFactor gives it.
+  await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
   await expect(header(page).getByText('Platform admin').first()).toBeVisible();
 
   await page.goto('/admin');
@@ -108,7 +110,7 @@ test('platform admin needs a second factor, then lands on super-admin', async ({
   await expect(main.getByRole('button', { name: 'Set up authenticator app' })).toHaveCount(0);
   await main.getByLabel('6-digit code').fill(totpCode(secret));
   await main.getByRole('button', { name: 'Verify' }).click();
-  await expect(page).toHaveURL(/\/super$/);
+  await expect(page).toHaveURL(/\/super$/, { timeout: 10_000 });
 });
 
 test('a signed-out visit returns to the requested page after login', async ({ page }) => {
@@ -146,6 +148,17 @@ test('log out ends the session on this device', async ({ page }) => {
 
   await page.goto('/staff');
   await expect(page).toHaveURL(/\/login\?next=%2Fstaff$/);
+});
+
+// Behind a proxy the server's own address isn't the public one, so neither redirect may
+// carry an absolute address (docs/DECISIONS.md VPS-3).
+test('log out and the sign-in redirect answer with relative addresses', async ({ request }) => {
+  const logout = await request.post('/logout', { maxRedirects: 0 });
+  expect(logout.status()).toBe(303);
+  expect(logout.headers().location).toBe('/login');
+
+  const staff = await request.get('/staff', { maxRedirects: 0 });
+  expect(staff.headers().location).toBe('/login?next=%2Fstaff');
 });
 
 test('an already signed-in user skips the login page', async ({ page }) => {

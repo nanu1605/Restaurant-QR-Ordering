@@ -38,6 +38,24 @@ const exportRowSchema = z
   .nullable();
 export const parseExportRow = (json: unknown) => exportRowSchema.parse(json);
 
+/** An export the server may build, from restaurant_export_claim (docs/DECISIONS.md VPS-26). */
+const exportClaimSchema = z
+  .object({ export_id: z.uuid(), restaurant_id: z.uuid(), claim_id: z.uuid() })
+  .transform((claim) => ({
+    exportId: claim.export_id,
+    restaurantId: claim.restaurant_id,
+    claimId: claim.claim_id,
+  }));
+export type ExportClaim = z.infer<typeof exportClaimSchema>;
+/**
+ * What restaurant_export_claim answers: a claim; 'busy' when exports wait but another server
+ * holds the platform's one build; or null when nothing waits.
+ */
+const exportClaimAnswerSchema = z
+  .union([exportClaimSchema, z.object({ busy: z.literal(true) }).transform(() => 'busy' as const)])
+  .nullable();
+export const parseExportClaim = (json: unknown) => exportClaimAnswerSchema.parse(json);
+
 /** What a page shows of the latest export; its file's path stays on the server. */
 export type DataExport =
   | { state: 'none' | 'building' | 'failed' | 'expired' }

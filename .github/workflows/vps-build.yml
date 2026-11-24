@@ -1,0 +1,210 @@
+name: VPS build
+
+# Builds the images the shared server takes (docs/DECISIONS.md VPS-23, VPS-41): the web image for one
+# target and the migrate image of the same commit, both pushed to ghcr.io/nanu1605/menumesh under the
+# tags the server's /etc/apps/menumesh.conf accepts (staging-<sha>, prod-vX.Y.Z, migrate-<sha>), each
+# labelled org.opencontainers.image.version with its own tag, which app-deploy checks. Called by CI
+# after a merge to main (STAGING) and by VPS Release (PRODUCTION). Nothing here runs unless the
+# repository variable VPS_IMAGES is "true": the callers check it.
+#
+# The caller's job must grant packages: write, because a called workflow cannot raise the caller's
+# permissions. Actions are pinned by commit, as the server team's are: these jobs push to the
+# registry and hold the Sentry token.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: STAGING or PRODUCTION (the prefix of its repository variables)
+        required: true
+        type: string
+      version:
+        description: PRODUCTION only, the release as vMAJOR.MINOR.PATCH (the image tag is prod-<version>)
+        required: false
+        type: string
+      ref:
+        description: Commit to build (defaults to the calling run's commit)
+        required: false
+        type: string
+    outputs:
+      web:
+        description: The web image, as <tag>@sha256:<digest>
+        value: ${{ jobs.build.outputs.web }}
+      migrate:
+        description: The migrate image, as <tag>@sha256:<digest>
+        value: ${{ jobs.build.outputs.migrate }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ inputs.target }} images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    # Builds of one target queue instead of overlapping. GitHub keeps one waiting run per group, so
+    # a commit that is superseded twice over is skipped: staging follows the latest main anyway.
+    concurrency:
+      group: vps-build-${{ inputs.target }}
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ inputs.target }}
+    outputs:
+      web: ${{ steps.refs.outputs.web }}
+      migrate: ${{ steps.refs.outputs.migrate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Name the images
+        id: names
+        env:
+          VERSION: ${{ inputs.version }}
+          # The build values baked into the web image: a missing one fails here, not in the app.
+          APP_URL: ${{ vars[format('{0}_APP_URL', inputs.target)] }}
+          SUPABASE_URL: ${{ vars[format('{0}_SUPABASE_URL', inputs.target)] }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars[format('{0}_SUPABASE_PUBLISHABLE_KEY', inputs.target)] }}
+        run: |
+          set -eu
+          sha=$(git rev-parse HEAD)
+          case "$TARGET" in
+            STAGING)
+              tag="staging-$sha" pattern='^staging-[0-9a-f]{40}$'
+              [ -z "$VERSION" ] || { echo "::error::A staging build takes no version."; exit 1; }
+              ;;
+            PRODUCTION)
+              tag="prod-$VERSION" pattern='^prod-v[0-9]+\.[0-9]+\.[0-9]+$'
+              ;;
+            *) echo "::error::Unknown target $TARGET"; exit 1 ;;
+          esac
+          migrate_tag="migrate-$sha"
+          # The server's own patterns (/etc/apps/menumesh.conf): a tag it would refuse fails here,
+          # before the build.
+          [[ "$tag" =~ $pattern ]] || { echo "::error::Unexpected tag: $tag"; exit 1; }
+          [[ "$migrate_tag" =~ ^migrate-[0-9a-f]{40}$ ]] || { echo "::error::Unexpected tag: $migrate_tag"; exit 1; }
+          for name in APP_URL SUPABASE_URL SUPABASE_PUBLISHABLE_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::${TARGET}_$name is not set"; exit 1; fi
+          done
+          {
+            echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/menumesh"
+            echo "sha=$sha"
+            echo "tag=$tag"
+            echo "migrate_tag=$migrate_tag"
+            # One per build, since two builds of one commit have different server-action ids.
+            echo "deployment_id=${sha:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Release tags are immutable (the contract's rule): a prod tag that exists is never rebuilt.
+      - name: Refuse a release tag that exists
+        if: inputs.target == 'PRODUCTION'
+        env:
+          IMAGE: ${{ steps.names.outputs.repo }}:${{ steps.names.outputs.tag }}
+        run: |
+          if out=$(docker buildx imagetools inspect "$IMAGE" 2>&1); then
+            echo "::error::$IMAGE already exists. A release tag is never rebuilt: bump the version."
+            exit 1
+          fi
+          case "$out" in
+            *'not found'* | *'unknown'* | *'404'* | *'denied'*) ;; # no such tag, or no such package yet
+            *) echo "::error::Could not look up $IMAGE: $out"; exit 1 ;;
+          esac
+
+      - name: Build and push the web image
+        id: web
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.repo }}:${{ steps.names.outputs.tag }}
+          # The server refuses a digest whose label isn't the tag it is deployed under.
+          labels: org.opencontainers.image.version=${{ steps.names.outputs.tag }}
+          # Tag-like runs read main's cache but write none: production reuses staging's layers.
+          cache-from: type=gha,scope=web-staging
+          cache-to: ${{ inputs.target == 'STAGING' && 'type=gha,mode=max,scope=web-staging' || '' }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars[format('{0}_APP_URL', inputs.target)] }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars[format('{0}_SUPABASE_URL', inputs.target)] }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ vars[format('{0}_SUPABASE_PUBLISHABLE_KEY', inputs.target)] }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ vars.SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_ENVIRONMENT=${{ inputs.target == 'PRODUCTION' && 'production' || 'staging' }}
+            NEXT_PUBLIC_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
+            NEXT_PUBLIC_POSTHOG_HOST=${{ vars.POSTHOG_HOST }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+            NEXT_PUBLIC_BUILD_SHA=${{ steps.names.outputs.sha }}
+            DEPLOYMENT_ID=${{ steps.names.outputs.deployment_id }}
+          # The Sentry token is a BuildKit secret: it never lands in a layer or the build history.
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      # The staging run of the same commit may have built it already: reuse that digest, so the
+      # release deploys the migrations staging ran.
+      - name: Look for the migrate image of this commit
+        id: have
+        env:
+          IMAGE: ${{ steps.names.outputs.repo }}:${{ steps.names.outputs.migrate_tag }}
+        run: |
+          if out=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}' 2>&1); then
+            case "$out" in sha256:*) echo "digest=$out" >> "$GITHUB_OUTPUT"; echo "Reusing $IMAGE@$out" ;; *) echo "::error::Unexpected answer for $IMAGE: $out"; exit 1 ;; esac
+          else
+            echo "No $IMAGE yet; building it."
+          fi
+
+      - name: Build and push the migrate image
+        id: migrate
+        if: steps.have.outputs.digest == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/vps/migrate/Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.repo }}:${{ steps.names.outputs.migrate_tag }}
+          labels: org.opencontainers.image.version=${{ steps.names.outputs.migrate_tag }}
+          build-args: |
+            REVISION=${{ steps.names.outputs.sha }}
+          cache-from: type=gha,scope=migrate
+          cache-to: type=gha,mode=max,scope=migrate
+
+      - name: Collect the references
+        id: refs
+        env:
+          TAG: ${{ steps.names.outputs.tag }}
+          MIGRATE_TAG: ${{ steps.names.outputs.migrate_tag }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          MIGRATE_DIGEST: ${{ steps.have.outputs.digest || steps.migrate.outputs.digest }}
+        run: |
+          set -eu
+          for d in "$WEB_DIGEST" "$MIGRATE_DIGEST"; do
+            [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::No usable digest: $d"; exit 1; }
+          done
+          web="$TAG@$WEB_DIGEST" migrate="$MIGRATE_TAG@$MIGRATE_DIGEST"
+          { echo "web=$web"; echo "migrate=$migrate"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "### $TARGET images"
+            echo
+            echo '```'
+            echo "$web"
+            echo "$migrate"
+            echo '```'
+            if [ "$TARGET" = PRODUCTION ]; then
+              echo
+              echo 'Deploy it on the server, as the admin:'
+              echo
+              echo '```'
+              echo "sudo app-deploy menumesh production $web $migrate"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

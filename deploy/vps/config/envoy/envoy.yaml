@@ -1,0 +1,32 @@
+# Envoy's bootstrap for MenuMesh's gateway, from self-hosted Supabase v0.8.4 (supabase/supabase,
+# docker/volumes/api/envoy/envoy.yaml, Apache-2.0; see deploy/vps/config/SOURCES.md). Changed
+# (docs/DECISIONS.md VPS-35): the listeners' path. The admin interface stays on loopback.
+dynamic_resources:
+  cds_config:
+    path_config_source:
+      path: /etc/envoy/cds.yaml
+    resource_api_version: V3
+  lds_config:
+    path_config_source:
+      # MenuMesh: start.sh writes the filled-in listeners to the tmpfs, so Envoy runs as uid
+      # 101 with a read-only root.
+      path: /run/envoy/lds.yaml
+    resource_api_version: V3
+
+node:
+  cluster: supabase_cluster
+  id: supabase_node
+
+overload_manager:
+  resource_monitors:
+    - name: envoy.resource_monitors.global_downstream_max_connections
+      typed_config:
+        '@type': >-
+          type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig
+        max_active_downstream_connections: 30000
+
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901

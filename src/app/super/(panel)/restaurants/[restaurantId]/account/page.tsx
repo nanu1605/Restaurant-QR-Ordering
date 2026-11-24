@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: 'Account',
 };
 
-// Asking for an export builds it after the response (docs/DECISIONS.md SA-93).
+// Asking for an export runs the export queue after the response (docs/DECISIONS.md SA-93, VPS-26).
 export const maxDuration = 300;
 
 /** A restaurant's data export and closing (docs/SUPER_ADMIN_PLAN.md 14e). */

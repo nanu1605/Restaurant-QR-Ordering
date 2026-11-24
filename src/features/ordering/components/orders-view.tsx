@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { currentDeploymentId, isUnrecognizedAction } from '@/features/new-version/stale';
 import { isVoidStatus } from '@/lib/order-status';
 
 import { cancelOrderItem } from '../actions';
@@ -69,7 +70,7 @@ export function OrdersView({ qrToken, initial, bill }: OrdersViewProps) {
     try {
       // Asks the deployment that served this page, as Next.js does for its own
       // requests (docs/DECISIONS.md P10-11); unset locally and in CI.
-      const deployment = (globalThis as { NEXT_DEPLOYMENT_ID?: string }).NEXT_DEPLOYMENT_ID;
+      const deployment = currentDeploymentId();
       const response = await fetch(`/t/${qrToken}/session`, {
         cache: 'no-store',
         headers: deployment ? { 'x-deployment-id': deployment } : undefined,
@@ -121,8 +122,9 @@ export function OrdersView({ qrToken, initial, bill }: OrdersViewProps) {
         const result = await cancelOrderItem(qrToken, item.id);
         if (result.ok) toast.success(t.orders.cancelled(item.name));
         else toast.error(result.error);
-      } catch {
-        toast.error(t.networkError);
+      } catch (error) {
+        // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8).
+        if (!isUnrecognizedAction(error)) toast.error(t.networkError);
       }
       setConfirming(null);
       await refresh();

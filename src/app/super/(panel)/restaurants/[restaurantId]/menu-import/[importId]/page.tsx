@@ -11,7 +11,8 @@ export const metadata: Metadata = {
   title: 'Menu import',
 };
 
-// Reading a page may take a retry and the fallback reader (docs/DECISIONS.md P7-15).
+// Only Vercel enforces this; next start ignores it (docs/DECISIONS.md P7-15, VPS-5). Reading a page
+// answers within 90 s; committing fills the Hindi names after its answer, inside this limit.
 export const maxDuration = 180;
 
 export default async function SuperMenuImportPage({

@@ -2,6 +2,9 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getPublicEnv } from '@/lib/env';
+import { supabaseAuthCookieName } from '@/lib/supabase/cookie-name';
+import { forwardedVisitorIp, forwardingFetch } from '@/lib/supabase/forwarded-for';
+import { supabaseServerUrl } from '@/lib/supabase/url';
 import type { Database } from '@/types/database';
 
 const PROTECTED_PREFIXES = ['/staff', '/admin', '/super'];
@@ -20,11 +23,18 @@ function isProtected(pathname: string): boolean {
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const env = getPublicEnv();
   let response = NextResponse.next({ request });
+  const serverUrl = supabaseServerUrl();
+  // The refresh below names the visitor to Supabase Auth, when it takes that
+  // (docs/DECISIONS.md VPS-4).
+  const visitorIp = await forwardedVisitorIp(() => request.headers);
 
   const supabase = createServerClient<Database>(
-    env.NEXT_PUBLIC_SUPABASE_URL,
+    serverUrl,
     env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
+      // The same name as the server and the browser clients use (docs/DECISIONS.md VPS-20).
+      cookieOptions: { name: supabaseAuthCookieName(env.NEXT_PUBLIC_SUPABASE_URL) },
+      ...(visitorIp ? { global: { fetch: forwardingFetch(serverUrl, visitorIp) } } : null),
       cookies: {
         getAll() {
           return request.cookies.getAll();

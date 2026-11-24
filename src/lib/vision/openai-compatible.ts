@@ -45,6 +45,11 @@ export class ProviderError extends Error {
     readonly status: number | null = null,
     /** Tokens the failed call still used (a cut-off reply). */
     readonly usage: ChatUsage | null = null,
+    /**
+     * The error body's `error.metadata` when it is an object, as OpenRouter sends with a refusal
+     * (docs/DECISIONS.md VPS-27). It is kept out of the message, which is what the logs show.
+     */
+    readonly metadata: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'ProviderError';
@@ -87,10 +92,19 @@ function readContent(message: unknown): string {
   return '';
 }
 
-async function errorText(response: Response): Promise<string> {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** An error answer's message, cut to MAX_ERROR_TEXT, and its `error.metadata` when an object. */
+async function readError(
+  response: Response,
+): Promise<{ text: string; metadata: Record<string, unknown> | null }> {
   const text = await response.text().catch(() => '');
   try {
-    const body = JSON.parse(text) as { error?: { message?: unknown } | string; message?: unknown };
+    const body = JSON.parse(text) as {
+      error?: { message?: unknown; metadata?: unknown } | string | null;
+      message?: unknown;
+    };
     const message =
       typeof body.error === 'string'
         ? body.error
@@ -99,9 +113,13 @@ async function errorText(response: Response): Promise<string> {
           : typeof body.message === 'string'
             ? body.message
             : text;
-    return message.slice(0, MAX_ERROR_TEXT);
+    const metadata = typeof body.error === 'object' ? body.error?.metadata : undefined;
+    return {
+      text: message.slice(0, MAX_ERROR_TEXT),
+      metadata: isRecord(metadata) ? metadata : null,
+    };
   } catch {
-    return text.slice(0, MAX_ERROR_TEXT);
+    return { text: text.slice(0, MAX_ERROR_TEXT), metadata: null };
   }
 }
 
@@ -112,6 +130,7 @@ export async function chatCompletion({
   timeoutMs,
   maxTokens = 16_384,
   fetchImpl = fetch,
+  signal,
 }: {
   provider: VisionProvider;
   messages: ChatMessage[];
@@ -120,7 +139,13 @@ export async function chatCompletion({
   timeoutMs: number;
   maxTokens?: number;
   fetchImpl?: typeof fetch;
+  /**
+   * Gives the call up when it aborts, as the server stopping does. The call then throws the
+   * signal's reason, not a ProviderError: the provider did nothing wrong.
+   */
+  signal?: AbortSignal;
 }): Promise<ChatResult> {
+  signal?.throwIfAborted();
   const body: Record<string, unknown> = {
     model: provider.model,
     messages,
@@ -137,9 +162,12 @@ export async function chatCompletion({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const giveUp = () => controller.abort();
+  signal?.addEventListener('abort', giveUp, { once: true });
   try {
     return await call(provider, body, jsonSchema, controller, fetchImpl);
   } catch (error) {
+    if (signal?.aborted) throw signal.reason;
     if (controller.signal.aborted) {
       throw new ProviderError(`${provider.name} did not answer in time`, 'timeout');
     }
@@ -148,6 +176,7 @@ export async function chatCompletion({
     // Cleared only once the body has been read too, so a provider that sends
     // headers and then stalls still runs out of time.
     clearTimeout(timer);
+    signal?.removeEventListener('abort', giveUp);
   }
 }
 
@@ -175,10 +204,13 @@ async function call(
   }
 
   if (!response.ok) {
+    const { text, metadata } = await readError(response);
     throw new ProviderError(
-      `${provider.name} answered ${response.status}: ${await errorText(response)}`,
+      `${provider.name} answered ${response.status}: ${text}`,
       'http',
       response.status,
+      null,
+      metadata,
     );
   }
 

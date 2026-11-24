@@ -4,6 +4,7 @@ import { cache } from 'react';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { toPublicSupabaseUrl } from '@/lib/supabase/url';
 
 import { parseInbox, parseSupportRequest, SCREENSHOT_BUCKET, type InboxFilters } from './support';
 
@@ -39,7 +40,7 @@ export const getSupportRequest = cache(async (requestId: string) => {
       .storage.from(SCREENSHOT_BUCKET)
       .createSignedUrl(request.screenshot_path, 60 * 60);
     if (signed.error) console.error('[support] no link for a screenshot', signed.error);
-    screenshotUrl = signed.data?.signedUrl ?? null;
+    screenshotUrl = signed.data ? toPublicSupabaseUrl(signed.data.signedUrl) : null;
   }
   return { request, screenshotUrl };
 });

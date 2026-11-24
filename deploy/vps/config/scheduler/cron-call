@@ -1,0 +1,102 @@
+#!/bin/sh
+# cron-call <job>: one call from MenuMesh's scheduler to the web container's cron routes
+# (docs/DECISIONS.md VPS-38). The crontab names the job; start.sh has written the web container's
+# address, the bearer and the heartbeat URLs to /run/menumesh/cron.env, which only root can read.
+#
+#   job           route             curl's limit  prints
+#   daily         /api/cron/daily   1740 s        one line: the status and the seconds
+#   daily-retry   /api/cron/daily   1800 s        nothing if daily got a 200, else one line
+#   digest        /api/cron/digest  300 s         one line
+#   digest-retry  /api/cron/digest  300 s         nothing if digest got a 200, else one line
+#   jobs          /api/cron/jobs    25 s          nothing on a 200, else one line
+#
+# daily ends before its retry starts (1740 s from 21:30 UTC), so the two never overlap. A 200
+# leaves the day's marker (daily, digest) or touches jobs.ok, the healthcheck's file, then pings
+# the route's heartbeat. A daily or digest call without a 200 takes the marker away, so its retry
+# runs even when a call by hand got a 200 earlier the same UTC day; a 200 by hand after the failed
+# call still stands for the retry. curl reads the URLs and the bearer from its standard input
+# (--config -), never from its arguments, so no process list shows them, and no line printed here
+# holds one.
+set -u
+
+run=/run/menumesh
+job=${1:-}
+case $job in
+daily) route=daily max=1740 ;;
+daily-retry) route=daily max=1800 ;;
+digest | digest-retry) route=digest max=300 ;;
+jobs) route=jobs max=25 ;;
+*)
+  echo "cron-call: unknown job '$job'"
+  exit 2
+  ;;
+esac
+
+if [ ! -r "$run/cron.env" ]; then
+  echo "cron-call $job: $run/cron.env is missing (the scheduler's start.sh writes it)"
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$run/cron.env"
+if [ -z "${CRON_BASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+  echo "cron-call $job: $run/cron.env has no CRON_BASE_URL or CRON_SECRET"
+  exit 1
+fi
+case $route in
+daily) beat=${HEARTBEAT_DAILY_URL:-} ;;
+digest) beat=${HEARTBEAT_DIGEST_URL:-} ;;
+*) beat=${HEARTBEAT_JOBS_URL:-} ;;
+esac
+
+# A retry does nothing once a call of the day got a 200 and no daily or digest call failed since.
+marker=$run/$route.$(date -u +%Y-%m-%d)
+case $job in
+*-retry) if [ -e "$marker" ]; then exit 0; fi ;;
+*) ;;
+esac
+
+# One call of a route at a time. A minute whose call is still running is skipped without a word;
+# for daily and digest that means the first call is still going, which is worth a line.
+exec 9>"$run/$route.lock"
+if ! flock -n 9; then
+  if [ "$route" != jobs ]; then
+    echo "cron-call $job: skipped, the last call of /api/cron/$route is still running"
+  fi
+  exit 0
+fi
+
+started=$(date +%s)
+code=$(printf 'url = "%s/api/cron/%s"\nheader = "Authorization: Bearer %s"\n' \
+  "$CRON_BASE_URL" "$route" "$CRON_SECRET" |
+  curl --config - --silent --output /dev/null --write-out '%{http_code}' --max-time "$max")
+status=$?
+seconds=$(($(date +%s) - started))
+
+if [ "$status" -eq 0 ] && [ "$code" = 200 ]; then
+  if [ "$route" = jobs ]; then
+    touch "$run/jobs.ok"
+  else
+    rm -f "$run/$route".[0-9]*
+    touch "$marker"
+    echo "cron-call $job: HTTP 200 in $seconds s"
+  fi
+  if [ -n "$beat" ]; then
+    # The monitor alerts when pings stop, so a failed ping needs no line of its own.
+    printf 'url = "%s"\n' "$beat" | curl --config - --silent --output /dev/null --max-time 10 || true
+  fi
+  exit 0
+fi
+
+case $status in
+0) echo "cron-call $job: HTTP $code in $seconds s" ;;
+6) echo "cron-call $job: no answer in $seconds s (curl exit 6: could not resolve the host)" ;;
+7) echo "cron-call $job: no answer in $seconds s (curl exit 7: could not connect)" ;;
+28) echo "cron-call $job: no answer in $seconds s (curl exit 28: timed out)" ;;
+*) echo "cron-call $job: no answer in $seconds s (curl exit $status)" ;;
+esac
+# The night's call failed: its retry runs, whatever an earlier call of the day got.
+case $job in
+daily | digest) rm -f "$marker" ;;
+*) ;;
+esac
+exit 1

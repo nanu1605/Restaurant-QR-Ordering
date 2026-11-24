@@ -131,6 +131,8 @@ export function HeroStory({
           type="button"
           onClick={() => setPaused((value) => !value)}
           aria-label={paused ? t.play : t.pause}
+          // Sends nothing, so it still works on a page that keeps an older build's answer (VPS-8).
+          data-live-when-kept
           hidden={reduced}
           // Hidden from the first paint too: the server can't know, and a late hide shifts the hero.
           className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted hover:text-ink focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:hidden"

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { isUnrecognizedAction } from '@/features/new-version/stale';
 
 import { finishReading, readMenuPage } from '../actions';
 
@@ -21,10 +22,13 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
   const waiting = (page: PageState) => page.status === 'pending' || page.status === 'reading';
   const [done, setDone] = useState(pages.filter((page) => !waiting(page)).length);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by "Try again", which also re-reads the pages that failed.
+  // Bumped by "Try again", which reads the page the reading stopped on once more.
   const [attempt, setAttempt] = useState(0);
   const retry = attempt > 0;
   const running = useRef(false);
+  // Only that page. Other failed pages stay out: each was tried twice, or reading the same photo
+  // again cannot help (docs/DECISIONS.md VPS-30).
+  const stoppedAt = useRef<number | null>(null);
 
   // One reading loop at a time. It is not cancelled on unmount: each step is
   // safe to repeat on the server, and a remount (Strict Mode) must not stop it.
@@ -36,10 +40,12 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
       setError(null);
       for (const page of pages) {
         // A page another reader is on is claimed by the server, which returns
-        // the progress without paying for a second read. Failed pages are only
-        // read again when the owner presses "Try again".
-        if (!waiting(page) && !(retry && page.status === 'failed')) continue;
+        // the progress without paying for a second read. A failed page is only
+        // read again when the reading stopped on it and the owner presses "Try again".
+        const again = retry && page.status === 'failed' && page.index === stoppedAt.current;
+        if (!waiting(page) && !again) continue;
         setCurrent(page.index);
+        stoppedAt.current = page.index;
         try {
           const result = await readMenuPage(importId, page.index);
           if (!result.ok) {
@@ -47,11 +53,16 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
             return;
           }
           setDone(result.data.done + result.data.failed);
-        } catch {
-          setError('The connection dropped while reading. Try again.');
+        } catch (error) {
+          // An older build: the refresh notice explains (docs/DECISIONS.md VPS-8), and the
+          // refreshed page carries on reading.
+          if (!isUnrecognizedAction(error)) {
+            setError('The connection dropped while reading. Try again.');
+          }
           return;
         }
       }
+      stoppedAt.current = null;
       setCurrent(null);
       try {
         const finished = await finishReading(importId);
@@ -59,8 +70,11 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
           setError(finished.error);
           return;
         }
-      } catch {
-        setError('The connection dropped while reading. Try again.');
+      } catch (error) {
+        // As above.
+        if (!isUnrecognizedAction(error)) {
+          setError('The connection dropped while reading. Try again.');
+        }
         return;
       }
       router.refresh();
@@ -97,10 +111,14 @@ export function ImportProgress({ importId, pages }: { importId: string; pages: P
           style={{ width: `${total ? (done / total) * 100 : 0}%` }}
         />
       </div>
-      <p className="text-sm text-ink-muted">
-        Each page takes up to a minute. You can leave this page open; coming back later carries on
-        from here.
-      </p>
+      {/* Stopped, the reading waits for Try again, and coming back may skip a failed page: the
+          error says what leaving does (docs/DECISIONS.md VPS-5). */}
+      {!error && (
+        <p className="text-sm text-ink-muted">
+          Each page takes up to a minute and a half. You can leave this page open; coming back later
+          carries on from here.
+        </p>
+      )}
       {error && (
         <div className="flex flex-wrap items-center gap-3">
           <p role="alert" className="text-sm font-medium text-destructive">

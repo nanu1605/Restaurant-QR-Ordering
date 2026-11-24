@@ -13,3 +13,7 @@ graphify-out
 docs/SPEC.md
 # Local git worktrees, each a full copy of the repo
 .claude
+# Copies kept byte for byte, or close to their source: the server team's files the kit check runs,
+# and the Envoy config taken from self-hosted Supabase (deploy/vps/config/SOURCES.md)
+deploy/vps/test/vendor/
+deploy/vps/config/envoy/

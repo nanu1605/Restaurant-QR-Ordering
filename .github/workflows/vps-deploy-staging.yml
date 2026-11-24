@@ -1,0 +1,134 @@
+name: VPS deploy staging
+
+# Deploys the staging images to the shared server and smoke-tests the result (docs/DECISIONS.md
+# VPS-23, VPS-41). Called by CI after VPS build, when the repository variable VPS_DEPLOY_STAGING is
+# "true". The server's SSH port is closed to the internet: SSH goes through a Cloudflare Tunnel,
+# authorised by an Access service token. The key can only deploy a digest-pinned image of this
+# repository to staging (its forced command, on the server).
+#
+# Two jobs, so the server's SSH key never shares a runner with third-party code: `deploy` (shell
+# only, no action) and `smoke` (installs dependencies, holds no deploy secret).
+#
+# Repository secrets: VPS_SSH_HOST (the tunnel's SSH name), VPS_SSH_USER, VPS_SSH_KEY,
+# VPS_KNOWN_HOSTS, VPS_ACCESS_CLIENT_ID, VPS_ACCESS_CLIENT_SECRET, and STAGING_SMOKE_BASIC_AUTH
+# ("user:password" of staging's basic auth). Repository variable: STAGING_APP_URL.
+
+on:
+  workflow_call:
+    inputs:
+      web:
+        description: The web image, as staging-<sha>@sha256:<digest>
+        required: true
+        type: string
+      migrate:
+        description: The migrate image, as migrate-<sha>@sha256:<digest>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy staging on the VPS
+    runs-on: ubuntu-24.04
+    # app-deploy's own waits (lock, pull, migrate, health, rollback) can add up to about 35 minutes.
+    timeout-minutes: 45
+    # Never two deploys at once, and never cancel one halfway (GitHub keeps one waiting).
+    concurrency:
+      group: vps-deploy-staging
+      cancel-in-progress: false
+    permissions:
+      packages: read
+    steps:
+      - name: Check the request and the time
+        env:
+          WEB: ${{ inputs.web }}
+          MIGRATE: ${{ inputs.migrate }}
+          HAVE_HOST: ${{ secrets.VPS_SSH_HOST != '' }}
+          HAVE_USER: ${{ secrets.VPS_SSH_USER != '' }}
+          HAVE_KEY: ${{ secrets.VPS_SSH_KEY != '' }}
+          HAVE_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS != '' }}
+          HAVE_ACCESS_ID: ${{ secrets.VPS_ACCESS_CLIENT_ID != '' }}
+          HAVE_ACCESS_SECRET: ${{ secrets.VPS_ACCESS_CLIENT_SECRET != '' }}
+        run: |
+          [[ "$WEB" =~ ^staging-[0-9a-f]{40}@sha256:[0-9a-f]{64}$ ]] || { echo "::error::Unexpected web image: $WEB"; exit 1; }
+          [[ "$MIGRATE" =~ ^migrate-[0-9a-f]{40}@sha256:[0-9a-f]{64}$ ]] || { echo "::error::Unexpected migrate image: $MIGRATE"; exit 1; }
+          for name in HOST USER KEY KNOWN_HOSTS ACCESS_ID ACCESS_SECRET; do
+            have="HAVE_$name"
+            if [ "${!have}" != true ]; then echo "::error::The secret for $name is not set (VPS_*, see the header of this workflow)"; exit 1; fi
+          done
+          # The server contract's deploy blackouts (VPS-24). Fail now: sleeping here would
+          # burn billed minutes.
+          now=$((10#$(TZ=Asia/Kolkata date +%H%M)))
+          if { [ "$now" -ge 255 ] && [ "$now" -le 330 ]; } || { [ "$now" -ge 840 ] && [ "$now" -le 850 ]; }; then
+            echo "::error::The server is busy 02:55-03:30 and 08:40-08:50 IST (now $(TZ=Asia/Kolkata date +%H:%M)). Re-run this job after the window."
+            exit 1
+          fi
+
+      # Pinned binary, checked against its release digest.
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o /tmp/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
+          echo "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  /tmp/cloudflared" | sha256sum -c -
+          sudo install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
+
+      - name: Deploy on the VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          SSH_TARGET: ${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_SSH_HOST }}
+          # The Access service token github-deploy-menumesh.
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.VPS_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.VPS_ACCESS_CLIENT_SECRET }}
+          # The job's token (packages: read) lets the server pull both images. app-deploy keeps the
+          # login in a Docker config of its own and deletes it; the token expires with the job.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEB: ${{ inputs.web }}
+          MIGRATE: ${{ inputs.migrate }}
+        run: |
+          trap 'rm -f ~/.ssh/id_ed25519' EXIT
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The key's forced command picks the app and environment and ignores this command line;
+          # it reads the request, then the job's registry token, from stdin.
+          printf 'v1 deploy %s %s\n%s\n' "$WEB" "$MIGRATE" "$GHCR_TOKEN" |
+            ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+              -o ProxyCommand='cloudflared access ssh --hostname %h' "$SSH_TARGET" deploy
+
+  smoke:
+    name: Smoke-test staging
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # The commit the deployed image was built from, read from its tag (checked in `deploy`).
+      - name: Read the commit
+        id: commit
+        env:
+          WEB: ${{ inputs.web }}
+        run: |
+          sha=${WEB#staging-}
+          echo "sha=${sha%%@*}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke tests
+        run: pnpm smoke
+        env:
+          CI: true
+          SMOKE_URL: ${{ vars.STAGING_APP_URL }}
+          EXPECTED_VERSION: ${{ steps.commit.outputs.sha }}
+          # All of staging is behind basic auth; the tests send it to that origin only.
+          SMOKE_BASIC_AUTH: ${{ secrets.STAGING_SMOKE_BASIC_AUTH }}

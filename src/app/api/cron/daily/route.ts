@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { sendAnnouncementEmails } from '@/features/announcements/email';
 import { removeDuePersonalData, removeOldExports } from '@/features/closure/cleanup';
-import { fillHindiNames } from '@/features/menu/hindi-names';
+import { fillHindiNames, HINDI_RUN_MS } from '@/features/menu/hindi-names';
 import { todayInIndia } from '@/features/platform/platform';
 import { removeOldImportPhotos } from '@/features/menu-import/cleanup';
 import { sendSubscriptionReminders } from '@/features/subscriptions/reminders';
@@ -11,12 +11,16 @@ import { cronAuthorised, cronStep } from '@/lib/cron';
 import { emailConfig } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
 import { addDays } from '@/lib/date-range';
+import { runExclusive } from '@/lib/jobs';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const noStore = { 'Cache-Control': 'no-store' };
 
-// The Hindi name sweep makes up to 100 model calls, five at a time.
+// The Hindi name sweep leases up to 500 names and makes the model calls five at a time; it
+// starts none after HINDI_RUN_MS. The announcement emails, after the reminders, start none after
+// ANNOUNCEMENT_RUN_MS. What either leaves waits for the minute job or the next night.
 export const maxDuration = 300;
+const ANNOUNCEMENT_RUN_MS = 150_000;
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -28,8 +32,8 @@ const step = <T>(admin: Admin, name: string, run: () => Promise<T>) =>
  * Daily housekeeping, called by the scheduler in vercel.json (spec §14.6,
  * docs/DECISIONS.md P7-20, P8-12, HN-8): the super-admin snapshots (SA-9),
  * first, before signups are cleaned up; then menu import photo cleanup,
- * subscription reminder emails, then announcements on their first day (SA-83;
- * both skipped until Resend is set up), Hindi names that menu edits didn't
+ * subscription reminder emails, then announcements on their first day (SA-83,
+ * VPS-28; both skipped until Resend is set up), Hindi names that menu edits didn't
  * fill (skipped without a menu import key), website signups older than a
  * week (W-9), password resets older than a day (P11-6), storefront photos of
  * signups that never finished (P11-12), support screenshots of requests
@@ -86,15 +90,27 @@ export async function GET(request: Request) {
     }),
     step(admin, 'menu import cleanup', () => removeOldImportPhotos(admin)),
     reminderEmails,
-    // After the reminders: one email at a time under Resend's limit (SA-83).
+    // After the reminders: one email at a time under Resend's limit (SA-83). After a run already
+    // going in this process too (the minute job's leaves out one starting later today).
     reminderEmails.then(() =>
       step(admin, 'announcement emails', async () =>
         email
-          ? sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL)
+          ? runExclusive(
+              'announcement_emails',
+              ANNOUNCEMENT_RUN_MS,
+              (run) =>
+                sendAnnouncementEmails(admin, email, getPublicEnv().NEXT_PUBLIC_APP_URL, { run }),
+              { ifBusy: 'wait' },
+            )
           : { skipped: true },
       ),
     ),
-    step(admin, 'hindi names', () => fillHindiNames(admin, null, 500)),
+    // A run already going in this process (the minute job's) goes once more instead of this one.
+    step(admin, 'hindi names', () =>
+      runExclusive('hindi_names', HINDI_RUN_MS, (run) =>
+        fillHindiNames(admin, { run, maxNames: 500 }),
+      ),
+    ),
     step(admin, 'signup cleanup', async () => {
       const { data, error } = await admin.rpc('site_signups_cleanup');
       if (error) throw new Error(error.message);

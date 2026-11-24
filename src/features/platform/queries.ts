@@ -6,6 +6,7 @@ import type { PlatformPermission } from '@/lib/auth/permissions';
 import { dbErrorCode } from '@/lib/db-errors';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { toPublicSupabaseUrl } from '@/lib/supabase/url';
 
 import {
   parseActivityPage,
@@ -165,7 +166,7 @@ export async function getSignupReview(restaurantId: string) {
       .storage.from('storefront-photos')
       .createSignedUrl(data.storefront_photo_path, 60 * 60);
     if (signed.error) console.error('[platform] no link for a storefront photo', signed.error);
-    photoUrl = signed.data?.signedUrl ?? null;
+    photoUrl = signed.data ? toPublicSupabaseUrl(signed.data.signedUrl) : null;
   }
   return { fssaiLicense: data?.fssai_license ?? null, photoUrl };
 }

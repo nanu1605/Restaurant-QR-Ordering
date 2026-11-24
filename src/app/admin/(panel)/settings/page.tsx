@@ -22,7 +22,8 @@ export const metadata: Metadata = {
   title: 'Settings',
 };
 
-// Asking for a data export builds it after the response (docs/DECISIONS.md SA-93).
+// Asking for a data export runs the export queue after the response (docs/DECISIONS.md SA-93,
+// VPS-26).
 export const maxDuration = 300;
 
 export default async function SettingsPage() {

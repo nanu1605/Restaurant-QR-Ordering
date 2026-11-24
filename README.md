@@ -178,8 +178,9 @@ The reader is any OpenAI-compatible `/chat/completions` API. Set in `.env.local`
 | `MENU_IMPORT_USD_INR`           | `96`                                     |
 
 The same keys write the automatic Hindi dish and category names guests see on the Hindi menu
-(docs/DECISIONS.md HN-5 to HN-8), after menu edits and in the daily cron; without them, names
-the owner gave no Hindi name stay as typed. With neither key set, the Import menu page offers
+(docs/DECISIONS.md HN-5 to HN-8, VPS-27), after menu edits, in the daily cron and, on the VPS, in
+the every-minute job (`/api/cron/jobs`, below); without them, names the owner gave no Hindi name
+stay as typed. With neither key set, the Import menu page offers
 CSV only. A page costs about ₹0.30 with the
 default model; super-admin shows each import's tokens and cost. Five photo imports a day per
 restaurant. Photos are deleted 7 days after an import ends by `/api/cron/daily`, which needs
@@ -248,6 +249,16 @@ A second cron, `/api/cron/digest` at 08:45 India time, emails the platform team 
 numbers and today's Needs attention counts, once a day (docs/DECISIONS.md SA-31).
 With a real key it emails the addresses in your local database.
 
+A third route, `/api/cron/jobs`, is the every-minute job (docs/DECISIONS.md VPS-25, VPS-29). It
+builds data exports that wait, writes the Hindi names that still wait and sends the emails of
+announcements that have started, so that work a restart cut off carries on within a minute or two.
+The scheduler on the VPS calls it; on Vercel nothing does, and the `after()` work and the daily
+cron do it as before. It takes the same `CRON_SECRET` bearer, answers at once with the kinds it
+started (`data_exports`, `hindi_names`, `announcement_emails`), and `?kinds=` keeps it to some of
+them. Run it by hand with
+`curl -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/cron/jobs?kinds=data_exports"`.
+It works on every restaurant in your local database, so always name a kind.
+
 Every email is logged for `/super` → Health (docs/DECISIONS.md SA-87), with the addresses only as
 keyed hashes. Optional for that page: `RESEND_WEBHOOK_SECRET` (Resend's bounce and spam reports to
 `/api/webhooks/resend`) and `SENTRY_READ_TOKEN` (Sentry's issues, with `SENTRY_ORG` and
@@ -311,7 +322,9 @@ GitHub Actions migrates, then deploys, then runs the read-only smoke tests
 (`tests/smoke`): staging after every green CI run on `main`, production through the
 **Release** workflow, which only the repository owner can run. `docs/RUNBOOK.md` covers the setup, the
 environment variables, rollbacks, incidents, backups, secret rotation and the Razorpay live
-switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site.
+switch. `pnpm smoke` with `SMOKE_URL` checks any deployed site. The web app also builds as a Docker
+image (`Dockerfile`; `docs/RUNBOOK.md`, The web image) for the planned move to a VPS; Vercel stays
+the live host until then.
 
 Errors go to Sentry (errors only, no cookies, headers or request bodies; the browser SDK loads
 once the page is idle); staff and admin usage goes to PostHog, never from diners' phones. Both
@@ -331,6 +344,10 @@ placeholders to replace before launch.
 | `pnpm format`             | Prettier (write)                              |
 | `pnpm test`               | Unit tests (Vitest)                           |
 | `pnpm e2e`                | End-to-end tests (Playwright)                 |
+| `pnpm docker:build`       | Build the web image from `.env.local`         |
+| `pnpm docker:run`         | Run it against local Supabase on :3100        |
+| `pnpm docker:check`       | Check the running image                       |
+| `pnpm docker:stop`        | Stop and remove its containers                |
 | `pnpm db:start`           | Start local Supabase                          |
 | `pnpm db:stop`            | Stop local Supabase                           |
 | `pnpm db:reset`           | Recreate local DB from migrations + seed      |

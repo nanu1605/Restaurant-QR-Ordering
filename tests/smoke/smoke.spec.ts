@@ -13,6 +13,16 @@ test('the health check reaches the database, on the build just deployed', async 
   if (process.env.EXPECTED_VERSION) expect(health.version).toBe(process.env.EXPECTED_VERSION);
 });
 
+// The liveness route for local checks, with no database behind it (docs/DECISIONS.md VPS-17).
+test('the liveness check answers without the database', async ({ request }) => {
+  const response = await request.get('/api/live');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['cache-control']).toBe('no-store');
+  const live = await response.json();
+  expect(live).toMatchObject({ status: 'ok' });
+  if (process.env.EXPECTED_VERSION) expect(live.version).toBe(process.env.EXPECTED_VERSION);
+});
+
 test('the login page loads under the security headers', async ({ page }) => {
   const response = await page.goto('/login');
   expect(response?.status()).toBe(200);
@@ -113,6 +123,7 @@ test('the website answers in Hindi under /hi', async ({ page, context }) => {
 
 test('the cron and the payment webhook refuse strangers', async ({ request }) => {
   expect((await request.get('/api/cron/daily')).status()).toBe(401);
+  expect((await request.get('/api/cron/jobs')).status()).toBe(401);
   const webhook = await request.post('/api/webhooks/razorpay', {
     headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': 'wrong' },
     data: '{}',

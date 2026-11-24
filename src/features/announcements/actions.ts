@@ -15,11 +15,12 @@ import { requirePlatformPermission } from '@/lib/auth/guards';
 import { GENERIC_ERROR } from '@/lib/db-errors';
 import { emailConfig } from '@/lib/email/resend';
 import { getPublicEnv } from '@/lib/env';
+import { runExclusive } from '@/lib/jobs';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 import { announcementPayload, announcementSchema, type AnnouncementInput } from './announcements';
-import { sendAnnouncementEmails } from './email';
+import { EMAIL_RUN_MS, sendAnnouncementEmails } from './email';
 
 const idSchema = z.uuid();
 
@@ -37,8 +38,10 @@ export async function dismissAnnouncement(formData: FormData): Promise<void> {
 
 /**
  * A new announcement or a change to one (settings.manage, again in SQL). With
- * email on, it is emailed now if its first day (India) has come; a later one
- * by the daily run that day (docs/DECISIONS.md SA-83).
+ * email on, it is emailed after the response if its first day (India) has
+ * come; a later one by the daily run that day (docs/DECISIONS.md SA-83). What
+ * a run leaves, cut off or out of time, the minute job sends once the
+ * announcement has started or its first email went (VPS-28).
  */
 export async function saveAnnouncement(
   input: AnnouncementInput,
@@ -57,10 +60,18 @@ export async function saveAnnouncement(
   if (error) return fromDbError(error, 'platform_save_announcement');
   const config = (data as { email_due: boolean }).email_due ? emailConfig() : null;
   if (config) {
+    // After a run already going (the minute job's leaves out one that hasn't started), so that
+    // this one still goes, by the save's rule.
     after(() =>
-      sendAnnouncementEmails(createAdminClient(), config, getPublicEnv().NEXT_PUBLIC_APP_URL).catch(
-        (sendError) => console.error('[announcements] could not email', sendError),
-      ),
+      runExclusive(
+        'announcement_emails',
+        EMAIL_RUN_MS,
+        (run) =>
+          sendAnnouncementEmails(createAdminClient(), config, getPublicEnv().NEXT_PUBLIC_APP_URL, {
+            run,
+          }),
+        { ifBusy: 'wait' },
+      ).catch((sendError) => console.error('[announcements] could not email', sendError)),
     );
   }
   refresh();

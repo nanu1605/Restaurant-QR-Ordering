@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import { Noto_Sans } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 
 import { AppSplash } from '@/components/shared/app-splash';
 import { Toaster } from '@/components/ui/sonner';
+import { NewVersionNotice } from '@/features/new-version/components/new-version-notice';
 import { getLang } from '@/features/ordering/lang';
 import { type Lang, STRINGS } from '@/features/ordering/strings';
 import { SITE_LANG_HEADER } from '@/features/site/i18n';
@@ -13,13 +13,8 @@ import { getCurrentMembership } from '@/lib/auth/session';
 import { APP_NAME, STAFF_PANEL_HEADER, THEME_COLOR, THEME_COLOR_DARK } from '@/lib/config';
 import { getPublicEnv } from '@/lib/env';
 
+import { notoSans } from './fonts';
 import './globals.css';
-
-const notoSans = Noto_Sans({
-  variable: '--font-noto-sans',
-  subsets: ['latin'],
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   // Absolute link-preview and canonical URLs on this environment's host (docs/DECISIONS.md W-12).
@@ -88,6 +83,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
           containerAriaLabel={toasts.region}
           toastOptions={{ closeButtonAriaLabel: toasts.close }}
         />
+        {/* Last: on every page, and after the Toaster and the worker panel's <html lang>. */}
+        <NewVersionNotice />
       </body>
     </html>
   );

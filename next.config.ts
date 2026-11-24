@@ -30,6 +30,11 @@ function storageImages(): { patterns: RemotePattern[]; local: boolean } {
 
 const images = storageImages();
 
+// Set by the Dockerfile only: the web image runs the standalone server (docs/DECISIONS.md VPS-13).
+// Without it nothing changes: Vercel, CI, e2e and smoke keep `next start`, and a Windows build
+// makes no symlinks.
+const standalone = process.env.NEXT_OUTPUT === 'standalone';
+
 /** Static security headers; the per-request Content-Security-Policy is set in src/proxy.ts. */
 const SECURITY_HEADERS = [
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -43,6 +48,7 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  output: standalone ? 'standalone' : undefined,
   // One ID per build, set by the deploy workflow. Vercel's Skew Protection uses
   // it to send a page's server actions to the deployment that served the page,
   // so tablets left open keep working through a deploy (docs/DECISIONS.md P10-11).
@@ -72,6 +78,9 @@ const nextConfig: NextConfig = {
     // Next.js 16 refuses to optimise images from local addresses. Only the
     // local Supabase stack (dev and CI) serves from one.
     dangerouslyAllowLocalIP: images.local,
+    // Resized images are kept on the VPS's disk, shared with the database. Next.js's own cap is
+    // half of what is free at start (docs/DECISIONS.md VPS-18, VPS-24).
+    ...(standalone ? { maximumDiskCacheSize: 500_000_000 } : {}),
   },
   experimental: {
     // A menu CSV may be up to 1 MB (docs/DECISIONS.md P7-16); the default limit is 1 MB.

@@ -1,0 +1,11 @@
+# Production's scheduler (docs/DECISIONS.md VPS-38): root's crontab for BusyBox crond, in UTC.
+# Each call goes to the web container directly, never through Cloudflare. cron-call prints one
+# line for each daily or digest call, and for the minute job only when it got no 200.
+# Daily housekeeping at 03:00 IST, once more at 03:30 IST if the first call got no 200.
+30 21 * * * /bin/sh /opt/menumesh/cron-call daily
+0 22 * * * /bin/sh /opt/menumesh/cron-call daily-retry
+# The platform digest at 08:45 IST, once more at 09:15 IST if needed.
+15 3 * * * /bin/sh /opt/menumesh/cron-call digest
+45 3 * * * /bin/sh /opt/menumesh/cron-call digest-retry
+# Every minute: the restartable jobs (VPS-29); the route answers at once.
+* * * * * /bin/sh /opt/menumesh/cron-call jobs

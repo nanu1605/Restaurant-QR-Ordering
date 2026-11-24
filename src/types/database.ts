@@ -35,6 +35,45 @@ export type Database = {
           },
         ]
       }
+      announcement_email_failures: {
+        Row: {
+          announcement_id: string
+          error: string | null
+          failed_at: string
+          restaurant_id: string
+          tries: number
+        }
+        Insert: {
+          announcement_id: string
+          error?: string | null
+          failed_at?: string
+          restaurant_id: string
+          tries?: number
+        }
+        Update: {
+          announcement_id?: string
+          error?: string | null
+          failed_at?: string
+          restaurant_id?: string
+          tries?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_email_failures_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "announcement_email_failures_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       announcement_emails: {
         Row: {
           announcement_id: string
@@ -676,6 +715,7 @@ export type Database = {
           name: string
           name_hi: string | null
           name_hi_auto: string | null
+          name_hi_auto_lease_until: string | null
           name_hi_auto_tried_at: string | null
           restaurant_id: string
           sort_order: number
@@ -689,6 +729,7 @@ export type Database = {
           name: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           restaurant_id: string
           sort_order?: number
@@ -702,6 +743,7 @@ export type Database = {
           name?: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           restaurant_id?: string
           sort_order?: number
@@ -899,6 +941,7 @@ export type Database = {
           name: string
           name_hi: string | null
           name_hi_auto: string | null
+          name_hi_auto_lease_until: string | null
           name_hi_auto_tried_at: string | null
           price_paise: number
           restaurant_id: string
@@ -917,6 +960,7 @@ export type Database = {
           name: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id: string
@@ -935,6 +979,7 @@ export type Database = {
           name?: string
           name_hi?: string | null
           name_hi_auto?: string | null
+          name_hi_auto_lease_until?: string | null
           name_hi_auto_tried_at?: string | null
           price_paise?: number
           restaurant_id?: string
@@ -1757,30 +1802,42 @@ export type Database = {
       }
       restaurant_exports: {
         Row: {
+          attempts: number
+          claim_id: string | null
           created_at: string
           expires_at: string | null
           finished_at: string | null
           id: string
+          last_error: string | null
+          lease_until: string | null
           requested_by: string | null
           restaurant_id: string
           size_bytes: number | null
           status: string
         }
         Insert: {
+          attempts?: number
+          claim_id?: string | null
           created_at?: string
           expires_at?: string | null
           finished_at?: string | null
           id?: string
+          last_error?: string | null
+          lease_until?: string | null
           requested_by?: string | null
           restaurant_id: string
           size_bytes?: number | null
           status?: string
         }
         Update: {
+          attempts?: number
+          claim_id?: string | null
           created_at?: string
           expires_at?: string | null
           finished_at?: string | null
           id?: string
+          last_error?: string | null
+          lease_until?: string | null
           requested_by?: string | null
           restaurant_id?: string
           size_bytes?: number | null
@@ -3323,12 +3380,30 @@ export type Database = {
           waiter_id: string
         }[]
       }
+      announcement_email_failed: {
+        Args: {
+          p_announcement_id: string
+          p_error: string
+          p_restaurant_id: string
+        }
+        Returns: undefined
+      }
       announcement_email_sent: {
         Args: { p_announcement_id: string; p_restaurant_id: string }
         Returns: undefined
       }
       announcement_emails_due: {
         Args: { p_at?: string }
+        Returns: {
+          announcement_id: string
+          body: string
+          recipients: string[]
+          restaurant_id: string
+          title: string
+        }[]
+      }
+      announcement_emails_next: {
+        Args: { p_at?: string; p_limit?: number; p_minute_job?: boolean }
         Returns: {
           announcement_id: string
           body: string
@@ -3397,6 +3472,7 @@ export type Database = {
       }
       health_check: { Args: never; Returns: string }
       is_platform_admin: { Args: never; Returns: boolean }
+      jobs_waiting: { Args: never; Returns: Json }
       member_announcements: {
         Args: { p_panel: string; p_restaurant_id: string }
         Returns: Json
@@ -3423,6 +3499,20 @@ export type Database = {
           restaurant_id: string
         }[]
       }
+      menu_hindi_names_lease: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_restaurant_id?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          name: string
+          restaurant_id: string
+        }[]
+      }
+      menu_hindi_names_settle: { Args: { p_names: Json }; Returns: number }
       menu_import_claim_page: {
         Args: { p_import_id: string; p_index: number }
         Returns: boolean
@@ -3758,9 +3848,33 @@ export type Database = {
           warning: string
         }[]
       }
+      restaurant_export_claim: {
+        Args: { p_lease_seconds?: number }
+        Returns: Json
+      }
+      restaurant_export_complete: {
+        Args: { p_claim_id: string; p_export_id: string; p_size_bytes: number }
+        Returns: boolean
+      }
+      restaurant_export_fail: {
+        Args: { p_claim_id: string; p_error: string; p_export_id: string }
+        Returns: boolean
+      }
       restaurant_export_finish: {
         Args: { p_export_id: string; p_size_bytes?: number }
         Returns: undefined
+      }
+      restaurant_export_heartbeat: {
+        Args: {
+          p_claim_id: string
+          p_export_id: string
+          p_lease_seconds?: number
+        }
+        Returns: boolean
+      }
+      restaurant_export_release: {
+        Args: { p_claim_id: string; p_export_id: string }
+        Returns: boolean
       }
       restaurant_exports_to_remove: {
         Args: { p_limit?: number }

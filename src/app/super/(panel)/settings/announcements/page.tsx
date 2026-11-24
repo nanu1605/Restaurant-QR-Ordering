@@ -11,7 +11,8 @@ export const metadata: Metadata = {
   title: 'Announcements',
 };
 
-// Saving one emails its owners after the response, one at a time (SA-83).
+// Saving one emails its owners after the response, one at a time, starting none after
+// EMAIL_RUN_MS (docs/DECISIONS.md SA-83, VPS-28).
 export const maxDuration = 300;
 
 /** Banners in restaurants' panels (docs/SUPER_ADMIN_PLAN.md 14c, docs/DECISIONS.md SA-82+). */

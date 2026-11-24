@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { HtmlLang } from '@/components/shared/html-lang';
 import { PanelHeader } from '@/components/shared/panel-header';
 import { PanelAnalytics } from '@/features/analytics/panel-analytics';
 import { AnnouncementBanners } from '@/features/announcements/components/announcement-banners';
@@ -33,6 +34,8 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   return (
     <LiveProvider restaurantId={membership.restaurant.id} memberId={membership.memberId}>
       <div className="flex flex-1 flex-col">
+        {/* English, also after Back from a worker panel an error page had replaced (VPS-12). */}
+        <HtmlLang lang="en" />
         {!support && (
           <PanelAnalytics
             userId={membership.memberId}

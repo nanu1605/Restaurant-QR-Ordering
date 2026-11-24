@@ -6,7 +6,13 @@ import type { FoodType } from '@/components/shared/food-type-mark';
 
 import { chosenAddons, lineFits } from './addons';
 import { dishName } from './format';
-import { MAX_LINE_NOTE, MAX_LINE_QUANTITY, MAX_ORDER_LINES, MAX_ORDER_NOTE } from './limits';
+import {
+  IDEMPOTENCY_KEY_PATTERN,
+  MAX_LINE_NOTE,
+  MAX_LINE_QUANTITY,
+  MAX_ORDER_LINES,
+  MAX_ORDER_NOTE,
+} from './limits';
 import type { CustomerCategory, CustomerMenuItem } from './types';
 
 /**
@@ -317,4 +323,73 @@ export function randomUuid(): string {
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// ─── Order key ──────────────────────────────────────────────────────────────
+
+/**
+ * How long a key is kept for a resend of its order: a deploy and a retry. Any longer and a second
+ * round of the same dishes, later in the meal, would get the first order back from the server's
+ * dedupe on the key, and place nothing.
+ */
+export const ORDER_KEY_TTL_MS = 10 * 60_000;
+
+/** The key an order was last sent with, what it held, and when. */
+type SentOrder = { key: string; sent: string; at: number };
+
+const orderKeyStorageKey = (qrToken: string) => `tableorder:order-key:${qrToken}`;
+
+/** What an order holds, to tell a resend from a new one: the lines the server gets, and the note. */
+const orderFingerprint = (cart: Cart) =>
+  JSON.stringify({ lines: toOrderLines(cart), note: cart.note });
+
+function readSentOrder(qrToken: string): SentOrder | null {
+  try {
+    const value: unknown = JSON.parse(
+      window.localStorage.getItem(orderKeyStorageKey(qrToken)) ?? 'null',
+    );
+    if (typeof value !== 'object' || value === null) return null;
+    const { key, sent, at } = value as Record<string, unknown>;
+    return typeof key === 'string' &&
+      IDEMPOTENCY_KEY_PATTERN.test(key) &&
+      typeof sent === 'string' &&
+      typeof at === 'number' &&
+      Number.isFinite(at)
+      ? { key, sent, at }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The key to place this cart's order with, kept for a resend (spec §9.3). A resend of the same
+ * order, its lines and note, within ORDER_KEY_TTL_MS of the last send, gets the key it was sent
+ * with, also after the page reloaded, so the server answers with the order it has instead of
+ * creating a second one: the refresh onto a new build is such a reload (docs/DECISIONS.md VPS-8).
+ * Any other order gets `own`, the page's key; so does blocked storage.
+ */
+export function orderKeyToSend(qrToken: string, cart: Cart, own: string, now = Date.now()): string {
+  const sent = orderFingerprint(cart);
+  const last = readSentOrder(qrToken);
+  const resend = last !== null && last.sent === sent && now - last.at < ORDER_KEY_TTL_MS;
+  const key = resend ? last.key : own;
+  try {
+    window.localStorage.setItem(
+      orderKeyStorageKey(qrToken),
+      JSON.stringify({ key, sent, at: now }),
+    );
+  } catch {
+    // Storage unavailable: the page's own key still covers a resend in this visit.
+  }
+  return key;
+}
+
+/** The server answered, so the key has done its work: the order is placed, or nothing was. */
+export function forgetOrderKey(qrToken: string): void {
+  try {
+    window.localStorage.removeItem(orderKeyStorageKey(qrToken));
+  } catch {
+    // Storage unavailable: nothing was kept.
+  }
 }

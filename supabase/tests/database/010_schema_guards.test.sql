@@ -313,7 +313,7 @@ from unnest(array[
   'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
   'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
   'support_request_events', 'support_screenshot_uploads', 'support_sessions', 'standees',
-  'announcement_emails'
+  'announcement_emails', 'announcement_email_failures'
 ]) as t;
 
 select is_empty(
@@ -327,7 +327,7 @@ select is_empty(
       'service_requests', 'menu_addon_groups', 'menu_addons', 'menu_item_addon_groups',
       'restaurant_tags', 'restaurant_notes', 'restaurant_account_managers', 'support_requests',
       'support_request_events', 'support_screenshot_uploads', 'support_sessions', 'standees',
-      'announcement_emails'
+      'announcement_emails', 'announcement_email_failures'
     ]) as t
     where not exists (
       select 1

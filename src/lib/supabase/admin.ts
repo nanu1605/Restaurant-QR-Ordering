@@ -2,8 +2,8 @@ import 'server-only';
 
 import { createClient } from '@supabase/supabase-js';
 
-import { getPublicEnv } from '@/lib/env';
 import { getServerEnv } from '@/lib/env.server';
+import { supabaseServerUrl } from '@/lib/supabase/url';
 import type { Database } from '@/types/database';
 
 /**
@@ -14,15 +14,11 @@ import type { Database } from '@/types/database';
  * from client code — `server-only` makes that a build error.
  */
 export function createAdminClient() {
-  return createClient<Database>(
-    getPublicEnv().NEXT_PUBLIC_SUPABASE_URL,
-    getServerEnv().SUPABASE_SECRET_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
+  return createClient<Database>(supabaseServerUrl(), getServerEnv().SUPABASE_SECRET_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
-  );
+  });
 }

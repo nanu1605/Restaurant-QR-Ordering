@@ -20,7 +20,7 @@ import {
   pageExtractionSchema,
   type Draft,
 } from './draft';
-import { extractPage, READER_UNAVAILABLE } from './extract';
+import { extractPage, PAGE_DEADLINE_MS, READER_UNAVAILABLE } from './extract';
 import { mergePages } from './merge';
 import { menuImportProviders } from './providers';
 import { IMPORT_BUCKET, type ImportedCounts } from './queries';
@@ -37,6 +37,17 @@ const uuid = z.uuid();
 const NOT_FOUND = 'That import no longer exists. Start a new one from the Menu page.';
 const NO_DISHES_FOUND =
   'No dishes could be read from these photos. Take a sharper photo, straight on and in good light, of one page at a time.';
+// Opening the import again skips a page recorded as failed and finishes the reading without it
+// (VPS-5): with no other page that can still give dishes, that fails the import.
+const PHOTO_NOT_FETCHED =
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import goes on without this page when you open it again.';
+const PHOTO_NOT_FETCHED_ONLY_PAGE =
+  'The photo of this page could not be fetched. Try again. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
+// The same two endings for a reader that does not answer.
+const READER_STOPPED =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import goes on without this page when you open it again.';
+const READER_STOPPED_ONLY_PAGE =
+  'The menu reader is not answering right now. Try this page again in a few minutes. If you leave instead, the import fails when you open it again, and you will need to start a new one.';
 
 function importError(error: DbErrorLike, context: string) {
   const detail = error.details ?? '';
@@ -166,11 +177,25 @@ function progressOf(pages: PageRow[]): ReadProgress {
   };
 }
 
+/** A page photo is a few hundred KB from Storage: a stall mustn't eat the reader's time. */
+const PHOTO_TIMEOUT_MS = 15_000;
+
+/**
+ * Whether Storage said the object is not there. It answers a missing one with status 400 and
+ * statusCode '404' in its body; a proxy in front of it may answer 404 itself.
+ */
+function isNotFound(error: { status?: number; statusCode?: string } | null) {
+  return error?.status === 404 || error?.statusCode === '404';
+}
+
 /** Reads one page (spec §20A.1 step 2: one page per request). */
 export async function readMenuPage(
   importId: string,
   page: number,
 ): Promise<ActionResult<ReadProgress>> {
+  // The page's time counts from here, so the answer beats Cloudflare's 100 s cut
+  // (docs/DECISIONS.md P7-15, VPS-5).
+  const started = Date.now();
   await requireUser();
   if (!uuid.safeParse(importId).success || !Number.isInteger(page) || page < 1) {
     return actionError(GENERIC_ERROR);
@@ -204,15 +229,31 @@ export async function readMenuPage(
   if (claim.error) return importError(claim.error, 'Claim import page');
   if (!claim.data) return actionOk(await progressFor(supabase, importId, pages));
 
-  const download = await admin.storage.from(IMPORT_BUCKET).download(path);
+  const photoTimer = AbortSignal.timeout(PHOTO_TIMEOUT_MS);
+  let photo: Blob | null = null;
+  let missing = false;
+  try {
+    const download = await admin.storage
+      .from(IMPORT_BUCKET)
+      .download(path, {}, { signal: photoTimer });
+    photo = download.data;
+    missing = isNotFound(download.error);
+  } catch {
+    // storage-js returns a failure that lands before the headers (the gateway's 503, a refused
+    // connection, the timer), but throws one that lands while the body is read (the timer, or a
+    // connection reset). The photo may still be in Storage either way, and the page is recorded
+    // either way, or it stays claimed for 3 minutes and Try again skips it (docs/DECISIONS.md VPS-5).
+  }
   const env = getServerEnv();
-  const outcome = download.error
-    ? null
-    : await extractPage({
-        imageJpegBase64: Buffer.from(await download.data.arrayBuffer()).toString('base64'),
+  const outcome = photo
+    ? await extractPage({
+        imageJpegBase64: Buffer.from(await photo.arrayBuffer()).toString('base64'),
         providers: menuImportProviders(env),
         usdToInr: env.MENU_IMPORT_USD_INR,
-      });
+        // What the steps before the reader left of the page's time.
+        deadlineMs: PAGE_DEADLINE_MS - (Date.now() - started),
+      })
+    : null;
 
   const record = outcome
     ? {
@@ -231,7 +272,11 @@ export async function readMenuPage(
     : {
         index: page,
         status: 'failed',
-        error: 'The photo of this page did not upload. Start a new import with this page.',
+        // Only a photo Storage says is not there is lost for good. One that was slow, cut off or
+        // out of reach is worth another try.
+        error: missing
+          ? 'The photo of this page did not upload. Start a new import with this page.'
+          : READER_UNAVAILABLE,
       };
 
   const saved = await admin.rpc('menu_import_record_page', {
@@ -245,6 +290,20 @@ export async function readMenuPage(
       return actionOk(await progressFor(supabase, importId, pages));
     }
     return importError(saved.error, 'Record import page');
+  }
+  // A photo that did not arrive, or a reader that did not answer, stops the reading, so that Try
+  // again reads the page once more: going on would finish the import without it, and nothing could
+  // read it after that. A page that had already failed when this call began goes on, so each page
+  // gets two tries (docs/DECISIONS.md VPS-5). A page the reader answered for but could not read
+  // does not stop: waiting does not help, a sharper photo does.
+  if (entry.status !== 'failed') {
+    const othersLeft = pages.some((other) => other.index !== page && other.status !== 'failed');
+    if (!photo && !missing) {
+      return actionError(othersLeft ? PHOTO_NOT_FETCHED : PHOTO_NOT_FETCHED_ONLY_PAGE);
+    }
+    if (outcome?.error === READER_UNAVAILABLE) {
+      return actionError(othersLeft ? READER_STOPPED : READER_STOPPED_ONLY_PAGE);
+    }
   }
   return actionOk(saved.data as ReadProgress);
 }
@@ -288,8 +347,12 @@ export async function finishReading(
     notes?: string | null;
     result?: unknown;
   }>;
+  // A page is held while another tab reads it, or after a deploy cut its read off, for up to 3
+  // minutes from the claim.
   if (pages.some((page) => page.status === 'pending' || page.status === 'reading')) {
-    return actionError('Some pages have not been read yet.');
+    return actionError(
+      'A page is still being read, or its reading was cut off. Try again in a minute or two.',
+    );
   }
 
   const read = pages.flatMap((page) => {

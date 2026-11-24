@@ -4,6 +4,7 @@ import { after } from 'next/server';
 
 import { parseReplyJson } from '@/features/menu-import/extract';
 import { menuImportProviders } from '@/features/menu-import/providers';
+import { jobRun, type JobRun } from '@/lib/jobs';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   chatCompletion,
@@ -13,7 +14,7 @@ import {
 } from '@/lib/vision/openai-compatible';
 
 /**
- * Automatic Hindi names (docs/DECISIONS.md HN-5 to HN-8): dish and category
+ * Automatic Hindi names (docs/DECISIONS.md HN-5 to HN-8, VPS-27): dish and category
  * names written in Devanagari, sounded out rather than translated, by the menu
  * import model. Stored as name_hi_auto; an owner's own Hindi name wins.
  */
@@ -26,12 +27,27 @@ export type HindiNameRow = {
 };
 
 const BATCH = 100;
-/** Calls in flight at once, so the cron's sweep stays well inside its time. */
+/** Calls in flight at once in one conversion, so the cron's sweep stays well inside its time. */
 const PARALLEL = 5;
 const CALL_TIMEOUT_MS = 45_000;
+/** Names are leased this long: a fill that is cut off frees them when it runs out. */
+const HINDI_LEASE_SECONDS = 300;
+/** Batches a fill works on at once, each with its own lease, call and settle. */
+const LANES = 5;
+/**
+ * How long a run of the Hindi fill keeps starting batches (docs/DECISIONS.md VPS-25, VPS-27). A
+ * batch started then finishes, so a run ends inside the 300 s that the routes starting it allow
+ * on Vercel.
+ */
+export const HINDI_RUN_MS = 90_000;
 const MAX_LENGTH = { item: 80, category: 60 } as const;
 const DEVANAGARI = /\p{Script=Devanagari}/u;
 const LATIN = /[A-Za-z]/;
+const CONTROL = /\p{Cc}/u;
+
+type Admin = ReturnType<typeof createAdminClient>;
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 export const HINDI_NAMES_SYSTEM_PROMPT = `You write the names on an Indian restaurant menu in Hindi, for guests who read Devanagari.
 
@@ -68,15 +84,58 @@ export function acceptableHindi(value: unknown, maxLength: number): string | nul
   if (typeof value !== 'string' || /[\r\n]/.test(value)) return null;
   const text = value.trim().replace(/\s+/g, ' ');
   if (text.length === 0 || text.length > maxLength) return null;
+  // No control character or half of a surrogate pair: Postgres holds neither \u0000 nor the half,
+  // so the batch's settle would fail, and the batch be leased and sent again every 5 minutes.
+  if (CONTROL.test(text) || !text.isWellFormed()) return null;
   return DEVANAGARI.test(text) && !LATIN.test(text) ? text : null;
 }
 
-/** One batch through the providers in order; an error or unusable reply moves to the next. */
+/**
+ * Whether a 403's `error.metadata` holds a field that OpenRouter documents for a refusal of what a
+ * request says: a moderation flag (`reasons`, `flagged_input`), a guardrail's content check
+ * (`patterns`), or a typed `error_type` of `content_policy_violation` or `refusal`.
+ */
+function refusedForContent(metadata: Record<string, unknown> | null) {
+  if (!metadata) return false;
+  return (
+    Array.isArray(metadata.reasons) ||
+    typeof metadata.flagged_input === 'string' ||
+    Array.isArray(metadata.patterns) ||
+    metadata.error_type === 'content_policy_violation' ||
+    metadata.error_type === 'refusal'
+  );
+}
+
+/**
+ * A provider's failure that no batch of names can cause: no connection, its key, credit or limits
+ * (401, 402, 403, 408, 429), a model it does not have (404), or its own error (5xx). A timeout, an
+ * unusable reply, another 4xx or a 403 refused for what was asked can be the batch's own doing. A
+ * 403 is taken for such a refusal only when it carries a field OpenRouter documents for one
+ * (refusedForContent; https://openrouter.ai/docs/api-reference/errors and
+ * https://openrouter.ai/docs/guides/features/guardrails, read 2026-11-11). Its other 403s are a
+ * key's permission, a budget, an allowlist or a data region, which no names can cause, and their
+ * documented bodies carry none of those fields. No words are looked for, in the message or in the
+ * metadata as text: the data region's message names a guardrail, and a budget's `limit_source` is
+ * "openrouter_guardrail_budget".
+ */
+function providerDown(error: ProviderError) {
+  if (error.kind === 'network') return true;
+  const status = error.kind === 'http' ? (error.status ?? 0) : 0;
+  if (status === 403) return !refusedForContent(error.metadata);
+  return [401, 402, 404, 408, 429].includes(status) || status >= 500;
+}
+
+/**
+ * One batch through the providers in order; an error or unusable reply moves to the next. Null
+ * when every provider was down (providerDown): an outage, which says nothing about the names. The
+ * signal aborting is no provider's error: its reason is thrown, and no other provider is asked.
+ */
 async function transliterateBatch(
   rows: HindiNameRow[],
   providers: VisionProvider[],
   fetchImpl: typeof fetch | undefined,
-): Promise<Map<string, string>> {
+  signal: AbortSignal | undefined,
+): Promise<Map<string, string> | null> {
   const messages = [
     { role: 'system' as const, content: HINDI_NAMES_SYSTEM_PROMPT },
     {
@@ -84,11 +143,13 @@ async function transliterateBatch(
       content: JSON.stringify(rows.map((row, n) => ({ n, name: row.name }))),
     },
   ];
+  let allDown = true;
   for (const provider of providers) {
     let useSchema = true;
     while (true) {
       let content: string;
       try {
+        const callAt = Date.now();
         const reply = await chatCompletion({
           provider,
           messages,
@@ -96,10 +157,12 @@ async function transliterateBatch(
           timeoutMs: CALL_TIMEOUT_MS,
           maxTokens: 8_192,
           fetchImpl,
+          signal,
         });
         content = reply.content;
+        // The time, so that CALL_TIMEOUT_MS and the batch size can be tuned from the logs.
         console.info(
-          `[hindi-names] ${provider.name}: ${rows.length} names, ${reply.usage.inputTokens} in, ${reply.usage.outputTokens} out`,
+          `[hindi-names] ${provider.name}: ${rows.length} names, ${reply.usage.inputTokens} in, ${reply.usage.outputTokens} out, ${seconds(Date.now() - callAt)}`,
         );
       } catch (error) {
         if (!(error instanceof ProviderError)) throw error;
@@ -114,6 +177,7 @@ async function transliterateBatch(
           continue;
         }
         console.warn(`[hindi-names] ${error.message}`);
+        if (!providerDown(error)) allDown = false;
         break;
       }
 
@@ -128,22 +192,26 @@ async function transliterateBatch(
       }
       if (result.size > 0) return result;
       console.warn(`[hindi-names] ${provider.name} sent no usable names`);
+      allDown = false;
       break;
     }
   }
-  return new Map();
+  return allDown ? null : new Map();
 }
 
 /**
  * Hindi names by row id. A call only ever carries one restaurant's names, so
  * a crafted name can't steer another restaurant's. Rows whose reply is
- * missing or unusable are left out and tried again later (HN-8).
+ * missing or unusable are left out and tried again later (HN-8). Null when a
+ * batch found every provider down: nothing counts then, and no other batch
+ * starts. Rejects with the signal's reason once it aborts.
  */
 export async function transliterateNames(
   rows: HindiNameRow[],
   providers: VisionProvider[],
   fetchImpl?: typeof fetch,
-): Promise<Map<string, string>> {
+  signal?: AbortSignal,
+): Promise<Map<string, string> | null> {
   const byRestaurant = Map.groupBy(rows, (row) => row.restaurantId);
   const batches = [...byRestaurant.values()].flatMap((group) =>
     Array.from({ length: Math.ceil(group.length / BATCH) }, (_, i) =>
@@ -155,55 +223,163 @@ export async function transliterateNames(
     const done = await Promise.all(
       batches
         .slice(from, from + PARALLEL)
-        .map((batch) => transliterateBatch(batch, providers, fetchImpl)),
+        .map((batch) => transliterateBatch(batch, providers, fetchImpl, signal)),
     );
-    for (const names of done) for (const [id, hindi] of names) result.set(id, hindi);
+    for (const names of done) {
+      if (!names) return null;
+      for (const [id, hindi] of names) result.set(id, hindi);
+    }
   }
   return result;
 }
 
-/** Writes automatic names for up to `limit` claimed names that have none (one restaurant, or all). */
+/**
+ * Writes automatic names for the names that wait for one (docs/DECISIONS.md VPS-27): one
+ * restaurant's, or every restaurant's. Each lane leases up to 100 names of one restaurant, has the
+ * model write them, and settles them as soon as the batch's calls end, so a fill that is cut off
+ * loses only the batches in flight: their leases run out and the names are leased again. When the
+ * server stops, the calls in flight are aborted and settle nothing. A batch that finds every
+ * provider down settles nothing either, and no lane leases more (stopped: 'unavailable'). Leases
+ * at most maxNames names, and none once the run stops starting work. Throws, once every lane has
+ * ended, if one met a database error.
+ */
 export async function fillHindiNames(
-  admin: ReturnType<typeof createAdminClient>,
-  restaurantId: string | null,
-  limit: number,
-  providers: VisionProvider[] = menuImportProviders(),
-): Promise<{ missing: number; stored: number }> {
-  if (providers.length === 0) return { missing: 0, stored: 0 };
-  const { data, error } = await admin.rpc('menu_hindi_names_claim', {
-    p_restaurant_id: restaurantId ?? undefined,
-    p_limit: limit,
-  });
-  if (error) throw new Error(`Could not claim missing Hindi names: ${error.message}`);
-  if (data.length === 0) return { missing: 0, stored: 0 };
+  admin: Admin,
+  {
+    restaurantId = null,
+    maxNames = Infinity,
+    lanes = LANES,
+    run,
+    providers = menuImportProviders(),
+    fetchImpl,
+  }: {
+    restaurantId?: string | null;
+    maxNames?: number;
+    lanes?: number;
+    run: JobRun;
+    providers?: VisionProvider[];
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{ leased: number; stored: number; stopped?: true | 'unavailable' }> {
+  if (providers.length === 0) return { leased: 0, stored: 0 };
+  let leased = 0;
+  let stored = 0;
+  // Names leased or being asked for, so that lanes asking together stay within maxNames.
+  let asked = 0;
+  // Set once a batch finds every provider down.
+  let unavailable = false;
 
-  const rows: HindiNameRow[] = data.map((row) => ({
-    restaurantId: row.restaurant_id,
-    kind: row.kind as HindiNameRow['kind'],
-    id: row.id,
-    name: row.name,
-  }));
-  const hindi = await transliterateNames(rows, providers);
-  const names = rows.flatMap(({ kind, id, name }) => {
-    const nameHi = hindi.get(id);
-    return nameHi ? [{ kind, id, name, name_hi: nameHi }] : [];
-  });
-  if (names.length === 0) return { missing: rows.length, stored: 0 };
+  const lane = async () => {
+    while (!run.stopping() && !unavailable) {
+      const want = Math.min(BATCH, maxNames - asked);
+      if (want <= 0) return;
+      asked += want;
+      const { data, error } = await admin.rpc('menu_hindi_names_lease', {
+        p_restaurant_id: restaurantId ?? undefined,
+        p_limit: want,
+        p_lease_seconds: HINDI_LEASE_SECONDS,
+      });
+      if (error) throw new Error(`Could not lease missing Hindi names: ${error.message}`);
+      asked -= want - data.length;
+      if (data.length === 0) return;
+      leased += data.length;
 
-  const stored = await admin.rpc('menu_set_hindi_names', { p_names: names });
-  if (stored.error) throw new Error(`Could not store Hindi names: ${stored.error.message}`);
-  return { missing: rows.length, stored: stored.data };
+      const rows: HindiNameRow[] = data.map((row) => ({
+        restaurantId: row.restaurant_id,
+        kind: row.kind as HindiNameRow['kind'],
+        id: row.id,
+        name: row.name,
+      }));
+      let hindi: Map<string, string> | null;
+      try {
+        hindi = await transliterateNames(rows, providers, fetchImpl, run.signal);
+      } catch (error) {
+        // The server is stopping: nothing is settled, the leases run out, and the names are
+        // leased again.
+        if (run.signal.aborted) return;
+        throw error;
+      }
+      if (!hindi) {
+        // An outage says nothing about these names: they are not counted as tried, which would
+        // set them aside for 12 hours, and are leased again once their leases run out. No lane
+        // leases more, so that an outage costs a batch a lane, not every name that waits.
+        if (!unavailable) {
+          console.warn(
+            '[hindi-names] every provider is down: the run ends, its names not counted as tried',
+          );
+        }
+        unavailable = true;
+        return;
+      }
+      // Every name of the batch, so that one the model did not write counts as tried (HN-8).
+      const settled = await admin.rpc('menu_hindi_names_settle', {
+        p_names: rows.map(({ kind, id, name }) => {
+          const nameHi = hindi.get(id);
+          return nameHi ? { kind, id, name, name_hi: nameHi } : { kind, id, name };
+        }),
+      });
+      if (settled.error) throw new Error(`Could not store Hindi names: ${settled.error.message}`);
+      stored += settled.data;
+    }
+  };
+
+  const ended = await Promise.allSettled(Array.from({ length: lanes }, lane));
+  const failed = ended.find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
+  if (run.signal.aborted) return { leased, stored, stopped: true };
+  return unavailable ? { leased, stored, stopped: 'unavailable' } : { leased, stored };
+}
+
+/** How long the minute job leaves the names alone after a run that stored none in an outage. */
+export const HINDI_OUTAGE_PAUSE_MS = 30 * 60_000;
+/** Names a run of the minute job's fill leases at most. */
+const MINUTE_JOB_NAMES = 2_000;
+// On globalThis, as the job gates are: Next can bundle this file more than once.
+const PAUSED_UNTIL = Symbol.for('menumesh.hindiNamesPausedUntil');
+const pause = globalThis as { [PAUSED_UNTIL]?: number };
+
+/**
+ * The minute job's fill of every restaurant's waiting names (docs/DECISIONS.md VPS-27), at most
+ * 2,000 a run, so that a provider's failure taken for the names' doing sets aside 2,000 names a
+ * run, not every name that waits. After a run that stored none because every provider was down,
+ * it leaves them alone for 30 minutes in this process: each lease writes its row, which changes
+ * the dish photo's cache version and sends Realtime, so a lasting outage would otherwise lease up
+ * to 500 names again every minute. A run that stored names met a reader that answers, even if one
+ * of its calls was turned away (a 429 among the lanes' calls at once), so it sets no pause. The
+ * pause is logged once, with its end; a call it skips logs nothing, which during an outage would
+ * be a line a minute. A menu edit's fill and the daily run still try as they did before there was
+ * a minute job.
+ */
+export async function fillWaitingHindiNames(
+  admin: Admin,
+  options: Parameters<typeof fillHindiNames>[1],
+): Promise<Awaited<ReturnType<typeof fillHindiNames>> | { skipped: 'paused' }> {
+  if (Date.now() < (pause[PAUSED_UNTIL] ?? -Infinity)) return { skipped: 'paused' };
+  const result = await fillHindiNames(admin, { maxNames: MINUTE_JOB_NAMES, ...options });
+  if (result.stopped === 'unavailable' && result.stored === 0) {
+    const until = Date.now() + HINDI_OUTAGE_PAUSE_MS;
+    pause[PAUSED_UNTIL] = until;
+    console.warn(
+      `[hindi-names] the minute job leaves the names alone until ${new Date(until).toISOString()}`,
+    );
+  }
+  return result;
 }
 
 /**
- * Fills a restaurant's missing Hindi names once the menu action has answered.
- * Claiming (menu_hindi_names_claim) keeps repeated edits from resending names.
+ * Fills a restaurant's missing Hindi names once the menu action has answered. No gate: the leases
+ * (menu_hindi_names_lease) keep repeated edits, and the other runs, from sending the same names.
  */
 export function queueHindiNames(restaurantId: string): void {
   if (menuImportProviders().length === 0) return;
   after(async () => {
     try {
-      await fillHindiNames(createAdminClient(), restaurantId, 300);
+      await fillHindiNames(createAdminClient(), {
+        restaurantId,
+        maxNames: 300,
+        lanes: 3,
+        run: jobRun(HINDI_RUN_MS),
+      });
     } catch (error) {
       console.error('[hindi-names] fill failed', error);
     }

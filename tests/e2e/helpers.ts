@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-import { type BrowserContext, expect, type Locator, type Page } from '@playwright/test';
+import {
+  type APIRequestContext,
+  type BrowserContext,
+  expect,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
 import type { CuisineSet } from '../../src/features/menu/default-categories';
@@ -72,6 +78,22 @@ export function adminClient() {
   return createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+/** What the scheduler sends the cron routes; playwright.config.ts gives the server this secret. */
+export const CRON_HEADERS = { Authorization: 'Bearer e2e-cron-secret' };
+
+/**
+ * One tick of the minute job (docs/DECISIONS.md VPS-29), kept to one kind of job: a tick works
+ * the whole platform, so always name the kind. The route answers at once and the work runs after
+ * the answer, so poll the database or the page for what it did. Answers 401 when the running
+ * server has no CRON_SECRET for E2E.
+ */
+export function runJobs(
+  request: APIRequestContext,
+  kind: 'data_exports' | 'hindi_names' | 'announcement_emails',
+) {
+  return request.get(`/api/cron/jobs?kinds=${kind}`, { headers: CRON_HEADERS });
 }
 
 /**
