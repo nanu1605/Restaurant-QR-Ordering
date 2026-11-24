@@ -4,8 +4,8 @@
 # changes these files, and before every install on the server.
 #
 # Repository: github.com/nanu1605/jainav-infotech
-# Commit:     66c8c615dd1b849a94b8890b3ec9fe1c0896ad5f (main, 2026-11-21)
-# Copied:     2026-11-21, each file with: git show 66c8c61:<path> > <file>
+# Commit:     a0bb5998d26c8eb793d2adf3f1ffe058149604a4 (main, 2026-11-22)
+# Copied:     2026-11-24, each file with: git show a0bb599:<path> > <file>
 #
 # File                     Path at that commit                          Mode there
 # app-apply                docker/host/app-apply                        100755
@@ -18,7 +18,7 @@
 # sha256 of each file. In this directory, sha256sum --strict -c SOURCE checks them (GNU sha256sum
 # skips the lines that start with #).
 8cf2301a912333b9651b694779c6012869963cf921f2eda02f8d79308e8b5d19  app-apply
-41a63745faa2fb92492e5c5ee9105081f3866f454524cb898f9449518b293279  Caddyfile
+5f59cd9c64bfbfe8ecc9ef3467bd2d671b81f22e9cc52e095b45f86283bb21df  Caddyfile
 208070fc0b5540a02e7a477d1c22033a53eccab87b727730a82614c6de81a1f6  cloudflare-ranges.caddy
 902266c838de6af99fda3c06e7f76ccba19fe1e75e8dfdab6384aa3b3ed300c0  edge.conf
 4f4d09a6168ce8d9b181146be051a7f6b699536be827ab8d725efa454eed92ac  jainav.conf
