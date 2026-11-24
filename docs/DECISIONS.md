@@ -11731,7 +11731,8 @@ entries below.
   2026-11-16. Commitment 1: the server team's gate wants authenticated origin pulls on for every zone
   of the server, `jainavinfotech.in` included, before an app's first container, and on 2026-11-21
   `tls_jainav`'s `client_auth` was still commented out; their round comes before our step 16, and
-  they say in their chat when it is on and tested. Step 16, `db`, now opens with that wait, for it and
+  they say in their chat when it is on and tested (they did on 2026-11-25: VPS-150). Step 16, `db`,
+  now opens with that wait, for it and
   every step after it, and the server rehearsal's step 1 says so where it runs First install; steps 1
   to 15 don't wait. `redactEarly` holds the redaction file to step 9, out of step 22 and the staging
   night's step 1, and after disaster recovery's conf, and `originGate` holds step 16's opening and the
@@ -12310,7 +12311,8 @@ entries below.
   they will then include, and that a 5-minute run after the refresh finished without
   `notify: command not found`; the refresh is the first step of their re-apply night, between 01:00
   and 07:00 IST, its date not picked yet, so it lands before the staging night; and their word is of
-  the same kind as the one for their origin-pulls round, which still gates step 16. Their messages
+  the same kind as the one for their origin-pulls round, which still gates step 16 (that word came
+  on 2026-11-25: VPS-150). Their messages
   of the same day on the snippet (VPS-147) widen that word: their confirmation names the commit they
   installed, once the sha256 of each of the six scripts in `/usr/local/sbin`, their `install.sh`'s
   `SCRIPTS` (`app-deploy`, `app-compose`, `app-apply`, `app-config-archive`, `cf-ranges` and
@@ -12387,7 +12389,8 @@ entries below.
   (`check_edge_env_applied`), and swaps it in as `/srv/edge/config/snippets.caddy`, 0644. So the
   install replaced the server team's part too, `tls_jainav` among it, whose `client_auth` at
   `66c8c61` and `ccb9388` is commented out under "The admin enables this at launch, after zone-level
-  Authenticated Origin Pulls is on at Cloudflare."; their origin-pulls round turns it on. A working
+  Authenticated Origin Pulls is on at Cloudflare."; their origin-pulls round turns it on (their
+  `0c23a8f` did: VPS-150). A working
   tree holds whatever commit it has checked out: a file older than the server's, put in after that
   round, would have turned Jainav's origin pulls off without a word, and one from a round whose
   Cloudflare side is not on yet would have made their hosts refuse Cloudflare.
@@ -12832,6 +12835,105 @@ entries below.
   vendored `Caddyfile`, `SOURCE` and the README's range. `pnpm lint`, `pnpm typecheck` and
   `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, none new).
 
+- **VPS-150 · The server team's `snippets.caddy` copied again at `0c23a8f`, and their origin-pulls
+  round, which step 16 waited for (their PR #91, merged as `0c23a8f`, and their confirmation of
+  2026-11-25):** the server team merged nanu1605/jainav-infotech#91 into their main as
+  `0c23a8fdb5dfe9b464d4e66e56159ea4afb23c2c` (2026-11-24, 23:36 IST), installed its
+  `snippets.caddy` on the shared server with `app-apply edge config` at 18:38:39 UTC that day
+  (00:08 IST on 2026-11-25), and confirmed the round in their chat on 2026-11-25. In that file
+  `tls_jainav` requires Cloudflare's client certificate, `client_auth` with
+  `mode require_and_verify` and `trust_pool file /certs/jainav/aop-ca.pem`, where the block was
+  commented out under "The admin enables this at launch, after zone-level Authenticated Origin
+  Pulls is on at Cloudflare."; `tls_menumesh`'s body is as it was, its comment reworded; and the
+  `log_fields` hunk changes comments only: a log line keeps `request>tls`, the origin-pulls client
+  certificate's common name and serial among it. Caddy was reloaded, not recreated: the same
+  container, on the same image. The server's `Caddyfile`, the edge's `compose.yml` and hostwatch
+  are still `a0bb599`'s. Their leak test passed: forged headers are replaced or dropped, no log
+  line holds a visitor's address, and every Jainav host refuses a client without the certificate.
+  Origin pulls are on and required for `jainavinfotech.in` since 00:08 IST on 2026-11-25. For
+  MenuMesh, as agreed, nothing changes now: its zone's origin pulls go on before its first
+  container runs, its `aop-ca.pem` goes in with its certificate, before its site file (their
+  `edge.md` §3, "Another app's zone"), and `app-apply` refuses the site file without it.
+
+  Checked here, read-only, in their repository: `0c23a8f` is there, with `a0bb599` among its
+  ancestors, and `git diff --stat a0bb599 0c23a8f -- docker/` lists
+  `docker/edge/config/snippets.caddy` alone (25 lines in, 19 out); the other 13 files of the range
+  are their documents, `tests/host/app-apply.sh` and Jainav's own app and its tests, none of which
+  the kit reads. The file's diff holds the three changes above and nothing else.
+  `git show 0c23a8f:<path> | sha256sum` gives `snippets.caddy`
+  `1bfc11ed7e0700f9980e474a40661095f25d456eb3ccbc7a8b73aa545bc6e558` (`3f7e4e63…` at `a0bb599`),
+  and, as at `a0bb599`, the `Caddyfile` `5f59cd9c…`, `docker/edge/compose.yml` `e5dd4bdf…` and
+  `docker/host/hostwatch` `5b9cd645…`; the `CADDY_IMAGE` line of `docker/host/apps/edge.conf` is
+  still the kit's `CADDY`, its sum `b3b2c8f8…` (VPS-149). Their `edge.md` §3 at `0c23a8f`, "Another
+  app's zone", has an app's `aop-ca.pem` go in with its first certificate, before its site file, as
+  Caddy reads it once a site imports the snippet, so `app-apply` refuses the site file without it.
+  What the server holds, the reload and the leak test are their word: nothing of the server is
+  read from here.
+
+  Each of the six vendored files was compared with its file at `0c23a8f`, its `sha256sum` against
+  `git show 0c23a8f:<path> | sha256sum`: five are as at `a0bb599`, each blob the same as theirs and
+  `app-apply` 100755, so `snippets.caddy` alone is copied again, byte for byte, as the RUNBOOK's
+  Copying the server team's files again, step 1, has it, in Git Bash with
+  `git -C <their checkout> show 0c23a8f:docker/edge/config/snippets.caddy > <file>`: sha256
+  `1bfc11ed…`, blob `092b463`, theirs. It holds no CR, so the repository's `* text=auto eol=lf`
+  (`.gitattributes`) stores it as it is: `git hash-object` gives their blob, and after the commit
+  `git show HEAD:deploy/vps/test/vendor/jainav-infotech/snippets.caddy | sha256sum` gives
+  `1bfc11ed…` too. `SOURCE` names the commit with its own date, 2026-11-24, and the copy's,
+  2026-11-25, and its `snippets.caddy` line holds the new sum; `sha256sum --strict -c SOURCE`
+  passes in that folder. Their `edge.conf` is unchanged, so `CADDY` stays as it is (step 3).
+
+  With the copy, `pnpm vps:check` has 55 checks, 0 failed, its kit-check naming
+  `app-apply 0c23a8f`, and `pnpm vps:edge` 22, 0 failed, both handshakes on the 4 hosts: the counts
+  of `a0bb599`'s copy. The harness needed nothing for `tls_jainav`'s `client_auth`. The kit's Caddy
+  trees hold MenuMesh's site file alone, every block of which imports `tls_menumesh`, and Caddy
+  expands a snippet only where a site imports it, so nothing reads `/certs/jainav/aop-ca.pem`,
+  which the kit never makes. `caddy adapt` of the copy with `menumesh.caddy`, run here with the
+  pinned Caddy, names no `jainav`, and under `/certs` only MenuMesh's three files, `origin.pem`,
+  `origin-key.pem` and `aop-ca.pem`; and `vps:check`'s `caddy validate` of the edge tree, which
+  loads every `trust_pool` file the tree names (its bite without `aop-ca.pem` fails on that file),
+  passes with no `/certs/jainav` at all. On the server Jainav's site imports `tls_jainav`, hence
+  their order there: their CA in before the snippet (their `edge.md` §5, step 5).
+
+  For First install, step 16, the word it waits for has come. The server team's gate (VPS-135)
+  wants authenticated origin pulls on and tested for every zone of the server before an app's
+  first container: `jainavinfotech.in`'s are, by their word, and `menumesh.in`'s are MenuMesh's
+  own, as agreed: they go on at Cloudflare at step 8 and its CA goes in at step 11, before any
+  MenuMesh container runs, and they are tested on the staging night once the site file is in (The
+  server rehearsal and the cut-over, part 3, step 1). The step's proof stays as written and runs at
+  the install, on the server and before `db`'s first container: a TLS connection without a client
+  certificate to each of Jainav's four hosts must fail in the handshake, and an exit 0 stops the
+  step (their `edge.md` §5, step 8; VPS-143). Its opening and its wait stay too, as `originGate`
+  holds them, and its note, that on 2026-11-21 `tls_jainav`'s `client_auth` was still commented
+  out, now adds that their word came on 2026-11-25, with their `0c23a8f`; the server rehearsal's
+  step 1 says it came. Copying the server team's files again, whose paragraph on their
+  origin-pulls round said how that round's copy would be made, now says how it was. VPS-135,
+  VPS-146 and VPS-147 say where this entry changed them, and Left open (server review) has the
+  round done.
+
+  Nothing else changes for MenuMesh now. First install, step 8, has the owner turn zone-level pulls
+  on at Cloudflare and gives the admin `aop-ca.pem` and `aop-client.pem` (step 11); step 11
+  installs the certificate with `aop-ca.pem` in one `sudo app-apply edge cert menumesh …` line,
+  before the check of their snippet, `edge.env` and step 22's site file, as their §3 has it for
+  another app's zone. That `app-apply` refuses the site file without the CA, the RUNBOOK doesn't
+  say in words: `vps:check` shows it, its `caddy validate` of the tree without
+  `certs/menumesh/aop-ca.pem` failing on that file, as `app-apply`'s check 3 does (VPS-142), and
+  the RUNBOOK's order never meets it, so nothing is added for it.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-150;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Not changed: the kit README's First install, step 3, which
+  starts `db` once the server team says origin pulls are on for every zone of the server, still its
+  condition, now met; step 16's stop on an exit 0, "the server team's round of origin pulls comes
+  first, and this step waits for it", and VPS-143's account of it, which still hold at the install;
+  the cut-over's intro, as no step of part 2 changed; and the tests. `vps-kit.test.ts`'s check of
+  the copies against `SOURCE` and `theirSnippet` pass on the new copy as it is (its one commented
+  `client_auth` is MenuMesh's own old snippet, a refusal case), and `originGate` reads step 16's
+  opening, its wait, its loop and its stop, and the rehearsal's "Step 16 waits for the server
+  team's word", all still there; no rule reads the notes. No script and no service changed, and of
+  the kit's files only the vendored `snippets.caddy`, `SOURCE` and the README's range.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
+  (`vps-runbook` 65, none new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
@@ -12867,20 +12969,17 @@ reads them on the server on the recreate night, before its `edge.env` lines (VPS
 confirmation from now on carries it. The line at `a0bb599`
 (`git show a0bb599:docker/host/apps/edge.conf | grep '^CADDY_IMAGE='`) is the kit's `CADDY`, every
 character, and its sum is the one their confirmation gave, so step 11 reads it in full as it
-stands. Still open:
+stands. So is their origin-pulls round for `jainavinfotech.in`, which came before our step 16: their
+confirmation of 2026-11-25 names `0c23a8f` (nanu1605/jainav-infotech#91), whose `snippets.caddy` has
+`tls_jainav`'s `client_auth` on and the `log_fields` comment on the client certificate's common name
+and serial; it is live on the server, and origin pulls are on and required for `jainavinfotech.in`
+since 00:08 IST that day. The kit's copy is that commit's, its `SOURCE` line the sum that
+confirmation gives, `1bfc11ed…`, which step 11's check then takes; step 16's wait for their word is
+over, and its loop still proves it on the server at the install (VPS-150). Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
   call.
-- The server team's origin-pulls round for `jainavinfotech.in`, which comes before our step 16: the
-  step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143). That round's
-  PR changes their `snippets.caddy` again: `tls_jainav`'s `client_auth` on, and a `log_fields`
-  comment on the client certificate's fields, its common name and serial, which Caddy's access lines
-  keep on purpose, as the serial shows which certificate Cloudflare presents after a rotation. So
-  the kit copies their files again at its merge, from the commit and hashes they send, and
-  `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
-  install, step 11's check then takes (RUNBOOK, Copying the server team's files again; VPS-147,
-  VPS-148).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still

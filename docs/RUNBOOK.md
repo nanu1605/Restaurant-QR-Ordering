@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-149 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-150 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -1080,7 +1080,8 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
 16. Not before the server team confirms in their chat that authenticated origin pulls are on and
     tested for every zone of the server, `jainavinfotech.in` included (their gate before an app's
-    first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out): until
+    first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out, and their
+    word came on 2026-11-25, with their `0c23a8f`: VPS-150): until
     then this step, and every step after it, waits. Then, on the server and before `db`'s first
     container, the proof their `edge.md` §5, step 8, gives: a TLS connection without a client
     certificate to each of Jainav's four hosts must fail in the handshake, every line ending in an
@@ -1376,11 +1377,11 @@ No record points at the server and the site file waits for the staging night, so
 public, and Vercel and hosted Supabase serve as before. Way back, for the whole part: none needed.
 
 1. First install, steps 1 to 21, in order, each with its check. Step 16 waits for the server team's
-   word in their chat that authenticated origin pulls are on for every zone of the server, and
-   step 11's `edge.env` and recreate may come after step 21, on their own night before the staging
-   night. Production's first deploy (step 19) is a **VPS release** of a commit whose **VPS build**
-   ran on `main`, so that it reuses that run's migrate image; a version used here is never used
-   again.
+   word in their chat that authenticated origin pulls are on for every zone of the server (it came
+   on 2026-11-25: VPS-150), and step 11's `edge.env` and recreate may come after step 21, on their
+   own night before the staging night. Production's first deploy (step 19) is a **VPS release** of
+   a commit whose **VPS build** ran on `main`, so that it reuses that run's migrate image; a version
+   used here is never used again.
 2. On the server, each with what it must show:
    - `sudo hostwatch check`: its last line is `hostwatch check: clean`.
    - `sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'`: every long-running service
@@ -3123,11 +3124,11 @@ Supabase stack is only ever read.
   4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
      question for the server team.
 
-  Their origin-pulls round changes `snippets.caddy` again (`tls_jainav`'s `client_auth` on, and a
-  `log_fields` comment on the client certificate's fields), so its `SOURCE` line moves: the copy is
-  made, in Git Bash, at the commit that round's confirmation names, and its sum must be the
+  Their origin-pulls round changed `snippets.caddy` again (`tls_jainav`'s `client_auth` on, and a
+  `log_fields` comment on the client certificate's fields), so its `SOURCE` line moved: the copy was
+  made, in Git Bash, at `0c23a8f`, the commit that round's confirmation names, and its sum is the
   `snippets.caddy` sum that confirmation gives, so that the kit's checks run the server's file, the
-  one First install, step 11's check finds there.
+  one First install, step 11's check finds there (VPS-150).
 
   `MEMTOTAL_MIB` in `scripts/vps-kit.mts` holds the MemTotal the server reports, 15,992 MiB. After a
   resize or on a new server it becomes what `awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`
