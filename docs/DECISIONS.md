@@ -1594,7 +1594,8 @@ devices; Sentry on every page, errors only.
 - **P10-1 · Migrate, then deploy:** `.github/workflows/deploy.yml` links the Supabase project,
   runs `supabase db push --yes` (never `--include-seed`, so the demo restaurant and its known
   passwords never leave local and CI), then `vercel pull`, `vercel build --prod` and
-  `vercel deploy --prebuilt --prod` with the commit built in (`NEXT_PUBLIC_BUILD_SHA`), then
+  `vercel deploy --prebuilt --prod` with the commit built in (`NEXT_PUBLIC_BUILD_SHA`; since
+  P10-18 with `--no-wait`, then `pnpm vercel:wait`), then
   `pnpm smoke` against the live URL. Vercel's Git deploys are off (`vercel.json`, and since
   P10-14 the projects aren't connected to GitHub) so code never runs ahead of its migrations; functions run in `bom1` (Mumbai), next to the database. Staging
   deploys from the `staging` job in `ci.yml` after the tests pass on `main`, gated by the
@@ -1867,6 +1868,22 @@ its own open item before QR printing. Kept: the production dry run, which the ow
 - **A test that expired:** `320_platform_actions` paid for September 2026 against a grace period
   counted from `now()`, so from 30 September the payment no longer extended access (correctly)
   and the test failed. Its periods are now months relative to today.
+
+### After launch (November 2026)
+
+- **P10-18 · The deploy fails fast when Vercel stops a deployment:** on 24 November 2026 Vercel
+  blocked two staging deployments right after their upload (its commit-author check), and the
+  pinned CLI (60.1.3) kept printing "Building…" until the job's 30-minute timeout: its wait ends
+  once the aliases are assigned or the deployment fails or is canceled, never on BLOCKED. The
+  deploy now runs `vercel deploy --prebuilt --prod --no-wait`, and a step of its own then runs
+  `pnpm vercel:wait` (`scripts/vercel-wait.mts`), which asks Vercel's API for the deployment every
+  5 s and fails at once on BLOCKED, CANCELED, ERROR, failed checks, an alias error, 401 or 403,
+  printing Vercel's state, reason and inspector link; no answer, 429, 5xx and a 404 in the first
+  minute are asked again, and after 10 minutes it fails with the last state it saw. Success stays
+  the CLI's own (READY with `aliasAssigned`), so the smoke tests still start only once the domain
+  points at the new deployment, and a CLI that failed after printing the URL still fails the
+  deploy. The build step and the wait step have a 12-minute timeout each, as backstops, so a slow
+  build can't cut the wait short.
 
 ## Hindi names (after launch, 2026-10-02)
 
