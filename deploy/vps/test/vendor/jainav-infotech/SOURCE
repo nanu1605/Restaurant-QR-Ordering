@@ -4,8 +4,8 @@
 # changes these files, and before every install on the server.
 #
 # Repository: github.com/nanu1605/jainav-infotech
-# Commit:     a0bb5998d26c8eb793d2adf3f1ffe058149604a4 (main, 2026-11-22)
-# Copied:     2026-11-24, each file with: git show a0bb599:<path> > <file>
+# Commit:     0c23a8fdb5dfe9b464d4e66e56159ea4afb23c2c (main, 2026-11-24)
+# Copied:     2026-11-25, each file with: git show 0c23a8f:<path> > <file>
 #
 # File                     Path at that commit                          Mode there
 # app-apply                docker/host/app-apply                        100755
@@ -22,4 +22,4 @@
 208070fc0b5540a02e7a477d1c22033a53eccab87b727730a82614c6de81a1f6  cloudflare-ranges.caddy
 902266c838de6af99fda3c06e7f76ccba19fe1e75e8dfdab6384aa3b3ed300c0  edge.conf
 4f4d09a6168ce8d9b181146be051a7f6b699536be827ab8d725efa454eed92ac  jainav.conf
-3f7e4e636fb9822eabb3254ad39215a3e0562dc93ff2341b8c9538be970e4802  snippets.caddy
+1bfc11ed7e0700f9980e474a40661095f25d456eb3ccbc7a8b73aa545bc6e558  snippets.caddy
