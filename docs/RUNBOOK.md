@@ -35,6 +35,12 @@ and the version check. Re-run the workflow instead.
   can run it, and it refuses a commit whose CI on `main` failed.
 - After a deploy, the smoke tests check that the live site reports the commit just deployed
   (`/api/health` → `version`).
+- Before them, the step "Wait for the deployment to go live" waits for Vercel to put the
+  deployment live (`pnpm vercel:wait`, docs/DECISIONS.md P10-18). When Vercel blocks, cancels or
+  fails it, the step fails within a minute with Vercel's state, its reason and a link to the
+  deployment; Blocked means a check on
+  Vercel's side refused it (on 24 November 2026, the commit-author check), so fix that, then re-run
+  the workflow. A deployment that isn't live 10 minutes in fails the step with the last state seen.
 - Pages already open (staff tablets, guests' phones) keep their navigations, server actions and
   the guest orders poll on the deployment that served them, for up to 7 days (Skew Protection);
   they move to the new one on their next reload. So an old deployment keeps running for a week:
@@ -322,7 +328,8 @@ shows two `[site] plans not loaded for the home page` traces: the build has no
   instant and keeps the database as it is (fine, since migrations are backward-compatible). It
   also stops new production deploys from going live: after the fix is released, press **Undo
   Rollback** on the project page (or run `vercel promote <new deployment URL>`). Until then the
-  deploy's smoke tests fail, because the live site still reports the old commit.
+  deploy fails, because the live site stays on the old commit: its wait gives up after 10 minutes
+  (naming the rollback), or the smoke tests find the old commit.
 - **Pages already open on the bad deployment keep using it** (Skew Protection, up to 7 days); a
   rollback doesn't stop them. When it must stop at once (wrong data, a security hole), delete the
   bad deployment (Deployments → ⋯ → Delete) and ask staff to reload their tablets; release the fix
@@ -1744,7 +1751,8 @@ Not Stop D's: once the server has served production for the 14 days, the Vercel 
 (VPS-121):
 
 - `CRON_SECRET` out of both Vercel projects.
-- `deploy.yml`, `release.yml`, the `staging` job of `ci.yml` and `vercel.json` deleted, and
+- `deploy.yml` (with `scripts/vercel-wait.mts`, its test and `pnpm vercel:wait`), `release.yml`,
+  the `staging` job of `ci.yml` and `vercel.json` deleted, and
   `backup.yml` deleted or kept for its manual staging run (staging's database stays hosted),
   decided then.
 - The Vercel-only parts of this runbook (Environments, Deploying, One-time setup per environment,

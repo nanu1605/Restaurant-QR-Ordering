@@ -19,6 +19,7 @@
     "e2e": "playwright test",
     "smoke": "playwright test --config playwright.smoke.config.ts",
     "budget": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bundle-budget.mts",
+    "vercel:wait": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/vercel-wait.mts",
     "docker:build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts build",
     "docker:run": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts run",
     "docker:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/docker-local.mts check",
