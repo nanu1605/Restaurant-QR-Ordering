@@ -12789,7 +12789,8 @@ entries below.
   `Caddyfile` and hostwatch, and (d)'s check covers their `Caddyfile`, their snippet, their digest
   pin and hostwatch. VPS-136 and VPS-146 say where this entry changed them, and Left open (server
   review) has their fix of hostwatch's alerts in, by their word, with their refresh, snippet and
-  digest pin, and the `CADDY_IMAGE` line itself still to come in their chat.
+  digest pin, and the `CADDY_IMAGE` line itself still to come in their chat (it came the same day:
+  Left open (server review)).
 
   Why: their confirmation carries those values, and their team expects them checked, as the five
   lines they gave show. The hostwatch line also shows on the server that (a)'s refresh is the one
@@ -12861,7 +12862,12 @@ alerts, merged as `ccb9388` (nanu1605/jainav-infotech#87), with the rest of thei
 their kit's refresh, main's `snippets.caddy` and their digest pin: their confirmation of 2026-11-24
 names `a0bb599`, which holds the fix, and gives the installed hostwatch's sum, `a0bb599`'s, and the
 installed `snippets.caddy`'s and `compose.yml`'s, main's, so step 11's (a) holds, and its check
-reads them on the server on the recreate night, before its `edge.env` lines (VPS-149). Still open:
+reads them on the server on the recreate night, before its `edge.env` lines (VPS-149). So is the
+`CADDY_IMAGE` line itself: their reply of 2026-11-24 in their chat gives it, and says every
+confirmation from now on carries it. The line at `a0bb599`
+(`git show a0bb599:docker/host/apps/edge.conf | grep '^CADDY_IMAGE='`) is the kit's `CADDY`, every
+character, and its sum is the one their confirmation gave, so step 11 reads it in full as it
+stands. Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
@@ -12875,10 +12881,6 @@ reads them on the server on the recreate night, before its `edge.env` lines (VPS
   `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
   install, step 11's check then takes (RUNBOOK, Copying the server team's files again; VPS-147,
   VPS-148).
-- The `CADDY_IMAGE` line itself, which their confirmation of 2026-11-24 gave only as the sum
-  `grep '^CADDY_IMAGE=' /etc/apps/edge.conf | sha256sum` prints, the kit's pinned line's: step 11
-  reads that line in full, every character, and asks about a confirmation without one of its values
-  in their chat (VPS-149).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
