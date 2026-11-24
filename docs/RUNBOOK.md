@@ -601,7 +601,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-148 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-149 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -840,7 +840,7 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     commit installed with `app-apply edge compose`, and Caddy recreated on that image. The admin
     never changes the edge's `compose.yml` or its `CADDY_IMAGE`: only the server team does. Their
     confirmation in their chat names the commit and gives hostwatch's sha256 ((a), below), the
-    sha256 of the installed `snippets.caddy` and of the installed `/srv/edge/compose.yml`, and the
+    sha256 of the installed `Caddyfile`, `snippets.caddy` and `/srv/edge/compose.yml`, and the
     exact `CADDY_IMAGE` line. `app-apply edge config` puts in the whole file, their `tls_jainav`
     too, so the admin only checks that the server holds that commit's files: a copy older or newer
     than theirs could turn their origin pulls off, or make their hosts refuse Cloudflare.
@@ -852,8 +852,9 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     machine, in Git Bash, not PowerShell (Windows PowerShell 5.1 re-encodes git's output, in a pipe
     as with `>`, so the sum never matches), in `<their checkout>`, a clone of their repository that
     holds the commit (`git -C <their checkout> fetch` first, if it doesn't: without it `git show`
-    prints `fatal: …` and `sha256sum` the empty input's `e3b0c442…`). The two lines must print the
-    confirmation's `snippets.caddy` and `compose.yml` sums, and its `CADDY_IMAGE` line must be
+    prints `fatal: …` and `sha256sum` the empty input's `e3b0c442…`). The four lines must print the
+    confirmation's `Caddyfile`, `snippets.caddy`, `compose.yml` and hostwatch sums, and its
+    `CADDY_IMAGE` line must be
     `CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0`,
     the kit's `CADDY` (VPS-130). If any of them fails, stop and ask in their chat: the
     confirmation, the commit or the clone is wrong, and nothing is checked on the server. A newer
@@ -863,37 +864,42 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     values is asked about in their chat too:
 
     ```sh
-    git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum     # on the admin's machine, in Git Bash
+    git -C <their checkout> show <commit>:docker/edge/config/Caddyfile | sha256sum     # on the admin's machine, in Git Bash
+    git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy | sha256sum
     git -C <their checkout> show <commit>:docker/edge/compose.yml | sha256sum
+    git -C <their checkout> show <commit>:docker/host/hostwatch | sha256sum
     ```
 
     Then, on the server, on the recreate night (below) and before its `edge.env` lines, the live
-    values: the sums of the two installed files (`/srv/edge` is root's alone, 0750, hence `sudo`),
-    the sum `app-apply` recorded when it installed `compose.yml`, and the `CADDY_IMAGE` line, those
-    two in `/etc/apps`, which `ops` reads without `sudo`:
+    values: the sums of the three installed files of the edge (`/srv/edge` is root's alone, 0750,
+    hence `sudo`); the sum `app-apply` recorded when it installed `compose.yml` and the
+    `CADDY_IMAGE` line, those two in `/etc/apps`, which `ops` reads without `sudo`; and the
+    installed hostwatch's sum, which `ops` reads without `sudo` too:
 
     ```sh
-    sudo sha256sum /srv/edge/config/snippets.caddy /srv/edge/compose.yml
+    sudo sha256sum /srv/edge/config/Caddyfile /srv/edge/config/snippets.caddy /srv/edge/compose.yml
     cat /etc/apps/edge.compose.sha256
     grep '^CADDY_IMAGE=' /etc/apps/edge.conf
+    sha256sum /usr/local/sbin/hostwatch
     ```
 
-    - `SAME`, what their night leaves: four lines, the confirmation's values in full, every
-      character: its `snippets.caddy` sum before the first line's path, its `compose.yml` sum
-      before the second's and the third's, and its `CADDY_IMAGE` line as the fourth. Nothing is
-      installed, and the step goes on.
+    - `SAME`, what their night leaves: six lines, the confirmation's values in full, every
+      character: its `Caddyfile` sum before the first line's path, its `snippets.caddy` sum before
+      the second's, its `compose.yml` sum before the third's and the fourth's, its `CADDY_IMAGE`
+      line as the fifth, and its hostwatch sum before the sixth's. Nothing is installed, and the
+      step goes on.
     - `DIFFERENT`, anything else, a line missing or an error among them: stop, and ask in the
       server team's chat, giving the live values as the lines print them, the confirmation's values
       and its commit. Run none of this step's lines below until they answer, `edge.env`'s above
       all. Then the check again, both halves if their answer names another commit, and it must be
       `SAME`.
 
-    The edge's `compose.yml`, its record and `CADDY_IMAGE` are theirs to mend. A copy of
-    `snippets.caddy` is made only on their word in their chat to install it from a commit they name:
-    in Git Bash, its `sha256sum` the sum they give, or stop; then sent, and on the server its
-    `sha256sum` that sum again, or stop, as a failed `scp` leaves whatever `~/incoming` held; then
-    installed, which checks every installed site again, and taken out of `~/incoming`; then the
-    check again:
+    The edge's `compose.yml`, its record and `CADDY_IMAGE`, the `Caddyfile` and hostwatch are
+    theirs to mend. A copy of `snippets.caddy` is made only on their word in their chat to install
+    it from a commit they name: in Git Bash, its `sha256sum` the sum they give, or stop; then sent,
+    and on the server its `sha256sum` that sum again, or stop, as a failed `scp` leaves whatever
+    `~/incoming` held; then installed, which checks every installed site again, and taken out of
+    `~/incoming`; then the check again:
 
     ```sh
     git -C <their checkout> show <commit>:docker/edge/config/snippets.caddy > snippets.caddy     # on the admin's machine, in Git Bash
@@ -986,10 +992,10 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
       uploaded for `menumesh.in` (step 8);
     - (d) steps 9 to 11 are done up to the `edge.env` lines: the conf, the deploy user and its
       token, the redaction file, the certificate with `aop-ca.pem`, and the check of the server
-      team's latest confirmation, made after their confirmation of (a), which covers their snippet
-      and their digest pin, coming out `SAME`. The check's server lines are run on that night
-      itself, before its `edge.env` lines (above): on a combined night that confirmation comes only
-      then.
+      team's latest confirmation, made after their confirmation of (a), which covers their
+      `Caddyfile`, their snippet, their digest pin and hostwatch, coming out `SAME`.
+      The check's server lines are run on that night itself, before its `edge.env` lines (above):
+      on a combined night that confirmation comes only then.
 
     Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
     the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own

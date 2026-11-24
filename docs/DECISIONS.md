@@ -11791,7 +11791,8 @@ entries below.
   `menumesh.in`; (d) steps 9 to 11 done up to the `edge.env` lines: the conf, the deploy user and its
   token, the redaction file, the certificate with `aop-ca.pem`, the snippet and, since VPS-145, the
   digest pin's steps (since VPS-148, in place of both, the check of the server team's latest
-  confirmation, which covers their snippet and their pin, its server lines on that night itself).
+  confirmation, which covers their snippet and their pin, and since VPS-149 their `Caddyfile` and
+  hostwatch, its server lines on that night itself).
   Steps 12 to 21 don't wait for it, nor does the rehearsal; the staging night does: its Before it
   checks that Caddy holds both names, with
   `sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'`,
@@ -12277,11 +12278,13 @@ entries below.
   no commit; their `server.md` §7 brings a new kit as a copy of `docker/host`, `docker/edge` and the
   keys; and hostwatch's verbs, `run`, `check`, `daily` and `alert`, print no version. A sha256 of
   the installed hostwatch would match `ccb9388`'s only until hostwatch changes again, so the admin
-  compares none: the server team does, before they confirm, against the main they install (below).
-  VPS-136's list follows. Steps 12 to 21 and the rehearsal still don't wait for that night, so until
-  the refresh is on the server the caveats of Left open (server review), below, hold: `backup`
-  turning unhealthy reaches no one by Telegram, and a dead shipper is told only by MenuMesh's own
-  means, the shipper's own alert while it runs and the WAL monitor's silence.
+  compares none (since VPS-149 step 11's check holds it to their confirmation's sum, which the
+  admin's half ties to its commit): the server team does, before they confirm, against the main
+  they install (below). VPS-136's list follows. Steps 12 to 21 and the rehearsal still don't wait
+  for that night, so until the refresh is on the server (since VPS-149 it is, by their word) the
+  caveats of Left open (server review), below, hold: `backup` turning unhealthy reaches no one by
+  Telegram, and a dead shipper is told only by MenuMesh's own means, the shipper's own alert while
+  it runs and the WAL monitor's silence.
 
   The server team's reply of the same day agrees: they will say in their chat when the kit refresh
   with `ccb9388` or a later main is on the server, after checking there that
@@ -12296,9 +12299,10 @@ entries below.
   `SCRIPTS` (`app-deploy`, `app-compose`, `app-apply`, `app-config-archive`, `cf-ranges` and
   `hostwatch`), matches that commit's file, and it gives the installed `snippets.caddy`'s sha256
   beside hostwatch's, and since VPS-148 the installed `/srv/edge/compose.yml`'s sha256 and the exact
-  `CADDY_IMAGE` line too. Their re-apply night may be the recreate night itself, and step 11's "That
-  night comes only after:", read strictly, would then have held that night back for its own first
-  step. What MenuMesh needs is narrower. The refresh and their word come before that night's
+  `CADDY_IMAGE` line too, and since VPS-149 the installed `Caddyfile`'s sha256. Their re-apply night
+  may be the recreate night itself, and step 11's "That night comes only after:", read strictly,
+  would then have held that night back for its own first step. What MenuMesh needs is narrower.
+  The refresh and their word come before that night's
   `edge.env` lines, since from `app-apply edge env` until the recreate, `app-apply` refuses
   `edge cert`, `config`, `ranges`, `redact`, `reload` and every site file
   (`… recreate Caddy first (sudo app-compose edge up -d)`), and a refresh in that gap could meet
@@ -12312,7 +12316,7 @@ entries below.
   the pinned image before that confirmation). (d), steps 9 to 11 up to those lines, waits for the
   refresh only in the snippet's comparison, which takes the commit and the sum of their
   confirmation (VPS-147; since VPS-148 the check of their latest confirmation, its commit, its two
-  sums and its `CADDY_IMAGE` line):
+  sums, four since VPS-149, and its `CADDY_IMAGE` line):
   `edge redact` and `check_edge_env_applied` came into their `app-apply` with their `ecfbf99`, and
   `edge cert`'s CA argument with their `81e3064`, both of 2026-11-08; and (a) and (d) keep no other
   order between them.
@@ -12711,6 +12715,105 @@ entries below.
   nothing was rehearsed and `pnpm vps:check` did not run. `pnpm lint`, `pnpm typecheck` and
   `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, none new).
 
+- **VPS-149 · The server team's files copied again at `a0bb599`, and their `Caddyfile` and
+  hostwatch in step 11's check (their PR #88, merged as `a0bb599`, and their confirmation of
+  2026-11-24):** the server team merged nanu1605/jainav-infotech#88 into their main as
+  `a0bb5998d26c8eb793d2adf3f1ffe058149604a4` (2026-11-22, 05:54 IST), applied it on the shared
+  server, and confirmed it in their chat on 2026-11-24. Checked here, read-only, in their
+  repository: from `66c8c61` to `a0bb599`, of the six files `SOURCE` lists only
+  `docker/edge/config/Caddyfile` changed, and under `docker/` besides it only
+  `docker/host/hostwatch` and `docker/compose.prod.yml`, Jainav's own, which the kit never reads;
+  the edge's `compose.yml` did not. The `Caddyfile`'s global `log default` block gains a four-line
+  comment and `exclude admin.api`: Caddy's admin API logs every request at info, and their
+  healthcheck reads it every 30 seconds, 2,880 lines a day, a third of the server's journal, as
+  their comment says. hostwatch holds `ccb9388`'s fix of its alerts (VPS-146) and, from #88, a
+  `check_ntp` that asks `timedatectl`, five journal lines a call, only once its last answer is 55
+  minutes old, while that answer was yes and `systemd-timesyncd`'s file is under an hour old,
+  where it asked on every run; their `docker/host/hostwatch` at `a0bb599` is mode 100755 with sha256
+  `5b9cd64564b00981c55db0afe695609548b2e9124204d0f42f4d9199b1137203`. Their confirmation names
+  `a0bb599` and gives that hostwatch sum; the installed `/srv/edge/config/Caddyfile`'s,
+  `5f59cd9c64bfbfe8ecc9ef3467bd2d671b81f22e9cc52e095b45f86283bb21df`; the installed
+  `snippets.caddy`'s and `/srv/edge/compose.yml`'s, `3f7e4e63…` and `e5dd4bdf…`, as VPS-148 had
+  them; and the `CADDY_IMAGE` line, this time only as the sum
+  `grep '^CADDY_IMAGE=' /etc/apps/edge.conf | sha256sum` prints, which is the kit's pinned line's,
+  `b3b2c8f86af48719532260ea1ca420edc1dce7e514e92e9a6feaefc2bd437165`, its line end included. The
+  check they expect from us prints five lines: `sudo sha256sum` of the three installed files, then,
+  as `ops` without `sudo`, the sum of `/usr/local/sbin/hostwatch` and that of the `CADDY_IMAGE`
+  line. Their `install.sh` puts each host script in `/usr/local/sbin` with `put 0755`,
+  `root:root`, so `ops` reads hostwatch without `sudo`.
+
+  The six files are copied again at `a0bb599`, byte for byte, as the RUNBOOK's Copying the server
+  team's files again, steps 1 to 4, has it, each with
+  `git -C <their checkout> show a0bb599:<path> > <file>`. Only the `Caddyfile`'s bytes change, its
+  sha256 from `41a63745…` to `5f59cd9c…`, the confirmation's; the other five are as at `66c8c61`,
+  each blob the same, and `app-apply` keeps 100755. `SOURCE` names the commit with its own date,
+  2026-11-22, and the copy's, 2026-11-24, and its `Caddyfile` line holds the new sum;
+  `sha256sum --strict -c SOURCE` passes in that folder. Their `edge.conf` is unchanged, so
+  `CADDY` stays as it is (step 3). With the copy, `pnpm vps:check` has 55 checks, 0 failed, its
+  kit-check naming `app-apply a0bb599`, and `pnpm vps:edge` 22, 0 failed: Caddy 2.11.9 takes
+  `exclude admin.api` in the default log, and the access lines the edge's checks read
+  (`http.log.access`) are as before.
+
+  First install, step 11's check takes their `Caddyfile` and hostwatch on both halves. On the
+  admin's machine, in Git Bash, four lines,
+  `git -C <their checkout> show <commit>:<path> | sha256sum` for `docker/edge/config/Caddyfile`,
+  `docker/edge/config/snippets.caddy`, `docker/edge/compose.yml` and `docker/host/hostwatch`, in
+  that order, must print the confirmation's `Caddyfile`, `snippets.caddy`, `compose.yml` and
+  hostwatch sums, and its `CADDY_IMAGE` line must still be `CADDY_IMAGE=` and the kit's `CADDY`.
+  On the server, four lines:
+  `sudo sha256sum /srv/edge/config/Caddyfile /srv/edge/config/snippets.caddy /srv/edge/compose.yml`,
+  `cat /etc/apps/edge.compose.sha256`, `grep '^CADDY_IMAGE=' /etc/apps/edge.conf` and
+  `sha256sum /usr/local/sbin/hostwatch`. `SAME` is six lines, the confirmation's values in full,
+  every character: its `Caddyfile` sum before the first line's path, its `snippets.caddy` sum
+  before the second's, its `compose.yml` sum before the third's and the fourth's, its
+  `CADDY_IMAGE` line as the fifth, and its hostwatch sum before the sixth's. `DIFFERENT`, the copy
+  made on their word and the rest of the step stay as they were. The step's sentence on what their
+  confirmation gives names the installed `Caddyfile`, the one on what is theirs to mend names the
+  `Caddyfile` and hostwatch, and (d)'s check covers their `Caddyfile`, their snippet, their digest
+  pin and hostwatch. VPS-136 and VPS-146 say where this entry changed them, and Left open (server
+  review) has their fix of hostwatch's alerts in, by their word, with their refresh, snippet and
+  digest pin, and the `CADDY_IMAGE` line itself still to come in their chat.
+
+  Why: their confirmation carries those values, and their team expects them checked, as the five
+  lines they gave show. The hostwatch line also shows on the server that (a)'s refresh is the one
+  confirmed. VPS-146 had the admin compare no sum of the installed hostwatch, as one held to
+  `ccb9388`'s would match only until hostwatch changed again, which it now has; here nothing is
+  held to a fixed sum: the admin's fourth line ties the confirmation's hostwatch sum to the commit
+  it names, and the server's last line holds the installed file to that sum. The `Caddyfile` line
+  pairs with the vendored copy, whose sum is now the server's, so the kit's checks run Caddy with
+  the `Caddyfile` the server holds, as they run its `snippets.caddy` (VPS-147). The check keeps two
+  things their five lines leave out: the `CADDY_IMAGE` line itself, every character, which the
+  admin's half holds to `CADDY` and `SAME` reads in full, where a sum shows only that something
+  differs; and `app-apply`'s record of `compose.yml`, which shows a file changed by hand after its
+  install (VPS-148). So six lines rather than their five. This extends VPS-148, whose two halves,
+  outcomes and order stay as they were.
+
+  `snippetGuard` now holds the admin's half to its four lines and to the sentence on the
+  confirmation's four sums, the server's half to its four lines in their order, after the admin's
+  and before any `edge config` and `edge.env`, hostwatch's last, and `SAME` to its six lines, line
+  by line; `edgeNight` holds the four server lines before the `edge.env` copy, and (d) to a check
+  that covers their `Caddyfile` and hostwatch. On `4a40843`'s RUNBOOK `snippetGuard` reports 6
+  problems and `edgeNight` 2, none on the fix; the sixth of `snippetGuard`'s is that the copy made
+  on their word follows no check, as the check's last line, hostwatch's, is missing there. Of the
+  42 rules the re-wrap test runs, the other 40 report none on `4a40843`'s RUNBOOK or on the fix.
+  New refusal cases: `4a40843`'s check and its sentence put back; the admin's sentence back to its
+  two sums; the `Caddyfile`'s and hostwatch's lines on the admin's machine each dropped;
+  hostwatch's line on the server dropped, put before the `CADDY_IMAGE` line, or after the
+  `edge.env` copy, for both rules; the `Caddyfile` taken out of the `sudo sha256sum` line;
+  hostwatch's admin line after the server's half; `SAME` without hostwatch's line, or read as five
+  lines; and `4a40843`'s (d). `vps-runbook` has 65 tests, as before, and the re-wrap test wraps 337
+  phrases where it wrapped 332, the 3 of the old sentences out and 8 new in; `vps-kit.test.ts`'s
+  check of the copies against `SOURCE` passes on the new copy as it is. The range the RUNBOOK,
+  `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-149; `compose.yml`'s header
+  and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146, left for the next change
+  of the kit. Not changed: Who does what, in the RUNBOOK and in the kit README, and First install's
+  opening name the snippet and the digest pin among what is theirs and what the check covers,
+  which still holds; and the mentions of `66c8c61` in the RUNBOOK, in `caddyRefusal`'s comment and
+  in the tests say since when their `tls_menumesh` has `client_auth` on and the copy names exactly
+  `CADDY`, which still holds too. No script and no service changed, and of the kit's files only the
+  vendored `Caddyfile`, `SOURCE` and the README's range. `pnpm lint`, `pnpm typecheck` and
+  `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, none new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
@@ -12736,7 +12839,12 @@ the kit's checks run with origin pulls on and the RUNBOOK's text moved to their 
 is the question of the digest pin's `docker/edge/compose.yml`, which First install, step 11, had
 the admin copy from a working tree and install whole: the pin is theirs, on their own night, and
 their confirmation gives the installed file's sum and the exact `CADDY_IMAGE` line, which step 11
-checks with the rest of it (VPS-148). Still open:
+checks with the rest of it (VPS-148). And so, by their word, is their fix of hostwatch's judged
+alerts, merged as `ccb9388` (nanu1605/jainav-infotech#87), with the rest of their re-apply night,
+their kit's refresh, main's `snippets.caddy` and their digest pin: their confirmation of 2026-11-24
+names `a0bb599`, which holds the fix, and gives the installed hostwatch's sum, `a0bb599`'s, and the
+installed `snippets.caddy`'s and `compose.yml`'s, main's, so step 11's (a) holds, and its check
+reads them on the server on the recreate night, before its `edge.env` lines (VPS-149). Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
@@ -12750,24 +12858,10 @@ checks with the rest of it (VPS-148). Still open:
   `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
   install, step 11's check then takes (RUNBOOK, Copying the server team's files again; VPS-147,
   VPS-148).
-- The server team's fix for hostwatch's judged alerts, merged as `ccb9388`
-  (nanu1605/jainav-infotech#87): it reaches the server with the server team's kit refresh, the first
-  step of their re-apply night, which First install, step 11's (a) takes before the recreate night's
-  `edge.env` lines, on an earlier night or as its first step (VPS-146). Right after the refresh they
-  install main's `snippets.caddy`, with `tls_menumesh`, which the server's file, most likely
-  `ecfbf99`'s, lacks until then (VPS-147), then their digest pin of Caddy and its recreate, where
-  the server's `compose.yml` is still `81cd2b1`'s and its `CADDY_IMAGE` the tag alone (VPS-148).
-  Since 2026-11-08 its 5-minute and daily runs send nothing
-  to Telegram, as a function they call went missing, while its heartbeat, `hostwatch alert`, the
-  outbox and the daily digest still work. Until that fix is on the server, `backup` turning
-  unhealthy (VPS-133) and the leak test's wrong-project alert (VPS-137, VPS-143) reach no one by
-  Telegram, and `hostwatch check` shows them only to whoever runs it. A dead shipper still raises
-  the alarm by MenuMesh's own means: while the shipper runs, `wal-ship.sh`'s own alert through
-  MenuMesh's bot (`notify.sh`), `[menumesh] WAL is not reaching the bucket …`, once a WAL file has
-  waited over 10 minutes or `db`'s archiver has failed for 10, at most once an hour; and the WAL
-  monitor, whose pings (`HEARTBEAT_WAL_URL`, every 5 minutes while all is well) stop with any of
-  those and with a stopped `backup` or a stuck crond, and which alerts after its 10 minutes' grace:
-  the one signal of a stopped `backup` (RUNBOOK, WAL alerts).
+- The `CADDY_IMAGE` line itself, which their confirmation of 2026-11-24 gave only as the sum
+  `grep '^CADDY_IMAGE=' /etc/apps/edge.conf | sha256sum` prints, the kit's pinned line's: step 11
+  reads that line in full, every character, and asks about a confirmation without one of its values
+  in their chat (VPS-149).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
 - The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
   line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
