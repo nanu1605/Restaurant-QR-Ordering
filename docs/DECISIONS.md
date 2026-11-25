@@ -11290,7 +11290,8 @@ header cite, now VPS-31 to VPS-128.
   site file goes in, for each host `menumesh.caddy` serves (all four of its blocks import
   `tls_menumesh`):
   `for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done`,
-  each exit not 0. `-o /dev/null` keeps a page that does answer out of the terminal. An exit 0
+  each exit not 0 (VPS-153: `alert certificate required` on every line, since the server team's
+  `c7bcfad`). `-o /dev/null` keeps a page that does answer out of the terminal. An exit 0
   means `client_auth` in `tls_menumesh` is still commented out: stop; the night goes no further
   until the admin has turned authenticated origin pulls on as §3 says (Cloudflare's zone-level
   pulls first, then `client_auth`) and every exit is not 0, and its way back is none, as no record
@@ -12100,8 +12101,9 @@ entries below.
   each line with `internal=true` and `edge-caddy-1`. Step 16 keeps `ac976ce`'s wait for their word
   in the chat and adds their §5, step 8, proof before `db`'s first container: on the server, a TLS
   connection without a client certificate to `jainavinfotech.in` and its `www`, `staging` and
-  `analytics` hosts must fail, each line an exit other than 0, and an exit 0 stops the step, as
-  their round of origin pulls comes first.
+  `analytics` hosts must fail, each line an exit other than 0 (VPS-153: since their `c7bcfad`, each
+  line shows curl's message too, and passes only on `alert certificate required`), and an exit 0
+  stops the step, as their round of origin pulls comes first.
 
   The leak test follows their §6. Its `UPSTREAMS` entry, by `sudoedit`, and its block's
   `reverse_proxy` name `menumesh-leaktest:80`, where VPS-137 kept `<port>`. The test's site file is
@@ -12497,7 +12499,8 @@ entries below.
   the admin install their file again, sends the admin to step 11's copy and comparison and to
   their chat, as its `DIFFERENT` does, with the same three things, and the night goes no further
   until they have answered, the comparison prints `SAME` and every exit is not 0 (since VPS-148 the
-  check's server lines, the live values, the confirmation's and its commit, and the check `SAME`).
+  check's server lines, the live values, the confirmation's and its commit, and the check `SAME`;
+  since VPS-153, `alert certificate required` on every line, as their `c7bcfad` has it).
   Disaster recovery's edge takes the same comparison before its `edge.env` lines: on a rebuilt
   server their edge comes back first, and their confirmation then names the commit and the sum
   (since VPS-148 the check, their digest pin included). Rotation touches no `snippets.caddy` and
@@ -12644,7 +12647,8 @@ entries below.
   longer names the pin. (a)'s timing, the `edge.env` lines, the recreate's window and its way back
   stay as they were. The staging night's exit 0 sends the admin
   to the check's server lines and to their chat with the same values, and goes no further until the
-  check is `SAME` and every exit is not 0; disaster recovery's edge takes the check before its
+  check is `SAME` and every exit is not 0 (VPS-153: since then, `alert certificate required` on
+  every line, where any exit but 0 passed); disaster recovery's edge takes the check before its
   `edge.env` lines, their edge, the pin included, back first on a rebuilt server and their
   confirmation giving the values. Who does what gives the admin the check of their latest
   confirmation, which covers the snippet and the pin they install; First install's opening says
@@ -12903,7 +12907,8 @@ entries below.
   first container: `jainavinfotech.in`'s are, by their word, and `menumesh.in`'s are MenuMesh's
   own, as agreed: they go on at Cloudflare at step 8 and its CA goes in at step 11, before any
   MenuMesh container runs, and they are tested on the staging night once the site file is in (The
-  server rehearsal and the cut-over, part 3, step 1). The step's proof stays as written and runs at
+  server rehearsal and the cut-over, part 3, step 1). The step's proof stays as written (VPS-153:
+  their `c7bcfad`, in that merge, had changed its loop and rule; this entry missed it) and runs at
   the install, on the server and before `db`'s first container: a TLS connection without a client
   certificate to each of Jainav's four hosts must fail in the handshake, and an exit 0 stops the
   step (their `edge.md` §5, step 8; VPS-143). Its opening and its wait stay too, as `originGate`
@@ -13082,7 +13087,8 @@ entries below.
   and for their item on the server's own requests, and `edge.md`'s list of layers saying that Caddy
   serves a site only over a connection with a client certificate from the zone's own CA. None of it
   changes a step of ours: both our loops, First install, step 16's and the staging night's step 1,
-  pass any exit but 0.
+  pass any exit but 0 (VPS-153: no longer: both pass only on `alert certificate required` now, as
+  theirs have since `c7bcfad`).
 
   The RUNBOOK's leak test (The server rehearsal and the cut-over, part 3, step 2) still described
   their step 1 as one request: an admin who ran it as it now stands would see the second request's
@@ -13104,7 +13110,8 @@ entries below.
   added, says that an `exit 55` is the same refusal, met while curl was still sending (their step 4
   gives it with `Connection reset by peer` or `Broken pipe`): our loop prints each host's exit
   alone, and its rule, an exit not 0, already passes it, so neither changes, and nothing has the
-  admin run it again. The cut-over's intro names VPS-152 among the entries that changed it, and
+  admin run it again (VPS-153: both change, as their `0c23a8f` has them, and an `exit 55` is run
+  again). The cut-over's intro names VPS-152 among the entries that changed it, and
   VPS-143 says where this entry changed it. VPS-115 and VPS-137 still hold: their step 1 still goes
   through Cloudflare to the temporary `leaktest` site, and still reads eight headers, the first
   request's eight, `Cf-Connecting-Ip` among them, which the second reads again only if the echo
@@ -13145,6 +13152,154 @@ entries below.
   header. No script and no service changed, and of the kit's files only the README's range.
   `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
   (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-153 · The origin tests print curl's message and pass only on `alert certificate required`,
+  as the server team's `0c23a8f` has them (their `c7bcfad`; 2026-11-25):** the server team's
+  `c7bcfad` ("docs: origin pulls round with our own ca", 2026-11-24, 22:34 IST), one of the five
+  commits of nanu1605/jainav-infotech#91, merged as `0c23a8f` (VPS-150), changed both origin tests
+  of their `edge.md`, §5, step 8 (Jainav's four hosts, before a later app's first container) and §6,
+  step 4 (the leak test's), to the loop
+  `e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"`:
+  `-S` keeps curl's error message under `-s`, `2>&1` puts it in `e`, and `${e##*::}` drops all up
+  to its last `::`, so each line holds the host, the exit status and curl's message. §6, step
+  4's rule, "Every line must end in an exit status other than 0", became: every line must show an
+  exit status other than 0 and `alert certificate required` (with Ubuntu 24.04's curl,
+  `exit 56 tlsv13 alert certificate required, errno 0`), as Caddy answered and asked for the client
+  certificate, which only Cloudflare holds; `exit 0` means the host takes clients without it; and
+  `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't answering at all, which proves
+  nothing. §5, step 8, now has every line end as §6, step 4, says, and stops on an `exit 0`: that
+  host takes clients without the certificate, and Jainav's origin pulls (§3) come first. Their
+  `fb50cb1` ("docs: safer origin pulls steps after review", 23:09 IST), in the same pull request,
+  added a line with `exit 55` and `Connection reset by peer` as the same refusal, met while curl was
+  still sending: run the loop again; their `d0a7b14` added "or `Broken pipe`" (VPS-152). At
+  `80f39fa`, their main in the checkout here (nanu1605/jainav-infotech#93, merged 2026-11-25, whose
+  one commit `a6288f0` changes `docs/decisions.md` and `server.md` alone), both loops and both rules
+  are `d0a7b14`'s: `git diff 0c23a8f 80f39fa -- docs/runbooks/edge.md` changes no loop line. Their
+  `docs/decisions.md` at `d0a7b14` records the run on the shared server: with `require_and_verify`,
+  "a request from the server to every host fails with `alert certificate required` (`exit 56`; on
+  some runs one host gave `exit 55`, the same refusal)".
+
+  VPS-150, which copied that merge's `snippets.caddy`, said of First install, step 16, "The step's
+  proof stays as written", and VPS-152 recorded that both our loops pass any exit but 0 and left
+  them. That was the bug. Each of our loops printed the exit status alone (`echo "$h exit $?"`) and
+  passed any exit but 0, so an `exit 7`, nothing listening on the server's 443, or an `exit 28`, no
+  answer within the 5 seconds, passed too, though neither proves anything about origin pulls: step
+  16 could have started `db`, and the staging night gone on to move DNS records, with no proof that
+  the hosts refuse a client without the certificate.
+
+  Both loops are now theirs, one line each, with their hosts as they were: First install, step 16's
+  over Jainav's four hosts, the staging night's step 1's over the four that `menumesh.caddy` serves,
+  each step saying that the loop prints each host's exit status and curl's message. Step 16's rule
+  is their §6, step 4's, to which their §5, step 8, points: every line must show an exit status
+  other than 0 and `alert certificate required`, Ubuntu 24.04's line named, as Caddy answered and
+  asked for the client certificate, which only Cloudflare holds; and a line with `exit 55` and
+  `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still sending:
+  run the loop again. Its stop on an exit 0 stays ("If one ends in `exit 0`, stop: the server team's
+  round of origin pulls comes first, and this step waits for it"), and an `exit 7` (refused) or
+  `exit 28` (no answer) means Caddy isn't answering at all, which proves nothing; that, or any
+  other line, stops the step too: the server team's chat hears of it, with the lines as the loop
+  prints them, and the step waits for their answer. Its opening, its wait and the sentences on `db`
+  and the Supabase services after it stay. The staging night's step 1 has the same rule in a
+  paragraph of its own, before its stop on an exit 0, which stays as it was but for its end: the
+  night goes no further until they have answered, the check is `SAME` and every line shows
+  `alert certificate required`, where every exit not 0 was enough. An `exit 7` or `exit 28`, or any
+  other line, stops the night too: the admin asks in the server team's chat, giving the lines as the
+  loop prints them, and the night goes no further until they have answered and every line shows the
+  refusal. Its way back stays: none needed, as no record sends the server anything yet.
+
+  The leak test's last bullet, for their step 4, said "step 1's test", where every other "step 1" of
+  those bullets is their step 1, the two `curl`s from the admin's machine. It now names the loop of
+  this night's step 1, with the leak test's host `leaktest.menumesh.in` added, every line as that
+  step says (`alert certificate required`; an `exit 55` with `Connection reset by peer` or
+  `Broken pipe` is the same refusal: run the loop again), and copies no loop line. No other text
+  states the test's pass rule: First install, step 11's mention of it (a TLS connection without the
+  client certificate refused), step 22's and the kit README's (First install, in order, step 5) name
+  the test and nothing of its exit, and the server rehearsal names only step 16's wait, so they
+  stay. The cut-over's intro names VPS-153 among the entries that changed it.
+
+  Rehearsed here, on the loops as the edited RUNBOOK holds them, with no key on disk: a throwaway
+  image, `menumesh-curl:rehearsal`, `FROM` the kit check's pin, `ubuntu:24.04@sha256:fe815609…`,
+  with Ubuntu's curl 8.5.0-2ubuntu10.16 (`apt-get install -y --no-install-recommends curl`),
+  whose `curl --version` begins
+  `curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10`;
+  and the kit's pinned Caddy, `caddy:2.11.9-alpine@sha256:003a9780…`, on no network, its `/data` and
+  `/config` in tmpfs, with `admin off`, `skip_install_trust` and one site block for the eight hosts,
+  `tls internal` with `client_auth` in `mode require_and_verify` and a `trust_pool file` of the
+  image's CA bundle, and `respond "ok"`. Caddy took the bundle as a trust pool, logged "enabling
+  strict SNI-Host enforcement because TLS client auth is configured" and made the eight certificates
+  from its internal CA, which stayed in tmpfs. L16 and LS1 were taken from the edited RUNBOOK by an
+  exact full-line match, its lines 1115 and 1503 (indents 4 and 3), and `cmp` found each the same,
+  byte for byte, as the line this change was to hold; each ran in a curl container on Caddy's
+  network, under `sh` (dash) and under `bash` (5.2.21).
+
+  With `client_auth` on, the four runs gave 16 lines, all but one of them
+  `<host> exit 56 tlsv13 alert certificate required, errno 0`; LS1 under `sh` gave
+  `menumesh.in exit 55 curl: (55) Send failure: Connection reset by peer`. That run again gave four
+  `exit 56` lines, and once more two, while `www.menumesh.in` and `api.menumesh.in` each gave
+  `exit 55 curl: (55) getpeername() failed with errno 107: Transport endpoint is not connected`.
+  Three more runs of each loop under each shell gave 48 lines: 40 `exit 56`, 4 `exit 55` with
+  `Send failure: Connection reset by peer` and 4 `exit 55` with that `getpeername()` message; no
+  `Broken pipe` came. Without `client_auth` all 16 lines read `<host> exit 0 `, ending in a space,
+  as curl printed nothing. With Caddy stopped and the curl container on no network, all 16 read
+  `<host> exit 7 curl: (7) Failed to connect to <host> port 443 after 0 ms: Couldn't connect to server`,
+  where `738927a`'s loop, which echoed `$?` alone, would have printed `<host> exit 7`, and its rule
+  passed it. An `exit 28` was not rehearsed: it needs a listener that never answers. Afterwards no
+  `menumesh-kit-` container was left, the volumes were the same 264 as before, the image was removed
+  and the folder deleted.
+
+  The `getpeername()` line is one their text doesn't name: their rule, and ours with it, takes an
+  `exit 55` for the same refusal only with `Connection reset by peer` or `Broken pipe`, so on the
+  server such a line is "any other line" and stops the step or the night until the server team has
+  answered. Whether it is the same refusal is theirs to say, and the owner's to ask; ours follows
+  their text and adds nothing to it.
+
+  `tests/unit/vps-runbook.test.ts`: `JAINAV_LOOP` is L16, `JAINAV_LOOP_738927A` keeps the old line,
+  `MENUMESH_LOOP` and `MENUMESH_LOOP_738927A` hold the staging night's, and `originPulls`' loop
+  pattern reads LS1's form, the hosts captured as before. A shared helper, `alertRule`, reads an
+  origin test's place with `has()` and has four checks, each with its own problem, which
+  `originGate` runs on First install, step 16, and `originPulls` on the staging night's step 1: the
+  loop prints curl's message (its tail with `-sS`, `2>&1` and `${e##*::}`; with the old line back,
+  "prints each host's exit alone, not curl's message"); the rule names Ubuntu 24.04's
+  `exit 56 tlsv13 alert certificate required, errno 0` and passes only on
+  `alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is the
+  same refusal, run again; and an `exit 7` or `exit 28` proves nothing and stops, in the place's own
+  words. `leakChecks` gains a check that the last bullet names this night's step 1 loop with
+  `leaktest.menumesh.in` added, and its `exit 55` as the same refusal. `originGate` reads step 16's
+  stop as "If one ends in `exit 0`, stop: …", and `STAGING_SAME` ends "and every line shows
+  `alert certificate required`", as the problem of its stop now says.
+
+  On `738927a`'s RUNBOOK the new checks find 9 problems, each of `alertRule`'s four in both tests
+  and the leak test's one, and none on the fix. With them, three earlier checks that now read the
+  new text report one each there: `originGate`'s proof, which looks for L16, and `originPulls`' loop
+  and its stop's end, which read LS1's form and `STAGING_SAME`; so `originGate` reports 5,
+  `originPulls` 6 and `leakChecks` 1, and the other 39 of the 42 rules the re-wrap test runs report
+  none on `738927a`'s RUNBOOK; all 42 report none on the fix. The bites put `738927a`'s text back in
+  place of the new: `ORIGIN_PROOF_738927A`, step 16 from "the proof their" to its stop,
+  `SITE_RULE_738927A`, the staging night's step 1 from "every block" to its way back, and
+  `LEAK_BULLET_738927A`; each gives back that place exactly, and all three, with the range and the
+  intro put back, give back `738927a`'s whole RUNBOOK. The tests hold each bite to its exact
+  problems, and `LEAK_CHECKS_59407DA` now reports VPS-153's besides VPS-152's five. Each new phrase
+  has a refusal case of its own as well, in each test where it stands: the old loop line alone, the
+  alert taken out of the pass, the `exit 55` sentence, "which proves nothing" and the stop taken
+  out, the bullet's "step 1" back and its `exit 55` taken out, and the stop's end as at `738927a`.
+  Each of the seven new checks removed (`alertRule`'s four, its call in each rule and the leak
+  test's), each of the twelve new or changed phrases taken as always there (the eleven the checks
+  read, and the loop pattern back in `738927a`'s form) and each of ten phrases cut from the RUNBOOK
+  fails the test (the last also the re-wrap test): 29 mutations, in copies under `tests/unit`
+  deleted after. The titles of the three tests, the file's opening comment and the comments of
+  `JAINAV_LOOP`, `originGate`, `originPulls`, `STAGING_SAME` and `leakChecks` name VPS-153, and the
+  re-wrap test wraps 363 phrases where it wrapped 348: three swapped for the new text's and 15 new.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-153;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. VPS-123, VPS-143, VPS-147, VPS-148, VPS-150 and VPS-152 say
+  where this entry changed them. Not changed: their text; the vendored files and `SOURCE`, still
+  `0c23a8f`'s; and `scripts/vps-kit.mts`, whose `vps:edge` checks the handshake with Node's own
+  client, not curl, though its comment there still gives the staging night's test as curl's exit
+  not 0, left for the next change of the kit. No script and no service changed, and of the kit's
+  files only the README's range. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the
+  unit tests 1,357 in 73 files (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed;
+  `pnpm vps:edge` 22, 0 failed.
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

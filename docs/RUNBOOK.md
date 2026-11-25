@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-152 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-153 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -1108,15 +1108,22 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     word came on 2026-11-25, with their `0c23a8f`: VPS-150): until
     then this step, and every step after it, waits. Then, on the server and before `db`'s first
     container, the proof their `edge.md` §5, step 8, gives: a TLS connection without a client
-    certificate to each of Jainav's four hosts must fail in the handshake, every line ending in an
-    exit status other than 0:
+    certificate to each of Jainav's four hosts must fail in the handshake. The loop prints each
+    host's exit status and curl's message:
 
     ```sh
-    for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
+    for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done
     ```
 
-    If one ends in 0, stop: the server team's round of origin pulls comes first, and this step
-    waits for it. Then the database, then the Supabase services:
+    Every line must show an exit status other than 0 and `alert certificate required` (with
+    Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
+    asked for the client certificate, which only Cloudflare holds (their §6, step 4). A line with
+    `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl
+    was still sending: run the loop again. If one ends in `exit 0`, stop: the server team's round of
+    origin pulls comes first, and this step waits for it. An `exit 7` (refused) or `exit 28` (no
+    answer) means Caddy isn't answering at all, which proves nothing. That, or any other line, stops
+    the step too: the server team's chat hears of it, with the lines as the loop prints them, and
+    the step waits for their answer. Then the database, then the Supabase services:
     `sudo app-compose menumesh up -d db`, and once it is healthy
     (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows `db Up … (healthy)`),
     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each `(healthy)` in the same
@@ -1308,16 +1315,16 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147, VPS-148 and VPS-152). Production starts fresh on the server:
-nothing is copied from hosted production, the first platform admin comes from a one-time link made
-on the server, and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves
-on a night of its own before production's. For 14 days after production's night, Vercel and the
-paused hosted project stay the way back (part 5); then the Vercel parts go, in a stop of their own
-(part 6). The contract's order holds: rehearse with the limits and no site file, then install the
-site file, then change DNS last. Each step says what it must show and its way back. The server
-team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
-certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and
-§6 (the leak test), `launch.md` and `cloudflare.md`.
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152 and VPS-153). Production starts fresh on the
+server: nothing is copied from hosted production, the first platform admin comes from a one-time
+link made on the server, and the settings edited by hand in `/super` are typed again (VPS-110).
+Staging moves on a night of its own before production's. For 14 days after production's night,
+Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in a stop
+of their own (part 6). The contract's order holds: rehearse with the limits and no site file, then
+install the site file, then change DNS last. Each step says what it must show and its way back. The
+server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
+certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and §6
+(the leak test), `launch.md` and `cloudflare.md`.
 
 #### 1. Before the server (any day, each step reversible)
 
@@ -1489,18 +1496,29 @@ Then, in order:
    from now on, but no record sends it anything yet. Then, on the server, the origin test of
    authenticated origin pulls for this zone (the server team's `edge.md` §6, step 4), which only
    now tests these hosts (First install, step 11). Each host `menumesh.caddy` serves, every block
-   of it importing `tls_menumesh`, must fail in the handshake, its exit not 0:
+   of it importing `tls_menumesh`, must fail in the handshake. The loop prints each host's exit
+   status and curl's message:
 
    ```sh
-   for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
+   for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done
    ```
+
+   Every line must show an exit status other than 0 and `alert certificate required` (with
+   Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
+   asked for the client certificate, which only Cloudflare holds. A line with `exit 55` and
+   `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still
+   sending: run the loop again.
 
    An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not
    the server team's of `66c8c61` or later: stop. The admin runs the server's lines of First
    install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does, giving the
    live values as the lines print them, the confirmation's values and its commit. The night goes no
-   further until they have answered, the check is `SAME` and every exit is not 0. Way back: none
-   needed, as no record sends the server anything yet.
+   further until they have answered, the check is `SAME` and every line shows
+   `alert certificate required`. An `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't
+   answering at all, which proves nothing. That, or any other line, stops the night too: the admin
+   asks in the server team's chat, giving the lines as the loop prints them, and the night goes no
+   further until they have answered and every line shows the refusal. Way back: none needed, as no
+   record sends the server anything yet.
 
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
    `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record
@@ -1571,9 +1589,10 @@ Then, in order:
    - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an
      IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own
      address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;
-   - and a TLS connection without the client certificate refused (step 1's test, the leak test's
-     host added), where an `exit 55` is the same refusal, met while curl was still sending (their
-     step 4 gives it with `Connection reset by peer` or `Broken pipe`).
+   - and a TLS connection without the client certificate refused: the loop of this night's step 1,
+     with the leak test's host `leaktest.menumesh.in` added, every line as that step says
+     (`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is
+     the same refusal: run the loop again).
 
    Their step 5 here, in their order: first `menumesh.caddy` back as it was installed, from the
    kept copy (never removed: it is the zone's only site file), as the test block needs its
