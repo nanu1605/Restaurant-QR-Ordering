@@ -124,7 +124,11 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * four on the server, and SAME's six lines. Since VPS-151, step 8 makes the origin pulls' files
  * with /usr/bin/openssl, which in Git Bash writes the LF line endings app-apply needs, counts each
  * file's carriage returns with tr, and keeps the two certificates in the folder until step 11; a
- * copy from the password manager, there or in disaster recovery, is counted first.
+ * copy from the password manager, there or in disaster recovery, is counted first. Since their
+ * d0a7b14 (VPS-152), the leak test's step 1 sends CF-Connecting-IP in a second request of its own,
+ * which passes on Cloudflare's error code: 1000, then 403, or on the admin's own address should the
+ * echo server answer, keeps X-Forwarded-For to one header under 100 characters, and has step 2's
+ * log line show the path alone, without the first request's ?leakcheck=1.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -3646,7 +3650,14 @@ const UPSTREAM_DROPS = ['True-Client-IP', 'X-Client-IP', 'Forwarded'];
  * own address, X-Forwarded-Host the host, and the other three are gone, as the vendored upstream
  * snippet sets and removes them; menumesh.caddy adds no header of its own, so those are what its
  * upstreams get. Step 3: the origin's addresses time out, again with a temporary hPanel accept rule
- * for the admin's own address, removed after.
+ * for the admin's own address, removed after. Since their d0a7b14 (VPS-152) step 1 is two curls,
+ * with zone=menumesh.in set for both: the first, with ?leakcheck=1 and no CF-Connecting-IP, passes
+ * as above; the second sends CF-Connecting-IP alone, as in one request with the others Cloudflare's
+ * refusal would turn the whole reply into its 403, and passes on error code: 1000, then 403, or,
+ * should the echo server answer, only on the admin's own address in Cf-Connecting-Ip, anything else
+ * failing; and X-Forwarded-For stays one header under 100 characters, as Cloudflare gives error
+ * 1000 to a longer one, or to two. Step 2: the log line shows the path alone, without the first
+ * request's ?leakcheck=1.
  */
 const leakChecks = (runbook: string, snippets: string, site: string) =>
   inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
@@ -3688,6 +3699,54 @@ const leakChecks = (runbook: string, snippets: string, site: string) =>
         ? []
         : [
             'the leak test’s step 1 doesn’t pass on the headers the upstream snippet sets and removes, which are MenuMesh’s upstreams’ own',
+          ]),
+      ...(has(
+        leakTest,
+        "with `zone=menumesh.in` set on the admin's machine for step 1's two `curl`s",
+      )
+        ? []
+        : [
+            'the leak test doesn’t set zone=menumesh.in on the admin’s machine for step 1’s two curls',
+          ]),
+      ...(has(
+        leakTest,
+        "in step 1's first request (`?leakcheck=1`, five forged headers and no `CF-Connecting-IP`)",
+      ) &&
+      has(
+        leakTest,
+        "a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and passes when it prints `error code: 1000`, then `403`",
+      ) &&
+      has(
+        leakTest,
+        'It has a request of its own because, in one request with the other forged headers, it would turn the whole reply into that `403`',
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t send CF-Connecting-IP in a second request of its own, which passes on error code: 1000, then 403',
+          ]),
+      ...(has(
+        leakTest,
+        "If it prints the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the admin's own address. Anything else fails.",
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t pass the second request’s echo only when Cf-Connecting-Ip holds the admin’s own address, anything else failing',
+          ]),
+      ...(has(
+        leakTest,
+        '`X-Forwarded-For` stays one header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two',
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t keep X-Forwarded-For to one header under 100 characters, as Cloudflare refuses a longer one or two',
+          ]),
+      ...(has(
+        leakTest,
+        "without an address, a header or a query (step 1's first request sends `?leakcheck=1`, so the line shows the path alone)",
+      )
+        ? []
+        : [
+            'the leak test’s step 2 doesn’t say step 1’s first request sends ?leakcheck=1, so the log line shows the path alone',
           ]),
       ...(has(
         leakTest,
@@ -4114,6 +4173,30 @@ const LEAK_TEST_AC976CE = [
   '   `leaktest` record. Way back: the same four.',
   '',
   '',
+].join('\n');
+
+/**
+ * The leak test's checks at 59407da, its lead-in and bullets for the server team's steps 1 to 4:
+ * step 1 as one `curl`, as their edge.md had it before d0a7b14, so no word of the second request,
+ * its 403 or its echo, of X-Forwarded-For's limit, or of the log line's ?leakcheck=1.
+ */
+const LEAK_CHECKS_59407DA = [
+  "   Their steps 1 to 4 must then show, with `zone=menumesh.in` set on the admin's machine for step",
+  "   1's `curl`:",
+  '   - forged headers replaced: the echo server prints the headers it got, their names as Go writes',
+  '     them (`X-Real-Ip`, `Cf-Connecting-Ip`), and the four address headers, `X-Real-IP`,',
+  "     `X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own",
+  '     address, `X-Forwarded-Host` is `leaktest.menumesh.in`, and `True-Client-IP`, `X-Client-IP` and',
+  "     `Forwarded` are absent. The server team's `upstream` snippet sets and removes them, and",
+  '     `menumesh.caddy` adds no header of its own, so these are what `menumesh-web`, `menumesh-gw`',
+  '     and `menumesh-web-staging` get;',
+  '   - the log line without an address, a header or a query, and a made-up 16-character `/t/` token',
+  '     in it shown as `/t/_`;',
+  "   - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an",
+  "     IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own",
+  "     address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;",
+  "   - and a TLS connection without the client certificate refused (step 1's test, the leak test's",
+  '     host added).',
 ].join('\n');
 
 /** edge.env.example's header at ac976ce, from its fourth line: no newline guard and no check. */
@@ -4681,6 +4764,15 @@ const REWRAPPED = [
   'until the admin has them (step 11)',
   'must come from there gets the same `0 CR` check first',
   "given First install, step 8's `0 CR` check first",
+  // Read by the rules of the leak test's CF-Connecting-IP in a request of its own (VPS-152): a
+  // piece of each phrase that stands on one line.
+  "`zone=menumesh.in` set on the admin's machine for step",
+  "in step 1's first request (`?leakcheck=1`, five forged headers and no",
+  "a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and",
+  'It has a request of its own because, in one',
+  "the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the",
+  'header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two',
+  '`?leakcheck=1`, so the line shows the path alone)',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -8160,7 +8252,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('passes the leak test’s headers on what the server team’s upstream snippet sets and removes, and runs the origin check again with a temporary accept rule (VPS-143)', () => {
+  it('passes the leak test’s first request on what the server team’s upstream snippet sets and removes, sends CF-Connecting-IP in a second request of its own that passes on Cloudflare’s 403 or the admin’s own address, keeps X-Forwarded-For under 100 characters and the log line without ?leakcheck=1, and runs the origin check again with a temporary accept rule (VPS-143, VPS-152)', () => {
     expect(leakChecks(RUNBOOK, SNIPPETS, SITE)).toEqual([]);
     // ac976ce's checks: "forged headers replaced" and "a temporary hPanel accept rule" alone.
     const ac976ce = swap(
@@ -8200,6 +8292,76 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '\treverse_proxy menumesh-web:3000 {\n\t\timport upstream\n\t\theader_up X-Menumesh 1\n',
       ),
       'menumesh.caddy sets a header of its own: header_up X-Menumesh 1',
+    );
+    // 59407da's checks: step 1 as one curl, as their edge.md had it before d0a7b14. They report
+    // the five problems of VPS-152 and nothing else, as the checks before it still hold there.
+    const twoCurls =
+      'the leak test doesn’t set zone=menumesh.in on the admin’s machine for step 1’s two curls';
+    const ownRequest =
+      'the leak test’s step 1 doesn’t send CF-Connecting-IP in a second request of its own, which passes on error code: 1000, then 403';
+    const echoOnly =
+      'the leak test’s step 1 doesn’t pass the second request’s echo only when Cf-Connecting-Ip holds the admin’s own address, anything else failing';
+    const forwardedFor =
+      'the leak test’s step 1 doesn’t keep X-Forwarded-For to one header under 100 characters, as Cloudflare refuses a longer one or two';
+    const leakcheck =
+      'the leak test’s step 2 doesn’t say step 1’s first request sends ?leakcheck=1, so the log line shows the path alone';
+    const checks = (text: string) => leakChecks(text, SNIPPETS, SITE);
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '   Their steps 1 to 4 must then show', '\n\n   Their step 5 here'),
+      LEAK_CHECKS_59407DA,
+    );
+    expect(checks(old)).toEqual([twoCurls, ownRequest, echoOnly, forwardedFor, leakcheck]);
+    // Step 1 as one curl again; CF-Connecting-IP back among the first request's forged headers;
+    // the second request's pass on Cloudflare's 403 left out; and why it has a request of its own.
+    refuses(
+      checks,
+      swap(RUNBOOK, "for step\n   1's two `curl`s:", "for step\n   1's `curl`:"),
+      twoCurls,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, 'five forged headers and no', 'six forged headers, among them'),
+      ownRequest,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, '`error code: 1000`, then `403`', "the echo server's reply"),
+      ownRequest,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, cut(RUNBOOK, ' It has a request of its own', ' If it'), ''),
+      ownRequest,
+    );
+    // The echo passing on any address, X-Forwarded-For's limit left out, and the log line's
+    // ?leakcheck=1 unsaid, as at 59407da.
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        "it passes only when `Cf-Connecting-Ip` holds the\n     admin's own address.",
+        'it passes when `Cf-Connecting-Ip` holds an\n     address.',
+      ),
+      echoOnly,
+    );
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        '`X-Forwarded-For` stays one\n     header under 100 characters',
+        '`X-Forwarded-For` stays one\n     header',
+      ),
+      forwardedFor,
+    );
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        " (step 1's first request sends\n     `?leakcheck=1`, so the line shows the path alone)",
+        '',
+      ),
+      leakcheck,
     );
   });
 

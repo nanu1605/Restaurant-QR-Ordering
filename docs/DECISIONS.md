@@ -12123,7 +12123,8 @@ entries below.
   5-minute run, critical, which Telegram gets once and then every 6 hours while it lasts
   (`REPEAT_SECS=21600`); nothing else should show, the alias in `UPSTREAMS` keeping
   `not-an-upstream` away and the limits the `limits` alert, and there is no `kit.throwaway` label.
-  Their step 1 passes on what the echo server prints, header names as Go writes them (`X-Real-Ip`,
+  Their step 1 passes on what the echo server prints (VPS-152: since their `d0a7b14` it sends
+  `CF-Connecting-IP` in a request of its own), header names as Go writes them (`X-Real-Ip`,
   `Cf-Connecting-Ip`): the four address headers each holding the admin's own address,
   `X-Forwarded-Host` the host, and `True-Client-IP`, `X-Client-IP` and `Forwarded` absent. The
   vendored `upstream` snippet sets and removes exactly those, and `menumesh.caddy` adds no header of
@@ -13049,6 +13050,101 @@ entries below.
   certificate. No script, no service and no file of the kit changed. `pnpm lint`, `pnpm typecheck`
   and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook` 65 and `vps-kit`
   122, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-152 · The leak test's `CF-Connecting-IP` in a request of its own, as the server team's
+  `d0a7b14` has it (their PR #92; 2026-11-25):** the server team merged nanu1605/jainav-infotech#92,
+  its one commit `7145f32` ("docs: origin pulls round results and leak test fix"), into their main
+  as `d0a7b14aa17cf0182727b252c1d0037e1892c863` (2026-11-25, 00:43 IST), whose first parent is
+  `0c23a8f`. It changes their documents alone, `PROGRESS.md`, `docs/decisions.md` and three
+  runbooks, `edge.md`, `launch.md` and `server.md`, and none of the six vendored files, so they and
+  `SOURCE` stay at `0c23a8f` (VPS-150; VPS-151 named the merge). Their `edge.md` §6, the leak test,
+  changes in three places. Step 1 now sends two requests from the admin's machine, through
+  Cloudflare. The first, to `https://leaktest.$zone/?leakcheck=1`, forges `X-Forwarded-For`,
+  `True-Client-IP`, `X-Real-IP`, `X-Client-IP` and `Forwarded`, with no `CF-Connecting-IP`, and
+  passes as before: the four address headers each hold the real address, `X-Forwarded-Host` the
+  host, and the other three are absent. The second sends a forged `CF-Connecting-IP` alone to
+  `https://leaktest.$zone/`, with curl's `-w '%{http_code}\n'` printing the status after the reply,
+  and passes when it prints `error code: 1000`, then `403`; if it prints the echo server's reply
+  instead, it passes only when `Cf-Connecting-Ip` holds the real address, and anything else fails. A
+  new caution keeps `X-Forwarded-For` to one header under 100 characters, as Cloudflare gives error
+  1000 to a longer one, or to two. Step 2's log line has the path alone, as step 1 sent
+  `?leakcheck=1`; in step 4, a line with `exit 55` and `Broken pipe` is the same refusal as one with
+  `Connection reset by peer`, met while curl was still sending: run the loop again.
+
+  Their `docs/decisions.md` gives the reason in a new item, "On the server, 2026-11-25": Cloudflare
+  lists a request that brings its own `CF-Connecting-IP` as a cause of error 1000 and answered one
+  with a `403` before it reached the server; in one request with the other forged headers it turned
+  the whole test into that `403`. By their word the leak test then passed on the server: step 1 with
+  `CF-Connecting-IP` in a request of its own, steps 2 and 4, and step 3 on 2026-11-16. The rest of
+  the range records that round: Jainav's zone with pulls on at Cloudflare on 2026-11-24 and required
+  by Caddy since 2026-11-25 (`PROGRESS.md`, `launch.md` and that item), what they tried on the
+  server for a name of the zone that no site claims, the same `exit 55` note for `server.md`'s loop
+  and for their item on the server's own requests, and `edge.md`'s list of layers saying that Caddy
+  serves a site only over a connection with a client certificate from the zone's own CA. None of it
+  changes a step of ours: both our loops, First install, step 16's and the staging night's step 1,
+  pass any exit but 0.
+
+  The RUNBOOK's leak test (The server rehearsal and the cut-over, part 3, step 2) still described
+  their step 1 as one request: an admin who ran it as it now stands would see the second request's
+  `error code: 1000` and `403`, which ours never called a pass, and its log-line bullet didn't say
+  why the line has no query. Its design stays: their `edge.md` holds step 1's commands,
+  `zone=menumesh.in` is set on the admin's machine for them, and ours says what each step must show,
+  with no `curl` line of theirs copied in and no commit of theirs named, as the RUNBOOK names their
+  sections where it follows them. The lead-in now names step 1's two `curl`s. The first bullet,
+  forged headers replaced, is step 1's first request (`?leakcheck=1`, five forged headers and no
+  `CF-Connecting-IP`), passing on what it passed on before, its sentence on the `upstream` snippet
+  and `menumesh.caddy` kept. A new bullet has a forged `CF-Connecting-IP` refused in step 1's second
+  request, which sends it alone and passes when it prints `error code: 1000`, then `403`, as
+  Cloudflare refuses a request that brings its own `CF-Connecting-IP` (a cause of its error 1000)
+  before it reaches the server, as the server team saw on their zone on 2026-11-25. It gives the
+  reason the header has a request of its own, has the echo server's reply pass only when
+  `Cf-Connecting-Ip` holds the admin's own address, anything else failing, and carries their caution
+  on `X-Forwarded-For`. The log line's bullet says that step 1's first request sends `?leakcheck=1`,
+  so the line shows the path alone. The last bullet, step 1's origin test with the leak test's host
+  added, says that an `exit 55` is the same refusal, met while curl was still sending (their step 4
+  gives it with `Connection reset by peer` or `Broken pipe`): our loop prints each host's exit
+  alone, and its rule, an exit not 0, already passes it, so neither changes, and nothing has the
+  admin run it again. The cut-over's intro names VPS-152 among the entries that changed it, and
+  VPS-143 says where this entry changed it. VPS-115 and VPS-137 still hold: their step 1 still goes
+  through Cloudflare to the temporary `leaktest` site, and still reads eight headers, the first
+  request's eight, `Cf-Connecting-Ip` among them, which the second reads again only if the echo
+  server answers.
+
+  Cloudflare's page for error 1000, the one their text links, read here on 2026-11-25,
+  `https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1000/`,
+  lists seven common causes, three of them a request whose `X-Forwarded-For` is longer than 100
+  characters, one with two `X-Forwarded-For` headers, and one that includes a `CF-Connecting-IP`
+  header; its resolutions name none of the three. So what the second request and the caution expect
+  is on Cloudflare's own list, as their text has it. Nothing here can run the leak test, which needs
+  the server, the temporary `leaktest` record and Cloudflare in front of it: nothing was rehearsed,
+  and the text follows their `d0a7b14` and that page.
+
+  `leakChecks` gains five checks, each with its own problem and refusal case, all reading the leak
+  test with `has()`: step 1's two `curl`s with `zone=menumesh.in` set; `CF-Connecting-IP` in a
+  second request of its own (the first request's five forged headers and no `CF-Connecting-IP`, the
+  second's pass on `error code: 1000`, then `403`, and why it is separate); the echo server's reply
+  passing only on the admin's own address, anything else failing; the `X-Forwarded-For` limit; and
+  the log line's `?leakcheck=1`, the path alone. On `59407da`'s RUNBOOK they find 5 problems, one
+  each, and none on the fix; of the 42 rules the re-wrap test runs, the other 41 report none on
+  `59407da`'s RUNBOOK or on the fix. The bite, `LEAK_CHECKS_59407DA`, puts `59407da`'s lead-in and
+  bullets back in place of the new ones, which gives back `59407da`'s leak test exactly:
+  `leakChecks` reports those five problems on it and nothing else, so its earlier checks still pass
+  there. Each new phrase has a refusal case of its own as well: one `curl` named again,
+  `CF-Connecting-IP` back among the first request's headers, the `403` taken out, the reason taken
+  out, the echo passing on any address, the limit taken out and the log line's note taken out. Each
+  of the five checks removed, each of the seven phrases taken as always there, and each phrase cut
+  from the RUNBOOK fails the test (the last also the re-wrap test), in copies under `tests/unit`
+  deleted after. The test's title and `leakChecks`' comment name VPS-152, and the re-wrap test wraps
+  348 phrases where it wrapped 341.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-152;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Not changed: their text; `scripts/vps-kit.mts`, whose edge
+  checks send their forged headers, `CF-Connecting-IP` among them, straight to the kit's Caddy on
+  127.0.0.1, not through Cloudflare; and `scripts/vps-probe.mts`, which forges no client-address
+  header. No script and no service changed, and of the kit's files only the README's range.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
+  (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

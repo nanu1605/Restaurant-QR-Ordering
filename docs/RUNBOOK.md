@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-151 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-152 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -1308,11 +1308,11 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147 and VPS-148). Production starts fresh on the server: nothing is
-copied from hosted production, the first platform admin comes from a one-time link made on the
-server, and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves on a
-night of its own before production's. For 14 days after production's night, Vercel and the paused
-hosted project stay the way back (part 5); then the Vercel parts go, in a stop of their own
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148 and VPS-152). Production starts fresh on the server:
+nothing is copied from hosted production, the first platform admin comes from a one-time link made
+on the server, and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves
+on a night of its own before production's. For 14 days after production's night, Vercel and the
+paused hosted project stay the way back (part 5); then the Vercel parts go, in a stop of their own
 (part 6). The contract's order holds: rehearse with the limits and no site file, then install the
 site file, then change DNS last. Each step says what it must show and its way back. The server
 team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
@@ -1548,21 +1548,32 @@ Then, in order:
    `UPSTREAMS`, keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's
    network aliases, not its name), and its `--memory` and `--cpus` keep it out of the limits alert.
    Their steps 1 to 4 must then show, with `zone=menumesh.in` set on the admin's machine for step
-   1's `curl`:
-   - forged headers replaced: the echo server prints the headers it got, their names as Go writes
+   1's two `curl`s:
+   - forged headers replaced, in step 1's first request (`?leakcheck=1`, five forged headers and no
+     `CF-Connecting-IP`): the echo server prints the headers it got, their names as Go writes
      them (`X-Real-Ip`, `Cf-Connecting-Ip`), and the four address headers, `X-Real-IP`,
      `X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own
      address, `X-Forwarded-Host` is `leaktest.menumesh.in`, and `True-Client-IP`, `X-Client-IP` and
      `Forwarded` are absent. The server team's `upstream` snippet sets and removes them, and
      `menumesh.caddy` adds no header of its own, so these are what `menumesh-web`, `menumesh-gw`
      and `menumesh-web-staging` get;
-   - the log line without an address, a header or a query, and a made-up 16-character `/t/` token
+   - a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and
+     passes when it prints `error code: 1000`, then `403`: Cloudflare refuses a request that brings
+     its own `CF-Connecting-IP` (a cause of its error 1000) before it reaches the server, as the
+     server team saw on their zone on 2026-11-25. It has a request of its own because, in one
+     request with the other forged headers, it would turn the whole reply into that `403`. If it
+     prints the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the
+     admin's own address. Anything else fails. The first request's `X-Forwarded-For` stays one
+     header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two;
+   - the log line without an address, a header or a query (step 1's first request sends
+     `?leakcheck=1`, so the line shows the path alone), and a made-up 16-character `/t/` token
      in it shown as `/t/_`;
    - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an
      IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own
      address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;
    - and a TLS connection without the client certificate refused (step 1's test, the leak test's
-     host added).
+     host added), where an `exit 55` is the same refusal, met while curl was still sending (their
+     step 4 gives it with `Connection reset by peer` or `Broken pipe`).
 
    Their step 5 here, in their order: first `menumesh.caddy` back as it was installed, from the
    kept copy (never removed: it is the zone's only site file), as the test block needs its
