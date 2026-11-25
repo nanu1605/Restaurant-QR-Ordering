@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-153 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-154 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -1118,8 +1118,9 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
     Every line must show an exit status other than 0 and `alert certificate required` (with
     Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
     asked for the client certificate, which only Cloudflare holds (their §6, step 4). A line with
-    `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl
-    was still sending: run the loop again. If one ends in `exit 0`, stop: the server team's round of
+    `exit 55` and `Connection reset by peer`, `Broken pipe` or
+    `getpeername() failed with errno 107` is the same refusal, met while curl was still sending:
+    run the loop again. If one ends in `exit 0`, stop: the server team's round of
     origin pulls comes first, and this step waits for it. An `exit 7` (refused) or `exit 28` (no
     answer) means Caddy isn't answering at all, which proves nothing. That, or any other line, stops
     the step too: the server team's chat hears of it, with the lines as the loop prints them, and
@@ -1315,14 +1316,14 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152 and VPS-153). Production starts fresh on the
-server: nothing is copied from hosted production, the first platform admin comes from a one-time
-link made on the server, and the settings edited by hand in `/super` are typed again (VPS-110).
-Staging moves on a night of its own before production's. For 14 days after production's night,
-Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in a stop
-of their own (part 6). The contract's order holds: rehearse with the limits and no site file, then
-install the site file, then change DNS last. Each step says what it must show and its way back. The
-server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152, VPS-153 and VPS-154). Production starts fresh
+on the server: nothing is copied from hosted production, the first platform admin comes from a
+one-time link made on the server, and the settings edited by hand in `/super` are typed again
+(VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
+night, Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in
+a stop of their own (part 6). The contract's order holds: rehearse with the limits and no site file,
+then install the site file, then change DNS last. Each step says what it must show and its way back.
+The server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
 certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and §6
 (the leak test), `launch.md` and `cloudflare.md`.
 
@@ -1506,8 +1507,8 @@ Then, in order:
    Every line must show an exit status other than 0 and `alert certificate required` (with
    Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
    asked for the client certificate, which only Cloudflare holds. A line with `exit 55` and
-   `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still
-   sending: run the loop again.
+   `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107` is the same
+   refusal, met while curl was still sending: run the loop again.
 
    An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not
    the server team's of `66c8c61` or later: stop. The admin runs the server's lines of First
@@ -1591,8 +1592,8 @@ Then, in order:
      address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;
    - and a TLS connection without the client certificate refused: the loop of this night's step 1,
      with the leak test's host `leaktest.menumesh.in` added, every line as that step says
-     (`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is
-     the same refusal: run the loop again).
+     (`alert certificate required`; an `exit 55` with a message that step names is the same refusal:
+     run the loop again).
 
    Their step 5 here, in their order: first `menumesh.caddy` back as it was installed, from the
    kept copy (never removed: it is the zone's only site file), as the test block needs its

@@ -133,7 +133,9 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * night's step 1, print curl's message beside each host's exit and pass only on alert certificate
  * required, an exit 55 with Connection reset by peer or Broken pipe the same refusal, run again,
  * and an exit 7 or 28, which proves nothing, a stop; and the leak test's step 4 runs the staging
- * night's step 1 loop with its own host added, its lines read as that step reads them.
+ * night's step 1 loop with its own host added, its lines read as that step reads them. Since
+ * VPS-154 an exit 55 with curl's getpeername() failed with errno 107 is the same refusal too, as
+ * curl 8.5.0's own source shows, and the leak test's step 4 leaves the messages to that step.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -2564,9 +2566,14 @@ const LOOP_MESSAGE =
 /** The pass, as their §6, step 4, words it, with what Ubuntu 24.04's curl prints. */
 const ALERT_PASS =
   "Every line must show an exit status other than 0 and `alert certificate required` (with Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and asked for the client certificate, which only Cloudflare holds";
-/** The refusal met while curl was still sending (their fb50cb1, and d0a7b14's Broken pipe). */
+/**
+ * The refusal met while curl was still sending (their fb50cb1, and d0a7b14's Broken pipe), and
+ * since VPS-154 curl's getpeername() message: curl 8.5.0 records it, failing nothing, when Caddy
+ * has already closed the connection, and prints it as the first error met, though the exit 55
+ * comes from the send that fails after it.
+ */
 const SAME_REFUSAL =
-  'A line with `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still sending: run the loop again';
+  'A line with `exit 55` and `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107` is the same refusal, met while curl was still sending: run the loop again';
 /** A Caddy that never answered the handshake. */
 const PROVES_NOTHING =
   "An `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't answering at all, which proves nothing";
@@ -2581,7 +2588,8 @@ const NIGHT_STOP =
  * An origin test's loop and rule in `text` (VPS-153), `test` naming it in the problems and `stop`
  * being its stop on an exit 7, an exit 28 or any other line: the loop prints curl's message, and
  * the rule passes only on alert certificate required, takes an exit 55 with Connection reset by
- * peer or Broken pipe for the same refusal, run again, and stops on what proves nothing.
+ * peer, Broken pipe or (since VPS-154) getpeername() failed with errno 107 for the same refusal,
+ * run again, and stops on what proves nothing.
  */
 function alertRule(text: string, test: string, stop: string): string[] {
   return [
@@ -2596,7 +2604,7 @@ function alertRule(text: string, test: string, stop: string): string[] {
     ...(has(text, SAME_REFUSAL)
       ? []
       : [
-          `${test} doesn’t take an exit 55 with Connection reset by peer or Broken pipe for the same refusal, run again`,
+          `${test} doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again`,
         ]),
     ...(has(text, PROVES_NOTHING) && has(text, stop)
       ? []
@@ -2666,6 +2674,16 @@ const SITE_RULE_738927A = [
   '   further until they have answered, the check is `SAME` and every exit is not 0. Way back: none',
   '   needed, as no record sends the server anything yet.',
 ].join('\n');
+/**
+ * The staging night's exit 55 sentence at 86e73cb, which took an exit 55 for the same refusal only
+ * with Connection reset by peer or Broken pipe, so curl's getpeername() line stopped the night
+ * (VPS-154).
+ */
+const NIGHT_REFUSAL_86E73CB = [
+  ' A line with `exit 55` and',
+  '   `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still',
+  '   sending: run the loop again.',
+].join('\n');
 
 /**
  * Authenticated origin pulls proved for MenuMesh's own hosts (Stop D's review, D1 of the cut-over
@@ -2681,8 +2699,9 @@ const SITE_RULE_738927A = [
  * check's server lines since VPS-148, where it was a comparison with a copy. Since their c7bcfad
  * (VPS-153) the loop is theirs, printing curl's message beside each host's exit, and the night goes
  * on only once every line shows alert certificate required: an exit 55 with Connection reset by
- * peer or Broken pipe is the same refusal, run again, and an exit 7 or 28, which proves nothing, or
- * any other line stops the night for the server team's answer in their chat.
+ * peer, Broken pipe or (since VPS-154) getpeername() failed with errno 107 is the same refusal, run
+ * again, and an exit 7 or 28, which proves nothing, or any other line stops the night for the
+ * server team's answer in their chat.
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
@@ -3528,6 +3547,16 @@ const ORIGIN_PROOF_738927A = [
   "    If one ends in 0, stop: the server team's round of origin pulls comes first, and this step",
   '    waits for it.',
 ].join('\n');
+/**
+ * First install, step 16's exit 55 sentence at 86e73cb, which took an exit 55 for the same refusal
+ * only with Connection reset by peer or Broken pipe, so curl's getpeername() line stopped the step
+ * (VPS-154).
+ */
+const STEP_16_REFUSAL_86E73CB = [
+  ' A line with',
+  '    `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl',
+  '    was still sending: run the loop again.',
+].join('\n');
 
 /**
  * MenuMesh's first container waits for the server team's word that origin pulls are on for every
@@ -3536,9 +3565,10 @@ const ORIGIN_PROOF_738927A = [
  * the step proves it before db's first container: their loop over Jainav's four hosts, run on the
  * server, and a stop on an exit 0. Since their c7bcfad (VPS-153) the loop prints curl's message
  * beside each host's exit, and its rule is their §6, step 4's: every line shows alert certificate
- * required, an exit 55 with Connection reset by peer or Broken pipe is the same refusal, run again,
- * and an exit 7 or 28, which proves nothing, or any other line stops the step for the server
- * team's answer in their chat, as an exit 0 stops it for their round of origin pulls.
+ * required, an exit 55 with Connection reset by peer, Broken pipe or (since VPS-154) getpeername()
+ * failed with errno 107 is the same refusal, run again, and an exit 7 or 28, which proves nothing,
+ * or any other line stops the step for the server team's answer in their chat, as an exit 0 stops
+ * it for their round of origin pulls.
  */
 const originGate = (runbook: string) =>
   inPlaces(runbook, ['dbStep', 'rehearsal'], ({ dbStep, rehearsal }) => {
@@ -3782,8 +3812,10 @@ const UPSTREAM_DROPS = ['True-Client-IP', 'X-Client-IP', 'Forwarded'];
  * 1000 to a longer one, or to two. Step 2: the log line shows the path alone, without the first
  * request's ?leakcheck=1. Step 4, since their c7bcfad (VPS-153): the loop of the staging night's
  * step 1, named so, as "step 1" in these bullets is their step 1, with leaktest.menumesh.in added,
- * every line read as that step reads it, alert certificate required, and an exit 55 with Connection
- * reset by peer or Broken pipe the same refusal, run again.
+ * every line read as that step reads it, alert certificate required, and an exit 55 the same
+ * refusal, run again, only with a message that step names: since VPS-154 the bullet leaves the
+ * messages to that step, as its own list, Connection reset by peer or Broken pipe, left out curl's
+ * getpeername() line.
  */
 const leakChecks = (runbook: string, snippets: string, site: string) =>
   inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
@@ -3888,11 +3920,11 @@ const leakChecks = (runbook: string, snippets: string, site: string) =>
       ) &&
       has(
         leakTest,
-        '(`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is the same refusal: run the loop again)',
+        '(`alert certificate required`; an `exit 55` with a message that step names is the same refusal: run the loop again)',
       )
         ? []
         : [
-            'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 the same refusal',
+            'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 with a message that step names the same refusal',
           ]),
     ];
   });
@@ -4345,6 +4377,17 @@ const LEAK_BULLET_738927A = [
   "   - and a TLS connection without the client certificate refused (step 1's test, the leak test's",
   '     host added), where an `exit 55` is the same refusal, met while curl was still sending (their',
   '     step 4 gives it with `Connection reset by peer` or `Broken pipe`).',
+].join('\n');
+/**
+ * The leak test's last bullet at 86e73cb, which listed the exit 55 messages itself, Connection
+ * reset by peer or Broken pipe, where the staging night's step 1 now takes curl's getpeername()
+ * line too (VPS-154).
+ */
+const LEAK_BULLET_86E73CB = [
+  "   - and a TLS connection without the client certificate refused: the loop of this night's step 1,",
+  "     with the leak test's host `leaktest.menumesh.in` added, every line as that step says",
+  '     (`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is',
+  '     the same refusal: run the loop again).',
 ].join('\n');
 
 /** edge.env.example's header at ac976ce, from its fourth line: no newline guard and no check. */
@@ -4927,7 +4970,6 @@ const REWRAPPED = [
   'Every line must show an exit status other than 0 and `alert certificate required` (with',
   "Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and",
   'asked for the client certificate, which only Cloudflare holds',
-  '`Connection reset by peer` or `Broken pipe` is the same refusal, met while curl',
   'An `exit 7` (refused) or `exit 28` (no',
   'which proves nothing. That, or any other line, stops',
   "the step too: the server team's chat hears of it, with the lines as the loop prints them, and",
@@ -4936,8 +4978,13 @@ const REWRAPPED = [
   'further until they have answered and every line shows the refusal',
   "the loop of this night's step 1,",
   "with the leak test's host `leaktest.menumesh.in` added, every line as that step says",
-  '(`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is',
-  'the same refusal: run the loop again).',
+  // Read by the rules of the origin tests' exit 55, curl's getpeername() line among its messages,
+  // and of the leak test's bullet that leaves them to the staging night's step 1 (VPS-154): a
+  // piece of each phrase that stands on one line, in both tests where they share it.
+  '`Connection reset by peer`, `Broken pipe` or',
+  '`getpeername() failed with errno 107` is the same',
+  '(`alert certificate required`; an `exit 55` with a message that step names is the same refusal:',
+  'run the loop again).',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7436,7 +7483,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('proves authenticated origin pulls for every host the site file serves, right after it goes in, every line showing curl’s alert certificate required and an exit 7 or 28 stopping the night (Stop D review, D1 of the cut-over sequence; VPS-153)', () => {
+  it('proves authenticated origin pulls for every host the site file serves, right after it goes in, every line showing curl’s alert certificate required, an exit 55 with curl’s getpeername() message the same refusal and an exit 7 or 28 stopping the night (Stop D review, D1 of the cut-over sequence; VPS-153, VPS-154)', () => {
     expect(siteBlocks(SITE, 'tls_menumesh')).toEqual(
       ['menumesh.in', 'www.menumesh.in', 'api.menumesh.in', 'staging.menumesh.in'].map((host) => ({
         host,
@@ -7529,7 +7576,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     const alert =
       'the staging night’s origin test passes any exit but 0, not only alert certificate required (Ubuntu 24.04’s exit 56 tlsv13 alert certificate required, errno 0)';
     const refusal =
-      'the staging night’s origin test doesn’t take an exit 55 with Connection reset by peer or Broken pipe for the same refusal, run again';
+      'the staging night’s origin test doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again';
     const nothing =
       'the staging night’s origin test doesn’t stop on an exit 7 or 28, which proves nothing';
     expect(
@@ -7565,15 +7612,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       alert,
     );
-    refuses(
-      pulls,
-      swap(
-        RUNBOOK,
-        ' A line with `exit 55` and\n   `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still\n   sending: run the loop again.',
-        '',
-      ),
-      refusal,
-    );
+    const nightRefusal = cut(RUNBOOK, ' A line with `exit 55` and\n', '\n\n   An exit 0 means');
+    refuses(pulls, swap(RUNBOOK, nightRefusal, ''), refusal);
     refuses(
       pulls,
       swap(
@@ -7601,6 +7641,10 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       unasked,
     );
+    // 86e73cb's exit 55 sentence (VPS-154): Connection reset by peer or Broken pipe alone, so curl's
+    // getpeername() line, the same refusal as curl 8.5.0's source shows, stopped the night. It
+    // reports that one problem and nothing else.
+    expect(pulls(swap(RUNBOOK, nightRefusal, NIGHT_REFUSAL_86E73CB))).toEqual([refusal]);
     // cd6a733's step 11: its own test, which proves nothing before the site file, as the only one.
     refuses(
       pulls,
@@ -8096,7 +8140,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('starts no container before the server team says origin pulls are on for every zone, and proves it with their loop, every line showing curl’s alert certificate required (VPS-135, VPS-143, VPS-153)', () => {
+  it('starts no container before the server team says origin pulls are on for every zone, and proves it with their loop, every line showing curl’s alert certificate required and an exit 55 with curl’s getpeername() message the same refusal (VPS-135, VPS-143, VPS-153, VPS-154)', () => {
     expect(originGate(RUNBOOK)).toEqual([]);
     // 21a13bf's step 16, and its rehearsal's first step.
     refuses(
@@ -8140,7 +8184,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     const alert =
       'First install, step 16’s origin test passes any exit but 0, not only alert certificate required (Ubuntu 24.04’s exit 56 tlsv13 alert certificate required, errno 0)';
     const refusal =
-      'First install, step 16’s origin test doesn’t take an exit 55 with Connection reset by peer or Broken pipe for the same refusal, run again';
+      'First install, step 16’s origin test doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again';
     const nothing =
       'First install, step 16’s origin test doesn’t stop on an exit 7 or 28, which proves nothing';
     expect(
@@ -8164,15 +8208,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       alert,
     );
-    refuses(
-      originGate,
-      swap(
-        RUNBOOK,
-        ' A line with\n    `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl\n    was still sending: run the loop again.',
-        '',
-      ),
-      refusal,
-    );
+    const stepRefusal = cut(RUNBOOK, ' A line with\n    `exit 55`', ' If one ends in');
+    refuses(originGate, swap(RUNBOOK, stepRefusal, ''), refusal);
     refuses(
       originGate,
       swap(
@@ -8191,6 +8228,10 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ),
       nothing,
     );
+    // 86e73cb's exit 55 sentence (VPS-154): Connection reset by peer or Broken pipe alone, so curl's
+    // getpeername() line, the same refusal as curl 8.5.0's source shows, stopped the step. It
+    // reports that one problem and nothing else.
+    expect(originGate(swap(RUNBOOK, stepRefusal, STEP_16_REFUSAL_86E73CB))).toEqual([refusal]);
   });
 
   it('keeps the drills to the second weekend, or the third, outside the backups (the server team’s review, VPS-138)', () => {
@@ -8556,7 +8597,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('passes the leak test’s first request on what the server team’s upstream snippet sets and removes, sends CF-Connecting-IP in a second request of its own that passes on Cloudflare’s 403 or the admin’s own address, keeps X-Forwarded-For under 100 characters and the log line without ?leakcheck=1, runs the origin check again with a temporary accept rule, and runs the staging night’s step 1 loop with its own host added, its lines read as that step reads them (VPS-143, VPS-152, VPS-153)', () => {
+  it('passes the leak test’s first request on what the server team’s upstream snippet sets and removes, sends CF-Connecting-IP in a second request of its own that passes on Cloudflare’s 403 or the admin’s own address, keeps X-Forwarded-For under 100 characters and the log line without ?leakcheck=1, runs the origin check again with a temporary accept rule, and runs the staging night’s step 1 loop with its own host added, its lines and an exit 55 read as that step reads them (VPS-143, VPS-152, VPS-153, VPS-154)', () => {
     expect(leakChecks(RUNBOOK, SNIPPETS, SITE)).toEqual([]);
     // ac976ce's checks: "forged headers replaced" and "a temporary hPanel accept rule" alone.
     const ac976ce = swap(
@@ -8611,7 +8652,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     const leakcheck =
       'the leak test’s step 2 doesn’t say step 1’s first request sends ?leakcheck=1, so the log line shows the path alone';
     const nightLoop =
-      'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 the same refusal';
+      'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 with a message that step names the same refusal';
     const checks = (text: string) => leakChecks(text, SNIPPETS, SITE);
     const old = swap(
       RUNBOOK,
@@ -8641,6 +8682,22 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         ),
       ),
     ).toEqual([nightLoop]);
+    // 86e73cb's last bullet (VPS-154): its own list of the exit 55's messages, Connection reset by
+    // peer or Broken pipe, which left out curl's getpeername() line that the staging night's step 1
+    // now takes. It reports that one problem and nothing else.
+    expect(
+      checks(
+        swap(
+          RUNBOOK,
+          cut(
+            RUNBOOK,
+            '   - and a TLS connection without the client certificate refused',
+            '\n\n   Their step 5 here',
+          ),
+          LEAK_BULLET_86E73CB,
+        ),
+      ),
+    ).toEqual([nightLoop]);
     // The loop named by "step 1" again, and its exit 55 left out.
     refuses(
       checks,
@@ -8651,7 +8708,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       checks,
       swap(
         RUNBOOK,
-        '; an `exit 55` with `Connection reset by peer` or `Broken pipe` is\n     the same refusal: run the loop again)',
+        '; an `exit 55` with a message that step names is the same refusal:\n     run the loop again)',
         ')',
       ),
       nightLoop,

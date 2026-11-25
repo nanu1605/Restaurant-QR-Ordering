@@ -13250,8 +13250,8 @@ entries below.
   The `getpeername()` line is one their text doesn't name: their rule, and ours with it, takes an
   `exit 55` for the same refusal only with `Connection reset by peer` or `Broken pipe`, so on the
   server such a line is "any other line" and stops the step or the night until the server team has
-  answered. Whether it is the same refusal is theirs to say, and the owner's to ask; ours follows
-  their text and adds nothing to it.
+  answered. Whether it is the same refusal is theirs to say, and the owner's to ask (VPS-154: curl's
+  own source shows it is, and ours now names it); ours follows their text and adds nothing to it.
 
   `tests/unit/vps-runbook.test.ts`: `JAINAV_LOOP` is L16, `JAINAV_LOOP_738927A` keeps the old line,
   `MENUMESH_LOOP` and `MENUMESH_LOOP_738927A` hold the staging night's, and `originPulls`' loop
@@ -13300,6 +13300,67 @@ entries below.
   files only the README's range. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the
   unit tests 1,357 in 73 files (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed;
   `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-154 · An `exit 55` with curl's `getpeername()` message is the same refusal (VPS-153's
+  rehearsal and curl 8.5.0's source; 2026-11-25):** VPS-153's rehearsal (Ubuntu 24.04's curl 8.5.0,
+  Caddy with `client_auth` in `require_and_verify`) printed 72 lines: 61 with `exit 56` and
+  `alert certificate required`, 5 with `exit 55` and `Send failure: Connection reset by peer`, and 6
+  with `exit 55` and `getpeername() failed with errno 107: Transport endpoint is not connected`; no
+  `exit 55` came without `client_auth` (all `exit 0`) or with Caddy stopped (all `exit 7`).
+  VPS-153's rule, like the server team's, took an `exit 55` for the same refusal only with
+  `Connection reset by peer` or `Broken pipe`, so the `getpeername()` line stopped the step or the
+  night as "any other line": at the rehearsal's rate, 6 lines in 72, about 3 runs in 10 of a
+  four-host loop would hold one.
+
+  curl's own source settles it, at its tag `curl-8_5_0` (copies of `lib/cf-socket.c` and
+  `lib/curl_trc.c`, read here and not kept). In `lib/cf-socket.c`, `conn_set_primary_ip()`, a
+  `static void` function, calls `getpeername()` and, when that fails, records its message with
+  `failf()` and returns: being `void`, it fails nothing, and the comment on why TFTP skips the call,
+  as it never connects its socket, names that very message. It runs from `cf_socket_active()`, which
+  `cf_socket_cntrl()` calls on `CF_CTRL_CONN_INFO_UPDATE`, the update of the connection's details
+  once it is connected. In `lib/curl_trc.c`, `Curl_failf()` copies a message into the error buffer
+  only while none has been written there, so the curl tool prints the first error it met.
+
+  So an `exit 55` (`CURLE_SEND_ERROR`: sending the request failed) with that message is the same
+  send failure as one with `Connection reset by peer` or `Broken pipe`: Caddy had already closed the
+  connection after the handshake when curl updated its details, and curl shows that earlier,
+  harmless message. Naming it weakens nothing: the pass still needs every line to show
+  `alert certificate required`, an `exit 55` line only has the loop run again, and a host that takes
+  clients without the certificate (`exit 0`) or isn't answering (`exit 7`, `exit 28`) still stops
+  the step or the night.
+
+  Both rules, First install, step 16's and the staging night's step 1's, now say: "A line with
+  `exit 55` and `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107`
+  is the same refusal, met while curl was still sending: run the loop again." The rest of each
+  stays, and only that sentence's lines are wrapped again. The leak test's last bullet no longer
+  repeats the list: every line as that step says (`alert certificate required`; an `exit 55` with a
+  message that step names is the same refusal: run the loop again). The cut-over's intro names
+  VPS-154, and VPS-153 says where this entry changed it. Their `edge.md` (§6, step 4, at `80f39fa`)
+  still names only `Connection reset by peer` and `Broken pipe`; whether to tell the server team is
+  the owner's call.
+
+  `tests/unit/vps-runbook.test.ts`: `SAME_REFUSAL` is the new sentence,
+  `getpeername() failed with errno 107` pinned in it, and `alertRule`'s problem names the three
+  messages; the leak test's check reads the bullet's new words, its problem asking for an `exit 55`
+  with a message that step names. The bites `STEP_16_REFUSAL_86E73CB`, `NIGHT_REFUSAL_86E73CB` and
+  `LEAK_BULLET_86E73CB` put back `86e73cb`'s sentence in each rule and its bullet, each giving back
+  that place exactly and, with the range and the intro put back, `86e73cb`'s whole RUNBOOK; each is
+  refused with its one problem and nothing else, and the three refusal cases that cut the old words
+  cut the new. On `86e73cb`'s RUNBOOK the 42 rules the re-wrap test runs report 3 problems, one in
+  each place (`originGate`, `originPulls` and `leakChecks`), and none on the fix. Seven mutations
+  each fail a test: the two changed phrases taken as always there, each rule's sentence and its
+  `getpeername()` message cut from the RUNBOOK, and the bullet's new words cut, in copies deleted
+  after. The re-wrap test wraps 364 phrases where it wrapped 363, three swapped for the new text's
+  and one new; the three tests' titles, the file's opening comment and the comments of
+  `SAME_REFUSAL`, `alertRule`, `originGate`, `originPulls` and `leakChecks` name VPS-154.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-154;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Nothing was run against the server, and no rehearsal was
+  needed: the line was seen in VPS-153's. `pnpm vps:check` and `pnpm vps:edge`, which read neither
+  these rules nor this file (First install, step 8, is untouched), were not run. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook`
+  65, none new).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
