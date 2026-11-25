@@ -135,7 +135,11 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * and an exit 7 or 28, which proves nothing, a stop; and the leak test's step 4 runs the staging
  * night's step 1 loop with its own host added, its lines read as that step reads them. Since
  * VPS-154 an exit 55 with curl's getpeername() failed with errno 107 is the same refusal too, as
- * curl 8.5.0's own source shows, and the leak test's step 4 leaves the messages to that step.
+ * curl 8.5.0's own source shows, and the leak test's step 4 leaves the messages to that step. Since
+ * VPS-155 the owner's key steps run in Git Bash on Windows: First install, step 1, mounts the
+ * folder as `pwd -W` gives it, behind MSYS_NO_PATHCONV=1, as Git Bash turns "$PWD:/k" into C:\…;K:\
+ * and Windows PowerShell can't parse it, with the line for macOS and Linux beside it, and step 7's
+ * ssh-keygen, whose empty -N '' Windows PowerShell 5.1 drops, runs in Git Bash, not PowerShell.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -192,6 +196,8 @@ const PLACES = {
   vps: ['## The shared server (VPS)', '\n## Razorpay live switch'],
   firstKey: ['1. **The backup key**', '2. **The bucket:**'],
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
+  // First install, step 7, whose ssh-keygen runs in Git Bash (VPS-155).
+  deployKey: ['7. **The deploy key**', '8. **The zone:**'],
   tokenBullet: ["- The bucket's token, Telegram and the heartbeat addresses", '- The backup key:'],
   backupKey: ['- The backup key:', '- The signing key (after the server may have been reached'],
   rotation: ['- The signing key (after the server may have been reached', "- Staging's password"],
@@ -3733,6 +3739,102 @@ const ownCA = (runbook: string) =>
   );
 
 /**
+ * Where the owner's steps off the server run, in First install, step 8's words (VPS-151), which
+ * steps 1 and 7 take too (VPS-155).
+ */
+const OWN_MACHINE =
+  "the owner's own machine (Git Bash on Windows, or a terminal on macOS or Linux)";
+/**
+ * First install, step 1's line in Git Bash (VPS-155): the folder as `pwd -W` gives it, C:/…, which
+ * MSYS_NO_PATHCONV=1 passes to Docker whole.
+ */
+const KEY_LINE = `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'`;
+/**
+ * That line at 6bbc375, the server team's form as it is: Git Bash turns its "$PWD:/k" into
+ * C:\…;K:\, which Docker refuses with exit 125, making no container, and Windows PowerShell can't
+ * parse it, so the owner could make no key in either shell (VPS-155).
+ */
+const KEY_LINE_6BBC375 = `docker run --rm -v "$PWD:/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'`;
+/** First install, step 1's opening at 6bbc375, which named no shell (VPS-155). */
+const KEY_STEP_6BBC375 =
+  "1. **The backup key**, an age key pair, made on a machine of the owner's (the server team's form):";
+/** A docker run that mounts $PWD, quoted or not, as ${PWD} too, by -v or by --volume. */
+const PWD_MOUNT = /\bdocker run\b.*\$\{?PWD\}?:/;
+/**
+ * Step 1's words (VPS-155): where it runs, in step 8's; its form, the folder given as Git Bash
+ * needs it; the line for macOS and Linux, which keeps the server team's "$PWD:/k"; and why.
+ */
+const KEY_WORDS = [
+  OWN_MACHINE,
+  "In Git Bash (the server team's form, with the folder given as Git Bash needs it)",
+  'On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`',
+  'Git Bash turns `"$PWD:/k"` into `C:\\…;K:\\`, which Docker refuses',
+  "Windows PowerShell can't parse it at all",
+  '`pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole',
+];
+/** First install, step 7's command, which stays as it is (VPS-155). */
+const DEPLOY_KEYGEN = "ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging";
+/** Step 7's words (VPS-155): where it runs, its command, Git Bash, not PowerShell, and why. */
+const DEPLOY_WORDS = [
+  OWN_MACHINE,
+  `\`${DEPLOY_KEYGEN}\``,
+  'On Windows it runs in Git Bash, not PowerShell',
+  "Windows PowerShell 5.1 drops the empty `''`, so ssh-keygen stops at `Too many arguments.` and makes no key",
+];
+/** First install, step 7 at 6bbc375, which named no shell for its empty -N '' (VPS-155). */
+const DEPLOY_KEY_6BBC375 = [
+  '7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub',
+  `   (\`VPS_SSH_KEY\`): \`${DEPLOY_KEYGEN}\`.`,
+].join('\n');
+
+/**
+ * The owner's key steps, First install's steps 1 and 7, in Git Bash on Windows (VPS-155). Step 1's
+ * line mounted "$PWD:/k", which Git Bash turns into C:\…;K:\, refused by Docker, and Windows
+ * PowerShell 5.1 can't parse, so the owner could make no key in either shell. So a docker run of
+ * its block that mounts $PWD (PWD_MOUNT), read as one line where a trailing backslash splits it, is
+ * a problem, beside the right line too, and the block must mount "$(pwd -W):/k" behind
+ * MSYS_NO_PATHCONV=1, as Git Bash needs it; prose is never read for that, and a block refused for
+ * its $PWD has that one problem. Its prose names where it runs, in step 8's words, its form, the
+ * line for macOS and Linux, and why. Step 7's ssh-keygen, whose empty -N '' Windows PowerShell 5.1
+ * drops, so that it stops at "Too many arguments.", runs in Git Bash, not PowerShell, says why, and
+ * keeps its command.
+ */
+const gitBashKeys = (runbook: string) =>
+  inPlaces(runbook, ['firstKey', 'deployKey'], ({ firstKey, deployKey }) => {
+    // A command split with a trailing backslash is read as one line.
+    const commands = blockLines(firstKey)
+      .join('\n')
+      .replace(/ *\\\n/g, ' ')
+      .split('\n');
+    const mounts = commands.filter((line) => PWD_MOUNT.test(line));
+    return [
+      ...mounts.map(
+        (line) =>
+          `First install, step 1, mounts $PWD, which Git Bash turns into C:\\…;K:\\ and Windows PowerShell can’t parse: ${line}`,
+      ),
+      ...(mounts.length ||
+      commands.some(
+        (line) =>
+          line.startsWith('MSYS_NO_PATHCONV=1 docker run ') && line.includes(' -v "$(pwd -W):/k" '),
+      )
+        ? []
+        : [
+            'First install, step 1, doesn’t mount the folder as Git Bash needs it, with MSYS_NO_PATHCONV=1 and -v "$(pwd -W):/k"',
+          ]),
+      ...(KEY_WORDS.every((words) => has(firstKey, words))
+        ? []
+        : [
+            'First install, step 1, doesn’t say it runs in Git Bash on Windows, with the folder as Git Bash needs it and why, and the line for macOS and Linux',
+          ]),
+      ...(DEPLOY_WORDS.every((words) => has(deployKey, words))
+        ? []
+        : [
+            "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''",
+          ]),
+    ];
+  });
+
+/**
  * The leak test's container (the server team's review, Q8; VPS-137). The RUNBOOK named neither an
  * image nor a command, so the container could have been anything, pinned or not. It is
  * traefik/whoami by its index digest, pulled first, then run with LEAK_FLAGS, never with the
@@ -4985,6 +5087,16 @@ const REWRAPPED = [
   '`getpeername() failed with errno 107` is the same',
   '(`alert certificate required`; an `exit 55` with a message that step names is the same refusal:',
   'run the loop again).',
+  // Read by the rule of the owner's key steps in Git Bash (VPS-155): a piece of each phrase that
+  // stands on one line, in both steps where they share it.
+  "made on the owner's own machine (Git Bash on Windows, or a",
+  "In Git Bash (the server team's form, with the folder given as",
+  'On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`.',
+  "into `C:\\…;K:\\`, which Docker refuses, and Windows PowerShell can't parse it at",
+  '`pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole',
+  `\`${DEPLOY_KEYGEN}\``,
+  "Windows PowerShell 5.1 drops the empty `''`, so",
+  'ssh-keygen stops at `Too many arguments.` and makes no key',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -9154,6 +9266,125 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(snippetGuard, swap(RUNBOOK, ', their digest pin of Caddy included', ''), recovery);
   });
 
+  it('makes the owner’s backup key and deploy key in Git Bash on Windows: step 1’s folder as pwd -W gives it, behind MSYS_NO_PATHCONV=1, with the line for macOS and Linux, and step 7’s ssh-keygen in Git Bash, not PowerShell, which drops its empty -N argument (VPS-155)', () => {
+    expect(gitBashKeys(RUNBOOK)).toEqual([]);
+    const mounted =
+      'First install, step 1, mounts $PWD, which Git Bash turns into C:\\…;K:\\ and Windows PowerShell can’t parse: ';
+    const unmounted =
+      'First install, step 1, doesn’t mount the folder as Git Bash needs it, with MSYS_NO_PATHCONV=1 and -v "$(pwd -W):/k"';
+    const unsaid =
+      'First install, step 1, doesn’t say it runs in Git Bash on Windows, with the folder as Git Bash needs it and why, and the line for macOS and Linux';
+    const deploy =
+      "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''";
+    // 6bbc375's block: the server team's form as it is, whose "$PWD:/k" Git Bash turns into
+    // C:\…;K:\, which Docker refuses, and Windows PowerShell can't parse. It reports that one
+    // problem and nothing else, though no line of the block is in Git Bash's form either.
+    expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, KEY_LINE_6BBC375))).toEqual([
+      `${mounted}${KEY_LINE_6BBC375}`,
+    ]);
+    // $PWD unquoted, as ${PWD}, by --volume, and behind MSYS_NO_PATHCONV=1, which passes Git Bash's
+    // /c/… on as it is; then 6bbc375's line split with a trailing backslash, beside the right one,
+    // read as one line; then the line without MSYS_NO_PATHCONV=1, whose folder Git Bash would turn
+    // into a path list again, and the line without its mount.
+    for (const line of [
+      swap(KEY_LINE_6BBC375, '"$PWD:/k"', '$PWD:/k'),
+      swap(KEY_LINE_6BBC375, '"$PWD:/k"', '"${PWD}:/k"'),
+      swap(KEY_LINE_6BBC375, ' -v ', ' --volume '),
+      swap(KEY_LINE, '$(pwd -W)', '$PWD'),
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, line))).toEqual([`${mounted}${line}`]);
+    }
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          KEY_LINE,
+          `${KEY_LINE}\n   ${swap(KEY_LINE_6BBC375, '--rm ', '--rm \\\n     ')}`,
+        ),
+      ),
+    ).toEqual([`${mounted}${KEY_LINE_6BBC375}`]);
+    for (const line of [
+      swap(KEY_LINE, 'MSYS_NO_PATHCONV=1 ', ''),
+      swap(KEY_LINE, ' -v "$(pwd -W):/k"', ''),
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, line))).toEqual([unmounted]);
+    }
+    // Prose is never read for the block: the old line given in step 1's prose passes, and the Git
+    // Bash line given there leaves a block without it refused.
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          'passes it whole.',
+          `passes it whole. The server team's: \`${KEY_LINE_6BBC375}\`.`,
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, KEY_LINE, swap(KEY_LINE, 'MSYS_NO_PATHCONV=1 ', '')),
+          'passes it whole.',
+          `passes it whole: \`${KEY_LINE}\`.`,
+        ),
+      ),
+    ).toEqual([unmounted]);
+    // 6bbc375's opening, which named no shell, without the words after the block: that one problem
+    // and nothing else. Then the place in step 8's words, the folder as Git Bash needs it, the line
+    // for macOS and Linux and each of the reason's three parts, each taken out alone.
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, cut(RUNBOOK, '1. **The backup key**', '\n\n   ```sh'), KEY_STEP_6BBC375),
+          cut(RUNBOOK, '   On macOS and Linux the line takes', '   The public key'),
+          '',
+        ),
+      ),
+    ).toEqual([unsaid]);
+    for (const [from, to] of [
+      [
+        "made on the owner's own machine (Git Bash on Windows, or a\n   terminal on macOS or Linux).",
+        "made on a machine of the owner's.",
+      ],
+      [', with the folder given as\n   Git Bash needs it):', '):'],
+      ['On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`. ', ''],
+      ['Git Bash turns\n   `"$PWD:/k"` into `C:\\…;K:\\`, which Docker refuses, and ', ''],
+      [", and Windows PowerShell can't parse it at\n   all;", ';'],
+      [' `pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole.', ''],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+    // 6bbc375's step 7, its ssh-keygen with no shell named: that one problem and nothing else. Then
+    // its machine unsaid, Git Bash or PowerShell, the reason taken out, and the command changed to
+    // what Windows PowerShell 5.1 would need, where it should stay as it is.
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, '7. **The deploy key**', '\n8. **The zone:**'),
+          DEPLOY_KEY_6BBC375,
+        ),
+      ),
+    ).toEqual([deploy]);
+    for (const [from, to] of [
+      [
+        ", made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or\n   Linux):",
+        ':',
+      ],
+      [
+        'Windows it runs in Git Bash, not PowerShell:',
+        'Windows it runs in Git Bash or PowerShell:',
+      ],
+      [
+        ": Windows PowerShell 5.1 drops the empty `''`, so\n   ssh-keygen stops at `Too many arguments.` and makes no key.",
+        '.',
+      ],
+      ["-N '' -C gha-menumesh-staging`. On", '-N \'""\' -C gha-menumesh-staging`. On'],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([deploy]);
+    }
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -9203,5 +9434,6 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(leakChecks(rewrapped, SNIPPETS, SITE)).toEqual([]);
     expect(alertsFixed(rewrapped)).toEqual([]);
     expect(snippetGuard(rewrapped)).toEqual([]);
+    expect(gitBashKeys(rewrapped)).toEqual([]);
   });
 });

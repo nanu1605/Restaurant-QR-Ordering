@@ -13362,6 +13362,69 @@ entries below.
   `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook`
   65, none new).
 
+- **VPS-155 · First install, steps 1 and 7, run in Git Bash on the owner's Windows machine
+  (2026-11-25):** on the owner's machine, Windows 11 with Git Bash and Windows PowerShell 5.1,
+  step 1 couldn't run as written in either shell, and step 7 only in Git Bash, which it didn't
+  name. In Git Bash, MSYS reads step 1's `"$PWD:/k"` as two paths, `/k` becoming the drive `K:\`,
+  so `docker.exe` got `C:\Users\…\<folder>;K:\` (as `cmd //c echo "$PWD:/k"` shows) and refused
+  it with exit 125, making no container (a run with `true` for the key command), as in VPS-151's
+  incident; Windows PowerShell 5.1 can't parse `"$PWD:/k"` at all. No key was made, but the owner
+  was blocked. In Git Bash, `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" … sh -c '…'`
+  works: `pwd -W` printed `C:/Users/…/volprobe2`, a probe container of `menumesh-backup:rehearsal`
+  exited 0, its file in the Windows folder with the bytes `probe\n` (LF), and `--rm` removed it.
+  Step 7's `ssh-keygen`, in Windows PowerShell 5.1 (5.1.26100.10068, with Windows' own OpenSSH),
+  stopped at `ssh-keygen : Too many arguments.`, exit 1, with no file, as Windows PowerShell 5.1
+  drops an empty argument to a native program: `-N` took `-C` as its value. In Git Bash
+  (`/usr/bin/ssh-keygen`) it exits 0, the key opening with an empty passphrase, 0 CR in it and the
+  comment at the `.pub`'s end; those keys were throwaways, deleted after.
+
+  Step 1 is now made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or
+  Linux), in step 8's words; its block is that Git Bash line, "the server team's form, with the
+  folder given as Git Bash needs it", and after it come the line for macOS and Linux,
+  `-v "$PWD:/k"` without `MSYS_NO_PATHCONV=1`, and the reason, in a sentence; the rest of step 1
+  stays. Step 7 names the same machine and keeps its command, run in Git Bash, not PowerShell, and
+  says why. Git Bash because step 8 already names it for the owner's machine, and the `/usr/bin/…`
+  tools are already Git Bash's: step 8's `/usr/bin/openssl` (VPS-151), step 7's
+  `/usr/bin/ssh-keygen`. On macOS and Linux `"$PWD:/k"` stays right, and `pwd -W` doesn't exist.
+
+  The RUNBOOK's other commands for the owner's or the admin's machine, and the kit's documents it
+  sends them to, hold no other `$PWD` in a `docker run -v`, empty argument to a native program or
+  `/x`-style argument MSYS would rewrite: step 8's `-subj '/CN=…'` lines already run
+  `/usr/bin/openssl` behind `MSYS_NO_PATHCONV=1`, and the one other `''`, in part 1's count, is SQL
+  in hosted production's SQL editor. Not changed: the server's commands; step 5's
+  `openssl x509 -in … -noout …`, which only reads a certificate, and step 6, our own Node script,
+  which no shell rewrites; and the server team's text, with the same forms at their `8d70e90`
+  (`docs/runbooks/backups.md:26`, `docs/runbooks/server.md:117-118`), which stays theirs: telling
+  them is the owner's call.
+
+  `tests/unit/vps-runbook.test.ts` has a new rule, `gitBashKeys`, on step 1 and a new place,
+  `deployKey` (step 7), with one problem a place at most: a `docker run` of step 1's block that
+  mounts `$PWD`, quoted or not, as `${PWD}` too, by `-v` or `--volume`, read as one line where a
+  trailing backslash splits it, is refused by name, beside the right line too, and the block must
+  otherwise hold `MSYS_NO_PATHCONV=1 docker run` with `-v "$(pwd -W):/k"`, prose never read for it;
+  its prose must hold the machine in step 8's words, its form, the line for macOS and Linux and the
+  reason; and step 7, the machine, its command, Git Bash, not PowerShell, and the reason. On
+  `6bbc375`'s RUNBOOK the 43 rules the re-wrap test now runs report 3 problems, all `gitBashKeys`',
+  one a place (step 1's block, its prose, step 7), and none on the fix. The bites,
+  `KEY_LINE_6BBC375` (step 1's old block), then `DEPLOY_KEY_6BBC375` (step 7's old sentence), and
+  `KEY_STEP_6BBC375` (step 1's old opening, the new paragraph taken out), are each refused with its
+  one problem and nothing else, and the three with the range give back `6bbc375`'s RUNBOOK exactly.
+  Each of the 14 new phrases cut from the RUNBOOK fails the new test and the re-wrap test, and each
+  of 21 mutations of the rule (a check removed, the `$PWD` pattern never matching, needing its
+  quote or `-v`, or missing `${PWD}`, the split lines read apart, the one-problem guard removed, a
+  phrase taken as always there) fails the new test, in copies under `tests/unit` deleted after. The
+  re-wrap test wraps 372 phrases where it wrapped 364, and the test's title and comments name
+  VPS-155.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-155;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. The cut-over's intro stays: it names the entries that
+  changed the cut-over's own steps, and its part 2 runs First install by reference. Nothing was run
+  against the server, and the runs above weren't made again. `pnpm vps:check` and `pnpm vps:edge`,
+  which read no part of this change (`scripts/vps-kit.mts` never reads the RUNBOOK), were not run.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,358 in 73 files
+  (`vps-runbook` 66, one new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and

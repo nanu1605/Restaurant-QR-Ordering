@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-154 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-155 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -686,11 +686,17 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
 **The owner, before the server:**
 
-1. **The backup key**, an age key pair, made on a machine of the owner's (the server team's form):
+1. **The backup key**, an age key pair, made on the owner's own machine (Git Bash on Windows, or a
+   terminal on macOS or Linux). In Git Bash (the server team's form, with the folder given as
+   Git Bash needs it):
 
    ```sh
-   docker run --rm -v "$PWD:/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'
+   MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'
    ```
+
+   On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`. Git Bash turns
+   `"$PWD:/k"` into `C:\…;K:\`, which Docker refuses, and Windows PowerShell can't parse it at
+   all; `pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole.
 
    The public key (`age1…`) goes to the admin for `BACKUP_RECIPIENT` and into `.env`. The private
    key goes into the password manager and on paper, then off that machine: it never stays on the
@@ -763,7 +769,10 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
    and Resend webhooks as Vercel has them (The server rehearsal and the cut-over, part 3);
    production's generated `CUSTOMER_COOKIE_SECRET` suits its fresh start.
 7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
-   (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
+   (`VPS_SSH_KEY`), made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or
+   Linux): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`. On
+   Windows it runs in Git Bash, not PowerShell: Windows PowerShell 5.1 drops the empty `''`, so
+   ssh-keygen stops at `Too many arguments.` and makes no key.
 8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server
    rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
    from MenuMesh's own CA (the server team's `edge.md` §3, Authenticated origin pulls, whose steps 1
