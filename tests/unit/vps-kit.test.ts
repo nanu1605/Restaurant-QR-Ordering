@@ -307,6 +307,52 @@ const envNames = (text: string) => {
   ];
 };
 
+/** Each comment of `text`: a run of lines that start with #, read as one line, the #s taken out. */
+const comments = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => (/^\s*#/.test(line) ? line.replace(/^\s*#\s?/, '') : '\n'))
+    .join(' ')
+    .split('\n')
+    .map((comment) => comment.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+/**
+ * A bucket called India's (VPS-156): India-region, as the env template's comment had it, an India
+ * bucket, as compose.yml's had it, an India region bucket, or a bucket in India.
+ */
+const INDIA_BUCKET = /\bIndia-region\b|\bIndian?(?: region)? bucket\b|\bbucket in India\b/;
+/** The env template's comment on the bucket since VPS-156, which names the RUNBOOK's step 2. */
+const TEMPLATE_BUCKET =
+  'The backup bucket (docs/RUNBOOK.md, First install, step 2) and its S3-compatible provider';
+/** compose.yml's comment on the rclone remote since VPS-156, which calls the bucket the owner's. */
+const COMPOSE_BUCKET =
+  'The rclone remote "backups": the owner\'s bucket, through any S3-compatible provider';
+
+/**
+ * The backup bucket's comments, the env template's and compose.yml's, never call it India's: the
+ * owner's is R2's, made with the Asia-Pacific location hint, and R2 has no India region, so the
+ * backups are kept outside India (VPS-156). The template's sends the reader to the RUNBOOK's step
+ * 2, which says so, and compose.yml's calls the bucket the owner's; a file whose comment calls the
+ * bucket India's has that one problem.
+ */
+const bucketComments = (template: string, file: string) =>
+  [
+    [
+      'project.env.example',
+      template,
+      TEMPLATE_BUCKET,
+      'doesn’t send the bucket to the RUNBOOK’s step 2',
+    ],
+    ['compose.yml', file, COMPOSE_BUCKET, 'doesn’t call the rclone remote’s bucket the owner’s'],
+  ].flatMap(([name, text, words, problem]) =>
+    comments(text).some((comment) => INDIA_BUCKET.test(comment))
+      ? [`${name} calls the backup bucket India’s, where R2, the owner’s, has no region`]
+      : comments(text).some((comment) => comment.includes(words))
+        ? []
+        : [`${name} ${problem}`],
+  );
+
 /**
  * What db's log may hold (VPS-34): errors only, each on one line, and no statement text. The
  * image's settings file logs every DDL statement (log_statement = 'ddl'), and auto_explain logs
@@ -862,6 +908,71 @@ describe('deploy/vps/compose.yml', () => {
       swap(compose, '      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}\n', ''),
       'TELEGRAM_CHAT_ID is not used',
     );
+  });
+
+  it('never calls the backup bucket India’s, in its comment or the env template’s, as the owner’s is R2’s, which has no India region (VPS-156)', () => {
+    const template = kit('env/project.env.example');
+    expect(bucketComments(template, compose)).toEqual([]);
+    const india = (name: string) =>
+      `${name} calls the backup bucket India’s, where R2, the owner’s, has no region`;
+    const remote =
+      '      # The rclone remote "backups": the owner\'s bucket, through any S3-compatible provider.';
+    // 5162697's comments, each put back: that file's one problem and nothing else, though its new
+    // words are gone too.
+    expect(
+      bucketComments(
+        swap(
+          template,
+          [
+            `# ${TEMPLATE_BUCKET}, as`,
+            '# rclone names it (AWS, Cloudflare, Wasabi, Other, ...), with an API token for that bucket only.',
+            '# The region may stay empty when the provider needs none.',
+          ].join('\n'),
+          [
+            '# The India-region bucket and its S3-compatible provider, as rclone names it (AWS, Cloudflare,',
+            '# Wasabi, Other, ...), with an API token for that bucket only. The region may stay empty when the',
+            '# provider needs none.',
+          ].join('\n'),
+        ),
+        compose,
+      ),
+    ).toEqual([india('project.env.example')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the India bucket')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    // India's beside the new words, an India bucket wrapped across a comment's two lines, and a
+    // bucket in India.
+    expect(
+      bucketComments(
+        swap(template, ' only.\n# The region', ' only, an India-region one.\n# The region'),
+        compose,
+      ),
+    ).toEqual([india('project.env.example')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the India\n      # bucket')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the bucket in India')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    // Each new phrase taken out alone.
+    expect(
+      bucketComments(swap(template, ' (docs/RUNBOOK.md, First install, step 2)', ''), compose),
+    ).toEqual(['project.env.example doesn’t send the bucket to the RUNBOOK’s step 2']);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'a bucket')),
+      ),
+    ).toEqual(['compose.yml doesn’t call the rclone remote’s bucket the owner’s']);
   });
 
   it('keeps statement text out of the database log', () => {
@@ -6047,9 +6158,12 @@ const runbookConf = (runbook: string, confText = conf) => {
 /**
  * The kit's origin pulls pair is made the owner's way (VPS-142): kit-check.sh's aop_pair runs First
  * install, step 8's lines, from its umask and the folder it makes to its openssl verify, the same
- * but for the folder, the subjects and the days, and for the MSYS_NO_PATHCONV=1 only Git Bash
- * reads. So vps:edge, whose every request presents that client certificate to the edge's
- * client_auth, also shows that the owner's commands make a pair Caddy takes.
+ * but for the folder, the subjects and the days, for the MSYS_NO_PATHCONV=1 only Git Bash reads,
+ * and, since VPS-151, for the /usr/bin/openssl that picks Git for Windows' MSYS build in Git Bash,
+ * as the kit's Ubuntu has one openssl. The lines are read from every sh block of the step, as its
+ * checks have a block of their own. So vps:edge, whose every request presents that client
+ * certificate to the edge's client_auth, also shows that the owner's commands make a pair Caddy
+ * takes.
  */
 const aopCommands = (runbook: string, kitCheck: string) => {
   const normal = (line: string) =>
@@ -6057,6 +6171,7 @@ const aopCommands = (runbook: string, kitCheck: string) => {
       .trim()
       .replace(/ &&$/, '')
       .replace(/^MSYS_NO_PATHCONV=1 /, '')
+      .replace(/^\/usr\/bin\/openssl /, 'openssl ')
       .replace(/ mkdir \S+ && cd \S+$/, ' mkdir <folder> && cd <folder>')
       .replace(/ -subj (?:'[^']*'|"[^"]*")/, ' -subj <subject>')
       .replace(/ -days \d+ /, ' -days <days> ');
@@ -6067,9 +6182,11 @@ const aopCommands = (runbook: string, kitCheck: string) => {
     const last = lines.findIndex((line) => line.startsWith('openssl verify '));
     return first < 0 || last < first ? [] : lines.slice(first, last + 1);
   };
-  const block = /\n8\. \*\*The zone:\*\*[\s\S]*?```sh\n([\s\S]*?)\n\s*```/.exec(runbook)?.[1];
+  const step =
+    /\n8\. \*\*The zone:\*\*[\s\S]*?\n\*\*The server's admin\*\*/.exec(runbook)?.[0] ?? '';
+  const blocks = [...step.matchAll(/```sh\n([\s\S]*?)\n\s*```/g)].map((match) => match[1]);
   const pair = /\naop_pair\(\) \( #[^\n]*\n([\s\S]*?)\n\)\n/.exec(kitCheck)?.[1];
-  const owner = making(block ?? '');
+  const owner = making(blocks.join('\n'));
   const kit = making(pair ?? '');
   if (!owner.length) return ['First install, step 8, makes no origin pulls pair'];
   if (!kit.length) return ['kit-check.sh has no aop_pair that makes an origin pulls pair'];
@@ -6282,7 +6399,7 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
     ).toContain('deploy/vps/edge/tls_menumesh.caddy declares a snippet');
   });
 
-  it('makes its origin pulls pair with First install, step 8’s commands, but for the folder, the subjects and the days (VPS-142)', () => {
+  it('makes its origin pulls pair with First install, step 8’s commands, but for the folder, the subjects, the days and /usr/bin/ (VPS-142, VPS-151)', () => {
     const runbook = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
     const kitCheck = kit('test/kit-check.sh');
     expect(aopCommands(runbook, kitCheck)).toEqual([]);
@@ -6319,6 +6436,16 @@ describe('the kit check (scripts/vps-kit.mts, deploy/vps/test)', () => {
       (text) => aopCommands(text, kitCheck),
       swap(runbook, '-sha256 -days 825', '-sha384 -days 825'),
       'where First install, step 8, runs openssl x509 -req -sha384',
+    );
+    // Only /usr/bin/ goes: the native openssl that Git Bash finds first is not the kit's (VPS-151).
+    refuses(
+      (text) => aopCommands(text, kitCheck),
+      swap(
+        runbook,
+        '/usr/bin/openssl x509 -req -sha256 -days 825',
+        '/mingw64/bin/openssl x509 -req -sha256 -days 825',
+      ),
+      'where First install, step 8, runs /mingw64/bin/openssl x509 -req -sha256',
     );
   });
 

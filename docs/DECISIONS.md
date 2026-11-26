@@ -5123,7 +5123,8 @@ left out (VPS-30), and a restaurant that joins a running announcement is emailed
     production takes an encrypted `pg_dump` first), then waits for the new container to be healthy
     (VPS-17). So migrations stay backward-compatible for one release and the reload prompt stays
     (VPS-8).
-  - **Backups and the privacy policy.** The owner's, in an India-region bucket with a token for it
+  - **Backups and the privacy policy.** The owner's, in an R2 bucket made with the Asia-Pacific
+    location hint, outside India, as R2 has no India region (since VPS-156), with a token for it
     only: nightly at 20:30 UTC from a `backup-<sha>` image (`pg_dumpall --globals-only`,
     `pg_dump -Fc` of every database, a tar of the storage volume, each age-encrypted to the owner's
     key), 30 daily and 12 monthly copies, alerts on failure and a heartbeat on success, the host's
@@ -10887,9 +10888,10 @@ header cite moved to VPS-121.
   (VPS Stop D)):
   - **Refuses** (exit 2, nothing made) once the platform has any team member, joined or not (later
     members come from Settings → Team), or when the email already has a login; checks the email as
-    the Team page does (trimmed, lowercased, then zod's pattern) and a name of 1 to 80 characters
-    without control characters; and needs the container's `SUPABASE_SECRET_KEY`,
-    `CUSTOMER_COOKIE_SECRET` and `SUPABASE_INTERNAL_URL`.
+    the Team page does (trimmed, lowercased, then zod's pattern) and the name as it does too, 1 to
+    80 characters without a control or format character or a line or paragraph separator; and
+    needs the container's `SUPABASE_SECRET_KEY`, `CUSTOMER_COOKIE_SECRET` and
+    `SUPABASE_INTERNAL_URL`.
   - **Makes** the login as the Team page asks for it, without a password (`email_confirm: true`;
     GoTrue v2.197.0 gives such a login a random password nobody knows, until the join sets the
     member's own), and inserts the `platform_admins` row as `platform_invite_member` does: role
@@ -11290,7 +11292,8 @@ header cite, now VPS-31 to VPS-128.
   site file goes in, for each host `menumesh.caddy` serves (all four of its blocks import
   `tls_menumesh`):
   `for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done`,
-  each exit not 0. `-o /dev/null` keeps a page that does answer out of the terminal. An exit 0
+  each exit not 0 (VPS-153: `alert certificate required` on every line, since the server team's
+  `c7bcfad`). `-o /dev/null` keeps a page that does answer out of the terminal. An exit 0
   means `client_auth` in `tls_menumesh` is still commented out: stop; the night goes no further
   until the admin has turned authenticated origin pulls on as §3 says (Cloudflare's zone-level
   pulls first, then `client_auth`) and every exit is not 0, and its way back is none, as no record
@@ -11483,6 +11486,39 @@ not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-ups
 29.9.3, as a run here showed, a plain `docker run` has no `Aliases`, its name only in `DNSNames`;
 with that flag `Aliases` holds `menumesh-leaktest`), and its limits check reports it unless it has
 `--memory` and `--cpus`. Nothing the kit runs changed.
+
+**After the review: names that hide or reorder text** (2026-11-21). A read-only review found that
+the Team page's invite took a name holding a format character (Unicode Cf, such as the right-to-left
+override U+202E or the zero-width space U+200B) or a line or paragraph separator (U+2028, U+2029);
+it took a control character too. Only the first-admin tool refused them, control characters since
+VPS-111 and the other three kinds, with its values maker, since VPS-134 (below). Such a name is the
+member's `display_name`, on admin screens and in emails, where an override can make it read as
+another. Every form that takes a person's name now refuses all four kinds (`hasNoHiddenCharacters`
+in `src/lib/person-name.ts`) and still takes ordinary spaces: the Team page's invite and changes,
+the signup and the "Book a demo" form (with a Hindi message too), onboarding's owner, staff logins,
+waiters, a support session's name and a lead added by hand. A joiner (U+200C, U+200D) is a format
+character too, so a joined emoji, or a spelling that needs one, is refused as well. The first-admin
+tool and the values maker refuse the same characters and write each out as an escape when they
+refuse (VPS-111, corrected in place); `tests/unit/vps-first-admin.test.ts` holds both copies of the
+rule, the tool's `HIDDEN` and the maker's `checkName`, to the app's at every code point, and the
+Team page to every refusal of the tool's, where VPS-134's case skipped such names. The RUNBOOK's The
+first platform admin (production) no longer says that the Team page doesn't check them, and the
+server review's Left open list (below) loses that item. The database holds the same rule
+(`20261121100000_person_names.sql`): `private.has_no_hidden_characters` checks
+`platform_admins.display_name`, `restaurant_members.display_name`, `waiters.full_name`,
+`site_leads.name` and `support_sessions.staff_name`, so a function called directly, or the service
+role's own write, is held to it too. Its list is Unicode 17.0's, as Node 24 has it, but U+0000,
+which text cannot hold; `tests/unit/person-name.test.ts` holds it to the app's rule at every code
+point. Only the service role may run it, as a writer: every other write runs inside a function as
+its owner. Names written before the rule are cleaned first (line breaks and separators become
+spaces, other such characters go, the spaces are tidied); a name of nothing but such characters
+stops the migration rather than get one made up. The cleaning raises for it, since a team member's
+name may be empty and would otherwise be lost. `pnpm lint`, `pnpm typecheck` and
+`pnpm format:check` clean; the unit tests 1,367 in 74 files. On the local stack, after
+`pnpm supabase migration up --local`, `pnpm db:test` ran every file, the four concurrency files
+included: 76 files, 3,583 checks, all pass, 20 of them in `694_person_names.test.sql`. A throwaway
+pgTAP file, run alone and deleted after, ran the migration's text on names written without the
+checks: 29 checks pass; without the raise, 8 of them fail.
 
 ### The server team's review (VPS, 2026-11-21)
 
@@ -11731,7 +11767,8 @@ entries below.
   2026-11-16. Commitment 1: the server team's gate wants authenticated origin pulls on for every zone
   of the server, `jainavinfotech.in` included, before an app's first container, and on 2026-11-21
   `tls_jainav`'s `client_auth` was still commented out; their round comes before our step 16, and
-  they say in their chat when it is on and tested. Step 16, `db`, now opens with that wait, for it and
+  they say in their chat when it is on and tested (they did on 2026-11-25: VPS-150). Step 16, `db`,
+  now opens with that wait, for it and
   every step after it, and the server rehearsal's step 1 says so where it runs First install; steps 1
   to 15 don't wait. `redactEarly` holds the redaction file to step 9, out of step 22 and the staging
   night's step 1, and after disaster recovery's conf, and `originGate` holds step 16's opening and the
@@ -11753,7 +11790,8 @@ entries below.
   `openssl x509 -req -extfile` reads, where `req -addext` needs OpenSSL 1.1.1, and each `-subj` line
   starts with `MSYS_NO_PATHCONV=1`: without it Git Bash turned `'/CN=MenuMesh origin pulls CA'` into
   `C:/Program Files/Git/CN=MenuMesh origin pulls CA`, which openssl refused, and the variable means
-  nothing to other shells. The lines ran here in Git Bash, OpenSSL 3.5.6, in a scratch folder deleted
+  nothing to other shells. The lines ran here in Git Bash, OpenSSL 3.5.6 (the native build that Git
+  Bash finds first, which writes CRLF line endings: VPS-151), in a scratch folder deleted
   after: `openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem` printed
   `aop-client.pem: OK`, the CA showed `CA:TRUE` with Certificate Sign and CRL Sign, both critical, the
   client certificate `CA:FALSE`, Digital Signature (critical) and TLS Web Client Authentication, and a
@@ -11818,11 +11856,13 @@ entries below.
   as it was: their onboarding PR puts `tls_menumesh` into their `snippets.caddy` (Left open, below).
   `ownCA` holds step 8's certificates to client authentication, the two lifetimes and the verify,
   each `-subj` behind `MSYS_NO_PATHCONV=1`, zone-level pulls and never the global toggle, the two
-  certificates alone for the server, and part 1's line and disaster recovery's; `edgeNight` holds
-  step 11's certificate with the CA, the client certificate, the merged copy, `edge env` with its
-  shred, the order, the shred of a refused copy and the digest pin (since VPS-148, none of the pin's
-  commands left to the admin, and the check of the server team's confirmation before `edge.env`),
-  and the staging night's check: 8 and 8 problems on `21a13bf`'s RUNBOOK.
+  certificates alone for the server (since VPS-151, every openssl line's `/usr/bin/openssl`, the
+  count of carriage returns, the two certificates kept until step 11 and a copy from the password
+  manager counted first too), and part 1's line and disaster recovery's; `edgeNight` holds step 11's
+  certificate with the CA, the client certificate, the merged copy, `edge env` with its shred, the
+  order, the shred of a refused copy and the digest pin (since VPS-148, none of the pin's commands
+  left to the admin, and the check of the server team's confirmation before `edge.env`), and the
+  staging night's check: 8 and 8 problems on `21a13bf`'s RUNBOOK.
 
 - **VPS-137 · The leak test's container (Q8, the leak test):** the RUNBOOK said only what the
   throwaway container does, with no image and no command, so nothing held it to a pin. It is now
@@ -12096,8 +12136,9 @@ entries below.
   each line with `internal=true` and `edge-caddy-1`. Step 16 keeps `ac976ce`'s wait for their word
   in the chat and adds their §5, step 8, proof before `db`'s first container: on the server, a TLS
   connection without a client certificate to `jainavinfotech.in` and its `www`, `staging` and
-  `analytics` hosts must fail, each line an exit other than 0, and an exit 0 stops the step, as
-  their round of origin pulls comes first.
+  `analytics` hosts must fail, each line an exit other than 0 (VPS-153: since their `c7bcfad`, each
+  line shows curl's message too, and passes only on `alert certificate required`), and an exit 0
+  stops the step, as their round of origin pulls comes first.
 
   The leak test follows their §6. Its `UPSTREAMS` entry, by `sudoedit`, and its block's
   `reverse_proxy` name `menumesh-leaktest:80`, where VPS-137 kept `<port>`. The test's site file is
@@ -12119,7 +12160,8 @@ entries below.
   5-minute run, critical, which Telegram gets once and then every 6 hours while it lasts
   (`REPEAT_SECS=21600`); nothing else should show, the alias in `UPSTREAMS` keeping
   `not-an-upstream` away and the limits the `limits` alert, and there is no `kit.throwaway` label.
-  Their step 1 passes on what the echo server prints, header names as Go writes them (`X-Real-Ip`,
+  Their step 1 passes on what the echo server prints (VPS-152: since their `d0a7b14` it sends
+  `CF-Connecting-IP` in a request of its own), header names as Go writes them (`X-Real-Ip`,
   `Cf-Connecting-Ip`): the four address headers each holding the admin's own address,
   `X-Forwarded-Host` the host, and `True-Client-IP`, `X-Client-IP` and `Forwarded` absent. The
   vendored `upstream` snippet sets and removes exactly those, and `menumesh.caddy` adds no header of
@@ -12310,7 +12352,8 @@ entries below.
   they will then include, and that a 5-minute run after the refresh finished without
   `notify: command not found`; the refresh is the first step of their re-apply night, between 01:00
   and 07:00 IST, its date not picked yet, so it lands before the staging night; and their word is of
-  the same kind as the one for their origin-pulls round, which still gates step 16. Their messages
+  the same kind as the one for their origin-pulls round, which still gates step 16 (that word came
+  on 2026-11-25: VPS-150). Their messages
   of the same day on the snippet (VPS-147) widen that word: their confirmation names the commit they
   installed, once the sha256 of each of the six scripts in `/usr/local/sbin`, their `install.sh`'s
   `SCRIPTS` (`app-deploy`, `app-compose`, `app-apply`, `app-config-archive`, `cf-ranges` and
@@ -12387,7 +12430,8 @@ entries below.
   (`check_edge_env_applied`), and swaps it in as `/srv/edge/config/snippets.caddy`, 0644. So the
   install replaced the server team's part too, `tls_jainav` among it, whose `client_auth` at
   `66c8c61` and `ccb9388` is commented out under "The admin enables this at launch, after zone-level
-  Authenticated Origin Pulls is on at Cloudflare."; their origin-pulls round turns it on. A working
+  Authenticated Origin Pulls is on at Cloudflare."; their origin-pulls round turns it on (their
+  `0c23a8f` did: VPS-150). A working
   tree holds whatever commit it has checked out: a file older than the server's, put in after that
   round, would have turned Jainav's origin pulls off without a word, and one from a round whose
   Cloudflare side is not on yet would have made their hosts refuse Cloudflare.
@@ -12490,7 +12534,8 @@ entries below.
   the admin install their file again, sends the admin to step 11's copy and comparison and to
   their chat, as its `DIFFERENT` does, with the same three things, and the night goes no further
   until they have answered, the comparison prints `SAME` and every exit is not 0 (since VPS-148 the
-  check's server lines, the live values, the confirmation's and its commit, and the check `SAME`).
+  check's server lines, the live values, the confirmation's and its commit, and the check `SAME`;
+  since VPS-153, `alert certificate required` on every line, as their `c7bcfad` has it).
   Disaster recovery's edge takes the same comparison before its `edge.env` lines: on a rebuilt
   server their edge comes back first, and their confirmation then names the commit and the sum
   (since VPS-148 the check, their digest pin included). Rotation touches no `snippets.caddy` and
@@ -12637,7 +12682,8 @@ entries below.
   longer names the pin. (a)'s timing, the `edge.env` lines, the recreate's window and its way back
   stay as they were. The staging night's exit 0 sends the admin
   to the check's server lines and to their chat with the same values, and goes no further until the
-  check is `SAME` and every exit is not 0; disaster recovery's edge takes the check before its
+  check is `SAME` and every exit is not 0 (VPS-153: since then, `alert certificate required` on
+  every line, where any exit but 0 passed); disaster recovery's edge takes the check before its
   `edge.env` lines, their edge, the pin included, back first on a rebuilt server and their
   confirmation giving the values. Who does what gives the admin the check of their latest
   confirmation, which covers the snippet and the pin they install; First install's opening says
@@ -12832,6 +12878,680 @@ entries below.
   vendored `Caddyfile`, `SOURCE` and the README's range. `pnpm lint`, `pnpm typecheck` and
   `pnpm format:check` clean; the unit tests 1,330 in 72 files (`vps-runbook` 65, none new).
 
+- **VPS-150 · The server team's `snippets.caddy` copied again at `0c23a8f`, and their origin-pulls
+  round, which step 16 waited for (their PR #91, merged as `0c23a8f`, and their confirmation of
+  2026-11-25):** the server team merged nanu1605/jainav-infotech#91 into their main as
+  `0c23a8fdb5dfe9b464d4e66e56159ea4afb23c2c` (2026-11-24, 23:36 IST), installed its
+  `snippets.caddy` on the shared server with `app-apply edge config` at 18:38:39 UTC that day
+  (00:08 IST on 2026-11-25), and confirmed the round in their chat on 2026-11-25. In that file
+  `tls_jainav` requires Cloudflare's client certificate, `client_auth` with
+  `mode require_and_verify` and `trust_pool file /certs/jainav/aop-ca.pem`, where the block was
+  commented out under "The admin enables this at launch, after zone-level Authenticated Origin
+  Pulls is on at Cloudflare."; `tls_menumesh`'s body is as it was, its comment reworded; and the
+  `log_fields` hunk changes comments only: a log line keeps `request>tls`, the origin-pulls client
+  certificate's common name and serial among it. Caddy was reloaded, not recreated: the same
+  container, on the same image. The server's `Caddyfile`, the edge's `compose.yml` and hostwatch
+  are still `a0bb599`'s. Their leak test passed: forged headers are replaced or dropped, no log
+  line holds a visitor's address, and every Jainav host refuses a client without the certificate.
+  Origin pulls are on and required for `jainavinfotech.in` since 00:08 IST on 2026-11-25. For
+  MenuMesh, as agreed, nothing changes now: its zone's origin pulls go on before its first
+  container runs, its `aop-ca.pem` goes in with its certificate, before its site file (their
+  `edge.md` §3, "Another app's zone"), and `app-apply` refuses the site file without it.
+
+  Checked here, read-only, in their repository: `0c23a8f` is there, with `a0bb599` among its
+  ancestors, and `git diff --stat a0bb599 0c23a8f -- docker/` lists
+  `docker/edge/config/snippets.caddy` alone (25 lines in, 19 out); the other 13 files of the range
+  are their documents, `tests/host/app-apply.sh` and Jainav's own app and its tests, none of which
+  the kit reads. The file's diff holds the three changes above and nothing else.
+  `git show 0c23a8f:<path> | sha256sum` gives `snippets.caddy`
+  `1bfc11ed7e0700f9980e474a40661095f25d456eb3ccbc7a8b73aa545bc6e558` (`3f7e4e63…` at `a0bb599`),
+  and, as at `a0bb599`, the `Caddyfile` `5f59cd9c…`, `docker/edge/compose.yml` `e5dd4bdf…` and
+  `docker/host/hostwatch` `5b9cd645…`; the `CADDY_IMAGE` line of `docker/host/apps/edge.conf` is
+  still the kit's `CADDY`, its sum `b3b2c8f8…` (VPS-149). Their `edge.md` §3 at `0c23a8f`, "Another
+  app's zone", has an app's `aop-ca.pem` go in with its first certificate, before its site file, as
+  Caddy reads it once a site imports the snippet, so `app-apply` refuses the site file without it.
+  What the server holds, the reload and the leak test are their word: nothing of the server is
+  read from here.
+
+  Each of the six vendored files was compared with its file at `0c23a8f`, its `sha256sum` against
+  `git show 0c23a8f:<path> | sha256sum`: five are as at `a0bb599`, each blob the same as theirs and
+  `app-apply` 100755, so `snippets.caddy` alone is copied again, byte for byte, as the RUNBOOK's
+  Copying the server team's files again, step 1, has it, in Git Bash with
+  `git -C <their checkout> show 0c23a8f:docker/edge/config/snippets.caddy > <file>`: sha256
+  `1bfc11ed…`, blob `092b463`, theirs. It holds no CR, so the repository's `* text=auto eol=lf`
+  (`.gitattributes`) stores it as it is: `git hash-object` gives their blob, and after the commit
+  `git show HEAD:deploy/vps/test/vendor/jainav-infotech/snippets.caddy | sha256sum` gives
+  `1bfc11ed…` too. `SOURCE` names the commit with its own date, 2026-11-24, and the copy's,
+  2026-11-25, and its `snippets.caddy` line holds the new sum; `sha256sum --strict -c SOURCE`
+  passes in that folder. Their `edge.conf` is unchanged, so `CADDY` stays as it is (step 3).
+
+  With the copy, `pnpm vps:check` has 55 checks, 0 failed, its kit-check naming
+  `app-apply 0c23a8f`, and `pnpm vps:edge` 22, 0 failed, both handshakes on the 4 hosts: the counts
+  of `a0bb599`'s copy. The harness needed nothing for `tls_jainav`'s `client_auth`. The kit's Caddy
+  trees hold MenuMesh's site file alone, every block of which imports `tls_menumesh`, and Caddy
+  expands a snippet only where a site imports it, so nothing reads `/certs/jainav/aop-ca.pem`,
+  which the kit never makes. `caddy adapt` of the copy with `menumesh.caddy`, run here with the
+  pinned Caddy, names no `jainav`, and under `/certs` only MenuMesh's three files, `origin.pem`,
+  `origin-key.pem` and `aop-ca.pem`; and `vps:check`'s `caddy validate` of the edge tree, which
+  loads every `trust_pool` file the tree names (its bite without `aop-ca.pem` fails on that file),
+  passes with no `/certs/jainav` at all. On the server Jainav's site imports `tls_jainav`, hence
+  their order there: their CA in before the snippet (their `edge.md` §5, step 5).
+
+  For First install, step 16, the word it waits for has come. The server team's gate (VPS-135)
+  wants authenticated origin pulls on and tested for every zone of the server before an app's
+  first container: `jainavinfotech.in`'s are, by their word, and `menumesh.in`'s are MenuMesh's
+  own, as agreed: they go on at Cloudflare at step 8 and its CA goes in at step 11, before any
+  MenuMesh container runs, and they are tested on the staging night once the site file is in (The
+  server rehearsal and the cut-over, part 3, step 1). The step's proof stays as written (VPS-153:
+  their `c7bcfad`, in that merge, had changed its loop and rule; this entry missed it) and runs at
+  the install, on the server and before `db`'s first container: a TLS connection without a client
+  certificate to each of Jainav's four hosts must fail in the handshake, and an exit 0 stops the
+  step (their `edge.md` §5, step 8; VPS-143). Its opening and its wait stay too, as `originGate`
+  holds them, and its note, that on 2026-11-21 `tls_jainav`'s `client_auth` was still commented
+  out, now adds that their word came on 2026-11-25, with their `0c23a8f`; the server rehearsal's
+  step 1 says it came. Copying the server team's files again, whose paragraph on their
+  origin-pulls round said how that round's copy would be made, now says how it was. VPS-135,
+  VPS-146 and VPS-147 say where this entry changed them, and Left open (server review) has the
+  round done.
+
+  Nothing else changes for MenuMesh now (but step 8's openssl, which this entry missed: their §3,
+  step 1, also names `/usr/bin/openssl`, VPS-151). First install, step 8, has the owner turn
+  zone-level pulls on at Cloudflare and gives the admin `aop-ca.pem` and `aop-client.pem` (step 11);
+  step 11 installs the certificate with `aop-ca.pem` in one `sudo app-apply edge cert menumesh …`
+  line, before the check of their snippet, `edge.env` and step 22's site file, as their §3 has it
+  for another app's zone. That `app-apply` refuses the site file without the CA, the RUNBOOK doesn't
+  say in words: `vps:check` shows it, its `caddy validate` of the tree without
+  `certs/menumesh/aop-ca.pem` failing on that file, as `app-apply`'s check 3 does (VPS-142), and
+  the RUNBOOK's order never meets it, so nothing is added for it.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-150;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Not changed: the kit README's First install, step 3, which
+  starts `db` once the server team says origin pulls are on for every zone of the server, still its
+  condition, now met; step 16's stop on an exit 0, "the server team's round of origin pulls comes
+  first, and this step waits for it", and VPS-143's account of it, which still hold at the install;
+  the cut-over's intro, as no step of part 2 changed; and the tests. `vps-kit.test.ts`'s check of
+  the copies against `SOURCE` and `theirSnippet` pass on the new copy as it is (its one commented
+  `client_auth` is MenuMesh's own old snippet, a refusal case), and `originGate` reads step 16's
+  opening, its wait, its loop and its stop, and the rehearsal's "Step 16 waits for the server
+  team's word", all still there; no rule reads the notes. No script and no service changed, and of
+  the kit's files only the vendored `snippets.caddy`, `SOURCE` and the README's range.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
+  (`vps-runbook` 65, none new).
+
+- **VPS-151 · First install, step 8, makes the origin pulls' files with LF line endings, by
+  `/usr/bin/openssl` (the server team's `edge.md` §3 at `0c23a8f`, which VPS-150 missed;
+  2026-11-25):** step 8 had the owner make MenuMesh's origin pulls CA and client certificate with
+  plain `openssl`. In Git Bash that is `/mingw64/bin/openssl`, the first on its `PATH`: a native
+  Windows build, OpenSSL 3.5.6 7 Apr 2026, linked to `libssl-3-x64.dll` and `libcrypto-3-x64.dll`,
+  which writes its PEM files with CRLF line endings. `2f840ac`'s lines, run here with it in a
+  scratch folder deleted after, wrote `aop-ca.pem` with 19 lines and 19 CR bytes, its first line
+  `-----BEGIN CERTIFICATE-----\r\n`, `aop-client.pem` with 20 and 20, and each key with 28 and 28.
+  The server's `app-apply` refuses such a file. In the vendored copy
+  (`deploy/vps/test/vendor/jainav-infotech/app-apply`, at `0c23a8f`), `take_in()` has, at line 139,
+  `if grep -q $'\r' "$2"; then die "$1 has CRLF line endings: convert it to LF first"; fi`, and
+  `cmd_edge_cert` passes its `aop-ca.pem` through `take_in` (line 1399), so step 11's
+  `sudo app-apply edge cert menumesh ~/csr/origin.pem ~/csr/origin-key.pem ~/incoming/aop-ca.pem`
+  would have refused the owner's CA, one of the refusals VPS-145 lists for that line ("an
+  `aop-ca.pem` missing or with CRLF line ends"). `/usr/bin/openssl` is Git for Windows' MSYS
+  build, OpenSSL 3.5.6 7 Apr 2026 too, linked to `msys-2.0.dll`, `msys-ssl-3.dll` and
+  `msys-crypto-3.dll`: it writes LF, and takes `-subj '/CN=…'` as written, with or without
+  `MSYS_NO_PATHCONV=1`. The server team's `edge.md` §3, Authenticated origin pulls (a launch gate),
+  step 1, names it for this: its commands name `/usr/bin/openssl`, which "writes the LF line
+  endings `app-apply` needs", and "The `openssl` that Git Bash finds first is a native build, which
+  turns `/CN=…` into a Windows path and writes CRLF." That text is at their `0c23a8f`, and the same
+  at `d0a7b14`, their `main` in the checkout here (nanu1605/jainav-infotech#92, merged
+  2026-11-25), which changes their documents alone: `PROGRESS.md`, `docs/decisions.md` and three
+  runbooks, `edge.md`, `launch.md` and `server.md`, with a leak-test fix and the results of their
+  origin-pulls round. None of the six vendored files changed, so `SOURCE` stays at `0c23a8f`.
+  VPS-150, which recorded that round at `0c23a8f`, missed it, and VPS-136's run in Git Bash was the
+  native build's: its `-subj` turned into a Windows path, which Git Bash does only for a native
+  program.
+
+  Step 8 now holds the lines the owner was given on 2026-11-25, byte for byte. Every one that runs
+  openssl names `/usr/bin/openssl`. The lines that make the files are one paste, chained with `&&`
+  from `umask 077 && mkdir ~/aop && cd ~/aop &&` to the client certificate's `x509 -req`, so a
+  failed `mkdir` or command stops the rest: if `mkdir` says the folder exists, nothing else ran,
+  and a failed command, which can still leave a new key behind, has the folder removed and the
+  paste run again. They print dots, dashes and each certificate's subject line, never a key. The
+  checks have a block of their own:
+  `/usr/bin/openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem`, which prints
+  `aop-client.pem: OK`; `/usr/bin/openssl x509 -noout -enddate -in aop-client.pem`, a `notAfter=`
+  about 825 days ahead, for the calendar; and
+  `for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done`, which must print `0 CR`
+  for each of the four files. The step's three blocks, run here in a scratch folder deleted after,
+  gave `aop-client.pem: OK`, a `notAfter=` in February 2029, the CA with `CA:TRUE`, Certificate
+  Sign and CRL Sign, both critical, the client certificate with `CA:FALSE`, Digital Signature
+  (critical) and TLS Web Client Authentication, issued by the CA, and `0 CR` for `aop-ca.pem`,
+  `aop-client.pem`, `aop-ca-key.pem` and `aop-client-key.pem`; then the cleanup,
+  `shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls`,
+  listed `aop-ca.pem` and `aop-client.pem` alone. The native build, for comparison, ended every
+  line of every file with a CR, as counted above, and without `MSYS_NO_PATHCONV=1` refused its
+  `-subj`, turned into `C:/Program Files/Git/CN=…`. Cloudflare's upload and the zone-level switch
+  stay as they were.
+
+  Why: `/usr/bin/openssl`, as in their step 1, makes the files right as they are made, where a
+  conversion afterwards would be one more step to get wrong. On macOS and Linux it is the system's
+  own, LibreSSL on macOS; the lines were not tried there, here or for VPS-136. They still use only
+  `req -new`, `x509 -req` with `-extfile` and `-CAcreateserial`, `verify -purpose sslclient` and
+  `x509 -enddate`, VPS-136's `-extfile` over `req -addext` kept for older builds.
+  `MSYS_NO_PATHCONV=1` stays on the two `-subj` lines: it changes nothing for the MSYS build, which
+  takes the subject as written anyway, and keeps `-subj` whole if a native build ever runs them,
+  whose CRLF the loop would then show. The `&&` chain, as their step 1 is one paste, lets no line
+  run on what a failed one left. The count is `tr`'s, as Git Bash's grep, GNU grep 3.0, misreads
+  carriage returns. On a 2-line LF file and a 2-line CRLF file here, `grep -c $'\r'` run straight,
+  its output to a pipe or a file, printed 0 and 0: without `-U` it drops the CR of a CRLF line end
+  before it matches. `grep -cU $'\r'` printed 0 and 2, but inside a command substitution both
+  printed 2 and 2, as `$'\r'` reached the command empty there (`printf '%s' $'\r'` inside one
+  printed nothing). `tr -cd '\r' < f | wc -c` printed 0 and 2, straight and inside one, as the loop
+  runs it: its `'\r'` is `tr`'s own escape. Their step 1 checks with `grep -c $'\r' *.pem` and
+  expects `:0` for every file; run straight in this Git Bash, it printed `:0` for a CRLF file too.
+  That is the owner's to raise with them; their text stays as it is.
+
+  The keys go off the disk by the cleanup, with the CSRs, the `.ext` files and `aop-ca.srl`, where
+  the step had them go "with the rest of the folder". `aop-ca.pem` and `aop-client.pem` hold no
+  secret and stay in the folder until the admin has them (step 11), so that the files the admin
+  installs are the ones the loop counted. A copy pasted back out of a password manager on Windows
+  can come back with CRLF, so a copy that must come from there gets the same `0 CR` check first:
+  step 8 says so, and disaster recovery's edge (its step 8), which takes both from the password
+  manager, now gives the two `.pem` files step 8's `0 CR` check first. Step 8's next client
+  certificate is made the same way, with the same checks. No clipboard step is added, as VPS-145
+  decided: every secret the RUNBOOK puts in the password manager could take the same way, and the
+  owner's machine is the owner's to keep.
+
+  `ownCA` now reads step 8's command blocks as well: every line of them that names `openssl` any way
+  but `/usr/bin/openssl`, by its bare name wherever it stands (at a command's start, after a
+  variable such as `MSYS_NO_PATHCONV=1`, after `&&` or `sudo`, in a `$(`) or by another path such as
+  `/mingw64/bin/openssl`, is a problem ("First install, step 8, runs the openssl Git Bash finds
+  first, which writes CRLF: <line>"), and prose is never read for it; the `tr` loop must be one of
+  those lines, and the step must say `0 CR` for each of the four files; the cleanup must be there,
+  with the two certificates kept in the folder until the admin has them (step 11); and a copy from
+  the password manager must get the same `0 CR` check first, in step 8 and in disaster recovery's
+  edge. Its `-subj` problem now says that Git Bash turns the subject into a path when a native build
+  runs it. On `2f840ac`'s RUNBOOK the new checks find 11 problems, its six lines that run `openssl`,
+  the count with `tr`, the `0 CR`, the two certificates kept and the two copies counted first, and
+  none on the fix; of the 42 rules the re-wrap test runs, the other 41 report none on `2f840ac`'s
+  RUNBOOK or on the fix. New refusal cases: `2f840ac`'s block, its six lines and the count; the bare
+  name after `&&`, in a `$(` and after `sudo`, and `/mingw64/bin/openssl`; `grep -c $'\r' *.pem` in
+  place of the loop; the `0 CR` unsaid; a cleanup that removes the folder; how long the certificates
+  stay unsaid; and either copy from the password manager left uncounted; with a pass case, a line of
+  prose that starts with `openssl`. The `-subj` case swaps the new client `req` line, and the
+  re-wrap test wraps 341 phrases where it wrapped 337. `vps-kit.test.ts`'s `aopCommands`, which
+  holds `kit-check.sh`'s `aop_pair` to step 8's lines (VPS-142), read only the step's first block,
+  where the verify no longer is, and took `openssl` bare: it now reads every sh block of the step
+  and takes `/usr/bin/openssl` for the kit's `openssl`, Ubuntu's only one, with a refusal case for a
+  `/mingw64/bin/openssl` line. `aop_pair` is unchanged.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-151;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. VPS-136 and VPS-150 say where this entry changed them. Not
+  changed: their text; Who does what, part 1's line on origin pulls and step 11, which still hold;
+  and `deploy/vps/config/migrate/README.md`'s `openssl x509 … -noout`, which only reads a
+  certificate. No script, no service and no file of the kit changed. `pnpm lint`, `pnpm typecheck`
+  and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook` 65 and `vps-kit`
+  122, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-152 · The leak test's `CF-Connecting-IP` in a request of its own, as the server team's
+  `d0a7b14` has it (their PR #92; 2026-11-25):** the server team merged nanu1605/jainav-infotech#92,
+  its one commit `7145f32` ("docs: origin pulls round results and leak test fix"), into their main
+  as `d0a7b14aa17cf0182727b252c1d0037e1892c863` (2026-11-25, 00:43 IST), whose first parent is
+  `0c23a8f`. It changes their documents alone, `PROGRESS.md`, `docs/decisions.md` and three
+  runbooks, `edge.md`, `launch.md` and `server.md`, and none of the six vendored files, so they and
+  `SOURCE` stay at `0c23a8f` (VPS-150; VPS-151 named the merge). Their `edge.md` §6, the leak test,
+  changes in three places. Step 1 now sends two requests from the admin's machine, through
+  Cloudflare. The first, to `https://leaktest.$zone/?leakcheck=1`, forges `X-Forwarded-For`,
+  `True-Client-IP`, `X-Real-IP`, `X-Client-IP` and `Forwarded`, with no `CF-Connecting-IP`, and
+  passes as before: the four address headers each hold the real address, `X-Forwarded-Host` the
+  host, and the other three are absent. The second sends a forged `CF-Connecting-IP` alone to
+  `https://leaktest.$zone/`, with curl's `-w '%{http_code}\n'` printing the status after the reply,
+  and passes when it prints `error code: 1000`, then `403`; if it prints the echo server's reply
+  instead, it passes only when `Cf-Connecting-Ip` holds the real address, and anything else fails. A
+  new caution keeps `X-Forwarded-For` to one header under 100 characters, as Cloudflare gives error
+  1000 to a longer one, or to two. Step 2's log line has the path alone, as step 1 sent
+  `?leakcheck=1`; in step 4, a line with `exit 55` and `Broken pipe` is the same refusal as one with
+  `Connection reset by peer`, met while curl was still sending: run the loop again.
+
+  Their `docs/decisions.md` gives the reason in a new item, "On the server, 2026-11-25": Cloudflare
+  lists a request that brings its own `CF-Connecting-IP` as a cause of error 1000 and answered one
+  with a `403` before it reached the server; in one request with the other forged headers it turned
+  the whole test into that `403`. By their word the leak test then passed on the server: step 1 with
+  `CF-Connecting-IP` in a request of its own, steps 2 and 4, and step 3 on 2026-11-16. The rest of
+  the range records that round: Jainav's zone with pulls on at Cloudflare on 2026-11-24 and required
+  by Caddy since 2026-11-25 (`PROGRESS.md`, `launch.md` and that item), what they tried on the
+  server for a name of the zone that no site claims, the same `exit 55` note for `server.md`'s loop
+  and for their item on the server's own requests, and `edge.md`'s list of layers saying that Caddy
+  serves a site only over a connection with a client certificate from the zone's own CA. None of it
+  changes a step of ours: both our loops, First install, step 16's and the staging night's step 1,
+  pass any exit but 0 (VPS-153: no longer: both pass only on `alert certificate required` now, as
+  theirs have since `c7bcfad`).
+
+  The RUNBOOK's leak test (The server rehearsal and the cut-over, part 3, step 2) still described
+  their step 1 as one request: an admin who ran it as it now stands would see the second request's
+  `error code: 1000` and `403`, which ours never called a pass, and its log-line bullet didn't say
+  why the line has no query. Its design stays: their `edge.md` holds step 1's commands,
+  `zone=menumesh.in` is set on the admin's machine for them, and ours says what each step must show,
+  with no `curl` line of theirs copied in and no commit of theirs named, as the RUNBOOK names their
+  sections where it follows them. The lead-in now names step 1's two `curl`s. The first bullet,
+  forged headers replaced, is step 1's first request (`?leakcheck=1`, five forged headers and no
+  `CF-Connecting-IP`), passing on what it passed on before, its sentence on the `upstream` snippet
+  and `menumesh.caddy` kept. A new bullet has a forged `CF-Connecting-IP` refused in step 1's second
+  request, which sends it alone and passes when it prints `error code: 1000`, then `403`, as
+  Cloudflare refuses a request that brings its own `CF-Connecting-IP` (a cause of its error 1000)
+  before it reaches the server, as the server team saw on their zone on 2026-11-25. It gives the
+  reason the header has a request of its own, has the echo server's reply pass only when
+  `Cf-Connecting-Ip` holds the admin's own address, anything else failing, and carries their caution
+  on `X-Forwarded-For`. The log line's bullet says that step 1's first request sends `?leakcheck=1`,
+  so the line shows the path alone. The last bullet, step 1's origin test with the leak test's host
+  added, says that an `exit 55` is the same refusal, met while curl was still sending (their step 4
+  gives it with `Connection reset by peer` or `Broken pipe`): our loop prints each host's exit
+  alone, and its rule, an exit not 0, already passes it, so neither changes, and nothing has the
+  admin run it again (VPS-153: both change, as their `0c23a8f` has them, and an `exit 55` is run
+  again). The cut-over's intro names VPS-152 among the entries that changed it, and
+  VPS-143 says where this entry changed it. VPS-115 and VPS-137 still hold: their step 1 still goes
+  through Cloudflare to the temporary `leaktest` site, and still reads eight headers, the first
+  request's eight, `Cf-Connecting-Ip` among them, which the second reads again only if the echo
+  server answers.
+
+  Cloudflare's page for error 1000, the one their text links, read here on 2026-11-25,
+  `https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1000/`,
+  lists seven common causes, three of them a request whose `X-Forwarded-For` is longer than 100
+  characters, one with two `X-Forwarded-For` headers, and one that includes a `CF-Connecting-IP`
+  header; its resolutions name none of the three. So what the second request and the caution expect
+  is on Cloudflare's own list, as their text has it. Nothing here can run the leak test, which needs
+  the server, the temporary `leaktest` record and Cloudflare in front of it: nothing was rehearsed,
+  and the text follows their `d0a7b14` and that page.
+
+  `leakChecks` gains five checks, each with its own problem and refusal case, all reading the leak
+  test with `has()`: step 1's two `curl`s with `zone=menumesh.in` set; `CF-Connecting-IP` in a
+  second request of its own (the first request's five forged headers and no `CF-Connecting-IP`, the
+  second's pass on `error code: 1000`, then `403`, and why it is separate); the echo server's reply
+  passing only on the admin's own address, anything else failing; the `X-Forwarded-For` limit; and
+  the log line's `?leakcheck=1`, the path alone. On `59407da`'s RUNBOOK they find 5 problems, one
+  each, and none on the fix; of the 42 rules the re-wrap test runs, the other 41 report none on
+  `59407da`'s RUNBOOK or on the fix. The bite, `LEAK_CHECKS_59407DA`, puts `59407da`'s lead-in and
+  bullets back in place of the new ones, which gives back `59407da`'s leak test exactly:
+  `leakChecks` reports those five problems on it and nothing else, so its earlier checks still pass
+  there. Each new phrase has a refusal case of its own as well: one `curl` named again,
+  `CF-Connecting-IP` back among the first request's headers, the `403` taken out, the reason taken
+  out, the echo passing on any address, the limit taken out and the log line's note taken out. Each
+  of the five checks removed, each of the seven phrases taken as always there, and each phrase cut
+  from the RUNBOOK fails the test (the last also the re-wrap test), in copies under `tests/unit`
+  deleted after. The test's title and `leakChecks`' comment name VPS-152, and the re-wrap test wraps
+  348 phrases where it wrapped 341.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-152;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Not changed: their text; `scripts/vps-kit.mts`, whose edge
+  checks send their forged headers, `CF-Connecting-IP` among them, straight to the kit's Caddy on
+  127.0.0.1, not through Cloudflare; and `scripts/vps-probe.mts`, which forges no client-address
+  header. No script and no service changed, and of the kit's files only the README's range.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files
+  (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed; `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-153 · The origin tests print curl's message and pass only on `alert certificate required`,
+  as the server team's `0c23a8f` has them (their `c7bcfad`; 2026-11-25):** the server team's
+  `c7bcfad` ("docs: origin pulls round with our own ca", 2026-11-24, 22:34 IST), one of the five
+  commits of nanu1605/jainav-infotech#91, merged as `0c23a8f` (VPS-150), changed both origin tests
+  of their `edge.md`, §5, step 8 (Jainav's four hosts, before a later app's first container) and §6,
+  step 4 (the leak test's), to the loop
+  `e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"`:
+  `-S` keeps curl's error message under `-s`, `2>&1` puts it in `e`, and `${e##*::}` drops all up
+  to its last `::`, so each line holds the host, the exit status and curl's message. §6, step
+  4's rule, "Every line must end in an exit status other than 0", became: every line must show an
+  exit status other than 0 and `alert certificate required` (with Ubuntu 24.04's curl,
+  `exit 56 tlsv13 alert certificate required, errno 0`), as Caddy answered and asked for the client
+  certificate, which only Cloudflare holds; `exit 0` means the host takes clients without it; and
+  `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't answering at all, which proves
+  nothing. §5, step 8, now has every line end as §6, step 4, says, and stops on an `exit 0`: that
+  host takes clients without the certificate, and Jainav's origin pulls (§3) come first. Their
+  `fb50cb1` ("docs: safer origin pulls steps after review", 23:09 IST), in the same pull request,
+  added a line with `exit 55` and `Connection reset by peer` as the same refusal, met while curl was
+  still sending: run the loop again; their `d0a7b14` added "or `Broken pipe`" (VPS-152). At
+  `80f39fa`, their main in the checkout here (nanu1605/jainav-infotech#93, merged 2026-11-25, whose
+  one commit `a6288f0` changes `docs/decisions.md` and `server.md` alone), both loops and both rules
+  are `d0a7b14`'s: `git diff 0c23a8f 80f39fa -- docs/runbooks/edge.md` changes no loop line. Their
+  `docs/decisions.md` at `d0a7b14` records the run on the shared server: with `require_and_verify`,
+  "a request from the server to every host fails with `alert certificate required` (`exit 56`; on
+  some runs one host gave `exit 55`, the same refusal)".
+
+  VPS-150, which copied that merge's `snippets.caddy`, said of First install, step 16, "The step's
+  proof stays as written", and VPS-152 recorded that both our loops pass any exit but 0 and left
+  them. That was the bug. Each of our loops printed the exit status alone (`echo "$h exit $?"`) and
+  passed any exit but 0, so an `exit 7`, nothing listening on the server's 443, or an `exit 28`, no
+  answer within the 5 seconds, passed too, though neither proves anything about origin pulls: step
+  16 could have started `db`, and the staging night gone on to move DNS records, with no proof that
+  the hosts refuse a client without the certificate.
+
+  Both loops are now theirs, one line each, with their hosts as they were: First install, step 16's
+  over Jainav's four hosts, the staging night's step 1's over the four that `menumesh.caddy` serves,
+  each step saying that the loop prints each host's exit status and curl's message. Step 16's rule
+  is their §6, step 4's, to which their §5, step 8, points: every line must show an exit status
+  other than 0 and `alert certificate required`, Ubuntu 24.04's line named, as Caddy answered and
+  asked for the client certificate, which only Cloudflare holds; and a line with `exit 55` and
+  `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still sending:
+  run the loop again. Its stop on an exit 0 stays ("If one ends in `exit 0`, stop: the server team's
+  round of origin pulls comes first, and this step waits for it"), and an `exit 7` (refused) or
+  `exit 28` (no answer) means Caddy isn't answering at all, which proves nothing; that, or any
+  other line, stops the step too: the server team's chat hears of it, with the lines as the loop
+  prints them, and the step waits for their answer. Its opening, its wait and the sentences on `db`
+  and the Supabase services after it stay. The staging night's step 1 has the same rule in a
+  paragraph of its own, before its stop on an exit 0, which stays as it was but for its end: the
+  night goes no further until they have answered, the check is `SAME` and every line shows
+  `alert certificate required`, where every exit not 0 was enough. An `exit 7` or `exit 28`, or any
+  other line, stops the night too: the admin asks in the server team's chat, giving the lines as the
+  loop prints them, and the night goes no further until they have answered and every line shows the
+  refusal. Its way back stays: none needed, as no record sends the server anything yet.
+
+  The leak test's last bullet, for their step 4, said "step 1's test", where every other "step 1" of
+  those bullets is their step 1, the two `curl`s from the admin's machine. It now names the loop of
+  this night's step 1, with the leak test's host `leaktest.menumesh.in` added, every line as that
+  step says (`alert certificate required`; an `exit 55` with `Connection reset by peer` or
+  `Broken pipe` is the same refusal: run the loop again), and copies no loop line. No other text
+  states the test's pass rule: First install, step 11's mention of it (a TLS connection without the
+  client certificate refused), step 22's and the kit README's (First install, in order, step 5) name
+  the test and nothing of its exit, and the server rehearsal names only step 16's wait, so they
+  stay. The cut-over's intro names VPS-153 among the entries that changed it.
+
+  Rehearsed here, on the loops as the edited RUNBOOK holds them, with no key on disk: a throwaway
+  image, `menumesh-curl:rehearsal`, `FROM` the kit check's pin, `ubuntu:24.04@sha256:fe815609…`,
+  with Ubuntu's curl 8.5.0-2ubuntu10.16 (`apt-get install -y --no-install-recommends curl`),
+  whose `curl --version` begins
+  `curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10`;
+  and the kit's pinned Caddy, `caddy:2.11.9-alpine@sha256:003a9780…`, on no network, its `/data` and
+  `/config` in tmpfs, with `admin off`, `skip_install_trust` and one site block for the eight hosts,
+  `tls internal` with `client_auth` in `mode require_and_verify` and a `trust_pool file` of the
+  image's CA bundle, and `respond "ok"`. Caddy took the bundle as a trust pool, logged "enabling
+  strict SNI-Host enforcement because TLS client auth is configured" and made the eight certificates
+  from its internal CA, which stayed in tmpfs. L16 and LS1 were taken from the edited RUNBOOK by an
+  exact full-line match, its lines 1115 and 1503 (indents 4 and 3), and `cmp` found each the same,
+  byte for byte, as the line this change was to hold; each ran in a curl container on Caddy's
+  network, under `sh` (dash) and under `bash` (5.2.21).
+
+  With `client_auth` on, the four runs gave 16 lines, all but one of them
+  `<host> exit 56 tlsv13 alert certificate required, errno 0`; LS1 under `sh` gave
+  `menumesh.in exit 55 curl: (55) Send failure: Connection reset by peer`. That run again gave four
+  `exit 56` lines, and once more two, while `www.menumesh.in` and `api.menumesh.in` each gave
+  `exit 55 curl: (55) getpeername() failed with errno 107: Transport endpoint is not connected`.
+  Three more runs of each loop under each shell gave 48 lines: 40 `exit 56`, 4 `exit 55` with
+  `Send failure: Connection reset by peer` and 4 `exit 55` with that `getpeername()` message; no
+  `Broken pipe` came. Without `client_auth` all 16 lines read `<host> exit 0 `, ending in a space,
+  as curl printed nothing. With Caddy stopped and the curl container on no network, all 16 read
+  `<host> exit 7 curl: (7) Failed to connect to <host> port 443 after 0 ms: Couldn't connect to server`,
+  where `738927a`'s loop, which echoed `$?` alone, would have printed `<host> exit 7`, and its rule
+  passed it. An `exit 28` was not rehearsed: it needs a listener that never answers. Afterwards no
+  `menumesh-kit-` container was left, the volumes were the same 264 as before, the image was removed
+  and the folder deleted.
+
+  The `getpeername()` line is one their text doesn't name: their rule, and ours with it, takes an
+  `exit 55` for the same refusal only with `Connection reset by peer` or `Broken pipe`, so on the
+  server such a line is "any other line" and stops the step or the night until the server team has
+  answered. Whether it is the same refusal is theirs to say, and the owner's to ask (VPS-154: curl's
+  own source shows it is, and ours now names it); ours follows their text and adds nothing to it.
+
+  `tests/unit/vps-runbook.test.ts`: `JAINAV_LOOP` is L16, `JAINAV_LOOP_738927A` keeps the old line,
+  `MENUMESH_LOOP` and `MENUMESH_LOOP_738927A` hold the staging night's, and `originPulls`' loop
+  pattern reads LS1's form, the hosts captured as before. A shared helper, `alertRule`, reads an
+  origin test's place with `has()` and has four checks, each with its own problem, which
+  `originGate` runs on First install, step 16, and `originPulls` on the staging night's step 1: the
+  loop prints curl's message (its tail with `-sS`, `2>&1` and `${e##*::}`; with the old line back,
+  "prints each host's exit alone, not curl's message"); the rule names Ubuntu 24.04's
+  `exit 56 tlsv13 alert certificate required, errno 0` and passes only on
+  `alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is the
+  same refusal, run again; and an `exit 7` or `exit 28` proves nothing and stops, in the place's own
+  words. `leakChecks` gains a check that the last bullet names this night's step 1 loop with
+  `leaktest.menumesh.in` added, and its `exit 55` as the same refusal. `originGate` reads step 16's
+  stop as "If one ends in `exit 0`, stop: …", and `STAGING_SAME` ends "and every line shows
+  `alert certificate required`", as the problem of its stop now says.
+
+  On `738927a`'s RUNBOOK the new checks find 9 problems, each of `alertRule`'s four in both tests
+  and the leak test's one, and none on the fix. With them, three earlier checks that now read the
+  new text report one each there: `originGate`'s proof, which looks for L16, and `originPulls`' loop
+  and its stop's end, which read LS1's form and `STAGING_SAME`; so `originGate` reports 5,
+  `originPulls` 6 and `leakChecks` 1, and the other 39 of the 42 rules the re-wrap test runs report
+  none on `738927a`'s RUNBOOK; all 42 report none on the fix. The bites put `738927a`'s text back in
+  place of the new: `ORIGIN_PROOF_738927A`, step 16 from "the proof their" to its stop,
+  `SITE_RULE_738927A`, the staging night's step 1 from "every block" to its way back, and
+  `LEAK_BULLET_738927A`; each gives back that place exactly, and all three, with the range and the
+  intro put back, give back `738927a`'s whole RUNBOOK. The tests hold each bite to its exact
+  problems, and `LEAK_CHECKS_59407DA` now reports VPS-153's besides VPS-152's five. Each new phrase
+  has a refusal case of its own as well, in each test where it stands: the old loop line alone, the
+  alert taken out of the pass, the `exit 55` sentence, "which proves nothing" and the stop taken
+  out, the bullet's "step 1" back and its `exit 55` taken out, and the stop's end as at `738927a`.
+  Each of the seven new checks removed (`alertRule`'s four, its call in each rule and the leak
+  test's), each of the twelve new or changed phrases taken as always there (the eleven the checks
+  read, and the loop pattern back in `738927a`'s form) and each of ten phrases cut from the RUNBOOK
+  fails the test (the last also the re-wrap test): 29 mutations, in copies under `tests/unit`
+  deleted after. The titles of the three tests, the file's opening comment and the comments of
+  `JAINAV_LOOP`, `originGate`, `originPulls`, `STAGING_SAME` and `leakChecks` name VPS-153, and the
+  re-wrap test wraps 363 phrases where it wrapped 348: three swapped for the new text's and 15 new.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-153;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. VPS-123, VPS-143, VPS-147, VPS-148, VPS-150 and VPS-152 say
+  where this entry changed them. Not changed: their text; the vendored files and `SOURCE`, still
+  `0c23a8f`'s; and `scripts/vps-kit.mts`, whose `vps:edge` checks the handshake with Node's own
+  client, not curl, though its comment there still gives the staging night's test as curl's exit
+  not 0, left for the next change of the kit. No script and no service changed, and of the kit's
+  files only the README's range. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the
+  unit tests 1,357 in 73 files (`vps-runbook` 65, none new); `pnpm vps:check` 55 checks, 0 failed;
+  `pnpm vps:edge` 22, 0 failed.
+
+- **VPS-154 · An `exit 55` with curl's `getpeername()` message is the same refusal (VPS-153's
+  rehearsal and curl 8.5.0's source; 2026-11-25):** VPS-153's rehearsal (Ubuntu 24.04's curl 8.5.0,
+  Caddy with `client_auth` in `require_and_verify`) printed 72 lines: 61 with `exit 56` and
+  `alert certificate required`, 5 with `exit 55` and `Send failure: Connection reset by peer`, and 6
+  with `exit 55` and `getpeername() failed with errno 107: Transport endpoint is not connected`; no
+  `exit 55` came without `client_auth` (all `exit 0`) or with Caddy stopped (all `exit 7`).
+  VPS-153's rule, like the server team's, took an `exit 55` for the same refusal only with
+  `Connection reset by peer` or `Broken pipe`, so the `getpeername()` line stopped the step or the
+  night as "any other line": at the rehearsal's rate, 6 lines in 72, about 3 runs in 10 of a
+  four-host loop would hold one.
+
+  curl's own source settles it, at its tag `curl-8_5_0` (copies of `lib/cf-socket.c` and
+  `lib/curl_trc.c`, read here and not kept). In `lib/cf-socket.c`, `conn_set_primary_ip()`, a
+  `static void` function, calls `getpeername()` and, when that fails, records its message with
+  `failf()` and returns: being `void`, it fails nothing, and the comment on why TFTP skips the call,
+  as it never connects its socket, names that very message. It runs from `cf_socket_active()`, which
+  `cf_socket_cntrl()` calls on `CF_CTRL_CONN_INFO_UPDATE`, the update of the connection's details
+  once it is connected. In `lib/curl_trc.c`, `Curl_failf()` copies a message into the error buffer
+  only while none has been written there, so the curl tool prints the first error it met.
+
+  So an `exit 55` (`CURLE_SEND_ERROR`: sending the request failed) with that message is the same
+  send failure as one with `Connection reset by peer` or `Broken pipe`: Caddy had already closed the
+  connection after the handshake when curl updated its details, and curl shows that earlier,
+  harmless message. Naming it weakens nothing: the pass still needs every line to show
+  `alert certificate required`, an `exit 55` line only has the loop run again, and a host that takes
+  clients without the certificate (`exit 0`) or isn't answering (`exit 7`, `exit 28`) still stops
+  the step or the night.
+
+  Both rules, First install, step 16's and the staging night's step 1's, now say: "A line with
+  `exit 55` and `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107`
+  is the same refusal, met while curl was still sending: run the loop again." The rest of each
+  stays, and only that sentence's lines are wrapped again. The leak test's last bullet no longer
+  repeats the list: every line as that step says (`alert certificate required`; an `exit 55` with a
+  message that step names is the same refusal: run the loop again). The cut-over's intro names
+  VPS-154, and VPS-153 says where this entry changed it. Their `edge.md` (§6, step 4, at `80f39fa`)
+  still names only `Connection reset by peer` and `Broken pipe`; whether to tell the server team is
+  the owner's call.
+
+  `tests/unit/vps-runbook.test.ts`: `SAME_REFUSAL` is the new sentence,
+  `getpeername() failed with errno 107` pinned in it, and `alertRule`'s problem names the three
+  messages; the leak test's check reads the bullet's new words, its problem asking for an `exit 55`
+  with a message that step names. The bites `STEP_16_REFUSAL_86E73CB`, `NIGHT_REFUSAL_86E73CB` and
+  `LEAK_BULLET_86E73CB` put back `86e73cb`'s sentence in each rule and its bullet, each giving back
+  that place exactly and, with the range and the intro put back, `86e73cb`'s whole RUNBOOK; each is
+  refused with its one problem and nothing else, and the three refusal cases that cut the old words
+  cut the new. On `86e73cb`'s RUNBOOK the 42 rules the re-wrap test runs report 3 problems, one in
+  each place (`originGate`, `originPulls` and `leakChecks`), and none on the fix. Seven mutations
+  each fail a test: the two changed phrases taken as always there, each rule's sentence and its
+  `getpeername()` message cut from the RUNBOOK, and the bullet's new words cut, in copies deleted
+  after. The re-wrap test wraps 364 phrases where it wrapped 363, three swapped for the new text's
+  and one new; the three tests' titles, the file's opening comment and the comments of
+  `SAME_REFUSAL`, `alertRule`, `originGate`, `originPulls` and `leakChecks` name VPS-154.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-154;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. Nothing was run against the server, and no rehearsal was
+  needed: the line was seen in VPS-153's. `pnpm vps:check` and `pnpm vps:edge`, which read neither
+  these rules nor this file (First install, step 8, is untouched), were not run. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,357 in 73 files (`vps-runbook`
+  65, none new).
+
+- **VPS-155 · First install, steps 1 and 7, run in Git Bash on the owner's Windows machine
+  (2026-11-25):** on the owner's machine, Windows 11 with Git Bash and Windows PowerShell 5.1,
+  step 1 couldn't run as written in either shell, and step 7 only in Git Bash, which it didn't
+  name. In Git Bash, MSYS reads step 1's `"$PWD:/k"` as two paths, `/k` becoming the drive `K:\`,
+  so `docker.exe` got `C:\Users\…\<folder>;K:\` (as `cmd //c echo "$PWD:/k"` shows) and refused
+  it with exit 125, making no container (a run with `true` for the key command), as in VPS-151's
+  incident; Windows PowerShell 5.1 can't parse `"$PWD:/k"` at all. No key was made, but the owner
+  was blocked. In Git Bash, `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" … sh -c '…'`
+  works: `pwd -W` printed `C:/Users/…/volprobe2`, a probe container of `menumesh-backup:rehearsal`
+  exited 0, its file in the Windows folder with the bytes `probe\n` (LF), and `--rm` removed it.
+  Step 7's `ssh-keygen`, in Windows PowerShell 5.1 (5.1.26100.10068, with Windows' own OpenSSH),
+  stopped at `ssh-keygen : Too many arguments.`, exit 1, with no file, as Windows PowerShell 5.1
+  drops an empty argument to a native program: `-N` took `-C` as its value. In Git Bash
+  (`/usr/bin/ssh-keygen`) it exits 0, the key opening with an empty passphrase, 0 CR in it and the
+  comment at the `.pub`'s end; those keys were throwaways, deleted after.
+
+  Step 1 is now made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or
+  Linux), in step 8's words; its block is that Git Bash line, "the server team's form, with the
+  folder given as Git Bash needs it", and after it come the line for macOS and Linux,
+  `-v "$PWD:/k"` without `MSYS_NO_PATHCONV=1`, and the reason, in a sentence; the rest of step 1
+  stays. Step 7 names the same machine and keeps its command, run in Git Bash, not PowerShell, and
+  says why. Git Bash because step 8 already names it for the owner's machine, and the `/usr/bin/…`
+  tools are already Git Bash's: step 8's `/usr/bin/openssl` (VPS-151), step 7's
+  `/usr/bin/ssh-keygen`. On macOS and Linux `"$PWD:/k"` stays right, and `pwd -W` doesn't exist.
+
+  The RUNBOOK's other commands for the owner's or the admin's machine, and the kit's documents it
+  sends them to, hold no other `$PWD` in a `docker run -v`, empty argument to a native program or
+  `/x`-style argument MSYS would rewrite: step 8's `-subj '/CN=…'` lines already run
+  `/usr/bin/openssl` behind `MSYS_NO_PATHCONV=1`, and the one other `''`, in part 1's count, is SQL
+  in hosted production's SQL editor. Not changed: the server's commands; step 5's
+  `openssl x509 -in … -noout …`, which only reads a certificate, and step 6, our own Node script,
+  which no shell rewrites; and the server team's text, with the same forms at their `8d70e90`
+  (`docs/runbooks/backups.md:26`, `docs/runbooks/server.md:117-118`), which stays theirs: telling
+  them is the owner's call.
+
+  `tests/unit/vps-runbook.test.ts` has a new rule, `gitBashKeys`, on step 1 and a new place,
+  `deployKey` (step 7), with one problem a place at most: a `docker run` of step 1's block that
+  mounts `$PWD`, quoted or not, as `${PWD}` too, by `-v` or `--volume`, read as one line where a
+  trailing backslash splits it, is refused by name, beside the right line too, and the block must
+  otherwise hold `MSYS_NO_PATHCONV=1 docker run` with `-v "$(pwd -W):/k"`, prose never read for it;
+  its prose must hold the machine in step 8's words, its form, the line for macOS and Linux and the
+  reason; and step 7, the machine, its command, Git Bash, not PowerShell, and the reason. On
+  `6bbc375`'s RUNBOOK the 43 rules the re-wrap test now runs report 3 problems, all `gitBashKeys`',
+  one a place (step 1's block, its prose, step 7), and none on the fix. The bites,
+  `KEY_LINE_6BBC375` (step 1's old block), then `DEPLOY_KEY_6BBC375` (step 7's old sentence), and
+  `KEY_STEP_6BBC375` (step 1's old opening, the new paragraph taken out), are each refused with its
+  one problem and nothing else, and the three with the range give back `6bbc375`'s RUNBOOK exactly.
+  Each of the 14 new phrases cut from the RUNBOOK fails the new test and the re-wrap test, and each
+  of 21 mutations of the rule (a check removed, the `$PWD` pattern never matching, needing its
+  quote or `-v`, or missing `${PWD}`, the split lines read apart, the one-problem guard removed, a
+  phrase taken as always there) fails the new test, in copies under `tests/unit` deleted after. The
+  re-wrap test wraps 372 phrases where it wrapped 364, and the test's title and comments name
+  VPS-155.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-155;
+  `compose.yml`'s header and `tests/unit/vps-kit.test.ts`'s header still cite VPS-31 to VPS-146,
+  left for the next change of the kit. The cut-over's intro stays: it names the entries that
+  changed the cut-over's own steps, and its part 2 runs First install by reference. Nothing was run
+  against the server, and the runs above weren't made again. `pnpm vps:check` and `pnpm vps:edge`,
+  which read no part of this change (`scripts/vps-kit.mts` never reads the RUNBOOK), were not run.
+  `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,358 in 73 files
+  (`vps-runbook` 66, one new).
+
+- **VPS-156 · The backups stay in Cloudflare R2's Asia-Pacific location, outside India
+  (2026-11-26):** First install, step 2, asked for "an India-region, S3-compatible bucket"; the
+  owner's is R2's, which has no India region, and the owner keeps it, so the docs now say what was
+  built: an R2 bucket made with the location hint Asia-Pacific (APAC), public access disabled, no
+  custom domain, bucket lock rules on `daily/` (29 days), `monthly/` (365) and `wal/` (15), all
+  enabled, and an account API token with Object Read & Write on this bucket only. No value from the
+  owner's files is written here. R2's location hints (`wnam`, `enam`, `weur`, `eeur`, `apac`, `oc`)
+  are best effort, and its jurisdictions are `eu`, `fedramp` and `us` alone (Cloudflare's R2 docs,
+  2026-11-26): the backups are kept outside India.
+
+  The owner's reason: R2's bucket locks, scoped to a prefix, refuse overwrites and deletes, as step
+  2 asks, so a stolen token can neither replace nor delete what a restore reads; AWS S3 in Mumbai
+  (`ap-south-1`), the India-region choice weighed, is weaker by step 2's own account (an Object Lock
+  default is one period for the whole bucket; versioning alone leaves overwrites possible). Each
+  night is encrypted to the owner's age key, whose private half never stays on the server or reaches
+  the bucket, and sealed by the backup's signing key (VPS-43). The server team's own buckets have
+  the same hint, and their privacy text says it "can be outside India" (their
+  `docs/privacy-data-map.md`, line 70, at `aaab398`). The app and its database stay in Mumbai, as
+  the FAQ says, and production starts fresh on the server (VPS-110), so real data reaches the bucket
+  only from the production night on.
+
+  Changed: step 2's opening, which names R2's Asia-Pacific hint, the backups kept outside India and
+  the production night, from which the site says so (its weighing of lock rules and versioning
+  stays, for any later change of provider); a bullet in the production night's Before it: its
+  release carries the site's words on where the encrypted backups are kept, with Cloudflare (R2) in
+  its Asia-Pacific region, which can be outside India, in the privacy page and the FAQ's answer in
+  English and Hindi, and the journal's retention on the privacy page (VPS-24), the owner approving
+  them; the cut-over's intro, naming VPS-156 for part 4; VPS-24's line, corrected in place; SPEC's
+  Region row; and two comments, the env template's, which names the bucket by step 2, and
+  `compose.yml`'s, the owner's bucket. Not changed: the site's words under `src/`, true until that
+  release (the privacy page is still the owner's outline, P10-5; its "Supabase (database, Mumbai,
+  India)" is today's database); any name or setting; the server's commands. No script acts on the
+  comments: `pnpm vps:secrets` copies them into `.env`, reading the template's names alone.
+
+  `backupPlace` (`tests/unit/vps-runbook.test.ts`) reads two new places, `bucketStep` and
+  `beforeProduction`, one problem a place at most: a step 2 that calls the bucket India's
+  (India-region, an India or India region bucket, a bucket in India, white space folded) has that
+  problem alone, else needs its five new phrases; Before it needs the bullet's eight.
+  `bucketComments` (`tests/unit/vps-kit.test.ts`) refuses a comment of either file, read whole
+  across its lines, that calls the bucket India's, else needs its new words, one problem a file. On
+  `5162697`'s files each reports 2 problems, one a place or file (of the re-wrap test's 44 rules,
+  only `backupPlace`), none on the fix. The bites (step 2's old opening, the bullet cut, each old
+  comment) are each refused with its one problem alone and give back `5162697`'s files exactly, the
+  RUNBOOK with the range and the intro. Each of the 15 new phrases cut (13 in the RUNBOOK, failing
+  the new test and the re-wrap test; 2 in the comments, failing the new kit test) and each of 27
+  mutations of the rules (a check removed, India never matched or read unfolded, the guard removed,
+  a place read too wide, a phrase taken as always there, comments read line by line) fails a test,
+  in copies under `tests/unit` deleted after. The re-wrap test wraps 385 phrases, not 372; the new
+  titles and comments name VPS-156.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-156;
+  `compose.yml`'s and `tests/unit/vps-kit.test.ts`'s headers keep VPS-31 to VPS-146 for a
+  comment-only fix. Nothing was run against the server, Cloudflare or the bucket, and nothing under
+  `src/` changed. `pnpm vps:check` (`compose.yml` changed): 55 checks, 0 failed; `pnpm vps:edge`
+  reads neither file and was not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean;
+  the unit tests 1,360 in 73 files (`vps-runbook` 67, `vps-kit` 123, one new each).
+
+- **VPS-157 · First install, step 7, names cmd, which gives the deploy key the passphrase `''`
+  (2026-11-26):** in cmd.exe, `ssh-keygen -t ed25519 -f <file> -N '' -C <comment>` exits 0, but
+  cmd passes the apostrophes on as they are, so the key's passphrase is the two characters `''`: a
+  throwaway key made through a `.cmd` file on 2026-11-25 opened with `-P "''"` and not with
+  `-P ''`. Nothing fails then; the deploy can't use the key, and step 17's **VPS ping** is its
+  first real test. In Git Bash, `ssh-keygen -y -P '' -f <file>` printed the public key of a key
+  without a passphrase (VPS-155's runs). The owner's terminal has been cmd.exe (prompt
+  `S:\Projects\Restaurant-QR-Ordering>`) even when Git Bash was meant, whose prompt shows `MINGW64`
+  and ends in `$`. The owner's deploy key was checked: it has no passphrase, so nothing needs
+  redoing.
+
+  Step 7's sentence on Windows now names cmd beside PowerShell and what cmd does with `''`, tells
+  Git Bash apart by its prompt, and adds the check, in Git Bash:
+  `ssh-keygen -y -P '' -f gha-menumesh-staging` prints the public key, and a key with a passphrase
+  is refused. Its command stays. No other command for the owner's or the admin's Windows machine
+  passes an empty `''`: part 1's count is SQL in hosted production's SQL editor, step 11's awk
+  `print ""` runs on the server, Rotation's deploy key and disaster recovery's step 1 give no
+  command, so a new key comes from step 7's line, beside its warning, and the kit's documents hold
+  none. The server's commands stay.
+
+  `gitBashKeys` now needs step 7's four `CMD_WORDS`, still one problem a place: a step 7 without
+  its words on PowerShell has that problem alone, and VPS-155's two cases that quoted the old wrap
+  quote the new. On `32a2ed1`'s RUNBOOK the re-wrap test's 44 rules report 1 problem, this one, and
+  none on the fix; the bite `DEPLOY_SENTENCE_32A2ED1` is refused with it alone and, with the range,
+  gives back `32a2ed1`'s RUNBOOK exactly. Each of the 9 new phrases cut fails the new test and the
+  re-wrap test, and each of 7 mutations of the rule (the check or its guard removed, the words read
+  in step 1, each phrase taken as always there) fails a test, in copies under `tests/unit` deleted
+  after. The re-wrap test wraps 391 phrases, not 385; the new title and comments name VPS-157.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-157;
+  the cut-over's intro stays, as only First install changed. Nothing was run: no `ssh-keygen`, no
+  cmd, nothing against the server; `pnpm vps:check` and `pnpm vps:edge` read none of this and were
+  not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,361 in 73
+  files (`vps-runbook` 68, one new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
@@ -12867,21 +13587,18 @@ reads them on the server on the recreate night, before its `edge.env` lines (VPS
 confirmation from now on carries it. The line at `a0bb599`
 (`git show a0bb599:docker/host/apps/edge.conf | grep '^CADDY_IMAGE='`) is the kit's `CADDY`, every
 character, and its sum is the one their confirmation gave, so step 11 reads it in full as it
-stands. Still open:
+stands. So is their origin-pulls round for `jainavinfotech.in`, which came before our step 16: their
+confirmation of 2026-11-25 names `0c23a8f` (nanu1605/jainav-infotech#91), whose `snippets.caddy` has
+`tls_jainav`'s `client_auth` on and the `log_fields` comment on the client certificate's common name
+and serial; it is live on the server, and origin pulls are on and required for `jainavinfotech.in`
+since 00:08 IST that day. The kit's copy is that commit's, its `SOURCE` line the sum that
+confirmation gives, `1bfc11ed…`, which step 11's check then takes; step 16's wait for their word is
+over, and its loop still proves it on the server at the install (VPS-150). So is the Team page's
+check of an invite's name, the separate task VPS-134 left: every form that takes a person's name now
+refuses what the first-admin tool refuses (After the review: names that hide or reorder text, in
+Review fixes, round 2 (VPS Stop D)). Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
   call.
-- The server team's origin-pulls round for `jainavinfotech.in`, which comes before our step 16: the
-  step waits for their word in their chat, and its loop proves it (VPS-135, VPS-143). That round's
-  PR changes their `snippets.caddy` again: `tls_jainav`'s `client_auth` on, and a `log_fields`
-  comment on the client certificate's fields, its common name and serial, which Caddy's access lines
-  keep on purpose, as the serial shows which certificate Cloudflare presents after a rotation. So
-  the kit copies their files again at its merge, from the commit and hashes they send, and
-  `SOURCE`'s `snippets.caddy` line becomes the sum that round's confirmation gives, which First
-  install, step 11's check then takes (RUNBOOK, Copying the server team's files again; VPS-147,
-  VPS-148).
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
-- The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
-  line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
-  accepts (VPS-134).

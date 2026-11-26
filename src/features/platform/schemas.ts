@@ -6,6 +6,7 @@ import { FEATURE_KEYS, type FeatureKey } from '@/features/plans/plan-features';
 import { GST_RATES_BPS } from '@/features/settings/schemas';
 import { RESTAURANT_CODE_PATTERN, USERNAME_PATTERN } from '@/lib/auth/staff-email';
 import { addDays, isDate } from '@/lib/date-range';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 import { ACQUISITION_CHANNELS, MANUAL_MODES } from './platform';
 
@@ -180,7 +181,8 @@ export const onboardOwnerSchema = z.object({
     .string()
     .trim()
     .min(1, "Enter the owner's name.")
-    .max(80, 'Use 80 characters or fewer.'),
+    .max(80, 'Use 80 characters or fewer.')
+    .refine(hasNoHiddenCharacters, 'Remove the hidden characters from the name.'),
   ownerUsername: z
     .string()
     .trim()

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { formatClockTime } from '@/features/ordering/format';
 import { DEFAULT_LOCALE } from '@/lib/config';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 /**
  * Support sessions (docs/SUPER_ADMIN_PLAN.md 13c, docs/DECISIONS.md SA-46 to
@@ -19,7 +20,8 @@ export const staffNameSchema = z
   .string()
   .trim()
   .min(1, 'Enter your name, as the restaurant will see it.')
-  .max(40, 'Keep it to 40 characters.');
+  .max(40, 'Keep it to 40 characters.')
+  .refine(hasNoHiddenCharacters, 'Remove the hidden characters from your name.');
 
 /** The approved consent wording (docs/DECISIONS.md SA-52). */
 export const SUPPORT_ACCESS_TEXT =

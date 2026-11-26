@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { INVITE_DAYS, inviteSchema } from '@/features/platform/team';
 import { hashCode } from '@/lib/one-time-code';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 import {
   checkEmail,
@@ -649,6 +650,9 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
       [{ FIRST_ADMIN_NAME: 'Owner Name' }, '"Owner\\u2028Name" must be 1 to 80'],
       [{ FIRST_ADMIN_NAME: 'Owner Name' }, '"Owner\\u2029Name" must be 1 to 80'],
       [{ FIRST_ADMIN_NAME: 'Owner\u0085Name' }, '"Owner\\u0085Name" must be 1 to 80'],
+      // And a tag character past the BMP, a format character too, written out as its two UTF-16
+      // units.
+      [{ FIRST_ADMIN_NAME: 'Owner\u{E0041} Name' }, '"Owner\\udb40\\udc41 Name" must be 1 to 80'],
     ];
     for (const [change, problem] of bad) {
       seen = [];
@@ -667,14 +671,10 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
           result.stderr.replace(/^first-admin: refused: /, '').trimEnd(),
         );
       }
-      // The Team page refuses the same, but for a name with control or format characters or a
-      // line or paragraph separator: its inviteSchema doesn't check those yet, and the tool does,
-      // as it prints the name on the owner's terminal, where a bidi control would spoof the line.
-      if (!/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(input.FIRST_ADMIN_NAME ?? '')) {
-        expect(team(input.FIRST_ADMIN_EMAIL ?? '', input.FIRST_ADMIN_NAME ?? ''), problem).toBe(
-          false,
-        );
-      }
+      // The Team page refuses the same.
+      expect(team(input.FIRST_ADMIN_EMAIL ?? '', input.FIRST_ADMIN_NAME ?? ''), problem).toBe(
+        false,
+      );
     }
 
     // What the Team page takes, the values maker and the tool take too, through the values file.
@@ -682,6 +682,7 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
       { FIRST_ADMIN_EMAIL: "o'brien+menumesh@mail.example.in", FIRST_ADMIN_NAME: 'x'.repeat(80) },
       { FIRST_ADMIN_EMAIL: 'OWNER@EXAMPLE.COM', FIRST_ADMIN_NAME: 'Ōwner Nāme' },
       { FIRST_ADMIN_EMAIL: 'zoe@example.com', FIRST_ADMIN_NAME: `Zoë "O'Brien" \\ 😀` },
+      { FIRST_ADMIN_EMAIL: 'asha@example.in', FIRST_ADMIN_NAME: 'आशा वर्मा' },
     ]) {
       seen = [];
       expect(team(input.FIRST_ADMIN_EMAIL, input.FIRST_ADMIN_NAME)).toBe(true);
@@ -767,6 +768,34 @@ describe('the first-admin tool (deploy/vps/tools/first-admin.mjs)', { timeout: 6
     ]) {
       expect(OLD_VALUES.test(readFileSync(path, 'utf8')), path).toBe(false);
     }
+  });
+
+  it('refuses in a name every character the Team page refuses, and only those', () => {
+    // The tool runs without the app, so it keeps its own copy of src/lib/person-name.ts's rule; so
+    // does the values maker, on the owner's machine, in checkName (VPS-134).
+    const rule = /^const HIDDEN = \/(.+)\/u;$/m.exec(TOOL)?.[1];
+    expect(rule, 'the tool has no HIDDEN rule').toBeDefined();
+    const hidden = new RegExp(rule!, 'u');
+    const makerTakes = (name: string) => {
+      try {
+        return checkName(name) === name;
+      } catch (error) {
+        expect(error).toBeInstanceOf(Refused);
+        return false;
+      }
+    };
+    const differ: string[] = [];
+    const makerDiffers: string[] = [];
+    for (let code = 0; code <= 0x10ffff; code++) {
+      const char = String.fromCodePoint(code);
+      if (hidden.test(char) === hasNoHiddenCharacters(char)) differ.push(`U+${code.toString(16)}`);
+      // Inside a name, where trimming leaves it.
+      if (makerTakes(`a${char}b`) !== hasNoHiddenCharacters(char)) {
+        makerDiffers.push(`U+${code.toString(16)}`);
+      }
+    }
+    expect(differ).toEqual([]);
+    expect(makerDiffers).toEqual([]);
   });
 
   it("needs the web container's settings and the app's address, before any change", async () => {

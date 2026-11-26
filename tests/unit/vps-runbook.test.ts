@@ -121,7 +121,32 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * summed again on the server before its install, and a newer pin of theirs followed with their
  * files copied again at the confirmation's commit. Since the copy of their files at their a0bb599
  * (VPS-149), the check takes their Caddyfile and hostwatch too: four lines on the admin's machine,
- * four on the server, and SAME's six lines.
+ * four on the server, and SAME's six lines. Since VPS-151, step 8 makes the origin pulls' files
+ * with /usr/bin/openssl, which in Git Bash writes the LF line endings app-apply needs, counts each
+ * file's carriage returns with tr, and keeps the two certificates in the folder until step 11; a
+ * copy from the password manager, there or in disaster recovery, is counted first. Since their
+ * d0a7b14 (VPS-152), the leak test's step 1 sends CF-Connecting-IP in a second request of its own,
+ * which passes on Cloudflare's error code: 1000, then 403, or on the admin's own address should the
+ * echo server answer, keeps X-Forwarded-For to one header under 100 characters, and has step 2's
+ * log line show the path alone, without the first request's ?leakcheck=1. Since their c7bcfad,
+ * merged in their 0c23a8f (VPS-153), both origin tests, First install, step 16's and the staging
+ * night's step 1, print curl's message beside each host's exit and pass only on alert certificate
+ * required, an exit 55 with Connection reset by peer or Broken pipe the same refusal, run again,
+ * and an exit 7 or 28, which proves nothing, a stop; and the leak test's step 4 runs the staging
+ * night's step 1 loop with its own host added, its lines read as that step reads them. Since
+ * VPS-154 an exit 55 with curl's getpeername() failed with errno 107 is the same refusal too, as
+ * curl 8.5.0's own source shows, and the leak test's step 4 leaves the messages to that step. Since
+ * VPS-155 the owner's key steps run in Git Bash on Windows: First install, step 1, mounts the
+ * folder as `pwd -W` gives it, behind MSYS_NO_PATHCONV=1, as Git Bash turns "$PWD:/k" into C:\…;K:\
+ * and Windows PowerShell can't parse it, with the line for macOS and Linux beside it, and step 7's
+ * ssh-keygen, whose empty -N '' Windows PowerShell 5.1 drops, runs in Git Bash, not PowerShell.
+ * Since VPS-156 First install, step 2, names the owner's bucket as built, R2's, with the
+ * Asia-Pacific location hint, the backups kept outside India, as R2 has no India region, and the
+ * production night's Before it has its release carry the site's words on where the backups are
+ * kept and how long the journal keeps a line. Since VPS-157 step 7 names cmd beside PowerShell, as
+ * cmd passes its '' on as two apostrophes, the key's passphrase, which nothing finds until the VPS
+ * ping of step 17, tells Git Bash apart by its prompt, and checks the key in Git Bash with
+ * ssh-keygen -y -P ''.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -178,6 +203,12 @@ const PLACES = {
   vps: ['## The shared server (VPS)', '\n## Razorpay live switch'],
   firstKey: ['1. **The backup key**', '2. **The bucket:**'],
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
+  // First install, step 7, whose ssh-keygen runs in Git Bash (VPS-155), not cmd (VPS-157).
+  deployKey: ['7. **The deploy key**', '8. **The zone:**'],
+  // First install, step 2, and the production night's Before it, which say where the backups are
+  // kept (VPS-156).
+  bucketStep: ['2. **The bucket:**', '3. **Alerts:**'],
+  beforeProduction: ['#### 4. The production night', 'Then, in order:'],
   tokenBullet: ["- The bucket's token, Telegram and the heartbeat addresses", '- The backup key:'],
   backupKey: ['- The backup key:', '- The signing key (after the server may have been reached'],
   rotation: ['- The signing key (after the server may have been reached', "- Staging's password"],
@@ -2539,6 +2570,65 @@ function siteBlocks(site: string, snippet: string): { host: string; imports: boo
   return blocks;
 }
 
+/**
+ * The origin tests' loop and rule as the server team's c7bcfad has them, merged in their 0c23a8f
+ * (their edge.md §5, step 8, and §6, step 4; VPS-153). Each line prints the host's exit status and
+ * curl's message, its error output with all up to its last `::` dropped, and passes only on alert
+ * certificate required: Caddy answered and asked for the client certificate, which only Cloudflare
+ * holds. Our loops printed the exit alone and passed any exit but 0, so an exit 7 (refused) or 28
+ * (no answer), which proves nothing about origin pulls, passed too.
+ */
+const LOOP_MESSAGE =
+  'do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done';
+/** The pass, as their §6, step 4, words it, with what Ubuntu 24.04's curl prints. */
+const ALERT_PASS =
+  "Every line must show an exit status other than 0 and `alert certificate required` (with Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and asked for the client certificate, which only Cloudflare holds";
+/**
+ * The refusal met while curl was still sending (their fb50cb1, and d0a7b14's Broken pipe), and
+ * since VPS-154 curl's getpeername() message: curl 8.5.0 records it, failing nothing, when Caddy
+ * has already closed the connection, and prints it as the first error met, though the exit 55
+ * comes from the send that fails after it.
+ */
+const SAME_REFUSAL =
+  'A line with `exit 55` and `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107` is the same refusal, met while curl was still sending: run the loop again';
+/** A Caddy that never answered the handshake. */
+const PROVES_NOTHING =
+  "An `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't answering at all, which proves nothing";
+/** First install, step 16's stop on such a line, or any other. */
+const STEP_16_STOP =
+  "That, or any other line, stops the step too: the server team's chat hears of it, with the lines as the loop prints them, and the step waits for their answer";
+/** The staging night's stop on such a line, or any other. */
+const NIGHT_STOP =
+  "That, or any other line, stops the night too: the admin asks in the server team's chat, giving the lines as the loop prints them, and the night goes no further until they have answered and every line shows the refusal";
+
+/**
+ * An origin test's loop and rule in `text` (VPS-153), `test` naming it in the problems and `stop`
+ * being its stop on an exit 7, an exit 28 or any other line: the loop prints curl's message, and
+ * the rule passes only on alert certificate required, takes an exit 55 with Connection reset by
+ * peer, Broken pipe or (since VPS-154) getpeername() failed with errno 107 for the same refusal,
+ * run again, and stops on what proves nothing.
+ */
+function alertRule(text: string, test: string, stop: string): string[] {
+  return [
+    ...(has(text, LOOP_MESSAGE)
+      ? []
+      : [`${test} prints each host’s exit alone, not curl’s message`]),
+    ...(has(text, ALERT_PASS)
+      ? []
+      : [
+          `${test} passes any exit but 0, not only alert certificate required (Ubuntu 24.04’s exit 56 tlsv13 alert certificate required, errno 0)`,
+        ]),
+    ...(has(text, SAME_REFUSAL)
+      ? []
+      : [
+          `${test} doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again`,
+        ]),
+    ...(has(text, PROVES_NOTHING) && has(text, stop)
+      ? []
+      : [`${test} doesn’t stop on an exit 7 or 28, which proves nothing`]),
+  ];
+}
+
 /** The staging night's stop on an exit 0 of the origin test, since the server team's 66c8c61. */
 const STOP_ON_EXIT_0 =
   "An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not the server team's of `66c8c61` or later: stop.";
@@ -2549,8 +2639,12 @@ const STOP_ON_EXIT_0 =
  */
 const STAGING_ASK =
   "The admin runs the server's lines of First install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does";
-/** The night goes on only once the check and the origin test both pass. */
-const STAGING_SAME = 'until they have answered, the check is `SAME` and every exit is not 0';
+/**
+ * The night goes on only once the check and the origin test both pass: since VPS-153 every line of
+ * the test shows alert certificate required, where any exit but 0 passed.
+ */
+const STAGING_SAME =
+  'until they have answered, the check is `SAME` and every line shows `alert certificate required`';
 /** That stop at f6a33d5, which sent the admin to the copy and the comparison with it (VPS-147). */
 const STAGING_STOP_F6A33D5 = [
   " The admin makes the copy and runs the comparison of First install, step 11, and asks in the server team's chat as its `DIFFERENT` does, giving the live file's sum, the copy's sum and the commit the copy came from.",
@@ -2572,6 +2666,42 @@ const OLD_STOP_ON_EXIT_0 = [
   '   none needed, as no record sends the server anything yet.',
 ].join('\n');
 
+/** The staging night's origin test over the hosts menumesh.caddy serves, in their c7bcfad form. */
+const MENUMESH_LOOP =
+  'for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done';
+/** That loop at 738927a, which printed each host's exit alone (VPS-153). */
+const MENUMESH_LOOP_738927A =
+  'for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done';
+/**
+ * The staging night's step 1 at 738927a, from its sentence on the hosts to its way back: the loop
+ * printed each host's exit alone, and the night went on once every exit was not 0 (VPS-153).
+ */
+const SITE_RULE_738927A = [
+  ' every block',
+  '   of it importing `tls_menumesh`, must fail in the handshake, its exit not 0:',
+  '',
+  '   ```sh',
+  `   ${MENUMESH_LOOP_738927A}`,
+  '   ```',
+  '',
+  "   An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not",
+  "   the server team's of `66c8c61` or later: stop. The admin runs the server's lines of First",
+  "   install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does, giving the",
+  "   live values as the lines print them, the confirmation's values and its commit. The night goes no",
+  '   further until they have answered, the check is `SAME` and every exit is not 0. Way back: none',
+  '   needed, as no record sends the server anything yet.',
+].join('\n');
+/**
+ * The staging night's exit 55 sentence at 86e73cb, which took an exit 55 for the same refusal only
+ * with Connection reset by peer or Broken pipe, so curl's getpeername() line stopped the night
+ * (VPS-154).
+ */
+const NIGHT_REFUSAL_86E73CB = [
+  ' A line with `exit 55` and',
+  '   `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl was still',
+  '   sending: run the loop again.',
+].join('\n');
+
 /**
  * Authenticated origin pulls proved for MenuMesh's own hosts (Stop D's review, D1 of the cut-over
  * sequence). First install, step 11, runs the server team's origin test before MenuMesh's site file
@@ -2583,13 +2713,18 @@ const OLD_STOP_ON_EXIT_0 = [
  * (their 66c8c61; VPS-142), an exit 0 means the server's file is not theirs, not a client_auth still
  * commented out; and since they install that file themselves (VPS-147), the stop sends the admin to
  * step 11's check and to their chat, as its DIFFERENT does, never to an install of their own, the
- * check's server lines since VPS-148, where it was a comparison with a copy.
+ * check's server lines since VPS-148, where it was a comparison with a copy. Since their c7bcfad
+ * (VPS-153) the loop is theirs, printing curl's message beside each host's exit, and the night goes
+ * on only once every line shows alert certificate required: an exit 55 with Connection reset by
+ * peer, Broken pipe or (since VPS-154) getpeername() failed with errno 107 is the same refusal, run
+ * again, and an exit 7 or 28, which proves nothing, or any other line stops the night for the
+ * server team's answer in their chat.
  */
 const originPulls = (runbook: string, site: string) =>
   inPlaces(runbook, ['edgeStep', 'siteNight'], ({ edgeStep, siteNight }) => {
     const night = flat(siteNight);
     const loop =
-      /for h in ([^;]+); do curl -sk [^;]*--resolve "\$h:443:127\.0\.0\.1" "https:\/\/\$h\/"; echo "\$h exit \$\?"; done/.exec(
+      /for h in ([^;]+); do e=\$\(curl -sSk [^;]*--resolve "\$h:443:127\.0\.0\.1" "https:\/\/\$h\/" 2>&1\); echo "\$h exit \$\? \$\{e##\*::\}"; done/.exec(
         night,
       );
     const blocks = siteBlocks(site, 'tls_menumesh');
@@ -2619,8 +2754,9 @@ const originPulls = (runbook: string, site: string) =>
       ...(has(siteNight, STAGING_ASK) && has(siteNight, STAGING_SAME)
         ? []
         : [
-            'the origin test’s exit 0 doesn’t stop for the server team’s answer in their chat, as First install, step 11’s DIFFERENT does',
+            'the origin test’s exit 0 doesn’t stop for the server team’s answer in their chat, as First install, step 11’s DIFFERENT does, until every line shows alert certificate required',
           ]),
+      ...alertRule(siteNight, 'the staging night’s origin test', NIGHT_STOP),
       ...(has(edgeStep, 'For `menumesh.in` that test proves nothing yet') &&
       has(edgeStep, 'The test that proves it runs right after the site file, on the staging night')
         ? []
@@ -2933,6 +3069,11 @@ const RECREATED =
   "sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' edge-caddy-1 | grep -c '^MENUMESH_STAGING_AUTH_'";
 const SHRED_COPIES = 'shred -u ~/incoming/.env ~/incoming/web.env ~/incoming/web-staging.env';
 const AOP_VERIFY = 'openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem';
+/** Step 8's count of each file's carriage returns: Git Bash's grep misreads them (VPS-151). */
+const CR_COUNT = String.raw`for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done`;
+/** Step 8's cleanup: the keys shredded, and the rest but the two certificates removed. */
+const AOP_CLEANUP =
+  'shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls';
 /** The leak test's image, by the digest of its index (an OCI index with linux/amd64). */
 const LEAK_IMAGE =
   'traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44';
@@ -3398,16 +3539,53 @@ const copiesGone = (runbook: string) =>
     ];
   });
 
-/** Their edge.md §5, step 8: each of Jainav's four hosts refuses a client without a certificate. */
+/**
+ * Their edge.md §5, step 8: each of Jainav's four hosts refuses a client without a certificate, the
+ * loop in the form of their c7bcfad, which prints curl's message beside each host's exit (VPS-153).
+ */
 const JAINAV_LOOP =
+  'for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done';
+/** That loop at 738927a, which printed each host's exit alone (VPS-153). */
+const JAINAV_LOOP_738927A =
   'for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done';
+/**
+ * First install, step 16's proof at 738927a, from "the proof their" to its stop: the loop printed
+ * each host's exit alone, and every line ending in an exit status other than 0 passed (VPS-153).
+ */
+const ORIGIN_PROOF_738927A = [
+  'the proof their `edge.md` §5, step 8, gives: a TLS connection without a client',
+  "    certificate to each of Jainav's four hosts must fail in the handshake, every line ending in an",
+  '    exit status other than 0:',
+  '',
+  '    ```sh',
+  `    ${JAINAV_LOOP_738927A}`,
+  '    ```',
+  '',
+  "    If one ends in 0, stop: the server team's round of origin pulls comes first, and this step",
+  '    waits for it.',
+].join('\n');
+/**
+ * First install, step 16's exit 55 sentence at 86e73cb, which took an exit 55 for the same refusal
+ * only with Connection reset by peer or Broken pipe, so curl's getpeername() line stopped the step
+ * (VPS-154).
+ */
+const STEP_16_REFUSAL_86E73CB = [
+  ' A line with',
+  '    `exit 55` and `Connection reset by peer` or `Broken pipe` is the same refusal, met while curl',
+  '    was still sending: run the loop again.',
+].join('\n');
 
 /**
  * MenuMesh's first container waits for the server team's word that origin pulls are on for every
  * zone of the server (their commitment 1; VPS-135): First install, step 16, says so first, and the
  * server rehearsal where it runs First install. Since their merged edge.md §5, step 8 (VPS-143),
  * the step proves it before db's first container: their loop over Jainav's four hosts, run on the
- * server, and a stop on an exit 0.
+ * server, and a stop on an exit 0. Since their c7bcfad (VPS-153) the loop prints curl's message
+ * beside each host's exit, and its rule is their §6, step 4's: every line shows alert certificate
+ * required, an exit 55 with Connection reset by peer, Broken pipe or (since VPS-154) getpeername()
+ * failed with errno 107 is the same refusal, run again, and an exit 7 or 28, which proves nothing,
+ * or any other line stops the step for the server team's answer in their chat, as an exit 0 stops
+ * it for their round of origin pulls.
  */
 const originGate = (runbook: string) =>
   inPlaces(runbook, ['dbStep', 'rehearsal'], ({ dbStep, rehearsal }) => {
@@ -3421,11 +3599,15 @@ const originGate = (runbook: string) =>
         : ['First install, step 16, starts db without waiting for the server team’s origin pulls']),
       ...(proof >= 0 &&
       proof < text.indexOf('sudo app-compose menumesh up -d db') &&
-      has(dbStep, "If one ends in 0, stop: the server team's round of origin pulls comes first")
+      has(
+        dbStep,
+        "If one ends in `exit 0`, stop: the server team's round of origin pulls comes first",
+      )
         ? []
         : [
             'First install, step 16, starts db without proving that Jainav’s hosts refuse a client without a certificate',
           ]),
+      ...alertRule(dbStep, 'First install, step 16’s origin test', STEP_16_STOP),
       ...(has(rehearsal, "Step 16 waits for the server team's word")
         ? []
         : ['the server rehearsal doesn’t say step 16 waits for the server team’s origin pulls']),
@@ -3456,13 +3638,37 @@ const drillDays = (runbook: string) =>
       : ['the drill doesn’t wait in the same terminal for the restore test to end']),
   ]);
 
+/** The lines of `text`'s command blocks, each trimmed, without their fences. */
+function blockLines(text: string): string[] {
+  const lines: string[] = [];
+  let inBlock = false;
+  for (const line of text.split('\n').map((each) => each.trim())) {
+    if (line.startsWith('```')) inBlock = !inBlock;
+    else if (inBlock) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * openssl named any way but /usr/bin/openssl, Git for Windows' MSYS build in Git Bash: by its bare
+ * name wherever it stands (at a command's start, after a variable such as MSYS_NO_PATHCONV=1, after
+ * `&&` or sudo, in a `$(`), which is the native build Git Bash finds first and writes CRLF, or by
+ * another path, such as that build's own /mingw64/bin/openssl.
+ */
+const OTHER_OPENSSL = /(?<![\w.-])(?<!\/usr\/bin\/)openssl\b/;
+
 /**
  * Origin pulls from MenuMesh's own CA (the server team's review, their commitment 3; VPS-136). The
  * owner makes the CA and a client certificate for client authentication alone, which Caddy's check
- * requires, each -subj kept from Git Bash's path rewriting, and checks the pair with openssl;
- * uploads the client pair at the zone level, never the global toggle's shared certificate; keeps
- * the keys in the password manager and off the server; and the admin gets the two certificates
- * alone, which a new server takes from the password manager too.
+ * requires, each -subj behind MSYS_NO_PATHCONV=1 should a native build run it, and checks the pair
+ * with openssl; uploads the client pair at the zone level, never the global toggle's shared
+ * certificate; keeps the keys in the password manager and off the server; and the admin gets the
+ * two certificates alone, which a new server takes from the password manager too. Since VPS-151
+ * every command block line of step 8 that runs openssl names /usr/bin/openssl, Git for Windows'
+ * MSYS build in Git Bash, as the openssl Git Bash finds first writes CRLF and app-apply refuses
+ * that; tr counts each file's carriage returns, which must be 0 CR, as Git Bash's grep misreads
+ * them; the cleanup leaves the two certificates in the folder until the admin has them; and a copy
+ * taken from the password manager, in step 8 or in disaster recovery's edge, is counted first.
  */
 const ownCA = (runbook: string) =>
   inPlaces(
@@ -3470,6 +3676,7 @@ const ownCA = (runbook: string) =>
     ['zoneStep', 'zoneMove', 'recoveryEdge'],
     ({ zoneStep, zoneMove, recoveryEdge }) => {
       const lines = zoneStep.split('\n').map((line) => line.trim());
+      const commands = blockLines(zoneStep);
       return [
         ...['extendedKeyUsage=clientAuth', '-days 3650', '-days 825', AOP_VERIFY]
           .filter((words) => !lines.some((line) => line.includes(words)))
@@ -3479,7 +3686,37 @@ const ownCA = (runbook: string) =>
           ),
         ...lines
           .filter((line) => line.includes("-subj '/") && !line.startsWith('MSYS_NO_PATHCONV=1 '))
-          .map((line) => `a -subj that Git Bash turns into a path: ${line}`),
+          .map(
+            (line) =>
+              `a -subj that Git Bash turns into a path when a native build runs it: ${line}`,
+          ),
+        ...commands
+          .filter((line) => OTHER_OPENSSL.test(line))
+          .map(
+            (line) =>
+              `First install, step 8, runs the openssl Git Bash finds first, which writes CRLF: ${line}`,
+          ),
+        ...(commands.includes(CR_COUNT)
+          ? []
+          : [
+              'First install, step 8, doesn’t count the four files’ carriage returns with tr, as Git Bash’s grep misreads them',
+            ]),
+        ...(has(zoneStep, '`0 CR` for each of the four files')
+          ? []
+          : [
+              'First install, step 8, doesn’t say the loop must print 0 CR for each of the four files',
+            ]),
+        ...(commands.includes(AOP_CLEANUP) &&
+        has(zoneStep, 'stay in the folder until the admin has them (step 11)')
+          ? []
+          : [
+              'First install, step 8, doesn’t leave the two certificates alone in the folder until the admin has them (step 11)',
+            ]),
+        ...(has(zoneStep, 'a copy that must come from there gets the same `0 CR` check first')
+          ? []
+          : [
+              'First install, step 8, doesn’t give a copy of the certificates from the password manager the same 0 CR check first',
+            ]),
         ...(has(zoneStep, 'never the global toggle')
           ? []
           : [
@@ -3500,9 +3737,224 @@ const ownCA = (runbook: string) =>
         ...(has(recoveryEdge, '`aop-ca.pem`, `aop-client.pem` and `edge.env` from the')
           ? []
           : ['disaster recovery’s edge doesn’t take both certificates from the password manager']),
+        ...(has(
+          recoveryEdge,
+          "the two `.pem` files given First install, step 8's `0 CR` check first",
+        )
+          ? []
+          : [
+              'disaster recovery’s edge doesn’t give the two certificates from the password manager step 8’s 0 CR check first',
+            ]),
       ];
     },
   );
+
+/**
+ * Where the owner's steps off the server run, in First install, step 8's words (VPS-151), which
+ * steps 1 and 7 take too (VPS-155).
+ */
+const OWN_MACHINE =
+  "the owner's own machine (Git Bash on Windows, or a terminal on macOS or Linux)";
+/**
+ * First install, step 1's line in Git Bash (VPS-155): the folder as `pwd -W` gives it, C:/…, which
+ * MSYS_NO_PATHCONV=1 passes to Docker whole.
+ */
+const KEY_LINE = `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'`;
+/**
+ * That line at 6bbc375, the server team's form as it is: Git Bash turns its "$PWD:/k" into
+ * C:\…;K:\, which Docker refuses with exit 125, making no container, and Windows PowerShell can't
+ * parse it, so the owner could make no key in either shell (VPS-155).
+ */
+const KEY_LINE_6BBC375 = `docker run --rm -v "$PWD:/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'`;
+/** First install, step 1's opening at 6bbc375, which named no shell (VPS-155). */
+const KEY_STEP_6BBC375 =
+  "1. **The backup key**, an age key pair, made on a machine of the owner's (the server team's form):";
+/** A docker run that mounts $PWD, quoted or not, as ${PWD} too, by -v or by --volume. */
+const PWD_MOUNT = /\bdocker run\b.*\$\{?PWD\}?:/;
+/**
+ * Step 1's words (VPS-155): where it runs, in step 8's; its form, the folder given as Git Bash
+ * needs it; the line for macOS and Linux, which keeps the server team's "$PWD:/k"; and why.
+ */
+const KEY_WORDS = [
+  OWN_MACHINE,
+  "In Git Bash (the server team's form, with the folder given as Git Bash needs it)",
+  'On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`',
+  'Git Bash turns `"$PWD:/k"` into `C:\\…;K:\\`, which Docker refuses',
+  "Windows PowerShell can't parse it at all",
+  '`pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole',
+];
+/** First install, step 7's command, which stays as it is (VPS-155). */
+const DEPLOY_KEYGEN = "ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging";
+/** Step 7's words (VPS-155): where it runs, its command, Git Bash, not PowerShell, and why. */
+const DEPLOY_WORDS = [
+  OWN_MACHINE,
+  `\`${DEPLOY_KEYGEN}\``,
+  'On Windows it runs in Git Bash, not PowerShell',
+  "Windows PowerShell 5.1 drops the empty `''`, so ssh-keygen stops at `Too many arguments.` and makes no key",
+];
+/** First install, step 7 at 6bbc375, which named no shell for its empty -N '' (VPS-155). */
+const DEPLOY_KEY_6BBC375 = [
+  '7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub',
+  `   (\`VPS_SSH_KEY\`): \`${DEPLOY_KEYGEN}\`.`,
+].join('\n');
+/**
+ * First install, step 7's check of the key, run in Git Bash (VPS-157): it prints the public key
+ * of a key without a passphrase and refuses one with a passphrase, such as the '' cmd gives it.
+ */
+const DEPLOY_CHECK = "ssh-keygen -y -P '' -f gha-menumesh-staging";
+/**
+ * Step 7's words on cmd (VPS-157): cmd named beside PowerShell; the two apostrophes it passes on,
+ * which become the key's passphrase, nothing failing until step 17's VPS ping; Git Bash's prompt,
+ * which tells it apart; and the check in Git Bash, with what it prints and what it refuses.
+ */
+const CMD_WORDS = [
+  'On Windows it runs in Git Bash, not PowerShell or cmd',
+  "cmd passes `''` on as two apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's **VPS ping**",
+  "Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`",
+  `Then, in Git Bash, \`${DEPLOY_CHECK}\` prints the public key, and a key with a passphrase is refused`,
+];
+/**
+ * First install, step 7's sentence on Windows at 32a2ed1, which named PowerShell alone: in cmd the
+ * key is made with the passphrase '', and nothing fails until step 17's VPS ping (VPS-157).
+ */
+const DEPLOY_SENTENCE_32A2ED1 = [
+  'On',
+  "   Windows it runs in Git Bash, not PowerShell: Windows PowerShell 5.1 drops the empty `''`, so",
+  '   ssh-keygen stops at `Too many arguments.` and makes no key.',
+].join('\n');
+
+/**
+ * The owner's key steps, First install's steps 1 and 7, in Git Bash on Windows (VPS-155). Step 1's
+ * line mounted "$PWD:/k", which Git Bash turns into C:\…;K:\, refused by Docker, and Windows
+ * PowerShell 5.1 can't parse, so the owner could make no key in either shell. So a docker run of
+ * its block that mounts $PWD (PWD_MOUNT), read as one line where a trailing backslash splits it, is
+ * a problem, beside the right line too, and the block must mount "$(pwd -W):/k" behind
+ * MSYS_NO_PATHCONV=1, as Git Bash needs it; prose is never read for that, and a block refused for
+ * its $PWD has that one problem. Its prose names where it runs, in step 8's words, its form, the
+ * line for macOS and Linux, and why. Step 7's ssh-keygen, whose empty -N '' Windows PowerShell 5.1
+ * drops, so that it stops at "Too many arguments.", runs in Git Bash, not PowerShell, says why, and
+ * keeps its command. Since VPS-157 step 7 names cmd too, which passes the '' on as two apostrophes,
+ * so that the key is made with that passphrase and nothing fails until step 17's VPS ping; it tells
+ * Git Bash apart by its prompt and has the key checked in Git Bash (DEPLOY_CHECK). A step 7 without
+ * its words on PowerShell has that one problem, its words on cmd there or not.
+ */
+const gitBashKeys = (runbook: string) =>
+  inPlaces(runbook, ['firstKey', 'deployKey'], ({ firstKey, deployKey }) => {
+    // A command split with a trailing backslash is read as one line.
+    const commands = blockLines(firstKey)
+      .join('\n')
+      .replace(/ *\\\n/g, ' ')
+      .split('\n');
+    const mounts = commands.filter((line) => PWD_MOUNT.test(line));
+    const powerShell = DEPLOY_WORDS.every((words) => has(deployKey, words));
+    return [
+      ...mounts.map(
+        (line) =>
+          `First install, step 1, mounts $PWD, which Git Bash turns into C:\\…;K:\\ and Windows PowerShell can’t parse: ${line}`,
+      ),
+      ...(mounts.length ||
+      commands.some(
+        (line) =>
+          line.startsWith('MSYS_NO_PATHCONV=1 docker run ') && line.includes(' -v "$(pwd -W):/k" '),
+      )
+        ? []
+        : [
+            'First install, step 1, doesn’t mount the folder as Git Bash needs it, with MSYS_NO_PATHCONV=1 and -v "$(pwd -W):/k"',
+          ]),
+      ...(KEY_WORDS.every((words) => has(firstKey, words))
+        ? []
+        : [
+            'First install, step 1, doesn’t say it runs in Git Bash on Windows, with the folder as Git Bash needs it and why, and the line for macOS and Linux',
+          ]),
+      ...(powerShell
+        ? []
+        : [
+            "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''",
+          ]),
+      ...(!powerShell || CMD_WORDS.every((words) => has(deployKey, words))
+        ? []
+        : [
+            "First install, step 7, doesn’t say cmd passes its '' on as the key’s passphrase, which nothing finds until the VPS ping, nor check the key in Git Bash",
+          ]),
+    ];
+  });
+
+/**
+ * First install, step 2's opening at 5162697, which asked for an India-region bucket: the owner's
+ * is R2's, and R2 has no India region (VPS-156).
+ */
+const BUCKET_STEP_5162697 = [
+  '2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes',
+  '   on the server, and an API token for this bucket only. How it keeps a stolen token from deleting',
+  "   the nights is the owner's choice when the bucket is picked (docs/DECISIONS.md VPS-40):",
+].join('\n');
+/**
+ * A bucket called India's (VPS-156): India-region, as 5162697's step 2 asked for it, an India
+ * bucket, as compose.yml's comment had it, an India region bucket, or a bucket in India.
+ */
+const INDIA_BUCKET = /\bIndia-region\b|\bIndian?(?: region)? bucket\b|\bbucket in India\b/;
+/**
+ * Step 2's words (VPS-156): the bucket S3-compatible, as before; MenuMesh's R2's, made with the
+ * Asia-Pacific location hint, as the server team's own buckets are; R2 with no India region, its
+ * hints best effort; the backups, each night encrypted, kept outside India; and the production
+ * night, from which the site says so.
+ */
+const BUCKET_WORDS = [
+  'an S3-compatible bucket, set up with an admin login',
+  "MenuMesh's is R2's, made with the Asia-Pacific location hint, as the server team's own buckets are (docs/DECISIONS.md VPS-156)",
+  'R2 has no India region, only location hints, which are best effort',
+  "so the backups, each night encrypted to the owner's key, are kept outside India",
+  'the site says so from the production night on (The server rehearsal and the cut-over, part 4, Before it)',
+];
+/**
+ * The production night's bullet on the site's words (VPS-156): in the release, the privacy page
+ * and the FAQ's answer in English and Hindi, each by its file, with where the encrypted backups
+ * are kept, outside India, and how long the journal keeps a line, as VPS-24 asks; the owner
+ * approves the words.
+ */
+const SITE_WORDS = [
+  "**The site's words on where the data is kept, and for how long**, in the release",
+  'the privacy page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)',
+  'the FAQ\'s "Where is my data kept?" answer',
+  'in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`)',
+  'say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region, which can be outside India',
+  'the privacy page says how long the journal keeps a line (Logs and alerts (VPS))',
+  'as docs/DECISIONS.md VPS-24 asks',
+  'The owner approves the words (VPS-156)',
+];
+
+/**
+ * Where the backups are kept (VPS-156). First install, step 2, asked for an India-region bucket,
+ * but the owner's is R2's, chosen for its locks scoped to a prefix, and R2 has no India region,
+ * only location hints, which are best effort. So a step 2 that still calls the bucket India's
+ * (INDIA_BUCKET) is a problem, and that one alone; otherwise it must name R2's Asia-Pacific hint,
+ * the backups, each night encrypted, kept outside India, and the production night, from which the
+ * site says so. That night's Before it has the release carry the site's words: the privacy page
+ * and the FAQ's answer, in English and Hindi, each by its file, saying that the encrypted backups
+ * are kept with Cloudflare (R2) in its Asia-Pacific region, which can be outside India, and the
+ * privacy page how long the journal keeps a line, as VPS-24 asks; the owner approves the words.
+ */
+const backupPlace = (runbook: string) =>
+  inPlaces(runbook, ['bucketStep', 'beforeProduction'], ({ bucketStep, beforeProduction }) => {
+    const india = INDIA_BUCKET.test(flat(bucketStep));
+    return [
+      ...(india
+        ? [
+            'First install, step 2, still asks for a bucket in India, where R2, the owner’s, has no region',
+          ]
+        : []),
+      ...(india || BUCKET_WORDS.every((words) => has(bucketStep, words))
+        ? []
+        : [
+            'First install, step 2, doesn’t name R2’s Asia-Pacific location hint, the backups kept outside India and the production night, from which the site says so',
+          ]),
+      ...(SITE_WORDS.every((words) => has(beforeProduction, words))
+        ? []
+        : [
+            'the production night’s Before it doesn’t have the release carry the site’s words on where the backups are kept, outside India, and how long the journal keeps a line',
+          ]),
+    ];
+  });
 
 /**
  * The leak test's container (the server team's review, Q8; VPS-137). The RUNBOOK named neither an
@@ -3575,7 +4027,19 @@ const UPSTREAM_DROPS = ['True-Client-IP', 'X-Client-IP', 'Forwarded'];
  * own address, X-Forwarded-Host the host, and the other three are gone, as the vendored upstream
  * snippet sets and removes them; menumesh.caddy adds no header of its own, so those are what its
  * upstreams get. Step 3: the origin's addresses time out, again with a temporary hPanel accept rule
- * for the admin's own address, removed after.
+ * for the admin's own address, removed after. Since their d0a7b14 (VPS-152) step 1 is two curls,
+ * with zone=menumesh.in set for both: the first, with ?leakcheck=1 and no CF-Connecting-IP, passes
+ * as above; the second sends CF-Connecting-IP alone, as in one request with the others Cloudflare's
+ * refusal would turn the whole reply into its 403, and passes on error code: 1000, then 403, or,
+ * should the echo server answer, only on the admin's own address in Cf-Connecting-Ip, anything else
+ * failing; and X-Forwarded-For stays one header under 100 characters, as Cloudflare gives error
+ * 1000 to a longer one, or to two. Step 2: the log line shows the path alone, without the first
+ * request's ?leakcheck=1. Step 4, since their c7bcfad (VPS-153): the loop of the staging night's
+ * step 1, named so, as "step 1" in these bullets is their step 1, with leaktest.menumesh.in added,
+ * every line read as that step reads it, alert certificate required, and an exit 55 the same
+ * refusal, run again, only with a message that step names: since VPS-154 the bullet leaves the
+ * messages to that step, as its own list, Connection reset by peer or Broken pipe, left out curl's
+ * getpeername() line.
  */
 const leakChecks = (runbook: string, snippets: string, site: string) =>
   inPlaces(runbook, ['leakTest'], ({ leakTest }) => {
@@ -3620,11 +4084,71 @@ const leakChecks = (runbook: string, snippets: string, site: string) =>
           ]),
       ...(has(
         leakTest,
+        "with `zone=menumesh.in` set on the admin's machine for step 1's two `curl`s",
+      )
+        ? []
+        : [
+            'the leak test doesn’t set zone=menumesh.in on the admin’s machine for step 1’s two curls',
+          ]),
+      ...(has(
+        leakTest,
+        "in step 1's first request (`?leakcheck=1`, five forged headers and no `CF-Connecting-IP`)",
+      ) &&
+      has(
+        leakTest,
+        "a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and passes when it prints `error code: 1000`, then `403`",
+      ) &&
+      has(
+        leakTest,
+        'It has a request of its own because, in one request with the other forged headers, it would turn the whole reply into that `403`',
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t send CF-Connecting-IP in a second request of its own, which passes on error code: 1000, then 403',
+          ]),
+      ...(has(
+        leakTest,
+        "If it prints the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the admin's own address. Anything else fails.",
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t pass the second request’s echo only when Cf-Connecting-Ip holds the admin’s own address, anything else failing',
+          ]),
+      ...(has(
+        leakTest,
+        '`X-Forwarded-For` stays one header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two',
+      )
+        ? []
+        : [
+            'the leak test’s step 1 doesn’t keep X-Forwarded-For to one header under 100 characters, as Cloudflare refuses a longer one or two',
+          ]),
+      ...(has(
+        leakTest,
+        "without an address, a header or a query (step 1's first request sends `?leakcheck=1`, so the line shows the path alone)",
+      )
+        ? []
+        : [
+            'the leak test’s step 2 doesn’t say step 1’s first request sends ?leakcheck=1, so the log line shows the path alone',
+          ]),
+      ...(has(
+        leakTest,
         "again with a temporary hPanel accept rule for the admin's own address, removed after",
       )
         ? []
         : [
             'the leak test’s step 3 doesn’t run again with a temporary hPanel accept rule for the admin’s own address, removed after',
+          ]),
+      ...(has(
+        leakTest,
+        "the loop of this night's step 1, with the leak test's host `leaktest.menumesh.in` added, every line as that step says",
+      ) &&
+      has(
+        leakTest,
+        '(`alert certificate required`; an `exit 55` with a message that step names is the same refusal: run the loop again)',
+      )
+        ? []
+        : [
+            'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 with a message that step names the same refusal',
           ]),
     ];
   });
@@ -3838,6 +4362,26 @@ const OLD_ZONE_STEP = [
   "   ready for the admin's certificate (the server team's `edge.md` §3).",
 ].join('\n');
 
+/** The openssl lines of First install, step 8's block at 2f840ac, each the openssl Git Bash finds first. */
+const AOP_OPENSSL_2F840AC = [
+  "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr",
+  'openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem',
+  "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr",
+  'openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem',
+  AOP_VERIFY,
+  'openssl x509 -noout -enddate -in aop-client.pem',
+];
+
+/** First install, step 8's block at 2f840ac: files that hold CRLF, and no count of carriage returns. */
+const AOP_BLOCK_2F840AC = [
+  '   ```sh',
+  '   umask 077 && mkdir ~/aop && cd ~/aop',
+  String.raw`   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext`,
+  String.raw`   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext`,
+  ...AOP_OPENSSL_2F840AC.map((line) => `   ${line}`),
+  '   ```',
+].join('\n');
+
 /** First install's step 9 at 21a13bf: the conf alone. */
 const OLD_CONF_STEP = [
   '9. `/etc/apps/menumesh.conf` as above, `BACKUP_RECIPIENT` filled in:',
@@ -4023,6 +4567,51 @@ const LEAK_TEST_AC976CE = [
   '   `leaktest` record. Way back: the same four.',
   '',
   '',
+].join('\n');
+
+/**
+ * The leak test's checks at 59407da, its lead-in and bullets for the server team's steps 1 to 4:
+ * step 1 as one `curl`, as their edge.md had it before d0a7b14, so no word of the second request,
+ * its 403 or its echo, of X-Forwarded-For's limit, or of the log line's ?leakcheck=1.
+ */
+const LEAK_CHECKS_59407DA = [
+  "   Their steps 1 to 4 must then show, with `zone=menumesh.in` set on the admin's machine for step",
+  "   1's `curl`:",
+  '   - forged headers replaced: the echo server prints the headers it got, their names as Go writes',
+  '     them (`X-Real-Ip`, `Cf-Connecting-Ip`), and the four address headers, `X-Real-IP`,',
+  "     `X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own",
+  '     address, `X-Forwarded-Host` is `leaktest.menumesh.in`, and `True-Client-IP`, `X-Client-IP` and',
+  "     `Forwarded` are absent. The server team's `upstream` snippet sets and removes them, and",
+  '     `menumesh.caddy` adds no header of its own, so these are what `menumesh-web`, `menumesh-gw`',
+  '     and `menumesh-web-staging` get;',
+  '   - the log line without an address, a header or a query, and a made-up 16-character `/t/` token',
+  '     in it shown as `/t/_`;',
+  "   - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an",
+  "     IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own",
+  "     address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;",
+  "   - and a TLS connection without the client certificate refused (step 1's test, the leak test's",
+  '     host added).',
+].join('\n');
+
+/**
+ * The leak test's last bullet at 738927a, for their step 4: "step 1's test", where "step 1" in
+ * these bullets is their step 1, and lines read by any exit but 0, an exit 55 among them (VPS-153).
+ */
+const LEAK_BULLET_738927A = [
+  "   - and a TLS connection without the client certificate refused (step 1's test, the leak test's",
+  '     host added), where an `exit 55` is the same refusal, met while curl was still sending (their',
+  '     step 4 gives it with `Connection reset by peer` or `Broken pipe`).',
+].join('\n');
+/**
+ * The leak test's last bullet at 86e73cb, which listed the exit 55 messages itself, Connection
+ * reset by peer or Broken pipe, where the staging night's step 1 now takes curl's getpeername()
+ * line too (VPS-154).
+ */
+const LEAK_BULLET_86E73CB = [
+  "   - and a TLS connection without the client certificate refused: the loop of this night's step 1,",
+  "     with the leak test's host `leaktest.menumesh.in` added, every line as that step says",
+  '     (`alert certificate required`; an `exit 55` with `Connection reset by peer` or `Broken pipe` is',
+  '     the same refusal: run the loop again).',
 ].join('\n');
 
 /** edge.env.example's header at ac976ce, from its fourth line: no newline guard and no check. */
@@ -4452,7 +5041,7 @@ const REWRAPPED = [
   // Read by the rules of Stop D's review: a piece of each phrase that stands on one line.
   'that test proves nothing yet',
   'proves it runs right after the site file',
-  'do curl -sk -o /dev/null',
+  'do e=$(curl -sSk -o /dev/null',
   'menumesh up -d scheduler-staging',
   'menumesh stop scheduler-staging',
   '**Disable Cron Jobs**',
@@ -4515,7 +5104,7 @@ const REWRAPPED = [
   'keeps the last five it replaced as',
   'the time in UTC (`YYYYMMDDTHHMMSSZ`)',
   'whose two lines each show `internal=true` and `edge-caddy-1`',
-  "If one ends in 0, stop: the server team's round of origin pulls comes first",
+  "If one ends in `exit 0`, stop: the server team's round of",
   'the image listens on',
   "hostwatch's 5-minute check reports",
   '`networks: edge network rules broken: menumesh-leaktest@edge-menumesh:wrong-project` on every',
@@ -4560,7 +5149,7 @@ const REWRAPPED = [
   'Then the check again, both halves if their answer names another commit',
   'is made only on their word in their chat',
   "The admin runs the server's lines of First",
-  'the check is `SAME` and every exit is not 0',
+  'the check is `SAME` and every line shows',
   "comes that step's check of the server team's latest confirmation",
   'edge comes back first, their digest pin of Caddy included',
   'digest pin of Caddy takes a recreate of its own',
@@ -4584,6 +5173,76 @@ const REWRAPPED = [
   "its `compose.yml` sum before the third's and the fourth's",
   "and its hostwatch sum before the sixth's",
   '`Caddyfile`, their snippet, their digest pin and hostwatch',
+  // Read by the rules of step 8's files made with the openssl that writes LF (VPS-151): a piece of
+  // each phrase that stands on one line.
+  '`0 CR` for each of the',
+  'until the admin has them (step 11)',
+  'must come from there gets the same `0 CR` check first',
+  "given First install, step 8's `0 CR` check first",
+  // Read by the rules of the leak test's CF-Connecting-IP in a request of its own (VPS-152): a
+  // piece of each phrase that stands on one line.
+  "`zone=menumesh.in` set on the admin's machine for step",
+  "in step 1's first request (`?leakcheck=1`, five forged headers and no",
+  "a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and",
+  'It has a request of its own because, in one',
+  "the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the",
+  'header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two',
+  '`?leakcheck=1`, so the line shows the path alone)',
+  // Read by the rules of the origin tests' loops and rule in the server team's form (VPS-153): a
+  // piece of each phrase that stands on one line, in both tests where they share it.
+  '2>&1); echo "$h exit $? ${e##*::}"; done',
+  'Every line must show an exit status other than 0 and `alert certificate required` (with',
+  "Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and",
+  'asked for the client certificate, which only Cloudflare holds',
+  'An `exit 7` (refused) or `exit 28` (no',
+  'which proves nothing. That, or any other line, stops',
+  "the step too: the server team's chat hears of it, with the lines as the loop prints them, and",
+  'That, or any other line, stops the night too: the admin',
+  "asks in the server team's chat, giving the lines as the loop prints them, and the night goes no",
+  'further until they have answered and every line shows the refusal',
+  "the loop of this night's step 1,",
+  "with the leak test's host `leaktest.menumesh.in` added, every line as that step says",
+  // Read by the rules of the origin tests' exit 55, curl's getpeername() line among its messages,
+  // and of the leak test's bullet that leaves them to the staging night's step 1 (VPS-154): a
+  // piece of each phrase that stands on one line, in both tests where they share it.
+  '`Connection reset by peer`, `Broken pipe` or',
+  '`getpeername() failed with errno 107` is the same',
+  '(`alert certificate required`; an `exit 55` with a message that step names is the same refusal:',
+  'run the loop again).',
+  // Read by the rule of the owner's key steps in Git Bash (VPS-155): a piece of each phrase that
+  // stands on one line, in both steps where they share it.
+  "made on the owner's own machine (Git Bash on Windows, or a",
+  "In Git Bash (the server team's form, with the folder given as",
+  'On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`.',
+  "into `C:\\…;K:\\`, which Docker refuses, and Windows PowerShell can't parse it at",
+  '`pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole',
+  `\`${DEPLOY_KEYGEN}\``,
+  "Windows PowerShell 5.1 drops the empty `''`,",
+  'ssh-keygen stops at `Too many arguments.` and makes no key',
+  // Read by the rule of where the backups are kept (VPS-156): a piece of each phrase that stands on
+  // one line.
+  'an S3-compatible bucket, set up with an admin login',
+  "MenuMesh's is R2's, made with the Asia-Pacific",
+  'region, only location hints, which are best effort',
+  "owner's key, are kept outside India",
+  'the site says so from the production night on (The',
+  "**The site's words on where the data is kept, and for how long**, in the release",
+  'page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)',
+  'the FAQ\'s "Where is my data kept?"',
+  'in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`)',
+  'say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region',
+  'the privacy page says how long the journal keeps a line',
+  'as docs/DECISIONS.md VPS-24 asks',
+  'The owner approves the words (VPS-156)',
+  // Read by the rule of the owner's deploy key in Git Bash, not cmd (VPS-157): a piece of each
+  // phrase that stands on one line, the prompt's short of its `$`, as replaceAll would read the $`
+  // in its replacement as a pattern.
+  'not PowerShell or cmd',
+  "cmd passes `''` on as two",
+  "apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's",
+  "Git Bash's prompt shows `MINGW64` and ends in",
+  'Then, in Git Bash,',
+  `\`${DEPLOY_CHECK}\` prints the public key, and a key with a passphrase`,
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -7082,7 +7741,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('proves authenticated origin pulls for every host the site file serves, right after it goes in (Stop D review, D1 of the cut-over sequence)', () => {
+  it('proves authenticated origin pulls for every host the site file serves, right after it goes in, every line showing curl’s alert certificate required, an exit 55 with curl’s getpeername() message the same refusal and an exit 7 or 28 stopping the night (Stop D review, D1 of the cut-over sequence; VPS-153, VPS-154)', () => {
     expect(siteBlocks(SITE, 'tls_menumesh')).toEqual(
       ['menumesh.in', 'www.menumesh.in', 'api.menumesh.in', 'staging.menumesh.in'].map((host) => ({
         host,
@@ -7100,7 +7759,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     // A host left out, and the server team's own host, whose snippet is not MenuMesh's.
     refuses(
       pulls,
-      swap(RUNBOOK, ' api.menumesh.in; do curl', '; do curl'),
+      swap(RUNBOOK, ' api.menumesh.in; do e=$(curl', '; do e=$(curl'),
       'the origin test leaves out api.menumesh.in, which menumesh.caddy serves',
     );
     refuses(
@@ -7144,7 +7803,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       pulls,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, ' The admin runs the server', ' and every exit is not 0.'),
+        cut(RUNBOOK, ' The admin runs the server', ' and every line shows'),
         " The night goes no further until the admin has turned authenticated origin pulls on as `edge.md` §3 says (Cloudflare's zone-level pulls first, then `client_auth`)",
       ),
       unasked,
@@ -7154,7 +7813,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       pulls,
       swap(
         RUNBOOK,
-        cut(RUNBOOK, ' The admin runs the server', ' and every exit is not 0.'),
+        cut(RUNBOOK, ' The admin runs the server', ' and every line shows'),
         STAGING_STOP_F6A33D5,
       ),
       unasked,
@@ -7167,6 +7826,83 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
     refuses(pulls, commentedOut, 'the origin test doesn’t stop the night on an exit 0');
     refuses(pulls, commentedOut, unasked);
+    // 738927a's step 1 (VPS-153): its loop printed each host's exit alone and passed any exit but
+    // 0, an exit 7 or 28 among them, and the night went on once every exit was not 0. Its loop is
+    // not the server team's, and its stop doesn't wait for alert certificate required.
+    const message =
+      'the staging night’s origin test prints each host’s exit alone, not curl’s message';
+    const alert =
+      'the staging night’s origin test passes any exit but 0, not only alert certificate required (Ubuntu 24.04’s exit 56 tlsv13 alert certificate required, errno 0)';
+    const refusal =
+      'the staging night’s origin test doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again';
+    const nothing =
+      'the staging night’s origin test doesn’t stop on an exit 7 or 28, which proves nothing';
+    expect(
+      pulls(
+        swap(
+          RUNBOOK,
+          cut(
+            RUNBOOK,
+            ' every block\n   of it importing `tls_menumesh`,',
+            '\n\n2. **The leak test**',
+          ),
+          SITE_RULE_738927A,
+        ),
+      ),
+    ).toEqual([
+      'the staging night doesn’t run the origin test for MenuMesh’s hosts right after its site file',
+      'the origin test’s exit 0 doesn’t stop for the server team’s answer in their chat, as First install, step 11’s DIFFERENT does, until every line shows alert certificate required',
+      message,
+      alert,
+      refusal,
+      nothing,
+    ]);
+    // Its loop alone back; the pass on any exit but 0; the exit 55 unsaid; an exit 7 or 28 not
+    // said to prove nothing, or not stopping the night; and the night going on once every exit is
+    // not 0, as at 738927a.
+    refuses(pulls, swap(RUNBOOK, MENUMESH_LOOP, MENUMESH_LOOP_738927A), message);
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        'other than 0 and `alert certificate required` (with\n   Ubuntu',
+        'other than 0 (with\n   Ubuntu',
+      ),
+      alert,
+    );
+    const nightRefusal = cut(RUNBOOK, ' A line with `exit 55` and\n', '\n\n   An exit 0 means');
+    refuses(pulls, swap(RUNBOOK, nightRefusal, ''), refusal);
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        " An `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't\n   answering at all, which proves nothing.",
+        '',
+      ),
+      nothing,
+    );
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' That, or any other line, stops the night', ' Way back: none'),
+        '',
+      ),
+      nothing,
+    );
+    refuses(
+      pulls,
+      swap(
+        RUNBOOK,
+        'the check is `SAME` and every line shows\n   `alert certificate required`.',
+        'the check is `SAME` and every exit is not 0.',
+      ),
+      unasked,
+    );
+    // 86e73cb's exit 55 sentence (VPS-154): Connection reset by peer or Broken pipe alone, so curl's
+    // getpeername() line, the same refusal as curl 8.5.0's source shows, stopped the night. It
+    // reports that one problem and nothing else.
+    expect(pulls(swap(RUNBOOK, nightRefusal, NIGHT_REFUSAL_86E73CB))).toEqual([refusal]);
     // cd6a733's step 11: its own test, which proves nothing before the site file, as the only one.
     refuses(
       pulls,
@@ -7662,7 +8398,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('starts no container before the server team says origin pulls are on for every zone (VPS-135)', () => {
+  it('starts no container before the server team says origin pulls are on for every zone, and proves it with their loop, every line showing curl’s alert certificate required and an exit 55 with curl’s getpeername() message the same refusal (VPS-135, VPS-143, VPS-153, VPS-154)', () => {
     expect(originGate(RUNBOOK)).toEqual([]);
     // 21a13bf's step 16, and its rehearsal's first step.
     refuses(
@@ -7695,9 +8431,65 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(originGate, swap(RUNBOOK, ' analytics.jainavinfotech.in; do', '; do'), unproved);
     refuses(
       originGate,
-      swap(RUNBOOK, cut(RUNBOOK, '    If one ends in 0, stop:', ' Then the database,'), '   '),
+      swap(RUNBOOK, cut(RUNBOOK, ' If one ends in `exit 0`, stop:', ' An `exit 7`'), ''),
       unproved,
     );
+    // 738927a's proof (VPS-153): its loop printed each host's exit alone, and every line ending in
+    // an exit status other than 0 passed, an exit 7 or 28 among them. Its loop is not the server
+    // team's, so the proof is not theirs either.
+    const message =
+      'First install, step 16’s origin test prints each host’s exit alone, not curl’s message';
+    const alert =
+      'First install, step 16’s origin test passes any exit but 0, not only alert certificate required (Ubuntu 24.04’s exit 56 tlsv13 alert certificate required, errno 0)';
+    const refusal =
+      'First install, step 16’s origin test doesn’t take an exit 55 with Connection reset by peer, Broken pipe or getpeername() failed with errno 107 for the same refusal, run again';
+    const nothing =
+      'First install, step 16’s origin test doesn’t stop on an exit 7 or 28, which proves nothing';
+    expect(
+      originGate(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, 'the proof their `edge.md` §5, step 8, gives:', ' Then the database,'),
+          ORIGIN_PROOF_738927A,
+        ),
+      ),
+    ).toEqual([unproved, message, alert, refusal, nothing]);
+    // Its loop alone back; the pass on any exit but 0; the exit 55 unsaid; and an exit 7 or 28 not
+    // said to prove nothing, or not stopping the step.
+    refuses(originGate, swap(RUNBOOK, JAINAV_LOOP, JAINAV_LOOP_738927A), message);
+    refuses(
+      originGate,
+      swap(
+        RUNBOOK,
+        'other than 0 and `alert certificate required` (with\n    Ubuntu',
+        'other than 0 (with\n    Ubuntu',
+      ),
+      alert,
+    );
+    const stepRefusal = cut(RUNBOOK, ' A line with\n    `exit 55`', ' If one ends in');
+    refuses(originGate, swap(RUNBOOK, stepRefusal, ''), refusal);
+    refuses(
+      originGate,
+      swap(
+        RUNBOOK,
+        " An `exit 7` (refused) or `exit 28` (no\n    answer) means Caddy isn't answering at all, which proves nothing.",
+        '',
+      ),
+      nothing,
+    );
+    refuses(
+      originGate,
+      swap(
+        RUNBOOK,
+        cut(RUNBOOK, ' That, or any other line, stops\n    the step', ' Then the database,'),
+        '',
+      ),
+      nothing,
+    );
+    // 86e73cb's exit 55 sentence (VPS-154): Connection reset by peer or Broken pipe alone, so curl's
+    // getpeername() line, the same refusal as curl 8.5.0's source shows, stopped the step. It
+    // reports that one problem and nothing else.
+    expect(originGate(swap(RUNBOOK, stepRefusal, STEP_16_REFUSAL_86E73CB))).toEqual([refusal]);
   });
 
   it('keeps the drills to the second weekend, or the third, outside the backups (the server team’s review, VPS-138)', () => {
@@ -7727,7 +8519,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('makes the origin pulls’ CA and client certificate the owner’s, uploaded at the zone level, and gives the server only the two certificates (the server team’s review, VPS-136)', () => {
+  it('makes the origin pulls’ CA and client certificate the owner’s with /usr/bin/openssl, no carriage return in any file, uploaded at the zone level, and gives the server only the two certificates, kept until step 11 (the server team’s review, VPS-136, VPS-151)', () => {
     expect(ownCA(RUNBOOK)).toEqual([]);
     // 21a13bf's step 8: pulls "ready for the admin's certificate", and nothing made.
     const old = swap(
@@ -7746,8 +8538,8 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
       ownCA,
       swap(
         RUNBOOK,
-        "MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
-        "openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+        "MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
+        "/usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in",
       ),
       'a -subj that Git Bash turns into a path',
     );
@@ -7773,6 +8565,79 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         OLD_RECOVERY_EDGE,
       ),
       'disaster recovery’s edge doesn’t take both certificates from the password manager',
+    );
+    // 2f840ac's block: the openssl Git Bash finds first, which writes CRLF, on every line that runs
+    // it, and no count of the carriage returns; then that openssl after && and in a $(, by its own
+    // path and after sudo: any name but /usr/bin/openssl (VPS-151).
+    const native = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '   ```sh\n   umask 077', '\n\n   The first prints'),
+      AOP_BLOCK_2F840AC,
+    );
+    for (const line of AOP_OPENSSL_2F840AC) {
+      refuses(ownCA, native, `runs the openssl Git Bash finds first, which writes CRLF: ${line}`);
+    }
+    const uncounted = 'doesn’t count the four files’ carriage returns with tr';
+    refuses(ownCA, native, uncounted);
+    for (const [from, to] of [
+      [
+        'umask 077 && mkdir ~/aop && cd ~/aop &&',
+        'umask 077 && mkdir ~/aop && cd ~/aop && openssl version &&',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        'echo "$(openssl x509 -noout -enddate -in aop-client.pem)"',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        '/mingw64/bin/openssl x509 -noout -enddate -in aop-client.pem',
+      ],
+      [
+        '/usr/bin/openssl x509 -noout -enddate -in aop-client.pem',
+        'sudo openssl x509 -noout -enddate -in aop-client.pem',
+      ],
+    ]) {
+      refuses(
+        ownCA,
+        swap(RUNBOOK, from, to),
+        `runs the openssl Git Bash finds first, which writes CRLF: ${to}`,
+      );
+    }
+    // Prose is no command, even a line of it that starts with openssl's name.
+    expect(
+      ownCA(swap(RUNBOOK, '   The first prints', '   openssl verify, the first, prints')),
+    ).toEqual([]);
+    // The count made with grep, which Git Bash's grep misreads, its 0 CR unsaid, and the two
+    // certificates gone with the folder, or kept without a word of how long (VPS-151).
+    refuses(ownCA, swap(RUNBOOK, CR_COUNT, "grep -c $'\\r' *.pem"), uncounted);
+    refuses(
+      ownCA,
+      swap(RUNBOOK, '`0 CR` for each of the', 'a count for each of the'),
+      'doesn’t say the loop must print 0 CR for each of the four files',
+    );
+    const gone =
+      'doesn’t leave the two certificates alone in the folder until the admin has them (step 11)';
+    refuses(
+      ownCA,
+      swap(
+        RUNBOOK,
+        AOP_CLEANUP,
+        'shred -u aop-ca-key.pem aop-client-key.pem && cd ~ && rm -r ~/aop',
+      ),
+      gone,
+    );
+    refuses(ownCA, swap(RUNBOOK, 'until the admin has them (step 11)', 'for now'), gone);
+    // A copy taken from the password manager without the count first, in step 8 and in disaster
+    // recovery's edge, which could bring back CRLF (VPS-151).
+    refuses(
+      ownCA,
+      swap(RUNBOOK, 'gets the same `0 CR` check first', 'goes to the admin as it is'),
+      'doesn’t give a copy of the certificates from the password manager the same 0 CR check first',
+    );
+    refuses(
+      ownCA,
+      swap(RUNBOOK, ", the two `.pem` files given First install, step 8's `0 CR` check first", ''),
+      'disaster recovery’s edge doesn’t give the two certificates from the password manager step 8’s 0 CR check first',
     );
   });
 
@@ -7990,7 +8855,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     );
   });
 
-  it('passes the leak test’s headers on what the server team’s upstream snippet sets and removes, and runs the origin check again with a temporary accept rule (VPS-143)', () => {
+  it('passes the leak test’s first request on what the server team’s upstream snippet sets and removes, sends CF-Connecting-IP in a second request of its own that passes on Cloudflare’s 403 or the admin’s own address, keeps X-Forwarded-For under 100 characters and the log line without ?leakcheck=1, runs the origin check again with a temporary accept rule, and runs the staging night’s step 1 loop with its own host added, its lines and an exit 55 read as that step reads them (VPS-143, VPS-152, VPS-153, VPS-154)', () => {
     expect(leakChecks(RUNBOOK, SNIPPETS, SITE)).toEqual([]);
     // ac976ce's checks: "forged headers replaced" and "a temporary hPanel accept rule" alone.
     const ac976ce = swap(
@@ -8030,6 +8895,132 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         '\treverse_proxy menumesh-web:3000 {\n\t\timport upstream\n\t\theader_up X-Menumesh 1\n',
       ),
       'menumesh.caddy sets a header of its own: header_up X-Menumesh 1',
+    );
+    // 59407da's checks: step 1 as one curl, as their edge.md had it before d0a7b14. They report
+    // the five problems of VPS-152 and VPS-153's one, and nothing else, as the checks before them
+    // still hold there.
+    const twoCurls =
+      'the leak test doesn’t set zone=menumesh.in on the admin’s machine for step 1’s two curls';
+    const ownRequest =
+      'the leak test’s step 1 doesn’t send CF-Connecting-IP in a second request of its own, which passes on error code: 1000, then 403';
+    const echoOnly =
+      'the leak test’s step 1 doesn’t pass the second request’s echo only when Cf-Connecting-Ip holds the admin’s own address, anything else failing';
+    const forwardedFor =
+      'the leak test’s step 1 doesn’t keep X-Forwarded-For to one header under 100 characters, as Cloudflare refuses a longer one or two';
+    const leakcheck =
+      'the leak test’s step 2 doesn’t say step 1’s first request sends ?leakcheck=1, so the log line shows the path alone';
+    const nightLoop =
+      'the leak test’s step 4 doesn’t run this night’s step 1 loop with leaktest.menumesh.in added, its lines as that step reads them, an exit 55 with a message that step names the same refusal';
+    const checks = (text: string) => leakChecks(text, SNIPPETS, SITE);
+    const old = swap(
+      RUNBOOK,
+      cut(RUNBOOK, '   Their steps 1 to 4 must then show', '\n\n   Their step 5 here'),
+      LEAK_CHECKS_59407DA,
+    );
+    expect(checks(old)).toEqual([
+      twoCurls,
+      ownRequest,
+      echoOnly,
+      forwardedFor,
+      leakcheck,
+      nightLoop,
+    ]);
+    // 738927a's last bullet (VPS-153): "step 1's test", where "step 1" is their step 1 in these
+    // bullets, and its lines read by any exit but 0. It reports that one problem and nothing else.
+    expect(
+      checks(
+        swap(
+          RUNBOOK,
+          cut(
+            RUNBOOK,
+            '   - and a TLS connection without the client certificate refused',
+            '\n\n   Their step 5 here',
+          ),
+          LEAK_BULLET_738927A,
+        ),
+      ),
+    ).toEqual([nightLoop]);
+    // 86e73cb's last bullet (VPS-154): its own list of the exit 55's messages, Connection reset by
+    // peer or Broken pipe, which left out curl's getpeername() line that the staging night's step 1
+    // now takes. It reports that one problem and nothing else.
+    expect(
+      checks(
+        swap(
+          RUNBOOK,
+          cut(
+            RUNBOOK,
+            '   - and a TLS connection without the client certificate refused',
+            '\n\n   Their step 5 here',
+          ),
+          LEAK_BULLET_86E73CB,
+        ),
+      ),
+    ).toEqual([nightLoop]);
+    // The loop named by "step 1" again, and its exit 55 left out.
+    refuses(
+      checks,
+      swap(RUNBOOK, "the loop of this night's step 1,", 'the loop of step 1,'),
+      nightLoop,
+    );
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        '; an `exit 55` with a message that step names is the same refusal:\n     run the loop again)',
+        ')',
+      ),
+      nightLoop,
+    );
+    // Step 1 as one curl again; CF-Connecting-IP back among the first request's forged headers;
+    // the second request's pass on Cloudflare's 403 left out; and why it has a request of its own.
+    refuses(
+      checks,
+      swap(RUNBOOK, "for step\n   1's two `curl`s:", "for step\n   1's `curl`:"),
+      twoCurls,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, 'five forged headers and no', 'six forged headers, among them'),
+      ownRequest,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, '`error code: 1000`, then `403`', "the echo server's reply"),
+      ownRequest,
+    );
+    refuses(
+      checks,
+      swap(RUNBOOK, cut(RUNBOOK, ' It has a request of its own', ' If it'), ''),
+      ownRequest,
+    );
+    // The echo passing on any address, X-Forwarded-For's limit left out, and the log line's
+    // ?leakcheck=1 unsaid, as at 59407da.
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        "it passes only when `Cf-Connecting-Ip` holds the\n     admin's own address.",
+        'it passes when `Cf-Connecting-Ip` holds an\n     address.',
+      ),
+      echoOnly,
+    );
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        '`X-Forwarded-For` stays one\n     header under 100 characters',
+        '`X-Forwarded-For` stays one\n     header',
+      ),
+      forwardedFor,
+    );
+    refuses(
+      checks,
+      swap(
+        RUNBOOK,
+        " (step 1's first request sends\n     `?leakcheck=1`, so the line shows the path alone)",
+        '',
+      ),
+      leakcheck,
     );
   });
 
@@ -8421,6 +9412,262 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     refuses(snippetGuard, swap(RUNBOOK, ', their digest pin of Caddy included', ''), recovery);
   });
 
+  it('makes the owner’s backup key and deploy key in Git Bash on Windows: step 1’s folder as pwd -W gives it, behind MSYS_NO_PATHCONV=1, with the line for macOS and Linux, and step 7’s ssh-keygen in Git Bash, not PowerShell, which drops its empty -N argument (VPS-155)', () => {
+    expect(gitBashKeys(RUNBOOK)).toEqual([]);
+    const mounted =
+      'First install, step 1, mounts $PWD, which Git Bash turns into C:\\…;K:\\ and Windows PowerShell can’t parse: ';
+    const unmounted =
+      'First install, step 1, doesn’t mount the folder as Git Bash needs it, with MSYS_NO_PATHCONV=1 and -v "$(pwd -W):/k"';
+    const unsaid =
+      'First install, step 1, doesn’t say it runs in Git Bash on Windows, with the folder as Git Bash needs it and why, and the line for macOS and Linux';
+    const deploy =
+      "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''";
+    // 6bbc375's block: the server team's form as it is, whose "$PWD:/k" Git Bash turns into
+    // C:\…;K:\, which Docker refuses, and Windows PowerShell can't parse. It reports that one
+    // problem and nothing else, though no line of the block is in Git Bash's form either.
+    expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, KEY_LINE_6BBC375))).toEqual([
+      `${mounted}${KEY_LINE_6BBC375}`,
+    ]);
+    // $PWD unquoted, as ${PWD}, by --volume, and behind MSYS_NO_PATHCONV=1, which passes Git Bash's
+    // /c/… on as it is; then 6bbc375's line split with a trailing backslash, beside the right one,
+    // read as one line; then the line without MSYS_NO_PATHCONV=1, whose folder Git Bash would turn
+    // into a path list again, and the line without its mount.
+    for (const line of [
+      swap(KEY_LINE_6BBC375, '"$PWD:/k"', '$PWD:/k'),
+      swap(KEY_LINE_6BBC375, '"$PWD:/k"', '"${PWD}:/k"'),
+      swap(KEY_LINE_6BBC375, ' -v ', ' --volume '),
+      swap(KEY_LINE, '$(pwd -W)', '$PWD'),
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, line))).toEqual([`${mounted}${line}`]);
+    }
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          KEY_LINE,
+          `${KEY_LINE}\n   ${swap(KEY_LINE_6BBC375, '--rm ', '--rm \\\n     ')}`,
+        ),
+      ),
+    ).toEqual([`${mounted}${KEY_LINE_6BBC375}`]);
+    for (const line of [
+      swap(KEY_LINE, 'MSYS_NO_PATHCONV=1 ', ''),
+      swap(KEY_LINE, ' -v "$(pwd -W):/k"', ''),
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, KEY_LINE, line))).toEqual([unmounted]);
+    }
+    // Prose is never read for the block: the old line given in step 1's prose passes, and the Git
+    // Bash line given there leaves a block without it refused.
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          'passes it whole.',
+          `passes it whole. The server team's: \`${KEY_LINE_6BBC375}\`.`,
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, KEY_LINE, swap(KEY_LINE, 'MSYS_NO_PATHCONV=1 ', '')),
+          'passes it whole.',
+          `passes it whole: \`${KEY_LINE}\`.`,
+        ),
+      ),
+    ).toEqual([unmounted]);
+    // 6bbc375's opening, which named no shell, without the words after the block: that one problem
+    // and nothing else. Then the place in step 8's words, the folder as Git Bash needs it, the line
+    // for macOS and Linux and each of the reason's three parts, each taken out alone.
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, cut(RUNBOOK, '1. **The backup key**', '\n\n   ```sh'), KEY_STEP_6BBC375),
+          cut(RUNBOOK, '   On macOS and Linux the line takes', '   The public key'),
+          '',
+        ),
+      ),
+    ).toEqual([unsaid]);
+    for (const [from, to] of [
+      [
+        "made on the owner's own machine (Git Bash on Windows, or a\n   terminal on macOS or Linux).",
+        "made on a machine of the owner's.",
+      ],
+      [', with the folder given as\n   Git Bash needs it):', '):'],
+      ['On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`. ', ''],
+      ['Git Bash turns\n   `"$PWD:/k"` into `C:\\…;K:\\`, which Docker refuses, and ', ''],
+      [", and Windows PowerShell can't parse it at\n   all;", ';'],
+      [' `pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole.', ''],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+    // 6bbc375's step 7, its ssh-keygen with no shell named: that one problem and nothing else. Then
+    // its machine unsaid, Git Bash or PowerShell, the reason taken out, and the command changed to
+    // what Windows PowerShell 5.1 would need, where it should stay as it is.
+    expect(
+      gitBashKeys(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, '7. **The deploy key**', '\n8. **The zone:**'),
+          DEPLOY_KEY_6BBC375,
+        ),
+      ),
+    ).toEqual([deploy]);
+    for (const [from, to] of [
+      [
+        ", made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or\n   Linux):",
+        ':',
+      ],
+      [
+        'Windows it runs in Git Bash, not PowerShell or cmd:',
+        'Windows it runs in Git Bash or PowerShell, not cmd:',
+      ],
+      [
+        ": Windows PowerShell 5.1 drops the empty `''`,\n   so ssh-keygen stops at `Too many arguments.` and makes no key;",
+        ':',
+      ],
+      ["-N '' -C gha-menumesh-staging`. On", '-N \'""\' -C gha-menumesh-staging`. On'],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([deploy]);
+    }
+  });
+
+  it('names cmd beside PowerShell for the owner’s deploy key, as cmd passes its empty -N argument on as two apostrophes, the key’s passphrase, which nothing finds until step 17’s VPS ping, and has the key checked in Git Bash with an empty passphrase (VPS-157)', () => {
+    expect(gitBashKeys(RUNBOOK)).toEqual([]);
+    const cmd =
+      "First install, step 7, doesn’t say cmd passes its '' on as the key’s passphrase, which nothing finds until the VPS ping, nor check the key in Git Bash";
+    const deploy =
+      "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''";
+    // 32a2ed1's sentence, which named PowerShell alone: that one problem and nothing else.
+    const sentence = cut(RUNBOOK, 'On\n   Windows it runs in Git Bash', '\n8. **The zone:**');
+    expect(gitBashKeys(swap(RUNBOOK, sentence, DEPLOY_SENTENCE_32A2ED1))).toEqual([cmd]);
+    // Each new phrase taken out alone: cmd beside PowerShell, its two apostrophes, the passphrase
+    // they make, the VPS ping, Git Bash's prompt, the check in Git Bash, its empty -P '', what it
+    // prints and what it refuses.
+    for (const [from, to] of [
+      [' or cmd:', ':'],
+      ["cmd passes `''` on as two\n   apostrophes, so", "cmd passes `''` on, so"],
+      ["the passphrase `''`, and", 'a passphrase, and'],
+      [", and nothing fails until step 17's\n   **VPS ping**.", '.'],
+      [" Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`.", ''],
+      ['Then, in Git Bash,\n', 'Then,\n'],
+      [`\`${DEPLOY_CHECK}\``, '`ssh-keygen -y -f gha-menumesh-staging`'],
+      ['` prints the public key,', '` prints a key,'],
+      [', and a key with a passphrase\n   is refused.', '.'],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([cmd]);
+    }
+    // Without its words on PowerShell, step 7 has that one problem, its words on cmd there or not.
+    expect(
+      gitBashKeys(
+        swap(RUNBOOK, "drops the empty `''`,\n   so", 'drops the empty argument,\n   so'),
+      ),
+    ).toEqual([deploy]);
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, sentence, DEPLOY_SENTENCE_32A2ED1),
+          "drops the empty `''`, so",
+          'drops the empty argument, so',
+        ),
+      ),
+    ).toEqual([deploy]);
+  });
+
+  it('names the owner’s bucket as built, R2’s with the Asia-Pacific location hint, the backups kept outside India as R2 has no India region, and has the production night’s release carry the site’s words on where they are kept and how long the journal keeps a line (VPS-156)', () => {
+    expect(backupPlace(RUNBOOK)).toEqual([]);
+    const india =
+      'First install, step 2, still asks for a bucket in India, where R2, the owner’s, has no region';
+    const unnamed =
+      'First install, step 2, doesn’t name R2’s Asia-Pacific location hint, the backups kept outside India and the production night, from which the site says so';
+    const unsaid =
+      'the production night’s Before it doesn’t have the release carry the site’s words on where the backups are kept, outside India, and how long the journal keeps a line';
+    // 5162697's opening, which asked for an India-region bucket: that one problem and nothing else,
+    // though none of the new words is there either. Then a bucket called India's beside every new
+    // word: India-region, an India bucket, as compose.yml's comment had it, one wrapped across two
+    // lines, an India region bucket and a bucket in India.
+    expect(
+      backupPlace(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, '2. **The bucket:**', '\n   - **Retention just under'),
+          BUCKET_STEP_5162697,
+        ),
+      ),
+    ).toEqual([india]);
+    for (const words of [
+      'An India-region bucket would do too.',
+      'An India bucket would do too.',
+      'An India\n   bucket would do too.',
+      'An India region bucket would do too.',
+      'A bucket in India would do too.',
+    ]) {
+      expect(
+        backupPlace(swap(RUNBOOK, 'Before it). How it keeps', `Before it). ${words} How it keeps`)),
+      ).toEqual([india]);
+    }
+    // Each of the new words taken out alone: the bucket S3-compatible, R2's hint, the server team's
+    // buckets, R2's lack of an India region, the encryption, outside India and the production night.
+    for (const [from, to] of [
+      ['**The bucket:** an S3-compatible bucket,', '**The bucket:** a bucket,'],
+      [
+        "MenuMesh's is R2's, made with the Asia-Pacific\n   location hint, as",
+        "MenuMesh's is R2's, as",
+      ],
+      [", as the server team's own buckets are (docs/DECISIONS.md VPS-156):", ':'],
+      ['R2 has no India\n   region, only location hints, which are best effort, so', 'so'],
+      ["each night encrypted to the\n   owner's key, ", ''],
+      ['are kept outside India', 'are kept in the Asia-Pacific'],
+      [' (The\n   server rehearsal and the cut-over, part 4, Before it)', ''],
+      ['and the site says so from the production night on', 'and the site says so'],
+    ]) {
+      expect(backupPlace(swap(RUNBOOK, from, to))).toEqual([unnamed]);
+    }
+    // The new sentence moved out of step 2, into step 3: that one problem too.
+    const sentence = cut(RUNBOOK, "MenuMesh's is R2's,", ' How it keeps a stolen token');
+    expect(
+      backupPlace(
+        swap(swap(RUNBOOK, sentence, ''), '3. **Alerts:**', `3. **Alerts:** ${sentence}`),
+      ),
+    ).toEqual([unnamed]);
+    // 5162697's Before it, without the bullet: that one problem and nothing else. Then the bullet
+    // moved below Before it, among the night's own steps, and each of its words taken out alone:
+    // the release, the privacy page, the FAQ's question, its Hindi file, outside India, the
+    // journal's retention, VPS-24 and the owner's approval.
+    const bullet = cut(
+      RUNBOOK,
+      "\n- **The site's words on where the data is kept",
+      '\n- **The first admin',
+    );
+    expect(backupPlace(swap(RUNBOOK, bullet, ''))).toEqual([unsaid]);
+    expect(
+      backupPlace(
+        swap(
+          swap(RUNBOOK, bullet, ''),
+          '\n\n1. **The records**',
+          `\n${bullet}\n\n1. **The records**`,
+        ),
+      ),
+    ).toEqual([unsaid]);
+    for (const [from, to] of [
+      [
+        "**The site's words on where the data is kept, and for how long**, in the release:",
+        "**The site's words on where the data is kept**:",
+      ],
+      [' (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)', ''],
+      [' "Where is my data kept?"\n  answer', ' answer'],
+      [' and Hindi (`src/features/site/content-hi.ts`)', ''],
+      [', which\n  can be outside India', ''],
+      [
+        ' and the privacy page says how long the journal keeps a line (Logs and\n  alerts (VPS)),',
+        '',
+      ],
+      [', as docs/DECISIONS.md VPS-24 asks', ''],
+      [' The owner approves the words (VPS-156).', ''],
+    ]) {
+      expect(backupPlace(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -8470,5 +9717,7 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(leakChecks(rewrapped, SNIPPETS, SITE)).toEqual([]);
     expect(alertsFixed(rewrapped)).toEqual([]);
     expect(snippetGuard(rewrapped)).toEqual([]);
+    expect(gitBashKeys(rewrapped)).toEqual([]);
+    expect(backupPlace(rewrapped)).toEqual([]);
   });
 });

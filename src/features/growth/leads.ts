@@ -7,6 +7,7 @@ import {
 } from '@/features/platform/platform';
 import { phoneDigits } from '@/features/support/support';
 import { firstParam, type SearchParams } from '@/lib/date-range';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 /** The leads pipeline (docs/SUPER_ADMIN_PLAN.md 13d, docs/DECISIONS.md SA-53 to SA-57). */
 
@@ -296,7 +297,10 @@ const text = (max: number, what: string) =>
     .max(max, `Keep the ${what} under ${max + 1} characters.`);
 
 export const newLeadSchema = z.object({
-  name: text(80, 'name'),
+  name: text(80, 'name').refine(
+    hasNoHiddenCharacters,
+    'Remove the hidden characters from the name.',
+  ),
   restaurantName: text(120, 'restaurant’s name'),
   city: text(60, 'city'),
   phone: z

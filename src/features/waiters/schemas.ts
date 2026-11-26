@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { passwordSchema, usernameSchema } from '@/features/staff/schemas';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 /** Waiter profile form (spec §8.2 waiters, §13.3 Waiters). */
 
@@ -22,7 +23,8 @@ export const waiterFormSchema = z
       .string()
       .trim()
       .min(1, "Enter the waiter's name.")
-      .max(80, 'Use 80 characters or fewer.'),
+      .max(80, 'Use 80 characters or fewer.')
+      .refine(hasNoHiddenCharacters, 'Remove the hidden characters from the name.'),
     phone: z
       .string()
       .trim()

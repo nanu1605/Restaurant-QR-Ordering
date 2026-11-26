@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-149 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-157 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -686,11 +686,17 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
 **The owner, before the server:**
 
-1. **The backup key**, an age key pair, made on a machine of the owner's (the server team's form):
+1. **The backup key**, an age key pair, made on the owner's own machine (Git Bash on Windows, or a
+   terminal on macOS or Linux). In Git Bash (the server team's form, with the folder given as
+   Git Bash needs it):
 
    ```sh
-   docker run --rm -v "$PWD:/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'
+   MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/k" postgres:17-alpine sh -c 'apk add -q age && age-keygen -o /k/menumesh-backup-key.txt'
    ```
+
+   On macOS and Linux the line takes `-v "$PWD:/k"`, without `MSYS_NO_PATHCONV=1`. Git Bash turns
+   `"$PWD:/k"` into `C:\…;K:\`, which Docker refuses, and Windows PowerShell can't parse it at
+   all; `pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole.
 
    The public key (`age1…`) goes to the admin for `BACKUP_RECIPIENT` and into `.env`. The private
    key goes into the password manager and on paper, then off that machine: it never stays on the
@@ -701,8 +707,12 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
    each rotation the whole new list takes its place (Secrets (VPS), Rotation). It is not secret,
    but a recovery on a new server checks the night it takes against it, and trusts no other copy.
 
-2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes
-   on the server, and an API token for this bucket only. How it keeps a stolen token from deleting
+2. **The bucket:** an S3-compatible bucket, set up with an admin login that never goes on the
+   server, and an API token for this bucket only. MenuMesh's is R2's, made with the Asia-Pacific
+   location hint, as the server team's own buckets are (docs/DECISIONS.md VPS-156): R2 has no India
+   region, only location hints, which are best effort, so the backups, each night encrypted to the
+   owner's key, are kept outside India, and the site says so from the production night on (The
+   server rehearsal and the cut-over, part 4, Before it). How it keeps a stolen token from deleting
    the nights is the owner's choice when the bucket is picked (docs/DECISIONS.md VPS-40):
    - **Retention just under the job's own ages** (29 days for `daily/`, 365 for `monthly/`, and 15
      days for `wal/`, which holds each night's WAL files) needs lock rules scoped to a prefix,
@@ -763,47 +773,78 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
    and Resend webhooks as Vercel has them (The server rehearsal and the cut-over, part 3);
    production's generated `CUSTOMER_COOKIE_SECRET` suits its fresh start.
 7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
-   (`VPS_SSH_KEY`): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`.
+   (`VPS_SSH_KEY`), made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or
+   Linux): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`. On
+   Windows it runs in Git Bash, not PowerShell or cmd: Windows PowerShell 5.1 drops the empty `''`,
+   so ssh-keygen stops at `Too many arguments.` and makes no key; cmd passes `''` on as two
+   apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's
+   **VPS ping**. Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`. Then, in Git Bash,
+   `ssh-keygen -y -P '' -f gha-menumesh-staging` prints the public key, and a key with a passphrase
+   is refused.
 8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server
    rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
    from MenuMesh's own CA (the server team's `edge.md` §3, Authenticated origin pulls, whose steps 1
    and 2 are the owner's here, as the zone's), never Cloudflare's shared certificate, which proves
-   only that a request came through Cloudflare. On the owner's own machine (Git Bash on Windows, or a terminal on macOS or
-   Linux), in a folder only the owner can read: the CA, for 10 years, and the client certificate it
-   signs, for 825 days, both RSA 2048, the client's marked for client authentication, without which
-   Caddy refuses it. `MSYS_NO_PATHCONV=1` keeps Git Bash from turning `-subj`'s `/CN=…` into a
-   Windows path, and changes nothing elsewhere:
+   only that a request came through Cloudflare. On the owner's own machine (Git Bash on Windows, or
+   a terminal on macOS or Linux), in a folder only the owner can read: the CA, for 10 years, and the
+   client certificate it signs, for 825 days, both RSA 2048, the client's marked for client
+   authentication, without which Caddy refuses it. The commands name `/usr/bin/openssl`: in Git
+   Bash that is Git for Windows' MSYS build, which writes the LF line endings that the server's
+   `app-apply` needs, as it refuses a file with CRLF
+   (`… has CRLF line endings: convert it to LF first`). The `openssl` that Git Bash finds first is
+   a native build, which writes CRLF. On macOS and Linux, `/usr/bin/openssl` is the system's own.
+   `MSYS_NO_PATHCONV=1` stays on the `-subj` lines: it changes nothing for `/usr/bin/openssl`, and
+   it keeps `-subj`'s `/CN=…` whole if a native build ever runs them, whose CRLF the loop below
+   would then show. The lines that make the files go in as one paste, chained with `&&`:
 
    ```sh
-   umask 077 && mkdir ~/aop && cd ~/aop
-   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext
-   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext
-   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr
-   openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem
-   MSYS_NO_PATHCONV=1 openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr
-   openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem
-   openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
-   openssl x509 -noout -enddate -in aop-client.pem
+   umask 077 && mkdir ~/aop && cd ~/aop &&
+   printf 'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n' > ca.ext &&
+   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > client.ext &&
+   MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=MenuMesh origin pulls CA' -keyout aop-ca-key.pem -out aop-ca.csr &&
+   /usr/bin/openssl x509 -req -sha256 -days 3650 -in aop-ca.csr -signkey aop-ca-key.pem -extfile ca.ext -out aop-ca.pem &&
+   MSYS_NO_PATHCONV=1 /usr/bin/openssl req -new -newkey rsa:2048 -nodes -subj '/CN=menumesh.in origin pulls' -keyout aop-client-key.pem -out aop-client.csr &&
+   /usr/bin/openssl x509 -req -sha256 -days 825 -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca-key.pem -CAcreateserial -extfile client.ext -out aop-client.pem
    ```
 
-   `openssl verify` prints `aop-client.pem: OK` (a client certificate without client authentication
-   fails it with `unsuitable certificate purpose`), and the last line the client certificate's
-   expiry, which goes on the calendar. Then Cloudflare → `menumesh.in` → SSL/TLS → Origin Server →
-   Authenticated Origin Pulls → Zone-level → **Upload certificate**, with `aop-client.pem` and
-   `aop-client-key.pem` pasted: the client certificate itself and its key, as a CA certificate is
-   refused (`missing leaf certificate`). Once its status has gone from `pending_deployment` to
-   `active`, zone-level pulls go on (in the API,
+   They print dots, dashes and each certificate's subject line, never a key. A failed `mkdir` or a
+   failed command stops the rest: if `mkdir` says the folder exists, nothing else ran. A failed
+   command can still leave a new key behind: remove the folder and start again. Then the checks, in
+   the same folder:
+
+   ```sh
+   /usr/bin/openssl verify -CAfile aop-ca.pem -purpose sslclient aop-client.pem
+   /usr/bin/openssl x509 -noout -enddate -in aop-client.pem
+   for f in *.pem; do echo "$f: $(tr -cd '\r' < "$f" | wc -c) CR"; done
+   ```
+
+   The first prints `aop-client.pem: OK` (a client certificate without client authentication fails
+   it with `unsuitable certificate purpose`); the second, `notAfter=` and the client certificate's
+   expiry, about 825 days ahead, which goes on the calendar; and the loop, `0 CR` for each of the
+   four files: `tr` counts the carriage returns, as Git Bash's grep misreads them. Then Cloudflare →
+   `menumesh.in` → SSL/TLS → Origin Server → Authenticated Origin Pulls → Zone-level →
+   **Upload certificate**, with `aop-client.pem` and `aop-client-key.pem` pasted: the client
+   certificate itself and its key, as a CA certificate is refused (`missing leaf certificate`). Once
+   its status has gone from `pending_deployment` to `active`, zone-level pulls go on (in the API,
    `PUT /zones/<zone id>/origin_tls_client_auth/settings` with `{"enabled": true}`, which needs SSL
    and Certificates Write), never the global toggle, Cloudflare's shared certificate. They cover
    every proxied record of the zone, and none is proxied yet: Vercel's stay DNS only. The four
    files go into the password manager; then `aop-ca-key.pem` and `aop-client-key.pem` go off the
-   disk with the rest of the folder, and the CA's key never goes to a server. The admin gets only
-   `aop-ca.pem` and `aop-client.pem` (step 11). Cloudflare also alerts 30 and 14 days before the
-   client certificate expires, and never deletes an expired one itself. The next one is made the
-   same way, from `aop-ca.pem` and the CA's key out of the password manager, without the lines that
-   make the CA, and uploaded beside the old one; once it is `active`, the old one is deleted there
-   (of two active ones, the one deployed last is used), and the admin puts the new `aop-client.pem`
-   in the old one's place (step 11).
+   disk with the CSRs, the `.ext` files and `aop-ca.srl`, and the CA's key never goes to a server:
+
+   ```sh
+   shred -u aop-ca-key.pem aop-client-key.pem && rm aop-ca.csr aop-client.csr aop-ca.srl ca.ext client.ext && ls
+   ```
+
+   `ls` shows `aop-ca.pem` and `aop-client.pem` alone: they hold no secret, and stay in the folder
+   until the admin has them (step 11). The admin gets only `aop-ca.pem` and `aop-client.pem`. A
+   copy pasted back out of a password manager on Windows can come back with CRLF, so a copy that
+   must come from there gets the same `0 CR` check first. Cloudflare also alerts 30 and 14 days
+   before the client certificate expires, and never deletes an expired one itself. The next one is
+   made the same way, with the same checks, from `aop-ca.pem` and the CA's key out of the password
+   manager, without the lines that make the CA, and uploaded beside the old one; once it is
+   `active`, the old one is deleted there (of two active ones, the one deployed last is used), and
+   the admin puts the new `aop-client.pem` in the old one's place (step 11).
 
 **The server's admin** (the server team's `server.md` §2 and `edge.md` §3 and §5):
 
@@ -1080,18 +1121,27 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
 16. Not before the server team confirms in their chat that authenticated origin pulls are on and
     tested for every zone of the server, `jainavinfotech.in` included (their gate before an app's
-    first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out): until
+    first container; on 2026-11-21 `tls_jainav`'s `client_auth` was still commented out, and their
+    word came on 2026-11-25, with their `0c23a8f`: VPS-150): until
     then this step, and every step after it, waits. Then, on the server and before `db`'s first
     container, the proof their `edge.md` §5, step 8, gives: a TLS connection without a client
-    certificate to each of Jainav's four hosts must fail in the handshake, every line ending in an
-    exit status other than 0:
+    certificate to each of Jainav's four hosts must fail in the handshake. The loop prints each
+    host's exit status and curl's message:
 
     ```sh
-    for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
+    for h in jainavinfotech.in www.jainavinfotech.in staging.jainavinfotech.in analytics.jainavinfotech.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done
     ```
 
-    If one ends in 0, stop: the server team's round of origin pulls comes first, and this step
-    waits for it. Then the database, then the Supabase services:
+    Every line must show an exit status other than 0 and `alert certificate required` (with
+    Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
+    asked for the client certificate, which only Cloudflare holds (their §6, step 4). A line with
+    `exit 55` and `Connection reset by peer`, `Broken pipe` or
+    `getpeername() failed with errno 107` is the same refusal, met while curl was still sending:
+    run the loop again. If one ends in `exit 0`, stop: the server team's round of
+    origin pulls comes first, and this step waits for it. An `exit 7` (refused) or `exit 28` (no
+    answer) means Caddy isn't answering at all, which proves nothing. That, or any other line, stops
+    the step too: the server team's chat hears of it, with the lines as the loop prints them, and
+    the step waits for their answer. Then the database, then the Supabase services:
     `sudo app-compose menumesh up -d db`, and once it is healthy
     (`sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'` shows `db Up … (healthy)`),
     `sudo app-compose menumesh up -d auth rest realtime storage api-gw`, each `(healthy)` in the same
@@ -1283,16 +1333,16 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147 and VPS-148). Production starts fresh on the server: nothing is
-copied from hosted production, the first platform admin comes from a one-time link made on the
-server, and the settings edited by hand in `/super` are typed again (VPS-110). Staging moves on a
-night of its own before production's. For 14 days after production's night, Vercel and the paused
-hosted project stay the way back (part 5); then the Vercel parts go, in a stop of their own
-(part 6). The contract's order holds: rehearse with the limits and no site file, then install the
-site file, then change DNS last. Each step says what it must show and its way back. The server
-team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
-certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and
-§6 (the leak test), `launch.md` and `cloudflare.md`.
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152, VPS-153, VPS-154 and VPS-156). Production
+starts fresh on the server: nothing is copied from hosted production, the first platform admin comes
+from a one-time link made on the server, and the settings edited by hand in `/super` are typed again
+(VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
+night, Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in
+a stop of their own (part 6). The contract's order holds: rehearse with the limits and no site file,
+then install the site file, then change DNS last. Each step says what it must show and its way back.
+The server team's steps stay in their runbooks, named where they come: `edge.md` §3 (the Origin CA
+certificate from a CSR, authenticated origin pulls and their origin test), §5 (adding an app) and §6
+(the leak test), `launch.md` and `cloudflare.md`.
 
 #### 1. Before the server (any day, each step reversible)
 
@@ -1376,11 +1426,11 @@ No record points at the server and the site file waits for the staging night, so
 public, and Vercel and hosted Supabase serve as before. Way back, for the whole part: none needed.
 
 1. First install, steps 1 to 21, in order, each with its check. Step 16 waits for the server team's
-   word in their chat that authenticated origin pulls are on for every zone of the server, and
-   step 11's `edge.env` and recreate may come after step 21, on their own night before the staging
-   night. Production's first deploy (step 19) is a **VPS release** of a commit whose **VPS build**
-   ran on `main`, so that it reuses that run's migrate image; a version used here is never used
-   again.
+   word in their chat that authenticated origin pulls are on for every zone of the server (it came
+   on 2026-11-25: VPS-150), and step 11's `edge.env` and recreate may come after step 21, on their
+   own night before the staging night. Production's first deploy (step 19) is a **VPS release** of
+   a commit whose **VPS build** ran on `main`, so that it reuses that run's migrate image; a version
+   used here is never used again.
 2. On the server, each with what it must show:
    - `sudo hostwatch check`: its last line is `hostwatch check: clean`.
    - `sudo app-compose menumesh ps --format '{{.Service}} {{.Status}}'`: every long-running service
@@ -1464,18 +1514,29 @@ Then, in order:
    from now on, but no record sends it anything yet. Then, on the server, the origin test of
    authenticated origin pulls for this zone (the server team's `edge.md` §6, step 4), which only
    now tests these hosts (First install, step 11). Each host `menumesh.caddy` serves, every block
-   of it importing `tls_menumesh`, must fail in the handshake, its exit not 0:
+   of it importing `tls_menumesh`, must fail in the handshake. The loop prints each host's exit
+   status and curl's message:
 
    ```sh
-   for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do curl -sk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/"; echo "$h exit $?"; done
+   for h in menumesh.in www.menumesh.in staging.menumesh.in api.menumesh.in; do e=$(curl -sSk -o /dev/null --max-time 5 --resolve "$h:443:127.0.0.1" "https://$h/" 2>&1); echo "$h exit $? ${e##*::}"; done
    ```
+
+   Every line must show an exit status other than 0 and `alert certificate required` (with
+   Ubuntu 24.04's curl, `exit 56 tlsv13 alert certificate required, errno 0`): Caddy answered and
+   asked for the client certificate, which only Cloudflare holds. A line with `exit 55` and
+   `Connection reset by peer`, `Broken pipe` or `getpeername() failed with errno 107` is the same
+   refusal, met while curl was still sending: run the loop again.
 
    An exit 0 means the server's `tls_menumesh` has no `client_auth`, so its `snippets.caddy` is not
    the server team's of `66c8c61` or later: stop. The admin runs the server's lines of First
    install, step 11's check, and asks in the server team's chat as its `DIFFERENT` does, giving the
    live values as the lines print them, the confirmation's values and its commit. The night goes no
-   further until they have answered, the check is `SAME` and every exit is not 0. Way back: none
-   needed, as no record sends the server anything yet.
+   further until they have answered, the check is `SAME` and every line shows
+   `alert certificate required`. An `exit 7` (refused) or `exit 28` (no answer) means Caddy isn't
+   answering at all, which proves nothing. That, or any other line, stops the night too: the admin
+   asks in the server team's chat, giving the lines as the loop prints them, and the night goes no
+   further until they have answered and every line shows the refusal. Way back: none needed, as no
+   record sends the server anything yet.
 
 2. **The leak test**, by the admin (the server team's `edge.md` §6), through a temporary `A` record
    `leaktest.menumesh.in` to the server's IPv4, proxied, which the owner adds, before any app record
@@ -1523,21 +1584,33 @@ Then, in order:
    `UPSTREAMS`, keeps hostwatch from adding `not-an-upstream` (hostwatch reads the container's
    network aliases, not its name), and its `--memory` and `--cpus` keep it out of the limits alert.
    Their steps 1 to 4 must then show, with `zone=menumesh.in` set on the admin's machine for step
-   1's `curl`:
-   - forged headers replaced: the echo server prints the headers it got, their names as Go writes
+   1's two `curl`s:
+   - forged headers replaced, in step 1's first request (`?leakcheck=1`, five forged headers and no
+     `CF-Connecting-IP`): the echo server prints the headers it got, their names as Go writes
      them (`X-Real-Ip`, `Cf-Connecting-Ip`), and the four address headers, `X-Real-IP`,
      `X-Forwarded-For`, `CF-Connecting-IP` and `Sb-Forwarded-For`, each hold the admin's own
      address, `X-Forwarded-Host` is `leaktest.menumesh.in`, and `True-Client-IP`, `X-Client-IP` and
      `Forwarded` are absent. The server team's `upstream` snippet sets and removes them, and
      `menumesh.caddy` adds no header of its own, so these are what `menumesh-web`, `menumesh-gw`
      and `menumesh-web-staging` get;
-   - the log line without an address, a header or a query, and a made-up 16-character `/t/` token
+   - a forged `CF-Connecting-IP` refused, in step 1's second request, which sends it alone and
+     passes when it prints `error code: 1000`, then `403`: Cloudflare refuses a request that brings
+     its own `CF-Connecting-IP` (a cause of its error 1000) before it reaches the server, as the
+     server team saw on their zone on 2026-11-25. It has a request of its own because, in one
+     request with the other forged headers, it would turn the whole reply into that `403`. If it
+     prints the echo server's reply instead, it passes only when `Cf-Connecting-Ip` holds the
+     admin's own address. Anything else fails. The first request's `X-Forwarded-For` stays one
+     header under 100 characters, as Cloudflare gives error 1000 to a longer one, or to two;
+   - the log line without an address, a header or a query (step 1's first request sends
+     `?leakcheck=1`, so the line shows the path alone), and a made-up 16-character `/t/` token
      in it shown as `/t/_`;
    - nothing answering straight on the server's addresses: `curl -4` and `curl -6` (from an
      IPv6-capable host) time out, and again with a temporary hPanel accept rule for the admin's own
      address, removed after, as the host's `DOCKER-USER` rules are a layer of their own;
-   - and a TLS connection without the client certificate refused (step 1's test, the leak test's
-     host added).
+   - and a TLS connection without the client certificate refused: the loop of this night's step 1,
+     with the leak test's host `leaktest.menumesh.in` added, every line as that step says
+     (`alert certificate required`; an `exit 55` with a message that step names is the same refusal:
+     run the loop again).
 
    Their step 5 here, in their order: first `menumesh.caddy` back as it was installed, from the
    kept copy (never removed: it is the zone's only site file), as the test block needs its
@@ -1636,6 +1709,12 @@ daily runs, inside maintenance (01:00 to 07:00 IST), clear of the blackouts (02:
   `migrate-<sha>` is staging's: VPS-41), such as `v1.0.0`, deployed on the server (Deploys on the
   VPS, Production) and healthy by the check from inside (First install, step 19). Its commit is the
   one the checks below expect.
+- **The site's words on where the data is kept, and for how long**, in the release: the privacy
+  page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`) and the FAQ's "Where is my data kept?"
+  answer, in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`),
+  say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region, which
+  can be outside India, and the privacy page says how long the journal keeps a line (Logs and
+  alerts (VPS)), as docs/DECISIONS.md VPS-24 asks. The owner approves the words (VPS-156).
 - **The first admin's link**, made on the server with the tool within the 7 days before the night
   (The first platform admin (production)), kept in the password manager until it is opened.
 - **The settings to type again**, noted from hosted production's `/super` while it still serves
@@ -2622,9 +2701,10 @@ WAL every minute (WAL shipping, below), and a night is sealed with the signing k
 
   8. The edge, by the admin: the redaction file right after step 1's conf (First install, step 9),
      then new certificates from fresh CSRs, `aop-ca.pem`, `aop-client.pem` and `edge.env` from the
-     password manager, in First install, step 11's order: MenuMesh's two lines merged into the new
-     server's `edge.env` through that step's copy, newline guard and `cat >>`, its check of the
-     names and lengths and its install and shred, unless that check, run on the copy first, shows
+     password manager, the two `.pem` files given First install, step 8's `0 CR` check first,
+     in First install, step 11's order: MenuMesh's two lines merged into the new server's
+     `edge.env` through that step's copy, newline guard and `cat >>`, its check of the names
+     and lengths and its install and shred, unless that check, run on the copy first, shows
      them there already; then Caddy's recreate and its checks, as there. Before the `edge.env` lines
      comes that step's check of the server team's latest confirmation: on a rebuilt server their
      edge comes back first, their digest pin of Caddy included, and their confirmation then names
@@ -3123,11 +3203,11 @@ Supabase stack is only ever read.
   4. `pnpm test`, `pnpm vps:check` and `pnpm vps:edge`. A new refusal is a change for the kit, or a
      question for the server team.
 
-  Their origin-pulls round changes `snippets.caddy` again (`tls_jainav`'s `client_auth` on, and a
-  `log_fields` comment on the client certificate's fields), so its `SOURCE` line moves: the copy is
-  made, in Git Bash, at the commit that round's confirmation names, and its sum must be the
+  Their origin-pulls round changed `snippets.caddy` again (`tls_jainav`'s `client_auth` on, and a
+  `log_fields` comment on the client certificate's fields), so its `SOURCE` line moved: the copy was
+  made, in Git Bash, at `0c23a8f`, the commit that round's confirmation names, and its sum is the
   `snippets.caddy` sum that confirmation gives, so that the kit's checks run the server's file, the
-  one First install, step 11's check finds there.
+  one First install, step 11's check finds there (VPS-150).
 
   `MEMTOTAL_MIB` in `scripts/vps-kit.mts` holds the MemTotal the server reports, 15,992 MiB. After a
   resize or on a new server it becomes what `awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo`
@@ -3213,8 +3293,8 @@ shared server (VPS), The server rehearsal and the cut-over, part 4), with
    `docker exec`'s output never reaches the container's log, and the server keeps only the token's
    hash. It refuses with one line, `first-admin: refused: <why>`, exit 2, having made nothing: once
    the platform has any team member, joined or not (everyone after comes from Settings → Team), for
-   an email that already has a login, for an email or a name the Team page would refuse, and for a
-   name with control or format characters, which the Team page doesn't check yet. A failure is one
+   an email that already has a login, and for an email or a name the Team page would refuse, a name
+   with a control or format character or a line or paragraph separator among them. A failure is one
    line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is removed
    again when the invite can't be added, or named with its user id when that fails too. When the
    answer to making the login was lost (no answer, or the gateway's own 502, 503 or 504 instead of
