@@ -5123,7 +5123,8 @@ left out (VPS-30), and a restaurant that joins a running announcement is emailed
     production takes an encrypted `pg_dump` first), then waits for the new container to be healthy
     (VPS-17). So migrations stay backward-compatible for one release and the reload prompt stays
     (VPS-8).
-  - **Backups and the privacy policy.** The owner's, in an India-region bucket with a token for it
+  - **Backups and the privacy policy.** The owner's, in an R2 bucket made with the Asia-Pacific
+    location hint, outside India, as R2 has no India region (since VPS-156), with a token for it
     only: nightly at 20:30 UTC from a `backup-<sha>` image (`pg_dumpall --globals-only`,
     `pg_dump -Fc` of every database, a tar of the storage volume, each age-encrypted to the owner's
     key), 30 daily and 12 monthly copies, alerts on failure and a heartbeat on success, the host's
@@ -13424,6 +13425,63 @@ entries below.
   which read no part of this change (`scripts/vps-kit.mts` never reads the RUNBOOK), were not run.
   `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,358 in 73 files
   (`vps-runbook` 66, one new).
+
+- **VPS-156 · The backups stay in Cloudflare R2's Asia-Pacific location, outside India
+  (2026-11-26):** First install, step 2, asked for "an India-region, S3-compatible bucket"; the
+  owner's is R2's, which has no India region, and the owner keeps it, so the docs now say what was
+  built: an R2 bucket made with the location hint Asia-Pacific (APAC), public access disabled, no
+  custom domain, bucket lock rules on `daily/` (29 days), `monthly/` (365) and `wal/` (15), all
+  enabled, and an account API token with Object Read & Write on this bucket only. No value from the
+  owner's files is written here. R2's location hints (`wnam`, `enam`, `weur`, `eeur`, `apac`, `oc`)
+  are best effort, and its jurisdictions are `eu`, `fedramp` and `us` alone (Cloudflare's R2 docs,
+  2026-11-26): the backups are kept outside India.
+
+  The owner's reason: R2's bucket locks, scoped to a prefix, refuse overwrites and deletes, as step
+  2 asks, so a stolen token can neither replace nor delete what a restore reads; AWS S3 in Mumbai
+  (`ap-south-1`), the India-region choice weighed, is weaker by step 2's own account (an Object Lock
+  default is one period for the whole bucket; versioning alone leaves overwrites possible). Each
+  night is encrypted to the owner's age key, whose private half never stays on the server or reaches
+  the bucket, and sealed by the backup's signing key (VPS-43). The server team's own buckets have
+  the same hint, and their privacy text says it "can be outside India" (their
+  `docs/privacy-data-map.md`, line 70, at `aaab398`). The app and its database stay in Mumbai, as
+  the FAQ says, and production starts fresh on the server (VPS-110), so real data reaches the bucket
+  only from the production night on.
+
+  Changed: step 2's opening, which names R2's Asia-Pacific hint, the backups kept outside India and
+  the production night, from which the site says so (its weighing of lock rules and versioning
+  stays, for any later change of provider); a bullet in the production night's Before it: its
+  release carries the site's words on where the encrypted backups are kept, with Cloudflare (R2) in
+  its Asia-Pacific region, which can be outside India, in the privacy page and the FAQ's answer in
+  English and Hindi, and the journal's retention on the privacy page (VPS-24), the owner approving
+  them; the cut-over's intro, naming VPS-156 for part 4; VPS-24's line, corrected in place; SPEC's
+  Region row; and two comments, the env template's, which names the bucket by step 2, and
+  `compose.yml`'s, the owner's bucket. Not changed: the site's words under `src/`, true until that
+  release (the privacy page is still the owner's outline, P10-5; its "Supabase (database, Mumbai,
+  India)" is today's database); any name or setting; the server's commands. No script acts on the
+  comments: `pnpm vps:secrets` copies them into `.env`, reading the template's names alone.
+
+  `backupPlace` (`tests/unit/vps-runbook.test.ts`) reads two new places, `bucketStep` and
+  `beforeProduction`, one problem a place at most: a step 2 that calls the bucket India's
+  (India-region, an India or India region bucket, a bucket in India, white space folded) has that
+  problem alone, else needs its five new phrases; Before it needs the bullet's eight.
+  `bucketComments` (`tests/unit/vps-kit.test.ts`) refuses a comment of either file, read whole
+  across its lines, that calls the bucket India's, else needs its new words, one problem a file. On
+  `5162697`'s files each reports 2 problems, one a place or file (of the re-wrap test's 44 rules,
+  only `backupPlace`), none on the fix. The bites (step 2's old opening, the bullet cut, each old
+  comment) are each refused with its one problem alone and give back `5162697`'s files exactly, the
+  RUNBOOK with the range and the intro. Each of the 15 new phrases cut (13 in the RUNBOOK, failing
+  the new test and the re-wrap test; 2 in the comments, failing the new kit test) and each of 27
+  mutations of the rules (a check removed, India never matched or read unfolded, the guard removed,
+  a place read too wide, a phrase taken as always there, comments read line by line) fails a test,
+  in copies under `tests/unit` deleted after. The re-wrap test wraps 385 phrases, not 372; the new
+  titles and comments name VPS-156.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-156;
+  `compose.yml`'s and `tests/unit/vps-kit.test.ts`'s headers keep VPS-31 to VPS-146 for a
+  comment-only fix. Nothing was run against the server, Cloudflare or the bucket, and nothing under
+  `src/` changed. `pnpm vps:check` (`compose.yml` changed): 55 checks, 0 failed; `pnpm vps:edge`
+  reads neither file and was not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean;
+  the unit tests 1,360 in 73 files (`vps-runbook` 67, `vps-kit` 123, one new each).
 
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;

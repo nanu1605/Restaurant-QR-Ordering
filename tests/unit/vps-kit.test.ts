@@ -307,6 +307,52 @@ const envNames = (text: string) => {
   ];
 };
 
+/** Each comment of `text`: a run of lines that start with #, read as one line, the #s taken out. */
+const comments = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => (/^\s*#/.test(line) ? line.replace(/^\s*#\s?/, '') : '\n'))
+    .join(' ')
+    .split('\n')
+    .map((comment) => comment.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+/**
+ * A bucket called India's (VPS-156): India-region, as the env template's comment had it, an India
+ * bucket, as compose.yml's had it, an India region bucket, or a bucket in India.
+ */
+const INDIA_BUCKET = /\bIndia-region\b|\bIndian?(?: region)? bucket\b|\bbucket in India\b/;
+/** The env template's comment on the bucket since VPS-156, which names the RUNBOOK's step 2. */
+const TEMPLATE_BUCKET =
+  'The backup bucket (docs/RUNBOOK.md, First install, step 2) and its S3-compatible provider';
+/** compose.yml's comment on the rclone remote since VPS-156, which calls the bucket the owner's. */
+const COMPOSE_BUCKET =
+  'The rclone remote "backups": the owner\'s bucket, through any S3-compatible provider';
+
+/**
+ * The backup bucket's comments, the env template's and compose.yml's, never call it India's: the
+ * owner's is R2's, made with the Asia-Pacific location hint, and R2 has no India region, so the
+ * backups are kept outside India (VPS-156). The template's sends the reader to the RUNBOOK's step
+ * 2, which says so, and compose.yml's calls the bucket the owner's; a file whose comment calls the
+ * bucket India's has that one problem.
+ */
+const bucketComments = (template: string, file: string) =>
+  [
+    [
+      'project.env.example',
+      template,
+      TEMPLATE_BUCKET,
+      'doesn’t send the bucket to the RUNBOOK’s step 2',
+    ],
+    ['compose.yml', file, COMPOSE_BUCKET, 'doesn’t call the rclone remote’s bucket the owner’s'],
+  ].flatMap(([name, text, words, problem]) =>
+    comments(text).some((comment) => INDIA_BUCKET.test(comment))
+      ? [`${name} calls the backup bucket India’s, where R2, the owner’s, has no region`]
+      : comments(text).some((comment) => comment.includes(words))
+        ? []
+        : [`${name} ${problem}`],
+  );
+
 /**
  * What db's log may hold (VPS-34): errors only, each on one line, and no statement text. The
  * image's settings file logs every DDL statement (log_statement = 'ddl'), and auto_explain logs
@@ -862,6 +908,71 @@ describe('deploy/vps/compose.yml', () => {
       swap(compose, '      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}\n', ''),
       'TELEGRAM_CHAT_ID is not used',
     );
+  });
+
+  it('never calls the backup bucket India’s, in its comment or the env template’s, as the owner’s is R2’s, which has no India region (VPS-156)', () => {
+    const template = kit('env/project.env.example');
+    expect(bucketComments(template, compose)).toEqual([]);
+    const india = (name: string) =>
+      `${name} calls the backup bucket India’s, where R2, the owner’s, has no region`;
+    const remote =
+      '      # The rclone remote "backups": the owner\'s bucket, through any S3-compatible provider.';
+    // 5162697's comments, each put back: that file's one problem and nothing else, though its new
+    // words are gone too.
+    expect(
+      bucketComments(
+        swap(
+          template,
+          [
+            `# ${TEMPLATE_BUCKET}, as`,
+            '# rclone names it (AWS, Cloudflare, Wasabi, Other, ...), with an API token for that bucket only.',
+            '# The region may stay empty when the provider needs none.',
+          ].join('\n'),
+          [
+            '# The India-region bucket and its S3-compatible provider, as rclone names it (AWS, Cloudflare,',
+            '# Wasabi, Other, ...), with an API token for that bucket only. The region may stay empty when the',
+            '# provider needs none.',
+          ].join('\n'),
+        ),
+        compose,
+      ),
+    ).toEqual([india('project.env.example')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the India bucket')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    // India's beside the new words, an India bucket wrapped across a comment's two lines, and a
+    // bucket in India.
+    expect(
+      bucketComments(
+        swap(template, ' only.\n# The region', ' only, an India-region one.\n# The region'),
+        compose,
+      ),
+    ).toEqual([india('project.env.example')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the India\n      # bucket')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'the bucket in India')),
+      ),
+    ).toEqual([india('compose.yml')]);
+    // Each new phrase taken out alone.
+    expect(
+      bucketComments(swap(template, ' (docs/RUNBOOK.md, First install, step 2)', ''), compose),
+    ).toEqual(['project.env.example doesn’t send the bucket to the RUNBOOK’s step 2']);
+    expect(
+      bucketComments(
+        template,
+        swap(compose, remote, swap(remote, "the owner's bucket", 'a bucket')),
+      ),
+    ).toEqual(['compose.yml doesn’t call the rclone remote’s bucket the owner’s']);
   });
 
   it('keeps statement text out of the database log', () => {

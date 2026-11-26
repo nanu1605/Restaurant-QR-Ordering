@@ -140,6 +140,10 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * folder as `pwd -W` gives it, behind MSYS_NO_PATHCONV=1, as Git Bash turns "$PWD:/k" into C:\…;K:\
  * and Windows PowerShell can't parse it, with the line for macOS and Linux beside it, and step 7's
  * ssh-keygen, whose empty -N '' Windows PowerShell 5.1 drops, runs in Git Bash, not PowerShell.
+ * Since VPS-156 First install, step 2, names the owner's bucket as built, R2's, with the
+ * Asia-Pacific location hint, the backups kept outside India, as R2 has no India region, and the
+ * production night's Before it has its release carry the site's words on where the backups are
+ * kept and how long the journal keeps a line.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -198,6 +202,10 @@ const PLACES = {
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
   // First install, step 7, whose ssh-keygen runs in Git Bash (VPS-155).
   deployKey: ['7. **The deploy key**', '8. **The zone:**'],
+  // First install, step 2, and the production night's Before it, which say where the backups are
+  // kept (VPS-156).
+  bucketStep: ['2. **The bucket:**', '3. **Alerts:**'],
+  beforeProduction: ['#### 4. The production night', 'Then, in order:'],
   tokenBullet: ["- The bucket's token, Telegram and the heartbeat addresses", '- The backup key:'],
   backupKey: ['- The backup key:', '- The signing key (after the server may have been reached'],
   rotation: ['- The signing key (after the server may have been reached', "- Staging's password"],
@@ -3835,6 +3843,83 @@ const gitBashKeys = (runbook: string) =>
   });
 
 /**
+ * First install, step 2's opening at 5162697, which asked for an India-region bucket: the owner's
+ * is R2's, and R2 has no India region (VPS-156).
+ */
+const BUCKET_STEP_5162697 = [
+  '2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes',
+  '   on the server, and an API token for this bucket only. How it keeps a stolen token from deleting',
+  "   the nights is the owner's choice when the bucket is picked (docs/DECISIONS.md VPS-40):",
+].join('\n');
+/**
+ * A bucket called India's (VPS-156): India-region, as 5162697's step 2 asked for it, an India
+ * bucket, as compose.yml's comment had it, an India region bucket, or a bucket in India.
+ */
+const INDIA_BUCKET = /\bIndia-region\b|\bIndian?(?: region)? bucket\b|\bbucket in India\b/;
+/**
+ * Step 2's words (VPS-156): the bucket S3-compatible, as before; MenuMesh's R2's, made with the
+ * Asia-Pacific location hint, as the server team's own buckets are; R2 with no India region, its
+ * hints best effort; the backups, each night encrypted, kept outside India; and the production
+ * night, from which the site says so.
+ */
+const BUCKET_WORDS = [
+  'an S3-compatible bucket, set up with an admin login',
+  "MenuMesh's is R2's, made with the Asia-Pacific location hint, as the server team's own buckets are (docs/DECISIONS.md VPS-156)",
+  'R2 has no India region, only location hints, which are best effort',
+  "so the backups, each night encrypted to the owner's key, are kept outside India",
+  'the site says so from the production night on (The server rehearsal and the cut-over, part 4, Before it)',
+];
+/**
+ * The production night's bullet on the site's words (VPS-156): in the release, the privacy page
+ * and the FAQ's answer in English and Hindi, each by its file, with where the encrypted backups
+ * are kept, outside India, and how long the journal keeps a line, as VPS-24 asks; the owner
+ * approves the words.
+ */
+const SITE_WORDS = [
+  "**The site's words on where the data is kept, and for how long**, in the release",
+  'the privacy page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)',
+  'the FAQ\'s "Where is my data kept?" answer',
+  'in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`)',
+  'say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region, which can be outside India',
+  'the privacy page says how long the journal keeps a line (Logs and alerts (VPS))',
+  'as docs/DECISIONS.md VPS-24 asks',
+  'The owner approves the words (VPS-156)',
+];
+
+/**
+ * Where the backups are kept (VPS-156). First install, step 2, asked for an India-region bucket,
+ * but the owner's is R2's, chosen for its locks scoped to a prefix, and R2 has no India region,
+ * only location hints, which are best effort. So a step 2 that still calls the bucket India's
+ * (INDIA_BUCKET) is a problem, and that one alone; otherwise it must name R2's Asia-Pacific hint,
+ * the backups, each night encrypted, kept outside India, and the production night, from which the
+ * site says so. That night's Before it has the release carry the site's words: the privacy page
+ * and the FAQ's answer, in English and Hindi, each by its file, saying that the encrypted backups
+ * are kept with Cloudflare (R2) in its Asia-Pacific region, which can be outside India, and the
+ * privacy page how long the journal keeps a line, as VPS-24 asks; the owner approves the words.
+ */
+const backupPlace = (runbook: string) =>
+  inPlaces(runbook, ['bucketStep', 'beforeProduction'], ({ bucketStep, beforeProduction }) => {
+    const india = INDIA_BUCKET.test(flat(bucketStep));
+    return [
+      ...(india
+        ? [
+            'First install, step 2, still asks for a bucket in India, where R2, the owner’s, has no region',
+          ]
+        : []),
+      ...(india || BUCKET_WORDS.every((words) => has(bucketStep, words))
+        ? []
+        : [
+            'First install, step 2, doesn’t name R2’s Asia-Pacific location hint, the backups kept outside India and the production night, from which the site says so',
+          ]),
+      ...(SITE_WORDS.every((words) => has(beforeProduction, words))
+        ? []
+        : [
+            'the production night’s Before it doesn’t have the release carry the site’s words on where the backups are kept, outside India, and how long the journal keeps a line',
+          ]),
+    ];
+  });
+
+/**
  * The leak test's container (the server team's review, Q8; VPS-137). The RUNBOOK named neither an
  * image nor a command, so the container could have been anything, pinned or not. It is
  * traefik/whoami by its index digest, pulled first, then run with LEAK_FLAGS, never with the
@@ -5097,6 +5182,21 @@ const REWRAPPED = [
   `\`${DEPLOY_KEYGEN}\``,
   "Windows PowerShell 5.1 drops the empty `''`, so",
   'ssh-keygen stops at `Too many arguments.` and makes no key',
+  // Read by the rule of where the backups are kept (VPS-156): a piece of each phrase that stands on
+  // one line.
+  'an S3-compatible bucket, set up with an admin login',
+  "MenuMesh's is R2's, made with the Asia-Pacific",
+  'region, only location hints, which are best effort',
+  "owner's key, are kept outside India",
+  'the site says so from the production night on (The',
+  "**The site's words on where the data is kept, and for how long**, in the release",
+  'page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)',
+  'the FAQ\'s "Where is my data kept?"',
+  'in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`)',
+  'say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region',
+  'the privacy page says how long the journal keeps a line',
+  'as docs/DECISIONS.md VPS-24 asks',
+  'The owner approves the words (VPS-156)',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -9385,6 +9485,101 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     }
   });
 
+  it('names the owner’s bucket as built, R2’s with the Asia-Pacific location hint, the backups kept outside India as R2 has no India region, and has the production night’s release carry the site’s words on where they are kept and how long the journal keeps a line (VPS-156)', () => {
+    expect(backupPlace(RUNBOOK)).toEqual([]);
+    const india =
+      'First install, step 2, still asks for a bucket in India, where R2, the owner’s, has no region';
+    const unnamed =
+      'First install, step 2, doesn’t name R2’s Asia-Pacific location hint, the backups kept outside India and the production night, from which the site says so';
+    const unsaid =
+      'the production night’s Before it doesn’t have the release carry the site’s words on where the backups are kept, outside India, and how long the journal keeps a line';
+    // 5162697's opening, which asked for an India-region bucket: that one problem and nothing else,
+    // though none of the new words is there either. Then a bucket called India's beside every new
+    // word: India-region, an India bucket, as compose.yml's comment had it, one wrapped across two
+    // lines, an India region bucket and a bucket in India.
+    expect(
+      backupPlace(
+        swap(
+          RUNBOOK,
+          cut(RUNBOOK, '2. **The bucket:**', '\n   - **Retention just under'),
+          BUCKET_STEP_5162697,
+        ),
+      ),
+    ).toEqual([india]);
+    for (const words of [
+      'An India-region bucket would do too.',
+      'An India bucket would do too.',
+      'An India\n   bucket would do too.',
+      'An India region bucket would do too.',
+      'A bucket in India would do too.',
+    ]) {
+      expect(
+        backupPlace(swap(RUNBOOK, 'Before it). How it keeps', `Before it). ${words} How it keeps`)),
+      ).toEqual([india]);
+    }
+    // Each of the new words taken out alone: the bucket S3-compatible, R2's hint, the server team's
+    // buckets, R2's lack of an India region, the encryption, outside India and the production night.
+    for (const [from, to] of [
+      ['**The bucket:** an S3-compatible bucket,', '**The bucket:** a bucket,'],
+      [
+        "MenuMesh's is R2's, made with the Asia-Pacific\n   location hint, as",
+        "MenuMesh's is R2's, as",
+      ],
+      [", as the server team's own buckets are (docs/DECISIONS.md VPS-156):", ':'],
+      ['R2 has no India\n   region, only location hints, which are best effort, so', 'so'],
+      ["each night encrypted to the\n   owner's key, ", ''],
+      ['are kept outside India', 'are kept in the Asia-Pacific'],
+      [' (The\n   server rehearsal and the cut-over, part 4, Before it)', ''],
+      ['and the site says so from the production night on', 'and the site says so'],
+    ]) {
+      expect(backupPlace(swap(RUNBOOK, from, to))).toEqual([unnamed]);
+    }
+    // The new sentence moved out of step 2, into step 3: that one problem too.
+    const sentence = cut(RUNBOOK, "MenuMesh's is R2's,", ' How it keeps a stolen token');
+    expect(
+      backupPlace(
+        swap(swap(RUNBOOK, sentence, ''), '3. **Alerts:**', `3. **Alerts:** ${sentence}`),
+      ),
+    ).toEqual([unnamed]);
+    // 5162697's Before it, without the bullet: that one problem and nothing else. Then the bullet
+    // moved below Before it, among the night's own steps, and each of its words taken out alone:
+    // the release, the privacy page, the FAQ's question, its Hindi file, outside India, the
+    // journal's retention, VPS-24 and the owner's approval.
+    const bullet = cut(
+      RUNBOOK,
+      "\n- **The site's words on where the data is kept",
+      '\n- **The first admin',
+    );
+    expect(backupPlace(swap(RUNBOOK, bullet, ''))).toEqual([unsaid]);
+    expect(
+      backupPlace(
+        swap(
+          swap(RUNBOOK, bullet, ''),
+          '\n\n1. **The records**',
+          `\n${bullet}\n\n1. **The records**`,
+        ),
+      ),
+    ).toEqual([unsaid]);
+    for (const [from, to] of [
+      [
+        "**The site's words on where the data is kept, and for how long**, in the release:",
+        "**The site's words on where the data is kept**:",
+      ],
+      [' (`src/app/(site)/(en)/(legal)/privacy/page.tsx`)', ''],
+      [' "Where is my data kept?"\n  answer', ' answer'],
+      [' and Hindi (`src/features/site/content-hi.ts`)', ''],
+      [', which\n  can be outside India', ''],
+      [
+        ' and the privacy page says how long the journal keeps a line (Logs and\n  alerts (VPS)),',
+        '',
+      ],
+      [', as docs/DECISIONS.md VPS-24 asks', ''],
+      [' The owner approves the words (VPS-156).', ''],
+    ]) {
+      expect(backupPlace(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -9435,5 +9630,6 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(alertsFixed(rewrapped)).toEqual([]);
     expect(snippetGuard(rewrapped)).toEqual([]);
     expect(gitBashKeys(rewrapped)).toEqual([]);
+    expect(backupPlace(rewrapped)).toEqual([]);
   });
 });

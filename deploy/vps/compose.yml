@@ -515,7 +515,7 @@ services:
       # The same key as BACKUP_RECIPIENT in /etc/apps/menumesh.conf (hostwatch compares them).
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?}
       BACKUP_BUCKET: ${BACKUP_BUCKET:?}
-      # The rclone remote "backups": the India bucket, through any S3-compatible provider.
+      # The rclone remote "backups": the owner's bucket, through any S3-compatible provider.
       RCLONE_CONFIG_BACKUPS_TYPE: s3
       RCLONE_CONFIG_BACKUPS_PROVIDER: ${BACKUP_S3_PROVIDER:?}
       RCLONE_CONFIG_BACKUPS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}

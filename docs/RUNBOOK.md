@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-155 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-156 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -707,8 +707,12 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
    each rotation the whole new list takes its place (Secrets (VPS), Rotation). It is not secret,
    but a recovery on a new server checks the night it takes against it, and trusts no other copy.
 
-2. **The bucket:** an India-region, S3-compatible bucket, set up with an admin login that never goes
-   on the server, and an API token for this bucket only. How it keeps a stolen token from deleting
+2. **The bucket:** an S3-compatible bucket, set up with an admin login that never goes on the
+   server, and an API token for this bucket only. MenuMesh's is R2's, made with the Asia-Pacific
+   location hint, as the server team's own buckets are (docs/DECISIONS.md VPS-156): R2 has no India
+   region, only location hints, which are best effort, so the backups, each night encrypted to the
+   owner's key, are kept outside India, and the site says so from the production night on (The
+   server rehearsal and the cut-over, part 4, Before it). How it keeps a stolen token from deleting
    the nights is the owner's choice when the bucket is picked (docs/DECISIONS.md VPS-40):
    - **Retention just under the job's own ages** (29 days for `daily/`, 365 for `monthly/`, and 15
      days for `wal/`, which holds each night's WAL files) needs lock rules scoped to a prefix,
@@ -1325,9 +1329,9 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152, VPS-153 and VPS-154). Production starts fresh
-on the server: nothing is copied from hosted production, the first platform admin comes from a
-one-time link made on the server, and the settings edited by hand in `/super` are typed again
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152, VPS-153, VPS-154 and VPS-156). Production
+starts fresh on the server: nothing is copied from hosted production, the first platform admin comes
+from a one-time link made on the server, and the settings edited by hand in `/super` are typed again
 (VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
 night, Vercel and the paused hosted project stay the way back (part 5); then the Vercel parts go, in
 a stop of their own (part 6). The contract's order holds: rehearse with the limits and no site file,
@@ -1701,6 +1705,12 @@ daily runs, inside maintenance (01:00 to 07:00 IST), clear of the blackouts (02:
   `migrate-<sha>` is staging's: VPS-41), such as `v1.0.0`, deployed on the server (Deploys on the
   VPS, Production) and healthy by the check from inside (First install, step 19). Its commit is the
   one the checks below expect.
+- **The site's words on where the data is kept, and for how long**, in the release: the privacy
+  page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`) and the FAQ's "Where is my data kept?"
+  answer, in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`),
+  say that the encrypted backups are kept with Cloudflare (R2) in its Asia-Pacific region, which
+  can be outside India, and the privacy page says how long the journal keeps a line (Logs and
+  alerts (VPS)), as docs/DECISIONS.md VPS-24 asks. The owner approves the words (VPS-156).
 - **The first admin's link**, made on the server with the tool within the 7 days before the night
   (The first platform admin (production)), kept in the password manager until it is opened.
 - **The settings to type again**, noted from hosted production's `/super` while it still serves
