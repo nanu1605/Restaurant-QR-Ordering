@@ -143,7 +143,10 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * Since VPS-156 First install, step 2, names the owner's bucket as built, R2's, with the
  * Asia-Pacific location hint, the backups kept outside India, as R2 has no India region, and the
  * production night's Before it has its release carry the site's words on where the backups are
- * kept and how long the journal keeps a line.
+ * kept and how long the journal keeps a line. Since VPS-157 step 7 names cmd beside PowerShell, as
+ * cmd passes its '' on as two apostrophes, the key's passphrase, which nothing finds until the VPS
+ * ping of step 17, tells Git Bash apart by its prompt, and checks the key in Git Bash with
+ * ssh-keygen -y -P ''.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -200,7 +203,7 @@ const PLACES = {
   vps: ['## The shared server (VPS)', '\n## Razorpay live switch'],
   firstKey: ['1. **The backup key**', '2. **The bucket:**'],
   secrets: ['6. **The secrets**', '7. **The deploy key**'],
-  // First install, step 7, whose ssh-keygen runs in Git Bash (VPS-155).
+  // First install, step 7, whose ssh-keygen runs in Git Bash (VPS-155), not cmd (VPS-157).
   deployKey: ['7. **The deploy key**', '8. **The zone:**'],
   // First install, step 2, and the production night's Before it, which say where the backups are
   // kept (VPS-156).
@@ -3794,6 +3797,31 @@ const DEPLOY_KEY_6BBC375 = [
   '7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub',
   `   (\`VPS_SSH_KEY\`): \`${DEPLOY_KEYGEN}\`.`,
 ].join('\n');
+/**
+ * First install, step 7's check of the key, run in Git Bash (VPS-157): it prints the public key
+ * of a key without a passphrase and refuses one with a passphrase, such as the '' cmd gives it.
+ */
+const DEPLOY_CHECK = "ssh-keygen -y -P '' -f gha-menumesh-staging";
+/**
+ * Step 7's words on cmd (VPS-157): cmd named beside PowerShell; the two apostrophes it passes on,
+ * which become the key's passphrase, nothing failing until step 17's VPS ping; Git Bash's prompt,
+ * which tells it apart; and the check in Git Bash, with what it prints and what it refuses.
+ */
+const CMD_WORDS = [
+  'On Windows it runs in Git Bash, not PowerShell or cmd',
+  "cmd passes `''` on as two apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's **VPS ping**",
+  "Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`",
+  `Then, in Git Bash, \`${DEPLOY_CHECK}\` prints the public key, and a key with a passphrase is refused`,
+];
+/**
+ * First install, step 7's sentence on Windows at 32a2ed1, which named PowerShell alone: in cmd the
+ * key is made with the passphrase '', and nothing fails until step 17's VPS ping (VPS-157).
+ */
+const DEPLOY_SENTENCE_32A2ED1 = [
+  'On',
+  "   Windows it runs in Git Bash, not PowerShell: Windows PowerShell 5.1 drops the empty `''`, so",
+  '   ssh-keygen stops at `Too many arguments.` and makes no key.',
+].join('\n');
 
 /**
  * The owner's key steps, First install's steps 1 and 7, in Git Bash on Windows (VPS-155). Step 1's
@@ -3805,7 +3833,10 @@ const DEPLOY_KEY_6BBC375 = [
  * its $PWD has that one problem. Its prose names where it runs, in step 8's words, its form, the
  * line for macOS and Linux, and why. Step 7's ssh-keygen, whose empty -N '' Windows PowerShell 5.1
  * drops, so that it stops at "Too many arguments.", runs in Git Bash, not PowerShell, says why, and
- * keeps its command.
+ * keeps its command. Since VPS-157 step 7 names cmd too, which passes the '' on as two apostrophes,
+ * so that the key is made with that passphrase and nothing fails until step 17's VPS ping; it tells
+ * Git Bash apart by its prompt and has the key checked in Git Bash (DEPLOY_CHECK). A step 7 without
+ * its words on PowerShell has that one problem, its words on cmd there or not.
  */
 const gitBashKeys = (runbook: string) =>
   inPlaces(runbook, ['firstKey', 'deployKey'], ({ firstKey, deployKey }) => {
@@ -3815,6 +3846,7 @@ const gitBashKeys = (runbook: string) =>
       .replace(/ *\\\n/g, ' ')
       .split('\n');
     const mounts = commands.filter((line) => PWD_MOUNT.test(line));
+    const powerShell = DEPLOY_WORDS.every((words) => has(deployKey, words));
     return [
       ...mounts.map(
         (line) =>
@@ -3834,10 +3866,15 @@ const gitBashKeys = (runbook: string) =>
         : [
             'First install, step 1, doesn’t say it runs in Git Bash on Windows, with the folder as Git Bash needs it and why, and the line for macOS and Linux',
           ]),
-      ...(DEPLOY_WORDS.every((words) => has(deployKey, words))
+      ...(powerShell
         ? []
         : [
             "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''",
+          ]),
+      ...(!powerShell || CMD_WORDS.every((words) => has(deployKey, words))
+        ? []
+        : [
+            "First install, step 7, doesn’t say cmd passes its '' on as the key’s passphrase, which nothing finds until the VPS ping, nor check the key in Git Bash",
           ]),
     ];
   });
@@ -5180,7 +5217,7 @@ const REWRAPPED = [
   "into `C:\\…;K:\\`, which Docker refuses, and Windows PowerShell can't parse it at",
   '`pwd -W` gives the folder as `C:/…`, and `MSYS_NO_PATHCONV=1` passes it whole',
   `\`${DEPLOY_KEYGEN}\``,
-  "Windows PowerShell 5.1 drops the empty `''`, so",
+  "Windows PowerShell 5.1 drops the empty `''`,",
   'ssh-keygen stops at `Too many arguments.` and makes no key',
   // Read by the rule of where the backups are kept (VPS-156): a piece of each phrase that stands on
   // one line.
@@ -5197,6 +5234,15 @@ const REWRAPPED = [
   'the privacy page says how long the journal keeps a line',
   'as docs/DECISIONS.md VPS-24 asks',
   'The owner approves the words (VPS-156)',
+  // Read by the rule of the owner's deploy key in Git Bash, not cmd (VPS-157): a piece of each
+  // phrase that stands on one line, the prompt's short of its `$`, as replaceAll would read the $`
+  // in its replacement as a pattern.
+  'not PowerShell or cmd',
+  "cmd passes `''` on as two",
+  "apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's",
+  "Git Bash's prompt shows `MINGW64` and ends in",
+  'Then, in Git Bash,',
+  `\`${DEPLOY_CHECK}\` prints the public key, and a key with a passphrase`,
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -9472,17 +9518,59 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
         ':',
       ],
       [
-        'Windows it runs in Git Bash, not PowerShell:',
-        'Windows it runs in Git Bash or PowerShell:',
+        'Windows it runs in Git Bash, not PowerShell or cmd:',
+        'Windows it runs in Git Bash or PowerShell, not cmd:',
       ],
       [
-        ": Windows PowerShell 5.1 drops the empty `''`, so\n   ssh-keygen stops at `Too many arguments.` and makes no key.",
-        '.',
+        ": Windows PowerShell 5.1 drops the empty `''`,\n   so ssh-keygen stops at `Too many arguments.` and makes no key;",
+        ':',
       ],
       ["-N '' -C gha-menumesh-staging`. On", '-N \'""\' -C gha-menumesh-staging`. On'],
     ]) {
       expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([deploy]);
     }
+  });
+
+  it('names cmd beside PowerShell for the owner’s deploy key, as cmd passes its empty -N argument on as two apostrophes, the key’s passphrase, which nothing finds until step 17’s VPS ping, and has the key checked in Git Bash with an empty passphrase (VPS-157)', () => {
+    expect(gitBashKeys(RUNBOOK)).toEqual([]);
+    const cmd =
+      "First install, step 7, doesn’t say cmd passes its '' on as the key’s passphrase, which nothing finds until the VPS ping, nor check the key in Git Bash";
+    const deploy =
+      "First install, step 7, doesn’t run ssh-keygen in Git Bash, not PowerShell, whose Windows PowerShell 5.1 drops its empty ''";
+    // 32a2ed1's sentence, which named PowerShell alone: that one problem and nothing else.
+    const sentence = cut(RUNBOOK, 'On\n   Windows it runs in Git Bash', '\n8. **The zone:**');
+    expect(gitBashKeys(swap(RUNBOOK, sentence, DEPLOY_SENTENCE_32A2ED1))).toEqual([cmd]);
+    // Each new phrase taken out alone: cmd beside PowerShell, its two apostrophes, the passphrase
+    // they make, the VPS ping, Git Bash's prompt, the check in Git Bash, its empty -P '', what it
+    // prints and what it refuses.
+    for (const [from, to] of [
+      [' or cmd:', ':'],
+      ["cmd passes `''` on as two\n   apostrophes, so", "cmd passes `''` on, so"],
+      ["the passphrase `''`, and", 'a passphrase, and'],
+      [", and nothing fails until step 17's\n   **VPS ping**.", '.'],
+      [" Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`.", ''],
+      ['Then, in Git Bash,\n', 'Then,\n'],
+      [`\`${DEPLOY_CHECK}\``, '`ssh-keygen -y -f gha-menumesh-staging`'],
+      ['` prints the public key,', '` prints a key,'],
+      [', and a key with a passphrase\n   is refused.', '.'],
+    ]) {
+      expect(gitBashKeys(swap(RUNBOOK, from, to))).toEqual([cmd]);
+    }
+    // Without its words on PowerShell, step 7 has that one problem, its words on cmd there or not.
+    expect(
+      gitBashKeys(
+        swap(RUNBOOK, "drops the empty `''`,\n   so", 'drops the empty argument,\n   so'),
+      ),
+    ).toEqual([deploy]);
+    expect(
+      gitBashKeys(
+        swap(
+          swap(RUNBOOK, sentence, DEPLOY_SENTENCE_32A2ED1),
+          "drops the empty `''`, so",
+          'drops the empty argument, so',
+        ),
+      ),
+    ).toEqual([deploy]);
   });
 
   it('names the owner’s bucket as built, R2’s with the Asia-Pacific location hint, the backups kept outside India as R2 has no India region, and has the production night’s release carry the site’s words on where they are kept and how long the journal keeps a line (VPS-156)', () => {

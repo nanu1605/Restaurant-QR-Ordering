@@ -13483,6 +13483,41 @@ entries below.
   reads neither file and was not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean;
   the unit tests 1,360 in 73 files (`vps-runbook` 67, `vps-kit` 123, one new each).
 
+- **VPS-157 · First install, step 7, names cmd, which gives the deploy key the passphrase `''`
+  (2026-11-26):** in cmd.exe, `ssh-keygen -t ed25519 -f <file> -N '' -C <comment>` exits 0, but
+  cmd passes the apostrophes on as they are, so the key's passphrase is the two characters `''`: a
+  throwaway key made through a `.cmd` file on 2026-11-25 opened with `-P "''"` and not with
+  `-P ''`. Nothing fails then; the deploy can't use the key, and step 17's **VPS ping** is its
+  first real test. In Git Bash, `ssh-keygen -y -P '' -f <file>` printed the public key of a key
+  without a passphrase (VPS-155's runs). The owner's terminal has been cmd.exe (prompt
+  `S:\Projects\Restaurant-QR-Ordering>`) even when Git Bash was meant, whose prompt shows `MINGW64`
+  and ends in `$`. The owner's deploy key was checked: it has no passphrase, so nothing needs
+  redoing.
+
+  Step 7's sentence on Windows now names cmd beside PowerShell and what cmd does with `''`, tells
+  Git Bash apart by its prompt, and adds the check, in Git Bash:
+  `ssh-keygen -y -P '' -f gha-menumesh-staging` prints the public key, and a key with a passphrase
+  is refused. Its command stays. No other command for the owner's or the admin's Windows machine
+  passes an empty `''`: part 1's count is SQL in hosted production's SQL editor, step 11's awk
+  `print ""` runs on the server, Rotation's deploy key and disaster recovery's step 1 give no
+  command, so a new key comes from step 7's line, beside its warning, and the kit's documents hold
+  none. The server's commands stay.
+
+  `gitBashKeys` now needs step 7's four `CMD_WORDS`, still one problem a place: a step 7 without
+  its words on PowerShell has that problem alone, and VPS-155's two cases that quoted the old wrap
+  quote the new. On `32a2ed1`'s RUNBOOK the re-wrap test's 44 rules report 1 problem, this one, and
+  none on the fix; the bite `DEPLOY_SENTENCE_32A2ED1` is refused with it alone and, with the range,
+  gives back `32a2ed1`'s RUNBOOK exactly. Each of the 9 new phrases cut fails the new test and the
+  re-wrap test, and each of 7 mutations of the rule (the check or its guard removed, the words read
+  in step 1, each phrase taken as always there) fails a test, in copies under `tests/unit` deleted
+  after. The re-wrap test wraps 391 phrases, not 385; the new title and comments name VPS-157.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-157;
+  the cut-over's intro stays, as only First install changed. Nothing was run: no `ssh-keygen`, no
+  cmd, nothing against the server; `pnpm vps:check` and `pnpm vps:edge` read none of this and were
+  not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,361 in 73
+  files (`vps-runbook` 68, one new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and

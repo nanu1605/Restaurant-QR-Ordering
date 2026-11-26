@@ -608,7 +608,7 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-156 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-157 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
 `deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
@@ -775,8 +775,12 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 7. **The deploy key** for CI, whose public half goes to the admin and private half to GitHub
    (`VPS_SSH_KEY`), made on the owner's own machine (Git Bash on Windows, or a terminal on macOS or
    Linux): `ssh-keygen -t ed25519 -f gha-menumesh-staging -N '' -C gha-menumesh-staging`. On
-   Windows it runs in Git Bash, not PowerShell: Windows PowerShell 5.1 drops the empty `''`, so
-   ssh-keygen stops at `Too many arguments.` and makes no key.
+   Windows it runs in Git Bash, not PowerShell or cmd: Windows PowerShell 5.1 drops the empty `''`,
+   so ssh-keygen stops at `Too many arguments.` and makes no key; cmd passes `''` on as two
+   apostrophes, so the key is made with the passphrase `''`, and nothing fails until step 17's
+   **VPS ping**. Git Bash's prompt shows `MINGW64` and ends in `$`, not `>`. Then, in Git Bash,
+   `ssh-keygen -y -P '' -f gha-menumesh-staging` prints the public key, and a key with a passphrase
+   is refused.
 8. **The zone:** `menumesh.in` on Cloudflare, moved from GoDaddy with its settings (The server
    rehearsal and the cut-over, part 1), Full (strict), with zone-level authenticated origin pulls
    from MenuMesh's own CA (the server team's `edge.md` §3, Authenticated origin pulls, whose steps 1
