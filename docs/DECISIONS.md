@@ -13552,6 +13552,58 @@ entries below.
   not run. `pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,361 in 73
   files (`vps-runbook` 68, one new).
 
+- **VPS-158 · Six gaps closed before the server rehearsal (2026-11-26):** the production-gap sweep
+  of 2026-11-26 found six places that the rehearsal and the cut-over would reach untrue, unsaid or
+  set for Vercel alone. The shared server (VPS)'s opening said the server wasn't bought; it says
+  only what holds until the cut-over, Vercel the live host and the CI jobs off until the two
+  variables are set, with no date. Part 4's "production's monitors on" names production's five of
+  First install, step 3's eight checks (the backup's and the WAL's from step 18, `daily`, `digest`
+  and `jobs` from step 20), each up in healthchecks.io and none paused, each alert tried (step 3),
+  and the uptime monitor on `/api/health` that its step 9 looks at, set up in One-time setup per
+  environment, step 6, which follows the address to the server.
+
+  First install, step 18, tries the backup's Telegram line before its first night with the image's
+  own `notify.sh alert` through `app-compose menumesh exec -T backup`, the path of a failed night's
+  and the WAL's alerts: it hands the token and the chat to curl on its stdin and prints neither, a
+  line only on a failed send, nothing with a value empty, so the check is the line in the owner's
+  chat. No `backup` container runs before step 18, and part 2 comes after the first night. Step 11
+  has the owner make staging's password, which its own `edge.env` lines and step 17 need, keep it in
+  the password manager, hash it with its existing line and set `menumesh:<password>` as
+  `STAGING_SMOKE_BASIC_AUTH` at step 17, no step renumbered.
+
+  Razorpay live switch and Launching the website set production up on the server: its values in
+  `web.env`, changed as Secrets (VPS), Rotation, has it; DNS in Cloudflare since part 1; the VPS
+  release, its smoke tests run from this machine; PostHog from the GitHub variables every VPS build
+  takes. The Razorpay dashboard's steps, the webhook and its events stay, and each step that holds
+  only while Vercel serves production says so, as After the move keeps the Vercel rules until
+  part 6. Launching's list of settings hangs from the server's words, Vercel's way after it, and
+  part 6's list retires the two sections' Vercel lines, as it does those of Incidents, not the
+  sections. Part 4's release bullet adds what part 3's one merge (step 6's) and part 4's commit VPS
+  staging deployed imply: the release's changes, the site's words among them, merge before or after
+  the staging night, never during it, and the release is made after it.
+
+  Left open: a value changed in `web.env` during the 14 days (the live keys, the launch's settings)
+  is not on Vercel for the way back, which part 5 doesn't say; whether the switch and the launch
+  wait for part 6 or go to both hosts is the owner's call. Not changed: After the move, whose Vercel
+  rules still stay until part 6, and `docs/PILOT.md`'s items, which name Vercel.
+
+  `tests/unit/vps-runbook.test.ts`: six rules, one problem a place, `openingTrue`, `monitorsOn`,
+  `alertTried` (holding `notify.sh` to step 18's words too), `passwordMade`, `serverLaunch` (both
+  sections, their words in order, and part 6's list; a sentence naming Vercel, its Release or
+  Supabase Pro opens with "While Vercel serves production") and `releaseTimed`. Each bite, its place
+  as at `da46268`, is refused with its one problem alone; with the range and the intro they give
+  back `da46268`'s RUNBOOK exactly, on which the re-wrap test's 50 rules report 8 problems, one a
+  place, and none on the fix. Each of 59 new phrases cut fails its rule and the re-wrap test, in a
+  copy under `tests/unit` deleted after. The re-wrap test wraps 430 phrases, not 391; titles and
+  comments name VPS-158.
+
+  The range the RUNBOOK, `deploy/vps/README.md` and `docs/SPEC.md` cite is now VPS-31 to VPS-158;
+  the cut-over's intro names VPS-158 for parts 4 and 6, with VPS-152 to VPS-154 as a range so no
+  line wraps again. Nothing was run against the server, Docker, Cloudflare, the bucket, staging or
+  production, nor `pnpm vps:check` or `pnpm vps:edge`, which read none of this. `pnpm lint`,
+  `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,373 in 74 files (`vps-runbook`
+  74, six new).
+
 **What the review confirmed** (2026-11-21): `compose.yml` and the conf pass `app-apply`'s rules,
 which hostwatch and `app-deploy` read as we do, and our `oom_score_adj` and `cpu_shares` fit theirs;
 their section 3 accepts the deviations we listed, 6,560 MiB with the 32m `scheduler-staging` and
