@@ -11503,9 +11503,22 @@ refuse (VPS-111, corrected in place); `tests/unit/vps-first-admin.test.ts` holds
 rule, the tool's `HIDDEN` and the maker's `checkName`, to the app's at every code point, and the
 Team page to every refusal of the tool's, where VPS-134's case skipped such names. The RUNBOOK's The
 first platform admin (production) no longer says that the Team page doesn't check them, and the
-server review's Left open list (below) loses that item. The database still checks only the names'
-lengths, so a database function called directly, past the forms, is not held to the rule.
-`pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,366 in 74 files.
+server review's Left open list (below) loses that item. The database holds the same rule
+(`20261121100000_person_names.sql`): `private.has_no_hidden_characters` checks
+`platform_admins.display_name`, `restaurant_members.display_name`, `waiters.full_name`,
+`site_leads.name` and `support_sessions.staff_name`, so a function called directly, or the service
+role's own write, is held to it too. Its list is Unicode 17.0's, as Node 24 has it, but U+0000,
+which text cannot hold; `tests/unit/person-name.test.ts` holds it to the app's rule at every code
+point. Only the service role may run it, as a writer: every other write runs inside a function as
+its owner. Names written before the rule are cleaned first (line breaks and separators become
+spaces, other such characters go, the spaces are tidied); a name of nothing but such characters
+stops the migration rather than get one made up. The cleaning raises for it, since a team member's
+name may be empty and would otherwise be lost. `pnpm lint`, `pnpm typecheck` and
+`pnpm format:check` clean; the unit tests 1,367 in 74 files. On the local stack, after
+`pnpm supabase migration up --local`, `pnpm db:test` ran every file, the four concurrency files
+included: 76 files, 3,583 checks, all pass, 20 of them in `694_person_names.test.sql`. A throwaway
+pgTAP file, run alone and deleted after, ran the migration's text on names written without the
+checks: 29 checks pass; without the raise, 8 of them fail.
 
 ### The server team's review (VPS, 2026-11-21)
 

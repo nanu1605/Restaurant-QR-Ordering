@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 
@@ -9,6 +12,22 @@ import { displayNameSchema } from '@/features/staff/schemas';
 import { staffNameSchema } from '@/features/support/support-access';
 import { waiterFormSchema } from '@/features/waiters/schemas';
 import { hasNoHiddenCharacters } from '@/lib/person-name';
+
+/** The database's character class (hex escapes, alone or as ranges) as code point ranges. */
+function sqlRanges(sqlClass: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  let from: number | undefined;
+  // Each escape is a backslash, u or U, then 4 or 8 hex digits; a "-" after one opens a range.
+  for (const escape of sqlClass.split(String.fromCharCode(92)).slice(1)) {
+    const code = Number.parseInt(escape.slice(1), 16);
+    if (from !== undefined) {
+      ranges.push([from, code]);
+      from = undefined;
+    } else if (escape.endsWith('-')) from = code;
+    else ranges.push([code, code]);
+  }
+  return ranges;
+}
 
 describe('a person’s name', () => {
   it('keeps ordinary spaces, accents, punctuation, emoji and every script', () => {
@@ -76,5 +95,29 @@ describe('a person’s name', () => {
         ).toEqual([message]);
       }
     }
+  });
+
+  it('is the database’s rule too, at every code point', () => {
+    // The latest migration that defines private.has_no_hidden_characters.
+    const folder = join('supabase', 'migrations');
+    const sql = readdirSync(folder)
+      .filter((name) => name.endsWith('.sql'))
+      .sort()
+      .map((name) => readFileSync(join(folder, name), 'utf8'))
+      .filter((text) => text.includes('function private.has_no_hidden_characters('))
+      .at(-1);
+    const sqlClass = /p_text !~ '\[([^\]']+)\]'/.exec(sql ?? '')?.[1];
+    expect(sqlClass, 'no migration defines private.has_no_hidden_characters').toBeDefined();
+    const ranges = sqlRanges(sqlClass!);
+    const differ: string[] = [];
+    // U+0000 is left out of the database's list: text cannot hold it.
+    for (let code = 1; code <= 0x10ffff; code++) {
+      const refused = ranges.some(([from, to]) => code >= from && code <= to);
+      if (refused === hasNoHiddenCharacters(String.fromCodePoint(code))) {
+        differ.push(`U+${code.toString(16).toUpperCase()}`);
+      }
+    }
+    // Newer Unicode data in Node shows here first: the database's list is then defined again.
+    expect(differ).toEqual([]);
   });
 });

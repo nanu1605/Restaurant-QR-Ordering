@@ -6,9 +6,11 @@
  * zero-width space, or a line or paragraph separator (Zl, Zp). Ordinary spaces stay. A joiner is a
  * format character too, so a name written with one, such as a joined emoji, is refused as well.
  *
- * deploy/vps/tools/first-admin.mjs and its values maker, first-admin-values.mjs beside it, keep
- * their own copies of the rule, as they run without the app; tests/unit/vps-first-admin.test.ts
- * holds the three to the same characters.
+ * Three copies run without the app, each held to this one at every code point: the first-admin
+ * tool's and its values maker's (deploy/vps/tools/first-admin.mjs and first-admin-values.mjs
+ * beside it, by tests/unit/vps-first-admin.test.ts) and the database's,
+ * private.has_no_hidden_characters, which every name column checks
+ * (supabase/migrations/20261121100000_person_names.sql, by tests/unit/person-name.test.ts).
  */
 const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
