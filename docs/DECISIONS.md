@@ -10888,9 +10888,10 @@ header cite moved to VPS-121.
   (VPS Stop D)):
   - **Refuses** (exit 2, nothing made) once the platform has any team member, joined or not (later
     members come from Settings → Team), or when the email already has a login; checks the email as
-    the Team page does (trimmed, lowercased, then zod's pattern) and a name of 1 to 80 characters
-    without control characters; and needs the container's `SUPABASE_SECRET_KEY`,
-    `CUSTOMER_COOKIE_SECRET` and `SUPABASE_INTERNAL_URL`.
+    the Team page does (trimmed, lowercased, then zod's pattern) and the name as it does too, 1 to
+    80 characters without a control or format character or a line or paragraph separator; and
+    needs the container's `SUPABASE_SECRET_KEY`, `CUSTOMER_COOKIE_SECRET` and
+    `SUPABASE_INTERNAL_URL`.
   - **Makes** the login as the Team page asks for it, without a password (`email_confirm: true`;
     GoTrue v2.197.0 gives such a login a random password nobody knows, until the join sets the
     member's own), and inserts the `platform_admins` row as `platform_invite_member` does: role
@@ -11485,6 +11486,26 @@ not its name, so without `--network-alias menumesh-leaktest` it adds `not-an-ups
 29.9.3, as a run here showed, a plain `docker run` has no `Aliases`, its name only in `DNSNames`;
 with that flag `Aliases` holds `menumesh-leaktest`), and its limits check reports it unless it has
 `--memory` and `--cpus`. Nothing the kit runs changed.
+
+**After the review: names that hide or reorder text** (2026-11-21). A read-only review found that
+the Team page's invite took a name holding a format character (Unicode Cf, such as the right-to-left
+override U+202E or the zero-width space U+200B) or a line or paragraph separator (U+2028, U+2029);
+it took a control character too. Only the first-admin tool refused them, control characters since
+VPS-111 and the other three kinds, with its values maker, since VPS-134 (below). Such a name is the
+member's `display_name`, on admin screens and in emails, where an override can make it read as
+another. Every form that takes a person's name now refuses all four kinds (`hasNoHiddenCharacters`
+in `src/lib/person-name.ts`) and still takes ordinary spaces: the Team page's invite and changes,
+the signup and the "Book a demo" form (with a Hindi message too), onboarding's owner, staff logins,
+waiters, a support session's name and a lead added by hand. A joiner (U+200C, U+200D) is a format
+character too, so a joined emoji, or a spelling that needs one, is refused as well. The first-admin
+tool and the values maker refuse the same characters and write each out as an escape when they
+refuse (VPS-111, corrected in place); `tests/unit/vps-first-admin.test.ts` holds both copies of the
+rule, the tool's `HIDDEN` and the maker's `checkName`, to the app's at every code point, and the
+Team page to every refusal of the tool's, where VPS-134's case skipped such names. The RUNBOOK's The
+first platform admin (production) no longer says that the Team page doesn't check them, and the
+server review's Left open list (below) loses that item. The database still checks only the names'
+lengths, so a database function called directly, past the forms, is not held to the rule.
+`pnpm lint`, `pnpm typecheck` and `pnpm format:check` clean; the unit tests 1,366 in 74 files.
 
 ### The server team's review (VPS, 2026-11-21)
 
@@ -13559,12 +13580,12 @@ confirmation of 2026-11-25 names `0c23a8f` (nanu1605/jainav-infotech#91), whose 
 and serial; it is live on the server, and origin pulls are on and required for `jainavinfotech.in`
 since 00:08 IST that day. The kit's copy is that commit's, its `SOURCE` line the sum that
 confirmation gives, `1bfc11ed…`, which step 11's check then takes; step 16's wait for their word is
-over, and its loop still proves it on the server at the install (VPS-150). Still open:
+over, and its loop still proves it on the server at the install (VPS-150). So is the Team page's
+check of an invite's name, the separate task VPS-134 left: every form that takes a person's name now
+refuses what the first-admin tool refuses (After the review: names that hide or reorder text, in
+Review fixes, round 2 (VPS Stop D)). Still open:
 
 - The recreate night's date, which is the owner's (VPS-136). The server's libc6 reboot, pending
   since 2026-11-14, also goes between 01:00 and 07:00 IST, and may go on the same night: the owner's
   call.
 - `LOG_LINE_BUDGET` set again from real counts (VPS-139).
-- The Team page's check of an invite's name (a separate task): the first-admin tool refuses format,
-  line separator and paragraph separator characters that Settings → Team's `inviteSchema` still
-  accepts (VPS-134).

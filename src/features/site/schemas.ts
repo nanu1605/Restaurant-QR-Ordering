@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CUISINE_SETS } from '@/features/menu/default-categories';
 import { passwordRule } from '@/features/platform/schemas';
 import { GSTIN_PATTERN } from '@/features/settings/schemas';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 import { SITE, type SiteContent, type SiteLang } from './content';
 import { fill } from './i18n';
@@ -20,10 +21,12 @@ export function siteSchemas(m: SiteContent['errors']) {
   const tooLong = (max: number) => fill(m.tooLong, { max });
   const text = (missing: string, max: number) =>
     z.string().trim().min(1, missing).max(max, tooLong(max));
+  /** The visitor's own name, which the team reads on its screens and in emails. */
+  const personName = text(m.name, 80).refine(hasNoHiddenCharacters, m.nameHidden);
 
-  /** The "Book a demo" form (docs/DECISIONS.md W-6); site_leads checks the same. */
+  /** The "Book a demo" form (docs/DECISIONS.md W-6); site_leads checks the same lengths. */
   const lead = z.object({
-    name: text(m.name, 80),
+    name: personName,
     restaurantName: text(m.restaurantName, 120),
     city: text(m.city, 60),
     phone: z
@@ -51,7 +54,7 @@ export function siteSchemas(m: SiteContent['errors']) {
     restaurantName: text(m.restaurantName, 120),
     city: text(m.city, 60),
     cuisine: z.enum(CUISINE_SETS, { message: m.cuisine }),
-    ownerName: text(m.name, 80),
+    ownerName: personName,
     email: z.string().trim().toLowerCase().max(254, tooLong(254)).pipe(z.email(m.email)),
     phone: lead.shape.phone,
     // One trial per restaurant (docs/DECISIONS.md P11-10): its licence, address and GSTIN.

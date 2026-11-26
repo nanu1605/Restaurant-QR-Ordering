@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { STAFF_LOGIN_ROLES } from '@/lib/auth/roles';
 import { USERNAME_PATTERN } from '@/lib/auth/staff-email';
+import { hasNoHiddenCharacters } from '@/lib/person-name';
 
 /** Staff logins forms (spec §9.5, §13.3), shared by the dialogs and the server actions. */
 
@@ -9,7 +10,8 @@ export const displayNameSchema = z
   .string()
   .trim()
   .min(1, 'Enter a name.')
-  .max(80, 'Use 80 characters or fewer.');
+  .max(80, 'Use 80 characters or fewer.')
+  .refine(hasNoHiddenCharacters, 'Remove the hidden characters from the name.');
 
 export const usernameSchema = z
   .string()

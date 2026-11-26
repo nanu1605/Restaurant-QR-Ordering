@@ -32,6 +32,9 @@ const INVITE_DAYS = 7;
 // then zod's email pattern.
 const EMAIL =
   /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
+// What the Team page's names may not hold (hasNoHiddenCharacters in src/lib/person-name.ts): a
+// control or format character, or a line or paragraph separator.
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const TIMEOUT_MS = 30_000;
 
 /** Refused before anything was made: exit 2. */
@@ -93,10 +96,11 @@ async function main() {
     );
   }
   const name = env.FIRST_ADMIN_NAME.trim();
-  // The Team page's 1 to 80, and nothing a terminal acts on: the link's line prints the name, where
-  // a control character could rewrite the screen, a bidi control (a format character) reorder what
-  // the line shows, and a line or paragraph separator break it.
-  if (name.length < 1 || name.length > 80 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)) {
+  // The Team page's rule: 1 to 80 characters, none of them HIDDEN, so nothing a terminal acts on
+  // either: the link's line prints the name, where a control character could rewrite the screen, a
+  // bidi control (a format character) reorder what the line shows, and a line or paragraph
+  // separator break it.
+  if (name.length < 1 || name.length > 80 || HIDDEN.test(name)) {
     throw new Refused(
       `FIRST_ADMIN_NAME ${shown(env.FIRST_ADMIN_NAME)} must be 1 to 80 characters, without control or format characters`,
     );

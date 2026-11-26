@@ -72,6 +72,36 @@ describe('members', () => {
     expect(memberPatchSchema.safeParse({}).success).toBe(false);
   });
 
+  it('keep a name free of characters that hide or reorder it, on the invite and on a change', () => {
+    const invite = (displayName: string) =>
+      inviteSchema.safeParse({ email: 'a@b.test', displayName, role: 'sales' });
+    // Ordinary spaces, accents, apostrophes, hyphens and other scripts stay.
+    for (const name of ['Tara Singh', 'Ōwner Nāme', "Seán O'Brien-Lee", 'आशा वर्मा', '李小龍']) {
+      expect(invite(name).data?.displayName, name).toBe(name);
+    }
+    // A right-to-left override (it shows "Tara nimda" as "Tara admin"), a zero-width space, the
+    // line and paragraph separators, and a control character.
+    for (const name of [
+      'Tara \u202Enimda',
+      'Ta\u200Bra',
+      'Tara\u2028Singh',
+      'Tara\u2029Singh',
+      'Tara\u001b[31m',
+    ]) {
+      expect(invite(name).error?.issues, JSON.stringify(name)).toEqual([
+        expect.objectContaining({
+          path: ['displayName'],
+          message: 'Remove the hidden characters from the name.',
+        }),
+      ]);
+    }
+    expect(memberPatchSchema.parse({ displayName: ' Tara Singh ' })).toEqual({
+      displayName: 'Tara Singh',
+    });
+    expect(memberPatchSchema.safeParse({ displayName: 'Tara\u202E' }).success).toBe(false);
+    expect(memberPatchSchema.safeParse({ displayName: 'Tara\u2028Singh' }).success).toBe(false);
+  });
+
   it('join with a password typed twice the same', () => {
     const token = 'x'.repeat(43);
     expect(

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { hasNoHiddenCharacters } from '@/lib/person-name';
+
 import { passwordSchema } from './schemas';
 
 /**
@@ -69,7 +71,8 @@ const displayName = z
   .string()
   .trim()
   .min(1, 'Enter their name.')
-  .max(80, 'Keep the name under 80 characters.');
+  .max(80, 'Keep the name under 80 characters.')
+  .refine(hasNoHiddenCharacters, 'Remove the hidden characters from the name.');
 
 export const inviteSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email('Enter an email address.')),

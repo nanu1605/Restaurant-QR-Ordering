@@ -3293,8 +3293,8 @@ shared server (VPS), The server rehearsal and the cut-over, part 4), with
    `docker exec`'s output never reaches the container's log, and the server keeps only the token's
    hash. It refuses with one line, `first-admin: refused: <why>`, exit 2, having made nothing: once
    the platform has any team member, joined or not (everyone after comes from Settings → Team), for
-   an email that already has a login, for an email or a name the Team page would refuse, and for a
-   name with control or format characters, which the Team page doesn't check yet. A failure is one
+   an email that already has a login, and for an email or a name the Team page would refuse, a name
+   with a control or format character or a line or paragraph separator among them. A failure is one
    line, `first-admin: failed: <why>`, exit 1, which says what is left: a login it made is removed
    again when the invite can't be added, or named with its user id when that fails too. When the
    answer to making the login was lost (no answer, or the gateway's own 502, 503 or 504 instead of

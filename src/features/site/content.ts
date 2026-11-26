@@ -614,6 +614,7 @@ const en = {
   /** The forms' field checks (schemas.ts). */
   errors: {
     name: 'Enter your name.',
+    nameHidden: 'Remove the hidden characters from your name.',
     restaurantName: 'Enter your restaurant’s name.',
     city: 'Enter your city.',
     tooLong: 'Use {max} characters or fewer.',

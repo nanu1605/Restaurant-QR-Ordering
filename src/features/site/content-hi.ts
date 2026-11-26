@@ -581,6 +581,7 @@ export const hi: SiteContent = {
 
   errors: {
     name: 'अपना नाम लिखें।',
+    nameHidden: 'अपने नाम से छिपे हुए अक्षर हटाएँ।',
     restaurantName: 'अपने रेस्टोरेंट का नाम लिखें।',
     city: 'अपना शहर लिखें।',
     tooLong: '{max} या उससे कम अक्षर लिखें।',
