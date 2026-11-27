@@ -608,12 +608,12 @@ and restore (VPS).
 
 From the move, both web apps and production's Supabase run on one shared server, a Hostinger KVM 4
 in Mumbai, as the compose project `menumesh` in `/srv/menumesh`, behind the server's one Caddy and
-Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-157 for the kit). The server team's
+Cloudflare (docs/DECISIONS.md VPS-1, VPS-24, and VPS-31 to VPS-158 for the kit). The server team's
 host scripts check and run everything: `app-apply` checks a file and installs it, `app-compose` runs
 Compose for the project, `app-deploy` deploys one image, and `hostwatch` watches and alerts.
-`deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this
-is live yet:** the server isn't bought, Vercel stays the live host until the cut-over (The server
-rehearsal and the cut-over, below), and the CI jobs stay off until the two variables below are set.
+`deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. Vercel stays
+the live host until the cut-over (The server rehearsal and the cut-over, below), and the CI jobs
+stay off until the two variables below are set.
 The server team's runbooks in their repository (`docs/runbooks/server.md`, `edge.md`, `backups.md`,
 `launch.md`, `cloudflare.md`) have the steps that are theirs.
 
@@ -1046,7 +1046,10 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
       on a combined night that confirmation comes only then.
 
     Steps 12 to 21 need not wait for that night; the staging night does (The server rehearsal and
-    the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own
+    the cut-over, part 3, Before it). Staging's password is the owner's to make at this step, as
+    step 17 and the `edge.env` lines need it: it goes into the password manager (testers get it from
+    the owner) and, as `menumesh:<password>`, into the GitHub secret `STAGING_SMOKE_BASIC_AUTH`
+    at step 17. The hash comes from the owner, who makes it on their own
     machine with the edge's pinned Caddy image and bcrypt, the only kind `app-apply` takes, never on
     the server: there staging's password would stay in the shell's history and show in the process
     list. Without `--plaintext`, Caddy reads the password from the terminal without echoing it, and
@@ -1161,6 +1164,17 @@ way up to `/` may be writable by anyone else, or `app-apply` refuses the compose
 
     ```sh
     read -rs PAT && printf '%s\n' "$PAT" | sudo app-deploy menumesh backup backup-<sha>@sha256:<digest>
+    ```
+
+    Then, before its first night (20:30 UTC), the backup's Telegram line (step 3), tried once from
+    the server with the image's own `notify.sh`, through which a failed night's and the WAL's alerts
+    go: it takes the bot's token and the chat from `.env` and prints neither. It prints nothing when
+    the send worked, and `notify: the Telegram alert failed (…)`, with curl's exit or the HTTP
+    status, when it did not; with either value empty it sends nothing and prints nothing, so the
+    check is the line in the owner's chat:
+
+    ```sh
+    sudo app-compose menumesh exec -T backup /usr/local/bin/notify.sh alert '[menumesh] test alert from the server'
     ```
 
 19. The first deploys, which run the migrations: production by a release (Deploys on the VPS), and
@@ -1333,7 +1347,7 @@ rehearsed yet: rehearse it with `pnpm vps:rehearse` first.
 ### The server rehearsal and the cut-over
 
 The cut-over in six parts, in order (docs/DECISIONS.md VPS-109 to VPS-129, VPS-135 to VPS-137,
-VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152, VPS-153, VPS-154 and VPS-156). Production
+VPS-139, VPS-142, VPS-143, VPS-147, VPS-148, VPS-152 to VPS-154, VPS-156 and VPS-158). Production
 starts fresh on the server: nothing is copied from hosted production, the first platform admin comes
 from a one-time link made on the server, and the settings edited by hand in `/super` are typed again
 (VPS-110). Staging moves on a night of its own before production's. For 14 days after production's
@@ -1708,7 +1722,9 @@ daily runs, inside maintenance (01:00 to 07:00 IST), clear of the blackouts (02:
 - **The release**: a **VPS release** of a commit of `main` that went through VPS staging (its
   `migrate-<sha>` is staging's: VPS-41), such as `v1.0.0`, deployed on the server (Deploys on the
   VPS, Production) and healthy by the check from inside (First install, step 19). Its commit is the
-  one the checks below expect.
+  one the checks below expect. The site's words (below) and any other change meant for the release
+  merge to `main` before the staging night or after it, never during it (part 3), and the release
+  is made after that night, from a commit VPS staging deployed.
 - **The site's words on where the data is kept, and for how long**, in the release: the privacy
   page (`src/app/(site)/(en)/(legal)/privacy/page.tsx`) and the FAQ's "Where is my data kept?"
   answer, in English (`src/features/site/content.ts`) and Hindi (`src/features/site/content-hi.ts`),
@@ -1720,7 +1736,12 @@ daily runs, inside maintenance (01:00 to 07:00 IST), clear of the blackouts (02:
 - **The settings to type again**, noted from hosted production's `/super` while it still serves
   `menumesh.in` (step 4 lists them).
 - **A day ahead**, the TTL of Vercel's apex and `www` records set to 1 min.
-- `sudo hostwatch check` clean, and production's monitors (First install, step 3) on.
+- `sudo hostwatch check` clean, and production's monitors on: of First install, step 3's heartbeat
+  monitors, the five that production's services ping (the other three are staging's), the backup's
+  and the WAL's (`backup`, from step 18) and `daily`, `digest` and `jobs` (`scheduler`, from
+  step 20), each up in healthchecks.io and none paused, each one's alert tried with its test
+  notification (step 3); and the uptime monitor on `https://menumesh.in/api/health` (One-time
+  setup per environment, step 6) up: it watches the address, which step 1 moves to the server.
 
 Then, in order:
 
@@ -1836,9 +1857,9 @@ Not Stop D's: once the server has served production for the 14 days, the Vercel 
   decided then.
 - The Vercel-only parts of this runbook (Environments, Deploying, One-time setup per environment,
   Environment variables (Vercel), Rolling back, the Vercel lines of Incidents, Rotating secrets,
-  Backups and restore, Razorpay live switch, the hosted way of The first platform admin
-  (production) and Launching the website), README's Deployment and SPEC's §4 and §20, rewritten for
-  the server.
+  Backups and restore, the Vercel lines of Razorpay live switch, the hosted way of The first
+  platform admin (production) and the Vercel lines of Launching the website), README's Deployment
+  and SPEC's §4 and §20, rewritten for the server.
 - The owner removes or downgrades the Vercel projects, and decides about the paused hosted project:
   deleting it is permanent.
 
@@ -3215,14 +3236,23 @@ Supabase stack is only ever read.
 
 ## Razorpay live switch
 
-1. Move production to Supabase Pro (daily backups, no pausing when idle); keep the nightly export.
+On the shared server, where production runs from the production night (The shared server (VPS),
+The server rehearsal and the cut-over, part 4), with its keys in `web.env` (First install, step 14;
+Secrets (VPS)):
+
+1. While Vercel serves production: move hosted production to Supabase Pro (daily backups, no pausing
+   when idle); keep the nightly export. On the server, its database is the server's own, backed up
+   every night (Backups and restore (VPS)).
 2. KYC approved; live mode enabled in the Razorpay dashboard. Open **Payments → Subscriptions**
    once in live mode: that switches the product on (step 6 fails until then).
-3. Create live keys; set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the production Vercel
-   project.
+3. Create live keys; put `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `web.env`.
 4. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and
-   `payment_link.paid` events and a new secret; set `RAZORPAY_WEBHOOK_SECRET`.
-5. Release production (a changed variable reaches only new deployments).
+   `payment_link.paid` events and a new secret; put it in `web.env` as `RAZORPAY_WEBHOOK_SECRET`.
+5. The edited `web.env` installed again and its copy in `~/incoming` shredded (First install,
+   step 14), then `sudo app-compose menumesh up -d web` (Secrets (VPS), Rotation): `up -d`
+   recreates `web` with the new values, where a `restart` keeps the old ones. While Vercel serves
+   production, the three go in the production Vercel project instead, then a Release of
+   production, as a changed variable reaches only new deployments.
 6. `/super` → **Plans** → **Create … plan in Razorpay** for each plan and cycle (live plans are
    separate from test ones).
 7. Subscribe a real test restaurant with a small plan, check the webhook arrives and the
@@ -3360,7 +3390,8 @@ Turning a member off there blocks their login; their lost phone is still fixed a
 ## Launching the website
 
 Production keeps its current build until the owner's legal texts and contact details are ready
-(docs/DECISIONS.md W-2). Then, in this order:
+(docs/DECISIONS.md W-2). Then, in this order, on the shared server, where production runs from the
+production night (The shared server (VPS), The server rehearsal and the cut-over, part 4):
 
 1. **Texts** (a normal PR): replace the placeholders.
    - The four policies in `src/app/(site)/(en)/(legal)/`, and the placeholder banner in its
@@ -3371,7 +3402,9 @@ Production keeps its current build until the owner's legal texts and contact det
      `DEMO_WORDS.hi` in `src/features/site/demo/machine.ts`, the Hindi code and welcome emails,
      DECISIONS W-20). If the texts above change, their Hindi changes with them.
    - The Organization's contact details in `src/features/site/structured-data.tsx` (W-12).
-2. **Production Vercel variables:**
+2. **Production's settings** in `web.env` (First install, step 14), changed as Secrets (VPS),
+   Rotation, has it (the edited file installed again, its copy in `~/incoming` shredded, then
+   `sudo app-compose menumesh up -d web`):
    - `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, from a Cloudflare Turnstile widget whose
      hostnames include `menumesh.in`. Without both, the demo form is hidden and signup stays
      closed.
@@ -3379,10 +3412,17 @@ Production keeps its current build until the owner's legal texts and contact det
      demo request to the support email, and together with Turnstile they open self-serve signup
      (W-9). Without them the site launches with "Book a demo" only, and requests are kept in
      `/super/leads` without an email.
-   - `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST`: the same project as staging (W-13).
+   - PostHog's key and host need nothing on the server: every **VPS build**, the release's too,
+     builds in the GitHub variables `POSTHOG_KEY` and `POSTHOG_HOST` (First install, step 17), the
+     same project as staging (W-13).
+
+   While Vercel serves production, the settings above go in the production Vercel project instead,
+   `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST` too, for step 5's Release.
+
 3. **Support email** (production `/super` → Platform settings), where each demo request is
    emailed when Resend is set; without it, requests are only kept in `/super/leads`.
-4. **DNS** (GoDaddy, for `menumesh.in`):
+4. **DNS** (Cloudflare, for `menumesh.in`, whose zone moved there in The shared server (VPS), The
+   server rehearsal and the cut-over, part 1):
    - DMARC: a TXT record `_dmarc` with `v=DMARC1; p=none; rua=mailto:dmarc@menumesh.in`. The
      domain has SPF and Resend's DKIM but no DMARC record, which mailbox providers look for
      (Gmail and Yahoo require it of bulk senders). The report address must be at `menumesh.in`
@@ -3390,11 +3430,13 @@ Production keeps its current build until the owner's legal texts and contact det
      when that domain allows it. Move to `p=quarantine` once the reports look clean.
    - Google Search Console: add a Domain property for `menumesh.in` and the TXT record it asks
      for. It covers `www` and staging too.
-5. **Release:** Actions → Release, typing `production`. Smoke then checks the version, the home
+5. **Release:** a **VPS release** (The shared server (VPS), Deploys on the VPS, Production), whose
+   step 3 runs the smoke tests from this machine. While Vercel serves production, it is
+   Actions → Release, typing `production`, which runs them itself. They check the version, the home
    page, the plans and prices, the policies, robots and the sitemap, that `menumesh.in` may be
    indexed, and that PostHog loads without keeping anything (on `menumesh.in` it fails without
    the PostHog key).
-6. **After the Release:**
+6. **After the release:**
    - In a normal browser, open `https://menumesh.in`, `/pricing` and `/contact`. Send one demo
      request, then find it in `/super/leads` and, when Resend is set, the support inbox.
    - If signup is open, sign up once with a real address, then suspend that restaurant from

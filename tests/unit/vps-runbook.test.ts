@@ -146,7 +146,13 @@ import { CADDY, SIGNING_PAIR_CHECK } from '../../scripts/vps-kit.mts';
  * kept and how long the journal keeps a line. Since VPS-157 step 7 names cmd beside PowerShell, as
  * cmd passes its '' on as two apostrophes, the key's passphrase, which nothing finds until the VPS
  * ping of step 17, tells Git Bash apart by its prompt, and checks the key in Git Bash with
- * ssh-keygen -y -P ''.
+ * ssh-keygen -y -P ''. Since VPS-158 the shared server's opening says only what holds until the
+ * cut-over, First install, step 11, has the owner make staging's password in time, keep it and set
+ * it as STAGING_SMOKE_BASIC_AUTH, step 18 tries the backup's Telegram line from the server with
+ * notify.sh before the first night, the production night's Before it names production's monitors
+ * and what on means for each, and merges the release's changes before or after the staging night,
+ * never during it, and Razorpay live switch and Launching the website set production up on the
+ * server, saying what holds only while Vercel serves production, which part 6 retires.
  */
 
 const RUNBOOK = readFileSync(join('docs', 'RUNBOOK.md'), 'utf8');
@@ -270,6 +276,18 @@ const PLACES = {
   // staging's password.
   composeStep: ['\n15. `sudo app-apply menumesh compose', '\n16. '],
   stagingPassword: ["- Staging's password", '- The deploy key or the Access token'],
+  // The gaps closed before the server rehearsal (VPS-158): the shared server's opening, First
+  // install, step 18, the production night's release and monitors bullets, and the two sections
+  // after the shared server that set production up, the last read up to its step 6's checks.
+  opening: ['## The shared server (VPS)', '\n### Who does what'],
+  backupStep: ['\n18. The backup image', '\n19. '],
+  releaseBullet: ['- **The release**: a **VPS release**', '\n- '],
+  productionMonitors: [
+    "- `sudo hostwatch check` clean, and production's monitors",
+    'Then, in order:',
+  ],
+  razorpaySwitch: ['## Razorpay live switch', '## The first platform admin (production)'],
+  launch: ['## Launching the website', '\n   - In a normal browser'],
 } as const;
 
 type Place = keyof typeof PLACES;
@@ -3957,6 +3975,359 @@ const backupPlace = (runbook: string) =>
   });
 
 /**
+ * The shared server (VPS)'s opening at da46268 (VPS-158), which said the server wasn't bought: it
+ * is, and the server team runs it.
+ */
+const OPENING_DA46268 = [
+  '`deploy/vps/` holds every file MenuMesh brings, and its README says what goes where. **None of this',
+  "is live yet:** the server isn't bought, Vercel stays the live host until the cut-over (The server",
+  'rehearsal and the cut-over, below), and the CI jobs stay off until the two variables below are set.',
+].join('\n');
+/** The opening's words on how far the server had got, a line of a log in a procedure (VPS-158). */
+const STALE_OPENING = /\bNone of this is live yet\b|\bthe server isn't bought\b/;
+/** What the opening says that holds until the cut-over (VPS-158). */
+const OPENING_WORDS = [
+  'Vercel stays the live host until the cut-over (The server rehearsal and the cut-over, below)',
+  'the CI jobs stay off until the two variables below are set',
+];
+
+/**
+ * The shared server (VPS)'s opening (VPS-158). It said none of this was live yet, as the server
+ * wasn't bought, which the server's running made untrue, and a procedure says what holds, not how
+ * far it has got. So an opening that still says so (STALE_OPENING) has that one problem, and
+ * otherwise it says that Vercel stays the live host until the cut-over and the CI jobs stay off
+ * until the two variables are set.
+ */
+const openingTrue = (runbook: string) =>
+  inPlaces(runbook, ['opening'], ({ opening }) =>
+    STALE_OPENING.test(flat(opening))
+      ? [
+          'The shared server (VPS)’s opening still says the server isn’t bought and none of it is live yet',
+        ]
+      : OPENING_WORDS.every((words) => has(opening, words))
+        ? []
+        : [
+            'The shared server (VPS)’s opening doesn’t say Vercel stays the live host until the cut-over and the CI jobs stay off until the two variables are set',
+          ],
+  );
+
+/** First install, step 11's line at da46268 (VPS-158), before staging's password had a step. */
+const PASSWORD_DA46268 =
+  '    the cut-over, part 3, Before it). The hash comes from the owner, who makes it on their own';
+/** The owner's hash of staging's password, with the edge's pinned Caddy (First install, step 11). */
+const HASH_LINE = `docker run --rm -it ${CADDY} caddy hash-password --algorithm bcrypt`;
+/**
+ * Step 11's words on staging's password (VPS-158): the owner's, made at this step, as step 17 and
+ * the step's own edge.env lines need it, named so, not as that night, which could be the staging
+ * night the sentence before names; kept in the password manager, the testers getting it from the
+ * owner; the GitHub secret STAGING_SMOKE_BASIC_AUTH at step 17, as the user and the password; and
+ * the hash, as before, the owner's, made with HASH_LINE.
+ */
+const PASSWORD_WORDS = [
+  "Staging's password is the owner's to make at this step, as step 17 and the `edge.env` lines need it",
+  'it goes into the password manager (testers get it from the owner)',
+  'as `menumesh:<password>`, into the GitHub secret `STAGING_SMOKE_BASIC_AUTH` at step 17',
+  'The hash comes from the owner, who makes it on their own machine',
+];
+
+/**
+ * Staging's password in a step (VPS-158). Step 11's (c) wants the owner's hash, which the owner
+ * makes on their own machine, and step 17 sets STAGING_SMOKE_BASIC_AUTH, but no step had the owner
+ * make the password, keep it or set the secret. Step 11, which the owner reaches before step 17 and
+ * before its own edge.env lines, now says all four, the hash's line in its block.
+ */
+const passwordMade = (runbook: string) =>
+  inPlaces(runbook, ['edgeStep'], ({ edgeStep }) =>
+    PASSWORD_WORDS.every((words) => has(edgeStep, words)) &&
+    blockLines(edgeStep).includes(HASH_LINE)
+      ? []
+      : [
+          'First install, step 11, doesn’t have the owner make staging’s password in time, keep it in the password manager, hash it and set it as STAGING_SMOKE_BASIC_AUTH',
+        ],
+  );
+
+/** The backup's alert and heartbeat (deploy/vps/backup/notify.sh), which step 18 tries (VPS-158). */
+const NOTIFY = readFileSync(join('deploy', 'vps', 'backup', 'notify.sh'), 'utf8');
+/**
+ * First install, step 18's try of the backup's Telegram line (VPS-158), in the running backup
+ * container, whose environment holds the bot's token and the chat from .env.
+ */
+const NOTIFY_LINE =
+  "sudo app-compose menumesh exec -T backup /usr/local/bin/notify.sh alert '[menumesh] test alert from the server'";
+/**
+ * Step 18's words on it (VPS-158): before the first night, as step 3 tries each monitor's alert;
+ * by notify.sh, through which a failed night's and the WAL's alerts go; the token and the chat from
+ * .env, printed by neither; what it prints when the send worked and when it failed, and nothing
+ * with a value empty; and the line in the owner's chat as the check.
+ */
+const NOTIFY_WORDS = [
+  "Then, before its first night (20:30 UTC), the backup's Telegram line (step 3), tried once from the server with the image's own `notify.sh`",
+  "through which a failed night's and the WAL's alerts go",
+  "it takes the bot's token and the chat from `.env` and prints neither",
+  'It prints nothing when the send worked',
+  "`notify: the Telegram alert failed (…)`, with curl's exit or the HTTP status, when it did not",
+  'with either value empty it sends nothing and prints nothing',
+  "so the check is the line in the owner's chat",
+];
+/**
+ * What those words rest on in notify.sh (VPS-158): an empty value sends nothing, curl gets the
+ * token and the chat on its stdin, never in its arguments, and a failed send prints one line, with
+ * curl's exit or the HTTP status.
+ */
+const NOTIFY_KEEPS = [
+  '[ -n "${TELEGRAM_BOT_TOKEN-}" ] && [ -n "${TELEGRAM_CHAT_ID-}" ] || exit 0',
+  "curl --config - --silent --output /dev/null --write-out '%{http_code}'",
+  "printf 'notify: %s failed (%s)\\n'",
+  "report 'the Telegram alert'",
+  'echo "HTTP $code" || echo "curl exit $rc"',
+];
+
+/**
+ * The backup's Telegram line tried from the server (VPS-158). First install, step 3, tries each
+ * heartbeat monitor's alert before the first night, but no step tried the bot that a failed night
+ * and the WAL alerts write to, so a wrong token or chat would show only on a night that failed.
+ * Step 18, once the image runs, tries it with the image's own notify.sh, a line of its block, and
+ * says what it prints, never the token or the chat; notify.sh must still do what those words say.
+ */
+const alertTried = (runbook: string, notify: string) =>
+  inPlaces(runbook, ['backupStep'], ({ backupStep }) => [
+    ...(blockLines(backupStep).includes(NOTIFY_LINE) &&
+    NOTIFY_WORDS.every((words) => has(backupStep, words))
+      ? []
+      : [
+          'First install, step 18, doesn’t try the backup’s Telegram line from the server before its first night, with notify.sh, which prints neither the token nor the chat',
+        ]),
+    ...NOTIFY_KEEPS.filter((words) => !notify.includes(words)).map(
+      (words) => `notify.sh no longer does what First install, step 18, says of it: ${words}`,
+    ),
+  ]);
+
+/**
+ * The production night's Before it at da46268 (VPS-158): production's monitors on, without saying
+ * which they were or what on meant.
+ */
+const MONITORS_DA46268 =
+  "- `sudo hostwatch check` clean, and production's monitors (First install, step 3) on.";
+/**
+ * What production's monitors on means (VPS-158): of First install, step 3's heartbeat monitors, the
+ * five production's services ping, the backup's and the WAL's from step 18 and daily, digest and
+ * jobs from step 20, the other three staging's; each up in healthchecks.io and none paused, as the
+ * way back leaves three; each one's alert tried (step 3); and the uptime monitor on /api/health, set
+ * up in One-time setup per environment, step 6, up, as it watches the address that moves.
+ */
+const MONITOR_WORDS = [
+  "production's monitors on: of First install, step 3's heartbeat monitors, the five that production's services ping (the other three are staging's)",
+  "the backup's and the WAL's (`backup`, from step 18)",
+  '`daily`, `digest` and `jobs` (`scheduler`, from step 20)',
+  'each up in healthchecks.io and none paused',
+  "each one's alert tried with its test notification (step 3)",
+  'the uptime monitor on `https://menumesh.in/api/health` (One-time setup per environment, step 6) up',
+  'it watches the address, which step 1 moves to the server',
+];
+
+/**
+ * Production's monitors on, said in full (VPS-158). The production night's Before it named them by
+ * First install, step 3, which makes eight, staging's three among them, and said nothing of what on
+ * was, while step 9 looks at an uptime monitor on /api/health that no step of the move sets up. The
+ * bullet names the five production's services ping, the state each must be in and where the owner
+ * sees it, and the uptime monitor, by the step that set it up.
+ */
+const monitorsOn = (runbook: string) =>
+  inPlaces(runbook, ['productionMonitors'], ({ productionMonitors }) =>
+    MONITOR_WORDS.every((words) => has(productionMonitors, words))
+      ? []
+      : [
+          'the production night’s Before it doesn’t say what production’s monitors on means: which five, each up in healthchecks.io and none paused, each alert tried, and the uptime monitor on /api/health up',
+        ],
+  );
+
+/** The production night's release bullet at da46268 (VPS-158), which left its time unsaid. */
+const RELEASE_DA46268 = [
+  '- **The release**: a **VPS release** of a commit of `main` that went through VPS staging (its',
+  "  `migrate-<sha>` is staging's: VPS-41), such as `v1.0.0`, deployed on the server (Deploys on the",
+  '  VPS, Production) and healthy by the check from inside (First install, step 19). Its commit is the',
+  '  one the checks below expect.',
+].join('\n');
+/**
+ * The release's time (VPS-158), from part 3's rule, no merge to main while the staging night runs
+ * but its step 6's, and part 4's, the release a commit of main that VPS staging deployed.
+ */
+const RELEASE_TIMING =
+  "The site's words (below) and any other change meant for the release merge to `main` before the staging night or after it, never during it (part 3), and the release is made after that night, from a commit VPS staging deployed";
+
+/**
+ * The release's time (VPS-158). Part 3 takes no merge to main while the staging night runs but its
+ * step 6's, and part 4's release is a commit of main that VPS staging deployed: so the changes meant
+ * for it, the site's words among them, merge before that night or after it, and the release is made
+ * after it. The release bullet says so.
+ */
+const releaseTimed = (runbook: string) =>
+  inPlaces(runbook, ['releaseBullet'], ({ releaseBullet }) =>
+    has(releaseBullet, RELEASE_TIMING)
+      ? []
+      : [
+          'the production night’s release doesn’t have its changes merged before the staging night or after it, never during it, nor the release made after it from a commit VPS staging deployed',
+        ],
+  );
+
+/** Razorpay live switch at da46268 (VPS-158), which set production's keys up on Vercel alone. */
+const RAZORPAY_DA46268 = [
+  '## Razorpay live switch',
+  '',
+  '1. Move production to Supabase Pro (daily backups, no pausing when idle); keep the nightly export.',
+  '2. KYC approved; live mode enabled in the Razorpay dashboard. Open **Payments → Subscriptions**',
+  '   once in live mode: that switches the product on (step 6 fails until then).',
+  '3. Create live keys; set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the production Vercel',
+  '   project.',
+  '4. Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and',
+  '   `payment_link.paid` events and a new secret; set `RAZORPAY_WEBHOOK_SECRET`.',
+  '5. Release production (a changed variable reaches only new deployments).',
+  '6. `/super` → **Plans** → **Create … plan in Razorpay** for each plan and cycle (live plans are',
+  '   separate from test ones).',
+  '7. Subscribe a real test restaurant with a small plan, check the webhook arrives and the',
+  '   payment shows at `/super`, then cancel it.',
+  '',
+  '',
+].join('\n');
+/**
+ * Launching the website at da46268, up to its step 6's checks (VPS-158): Vercel's variables,
+ * GoDaddy's DNS and the Release workflow.
+ */
+const LAUNCH_DA46268 = [
+  '## Launching the website',
+  '',
+  "Production keeps its current build until the owner's legal texts and contact details are ready",
+  '(docs/DECISIONS.md W-2). Then, in this order:',
+  '',
+  '1. **Texts** (a normal PR): replace the placeholders.',
+  '   - The four policies in `src/app/(site)/(en)/(legal)/`, and the placeholder banner in its',
+  '     `layout.tsx` (`tests/e2e/legal.spec.ts` checks for the banner, so update it too).',
+  '   - The support email, phone and WhatsApp in `contact.ways` of both dictionaries,',
+  '     `src/features/site/content.ts` and `content-hi.ts`, and the `contact.placeholder` note.',
+  '   - The owner approved the Hindi website as written on 2026-10-14 (`content-hi.ts`,',
+  '     `DEMO_WORDS.hi` in `src/features/site/demo/machine.ts`, the Hindi code and welcome emails,',
+  '     DECISIONS W-20). If the texts above change, their Hindi changes with them.',
+  "   - The Organization's contact details in `src/features/site/structured-data.tsx` (W-12).",
+  '2. **Production Vercel variables:**',
+  '   - `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, from a Cloudflare Turnstile widget whose',
+  '     hostnames include `menumesh.in`. Without both, the demo form is hidden and signup stays',
+  '     closed.',
+  '   - `RESEND_API_KEY` and `EMAIL_FROM`, with `menumesh.in` verified in Resend. They send each',
+  '     demo request to the support email, and together with Turnstile they open self-serve signup',
+  '     (W-9). Without them the site launches with "Book a demo" only, and requests are kept in',
+  '     `/super/leads` without an email.',
+  '   - `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST`: the same project as staging (W-13).',
+  '3. **Support email** (production `/super` → Platform settings), where each demo request is',
+  '   emailed when Resend is set; without it, requests are only kept in `/super/leads`.',
+  '4. **DNS** (GoDaddy, for `menumesh.in`):',
+  '   - DMARC: a TXT record `_dmarc` with `v=DMARC1; p=none; rua=mailto:dmarc@menumesh.in`. The',
+  "     domain has SPF and Resend's DKIM but no DMARC record, which mailbox providers look for",
+  '     (Gmail and Yahoo require it of bulk senders). The report address must be at `menumesh.in`',
+  '     (a GoDaddy forward to any inbox is enough): providers only send reports to another domain',
+  '     when that domain allows it. Move to `p=quarantine` once the reports look clean.',
+  '   - Google Search Console: add a Domain property for `menumesh.in` and the TXT record it asks',
+  '     for. It covers `www` and staging too.',
+  '5. **Release:** Actions → Release, typing `production`. Smoke then checks the version, the home',
+  '   page, the plans and prices, the policies, robots and the sitemap, that `menumesh.in` may be',
+  '   indexed, and that PostHog loads without keeping anything (on `menumesh.in` it fails without',
+  '   the PostHog key).',
+  '6. **After the Release:**',
+].join('\n');
+/** The mark of what holds only while Vercel serves production (VPS-158). */
+const ON_VERCEL = 'While Vercel serves production';
+/** What holds only while it does: Vercel's project and Release, and hosted Supabase's plan. */
+const VERCEL_ONLY = /\bVercel\b|Actions → Release\b|\bSupabase Pro\b/;
+/**
+ * Razorpay live switch on the server (VPS-158): production there from the production night, its
+ * keys in web.env; its database the server's own, with no plan to move to; the keys and the
+ * webhook's secret in web.env, installed again as Rotation has it, then up -d web, which recreates
+ * it; the webhook and its events as before; and Vercel's way while Vercel serves production.
+ */
+const RAZORPAY_WORDS = [
+  'On the shared server, where production runs from the production night (The shared server (VPS), The server rehearsal and the cut-over, part 4), with its keys in `web.env` (First install, step 14; Secrets (VPS))',
+  "On the server, its database is the server's own, backed up every night (Backups and restore (VPS))",
+  'put `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `web.env`',
+  'Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and `payment_link.paid` events and a new secret',
+  'put it in `web.env` as `RAZORPAY_WEBHOOK_SECRET`',
+  'The edited `web.env` installed again and its copy in `~/incoming` shredded (First install, step 14), then `sudo app-compose menumesh up -d web` (Secrets (VPS), Rotation)',
+  '`up -d` recreates `web` with the new values, where a `restart` keeps the old ones',
+  'While Vercel serves production, the three go in the production Vercel project instead, then a Release of production, as a changed variable reaches only new deployments',
+];
+/**
+ * Launching the website on the server (VPS-158), in its order: production's settings in web.env,
+ * changed as Rotation has it, the list of them hanging from those words; PostHog's key and host
+ * built into every VPS build from the GitHub variables; after the list, never before it, where the
+ * list would read as Vercel's, the Vercel project while Vercel serves production; the DNS in
+ * Cloudflare, where part 1 moved the zone; and the release a VPS release, whose step 3 runs the
+ * smoke tests, or Vercel's Release while Vercel serves production.
+ */
+const LAUNCH_WORDS = [
+  'Then, in this order, on the shared server, where production runs from the production night (The shared server (VPS), The server rehearsal and the cut-over, part 4)',
+  "**Production's settings** in `web.env` (First install, step 14), changed as Secrets (VPS), Rotation, has it (the edited file installed again, its copy in `~/incoming` shredded, then `sudo app-compose menumesh up -d web`): - `TURNSTILE_SITE_KEY`",
+  "PostHog's key and host need nothing on the server: every **VPS build**, the release's too, builds in the GitHub variables `POSTHOG_KEY` and `POSTHOG_HOST` (First install, step 17)",
+  "While Vercel serves production, the settings above go in the production Vercel project instead, `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST` too, for step 5's Release",
+  '**DNS** (Cloudflare, for `menumesh.in`, whose zone moved there in The shared server (VPS), The server rehearsal and the cut-over, part 1)',
+  '**Release:** a **VPS release** (The shared server (VPS), Deploys on the VPS, Production), whose step 3 runs the smoke tests from this machine',
+  'While Vercel serves production, it is Actions → Release, typing `production`, which runs them itself',
+  '**After the release:**',
+];
+
+/** Part 6's lines at da46268 (VPS-158), which named the two sections whole as Vercel-only parts. */
+const RETIREMENT_DA46268 = [
+  '  Backups and restore, Razorpay live switch, the hosted way of The first platform admin',
+  "  (production) and Launching the website), README's Deployment and SPEC's §4 and §20, rewritten for",
+  '  the server.',
+].join('\n');
+/**
+ * What part 6 retires of the two sections (VPS-158): their Vercel lines, as it retires those of
+ * Incidents, not the sections, which hold the server's steps.
+ */
+const RETIRED_LINES = [
+  'the Vercel lines of Razorpay live switch',
+  'the Vercel lines of Launching the website',
+];
+
+/**
+ * The two sections after the shared server that set production up (VPS-158). Razorpay live switch
+ * and Launching the website described Vercel alone, its variables, its production, GoDaddy's DNS
+ * and the Release workflow, though from the production night production runs on the server, its
+ * values in web.env, its DNS in Cloudflare since part 1 and its releases the VPS release. Each now
+ * holds its words for the server, in their order, and every sentence of it that names Vercel, its
+ * Release or hosted's Supabase Pro opens with ON_VERCEL, as After the move keeps the Vercel rules
+ * until their parts retire; and part 6 retires their Vercel lines, not the sections. One problem a
+ * section, and one for part 6.
+ */
+const serverLaunch = (runbook: string) =>
+  inPlaces(
+    runbook,
+    ['razorpaySwitch', 'launch', 'retirement'],
+    ({ razorpaySwitch, launch, retirement }) => [
+      ...(
+        [
+          ['Razorpay live switch', razorpaySwitch, RAZORPAY_WORDS],
+          ['Launching the website', launch, LAUNCH_WORDS],
+        ] as const
+      )
+        .filter(
+          ([, text, words]) =>
+            !inOrder(flat(text), words.map(flat)) ||
+            sentences(text).some(
+              (sentence) => VERCEL_ONLY.test(sentence) && !sentence.startsWith(ON_VERCEL),
+            ),
+        )
+        .map(
+          ([name]) =>
+            `${name} still sets production up on Vercel, not on the server, or doesn’t say what holds only while Vercel serves production`,
+        ),
+      ...(RETIRED_LINES.every((words) => has(retirement, words))
+        ? []
+        : [
+            'part 6 retires Razorpay live switch and Launching the website whole, not their Vercel lines',
+          ]),
+    ],
+  );
+
+/**
  * The leak test's container (the server team's review, Q8; VPS-137). The RUNBOOK named neither an
  * image nor a command, so the container could have been anything, pinned or not. It is
  * traefik/whoami by its index digest, pulled first, then run with LEAK_FLAGS, never with the
@@ -5243,6 +5614,48 @@ const REWRAPPED = [
   "Git Bash's prompt shows `MINGW64` and ends in",
   'Then, in Git Bash,',
   `\`${DEPLOY_CHECK}\` prints the public key, and a key with a passphrase`,
+  // Read by the rules of the gaps closed before the server rehearsal (VPS-158): a piece of each
+  // phrase that stands on one line, none holding a phrase this list wraps already (the password
+  // manager, a copy in ~/incoming shredded) nor a space of a place's first words.
+  'the live host until the cut-over (The server rehearsal and the cut-over, below)',
+  'stay off until the two variables below are set',
+  "Staging's password is the owner's to make at this step, as",
+  '(testers get it from',
+  'as `menumesh:<password>`, into the GitHub secret `STAGING_SMOKE_BASIC_AUTH`',
+  'The hash comes from the owner, who makes it on their own',
+  "before its first night (20:30 UTC), the backup's Telegram line (step 3), tried once from",
+  "through which a failed night's and the WAL's alerts",
+  "it takes the bot's token and the chat from `.env` and prints neither",
+  'It prints nothing when',
+  "`notify: the Telegram alert failed (…)`, with curl's exit or the HTTP",
+  'with either value empty it sends nothing and prints nothing',
+  "check is the line in the owner's chat",
+  "on: of First install, step 3's heartbeat",
+  "and the WAL's (`backup`, from step 18)",
+  '`daily`, `digest` and `jobs` (`scheduler`, from',
+  'each up in healthchecks.io and none paused',
+  "each one's alert tried with its test",
+  'the uptime monitor on `https://menumesh.in/api/health` (One-time',
+  'it watches the address, which step 1 moves to the server',
+  "The site's words (below) and any other change meant for the release",
+  'On the shared server, where production runs from the production night',
+  "On the server, its database is the server's own, backed up",
+  'put `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `web.env`',
+  'Add the webhook `https://menumesh.in/api/webhooks/razorpay` with the `subscription.*` and',
+  'put it in `web.env` as `RAZORPAY_WEBHOOK_SECRET`',
+  'The edited `web.env` installed again and',
+  'recreates `web` with the new values, where a `restart` keeps the old ones',
+  'the three go in the production Vercel project instead, then a Release of',
+  'Then, in this order, on the shared server, where production runs from the',
+  "**Production's settings** in `web.env` (First install, step 14), changed as Secrets (VPS),",
+  "`NEXT_PUBLIC_POSTHOG_KEY` and `_HOST` too, for step 5's Release",
+  "PostHog's key and host need nothing on the server: every **VPS build**, the release's too,",
+  '(Cloudflare, for `menumesh.in`, whose zone moved there in The shared server (VPS), The',
+  '**Release:** a **VPS release** (The shared server (VPS), Deploys on the VPS, Production), whose',
+  'Actions → Release, typing `production`, which runs them itself',
+  '**After the release:**',
+  'the Vercel lines of Razorpay live switch',
+  'the Vercel lines of Launching the website',
 ];
 
 describe('the RUNBOOK’s VPS steps that no script runs', () => {
@@ -9668,6 +10081,306 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     }
   });
 
+  it('says in the shared server’s opening only what holds until the cut-over, Vercel the live host and the CI jobs off until the two variables are set, never that the server isn’t bought (VPS-158)', () => {
+    expect(openingTrue(RUNBOOK)).toEqual([]);
+    const stale =
+      'The shared server (VPS)’s opening still says the server isn’t bought and none of it is live yet';
+    const unsaid =
+      'The shared server (VPS)’s opening doesn’t say Vercel stays the live host until the cut-over and the CI jobs stay off until the two variables are set';
+    // da46268's opening, which said the server wasn't bought: that one problem and nothing else.
+    const opening = cut(RUNBOOK, '`deploy/vps/` holds every file', "\nThe server team's runbooks");
+    expect(openingTrue(swap(RUNBOOK, opening, OPENING_DA46268))).toEqual([stale]);
+    // Either of its old words put back beside the new ones, wrapped as they were.
+    for (const words of ['None of this is\nlive yet: ', "Since the server isn't\nbought, "]) {
+      expect(
+        openingTrue(
+          swap(RUNBOOK, 'Vercel stays\nthe live host', `${words}Vercel stays\nthe live host`),
+        ),
+      ).toEqual([stale]);
+    }
+    // Each of its two sentences taken out alone: Vercel the live host until the cut-over, then the
+    // CI jobs off until the two variables are set.
+    for (const [from, to] of [
+      [
+        'Vercel stays\nthe live host until the cut-over (The server rehearsal and the cut-over, below), and the CI jobs',
+        'Until then the CI jobs',
+      ],
+      [', and the CI jobs\nstay off until the two variables below are set', ''],
+    ]) {
+      expect(openingTrue(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+  });
+
+  it('has the owner make staging’s password at First install, step 11, in time for step 17 and the step’s edge.env lines, keep it in the password manager, hash it with the pinned Caddy and set it as STAGING_SMOKE_BASIC_AUTH (VPS-158)', () => {
+    expect(passwordMade(RUNBOOK)).toEqual([]);
+    const unmade =
+      'First install, step 11, doesn’t have the owner make staging’s password in time, keep it in the password manager, hash it and set it as STAGING_SMOKE_BASIC_AUTH';
+    // da46268's line, which left the password to no step: that one problem and nothing else.
+    const lines = cut(
+      RUNBOOK,
+      '    the cut-over, part 3, Before it).',
+      '\n    machine with the edge',
+    );
+    expect(passwordMade(swap(RUNBOOK, lines, PASSWORD_DA46268))).toEqual([unmade]);
+    // Each of its words taken out alone: at this step, as step 17 and the edge.env lines need it,
+    // or that night in their place, which could be the staging night; the password manager, the
+    // testers, the user and the password, the secret's step; and the hash's line with another
+    // image, or without bcrypt.
+    for (const [from, to] of [
+      [' to make at this step, as\n    step 17 and the `edge.env` lines need it', ''],
+      [', as\n    step 17 and the `edge.env` lines need it', ''],
+      ['step 17 and the `edge.env` lines need it', 'step 17 and that night both need it'],
+      ['into the password manager (testers', 'into a file (testers'],
+      [' (testers get it from\n    the owner)', ''],
+      ['as `menumesh:<password>`, into', 'into'],
+      ['`STAGING_SMOKE_BASIC_AUTH`\n    at step 17.', '`STAGING_SMOKE_BASIC_AUTH`.'],
+      [HASH_LINE, HASH_LINE.replace(CADDY, 'caddy:2-alpine')],
+      [HASH_LINE, HASH_LINE.replace(' --algorithm bcrypt', '')],
+    ]) {
+      expect(passwordMade(swap(RUNBOOK, from, to))).toEqual([unmade]);
+    }
+  });
+
+  it('tries the backup’s Telegram line from the server before its first night, with the image’s own notify.sh, which prints neither the token nor the chat (VPS-158)', () => {
+    expect(alertTried(RUNBOOK, NOTIFY)).toEqual([]);
+    const untried =
+      'First install, step 18, doesn’t try the backup’s Telegram line from the server before its first night, with notify.sh, which prints neither the token nor the chat';
+    // da46268's step 18, which never tried it: that one problem and nothing else.
+    const tried = cut(RUNBOOK, '\n    Then, before its first night', '\n19. ');
+    expect(alertTried(swap(RUNBOOK, tried, ''), NOTIFY)).toEqual([untried]);
+    // The line in prose, not in its block; run in another service; curl with the token and the chat
+    // in its arguments.
+    for (const [from, to] of [
+      [`    \`\`\`sh\n    ${NOTIFY_LINE}\n    \`\`\`\n`, `    \`${NOTIFY_LINE}\`\n`],
+      ['exec -T backup /usr/local/bin/notify.sh', 'exec -T web /usr/local/bin/notify.sh'],
+      [
+        NOTIFY_LINE,
+        'sudo app-compose menumesh exec -T backup sh -c \'curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" -d chat_id=$TELEGRAM_CHAT_ID -d text=test\'',
+      ],
+    ]) {
+      expect(alertTried(swap(RUNBOOK, from, to), NOTIFY)).toEqual([untried]);
+    }
+    // Each of its words taken out alone: before the first night, the step that made the bot, the
+    // alerts that go through notify.sh, the token and the chat printed by neither, what it prints
+    // when the send worked and when it failed, nothing with a value empty, and the line in the chat.
+    for (const [from, to] of [
+      [' before its first night (20:30 UTC),', ''],
+      ['Telegram line (step 3), tried', 'Telegram line, tried'],
+      [", through which a failed night's and the WAL's alerts\n    go", ''],
+      [' and prints neither', ''],
+      ['nothing when\n    the send worked, and ', ''],
+      [", with curl's exit or the HTTP\n    status,", ''],
+      ['; with either value empty it sends nothing and prints nothing', ''],
+      [", so the\n    check is the line in the owner's chat", ''],
+    ]) {
+      expect(alertTried(swap(RUNBOOK, from, to), NOTIFY)).toEqual([untried]);
+    }
+    // notify.sh no longer as the words say: the token and the chat in curl's arguments, or a send
+    // with the chat empty.
+    const curl = "curl --config - --silent --output /dev/null --write-out '%{http_code}'";
+    expect(alertTried(RUNBOOK, swap(NOTIFY, curl, curl.replace('--config - ', '')))).toEqual([
+      `notify.sh no longer does what First install, step 18, says of it: ${curl}`,
+    ]);
+    const empty = '[ -n "${TELEGRAM_BOT_TOKEN-}" ] && [ -n "${TELEGRAM_CHAT_ID-}" ] || exit 0';
+    expect(
+      alertTried(RUNBOOK, swap(NOTIFY, empty, '[ -n "${TELEGRAM_BOT_TOKEN-}" ] || exit 0')),
+    ).toEqual([`notify.sh no longer does what First install, step 18, says of it: ${empty}`]);
+  });
+
+  it('says what production’s monitors on means before the production night: the five production’s services ping, each up in healthchecks.io and none paused, each alert tried, and the uptime monitor on /api/health up (VPS-158)', () => {
+    expect(monitorsOn(RUNBOOK)).toEqual([]);
+    const unsaid =
+      'the production night’s Before it doesn’t say what production’s monitors on means: which five, each up in healthchecks.io and none paused, each alert tried, and the uptime monitor on /api/health up';
+    // da46268's bullet, production's monitors on and no more: that one problem and nothing else.
+    const bullet = cut(
+      RUNBOOK,
+      "- `sudo hostwatch check` clean, and production's monitors",
+      '\n\nThen, in order:',
+    );
+    expect(monitorsOn(swap(RUNBOOK, bullet, MONITORS_DA46268))).toEqual([unsaid]);
+    // Each of its words taken out alone: the five, staging's three, the backup's and the WAL's,
+    // daily, digest and jobs, up in healthchecks.io, none paused, each alert tried, and the uptime
+    // monitor's step and the address it follows.
+    for (const [from, to] of [
+      ["the five that production's services ping", 'those its services ping'],
+      [" (the other three are staging's)", ''],
+      [' (`backup`, from step 18)', ''],
+      [' (`scheduler`, from\n  step 20)', ''],
+      [' in healthchecks.io and none paused', ''],
+      [' and none paused', ''],
+      [", each one's alert tried with its test\n  notification (step 3)", ''],
+      [' (One-time\n  setup per environment, step 6)', ''],
+      [': it watches the address, which step 1 moves to the server', ''],
+    ]) {
+      expect(monitorsOn(swap(RUNBOOK, from, to))).toEqual([unsaid]);
+    }
+  });
+
+  it('merges what the production night’s release carries before the staging night or after it, never during it, and makes the release after that night from a commit VPS staging deployed (VPS-158)', () => {
+    expect(releaseTimed(RUNBOOK)).toEqual([]);
+    const untimed =
+      'the production night’s release doesn’t have its changes merged before the staging night or after it, never during it, nor the release made after it from a commit VPS staging deployed';
+    // da46268's bullet, which left the release's time unsaid: that one problem and nothing else.
+    const bullet = cut(
+      RUNBOOK,
+      '- **The release**: a **VPS release**',
+      "\n- **The site's words on where",
+    );
+    expect(releaseTimed(swap(RUNBOOK, bullet, RELEASE_DA46268))).toEqual([untimed]);
+    // Each of its words taken out alone: any other change, before or after the night, never during
+    // it, part 3's rule, the release after the night, and a commit VPS staging deployed.
+    for (const [from, to] of [
+      [' and any other change meant for the release\n  merge', '\n  merge'],
+      [' or after it, never', ', never'],
+      [', never during it (part 3)', ''],
+      [' (part 3), and the release', ', and the release'],
+      ['is made after that night, from', 'is made from'],
+      [', from a commit VPS staging deployed', ''],
+    ]) {
+      expect(releaseTimed(swap(RUNBOOK, from, to))).toEqual([untimed]);
+    }
+  });
+
+  it('sets production up on the server in Razorpay live switch and Launching the website, its keys and settings in web.env, its DNS in Cloudflare and its release the VPS release, every step that holds only while Vercel serves production saying so, and part 6 retiring those steps alone (VPS-158)', () => {
+    expect(serverLaunch(RUNBOOK)).toEqual([]);
+    const razorpay =
+      'Razorpay live switch still sets production up on Vercel, not on the server, or doesn’t say what holds only while Vercel serves production';
+    const launch =
+      'Launching the website still sets production up on Vercel, not on the server, or doesn’t say what holds only while Vercel serves production';
+    const retired =
+      'part 6 retires Razorpay live switch and Launching the website whole, not their Vercel lines';
+    // da46268's sections, Vercel's alone, and its part 6, which retired both whole: each its one
+    // problem and nothing else.
+    const razorpaySection = cut(
+      RUNBOOK,
+      '## Razorpay live switch',
+      '## The first platform admin (production)',
+    );
+    expect(serverLaunch(swap(RUNBOOK, razorpaySection, RAZORPAY_DA46268))).toEqual([razorpay]);
+    const launchSection = cut(RUNBOOK, '## Launching the website', '\n   - In a normal browser');
+    expect(serverLaunch(swap(RUNBOOK, launchSection, LAUNCH_DA46268))).toEqual([launch]);
+    const retirement = cut(
+      RUNBOOK,
+      '  Backups and restore, the Vercel lines',
+      '\n- The owner removes or downgrades',
+    );
+    expect(serverLaunch(swap(RUNBOOK, retirement, RETIREMENT_DA46268))).toEqual([retired]);
+    // Launching the website's Vercel sentence before its list of settings, where the list read as
+    // Vercel's and its PostHog bullet, nothing on the server, against it (the review of VPS-158),
+    // or between the list's bullets: the same sentence, its one problem.
+    const vercelWay =
+      "\n\n   While Vercel serves production, the settings above go in the production Vercel project instead,\n   `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST` too, for step 5's Release.";
+    const withoutIt = swap(RUNBOOK, vercelWay, '');
+    for (const [from, to] of [
+      [
+        '`sudo app-compose menumesh up -d web`):\n   - `TURNSTILE_SITE_KEY`',
+        "`sudo app-compose menumesh up -d web`). While Vercel serves production, the settings above go\n   in the production Vercel project instead, `NEXT_PUBLIC_POSTHOG_KEY` and `_HOST` too, for step\n   5's Release:\n   - `TURNSTILE_SITE_KEY`",
+      ],
+      ["\n   - PostHog's key and host", `${vercelWay}\n   - PostHog's key and host`],
+    ]) {
+      expect(serverLaunch(swap(withoutIt, from, to))).toEqual([launch]);
+    }
+    // A step of Vercel's without its mark, every word of the server's there: hosted's plan,
+    // Vercel's project, its Release, Vercel named in a step of the server's.
+    for (const [from, to, problem] of [
+      ['1. While Vercel serves production: move hosted', '1. Move hosted', razorpay],
+      ['in `web.env`.\n4.', 'in `web.env`, or in the production Vercel project.\n4.', razorpay],
+      ['While Vercel serves production, it is\n   Actions', 'On Vercel it is\n   Actions', launch],
+      [
+        '**Support email** (production `/super` → Platform settings)',
+        '**Support email** (production `/super` → Platform settings, on Vercel too)',
+        launch,
+      ],
+    ]) {
+      expect(serverLaunch(swap(RUNBOOK, from, to))).toEqual([problem]);
+    }
+    // Each of the new words taken out alone, and the webhook and its events, which stay: in
+    // Razorpay live switch, the server from the production night, its own database, the keys and
+    // the webhook's secret in web.env, its install again, Rotation, up -d's recreate and Vercel's
+    // way; in Launching the website, the server, production's settings in web.env and how they
+    // change, PostHog's GitHub variables, Vercel's way, the list's lead-in that it hangs from,
+    // Cloudflare's DNS, the VPS release and its smoke tests, Vercel's Release and the release after
+    // it; and in part 6, the Vercel lines of each section.
+    for (const [from, to, problem] of [
+      [
+        'On the shared server, where production runs from the production night (The shared server (VPS),\nThe server rehearsal and the cut-over, part 4), with its keys in `web.env` (First install, step 14;\nSecrets (VPS)):\n\n',
+        '',
+        razorpay,
+      ],
+      [
+        " On the server, its database is the server's own, backed up\n   every night (Backups and restore (VPS)).",
+        '',
+        razorpay,
+      ],
+      [
+        'put `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `web.env`',
+        'set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`',
+        razorpay,
+      ],
+      [
+        '`https://menumesh.in/api/webhooks/razorpay`',
+        '`https://menumesh.in/api/razorpay`',
+        razorpay,
+      ],
+      [' and\n   `payment_link.paid` events', ' events', razorpay],
+      [
+        '; put it in `web.env` as `RAZORPAY_WEBHOOK_SECRET`',
+        '; set `RAZORPAY_WEBHOOK_SECRET`',
+        razorpay,
+      ],
+      [
+        'The edited `web.env` installed again and its copy in `~/incoming` shredded (First install,\n   step 14), then ',
+        '',
+        razorpay,
+      ],
+      [' (Secrets (VPS), Rotation): `up -d`', ': `up -d`', razorpay],
+      [
+        ': `up -d`\n   recreates `web` with the new values, where a `restart` keeps the old ones',
+        '',
+        razorpay,
+      ],
+      [
+        ' While Vercel serves\n   production, the three go in the production Vercel project instead, then a Release of\n   production, as a changed variable reaches only new deployments.',
+        '',
+        razorpay,
+      ],
+      [
+        ', on the shared server, where production runs from the\nproduction night (The shared server (VPS), The server rehearsal and the cut-over, part 4):',
+        ':',
+        launch,
+      ],
+      [' in `web.env` (First install, step 14), changed', ', changed', launch],
+      ['its copy in `~/incoming` shredded, then\n   `sudo', 'then\n   `sudo', launch],
+      [vercelWay, '', launch],
+      [
+        'has it (the edited file installed again, its copy in `~/incoming` shredded, then\n   `sudo app-compose menumesh up -d web`):',
+        'has it: the edited file installed again, its copy in `~/incoming` shredded, then\n   `sudo app-compose menumesh up -d web`:',
+        launch,
+      ],
+      [
+        "PostHog's key and host need nothing on the server: every **VPS build**, the release's too,\n     builds in the GitHub variables `POSTHOG_KEY` and `POSTHOG_HOST` (First install, step 17), the\n     same project",
+        '`NEXT_PUBLIC_POSTHOG_KEY` and `_HOST`: the same project',
+        launch,
+      ],
+      [
+        '(Cloudflare, for `menumesh.in`, whose zone moved there in The shared server (VPS), The\n   server rehearsal and the cut-over, part 1)',
+        '(GoDaddy, for `menumesh.in`)',
+        launch,
+      ],
+      [', whose\n   step 3 runs the smoke tests from this machine', '', launch],
+      [
+        ' While Vercel serves production, it is\n   Actions → Release, typing `production`, which runs them itself.',
+        '',
+        launch,
+      ],
+      ['**After the release:**', '**After the Release:**', launch],
+      ['the Vercel lines of Razorpay live switch', 'Razorpay live switch', retired],
+      ['the Vercel lines of Launching the website', 'Launching the website', retired],
+    ]) {
+      expect(serverLaunch(swap(RUNBOOK, from, to))).toEqual([problem]);
+    }
+  });
+
   it('reads every sentence the same however the RUNBOOK wraps it (theft-docs design note 2)', () => {
     let rewrapped = RUNBOOK;
     for (const phrase of REWRAPPED) {
@@ -9719,5 +10432,11 @@ describe('the RUNBOOK’s VPS steps that no script runs', () => {
     expect(snippetGuard(rewrapped)).toEqual([]);
     expect(gitBashKeys(rewrapped)).toEqual([]);
     expect(backupPlace(rewrapped)).toEqual([]);
+    expect(openingTrue(rewrapped)).toEqual([]);
+    expect(passwordMade(rewrapped)).toEqual([]);
+    expect(alertTried(rewrapped, NOTIFY)).toEqual([]);
+    expect(monitorsOn(rewrapped)).toEqual([]);
+    expect(releaseTimed(rewrapped)).toEqual([]);
+    expect(serverLaunch(rewrapped)).toEqual([]);
   });
 });
